@@ -17,7 +17,7 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-/server_do_an/package-lock.json
+/server_do_an/package-lock.json # <-- ĐÃ THÊM VÀO ĐỂ IGNORE
 
 # OS
 .DS_Store
@@ -75,11 +75,6 @@ pids
 
 # Diagnostic reports
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-
-# Package manager lock files (optional - uncomment nếu muốn commit lock files)
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
 
 # Optional npm cache
 .npm
