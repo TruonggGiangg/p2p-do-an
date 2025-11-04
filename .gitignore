@@ -1,0 +1,95 @@
+# Compiled output
+/dist
+/build
+/server_do_an/dist
+/server_do_an/build
+
+# Dependencies
+node_modules
+/node_modules
+/server_do_an/node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+/coverage
+/.nyc_output
+/server_do_an/coverage
+/server_do_an/.nyc_output
+
+# IDEs and editors
+/.idea
+/.vscode
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Environment variables (KHÔNG commit)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+/server_do_an/.env
+/server_do_an/.env.local
+/server_do_an/.env.development.local
+/server_do_an/.env.test.local
+/server_do_an/.env.production.local
+
+# Temp directories
+.temp
+.tmp
+/server_do_an/.temp
+/server_do_an/.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Package manager lock files (optional - uncomment nếu muốn commit lock files)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Optional npm cache
+.npm
+.pnpm-store
+
+# macOS
+.AppleDouble
+.AppleDB
+._*
+
+# Windows
+*.exe
+*.dll
+*.sys
