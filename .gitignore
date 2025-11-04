@@ -17,6 +17,7 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+/server_do_an/package-lock.json
 
 # OS
 .DS_Store
