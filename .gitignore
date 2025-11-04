@@ -98,6 +98,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Hyperledger Fabric & Blockchain (ignore entire directories)
 
 
-/wallet
-/organizations
-
+wallet/
+organizations/
