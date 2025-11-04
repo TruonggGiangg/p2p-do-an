@@ -17,7 +17,9 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-/server_do_an/package-lock.json # <-- ĐÃ THÊM VÀO ĐỂ IGNORE
+
+# Package lock files (ignore everywhere)
+package-lock.json
 
 # OS
 .DS_Store
@@ -89,4 +91,13 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 *.exe
 *.dll
 *.sys
-server_do_an/package-lock.json
+
+# Package lock files
+/package-lock.json
+
+# Hyperledger Fabric & Blockchain (ignore entire directories)
+
+
+/wallet
+/organizations
+
