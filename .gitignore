@@ -89,3 +89,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 *.exe
 *.dll
 *.sys
+server_do_an/package-lock.json
