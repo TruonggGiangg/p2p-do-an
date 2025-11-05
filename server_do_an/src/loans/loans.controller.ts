@@ -180,7 +180,7 @@ export class LoansController {
   }
 
   @Get('filter')
-  @Roles(Role.BORROWER, Role.LENDER, Role.ADMIN)
+  @Roles(Role.LENDER, Role.ADMIN)
   @ResponseMessage('Lấy danh sách khoản vay thành công')
   @ApiOperation({
     summary: 'Lấy danh sách khoản vay với phân trang và filter',
@@ -322,7 +322,7 @@ export class LoansController {
   }
 
   @Get('borrower/:borrowerId')
-  @Roles(Role.BORROWER, Role.ADMIN)
+  @Roles(Role.ADMIN)
   @ResponseMessage('Lấy danh sách khoản vay thành công')
   @ApiOperation({
     summary: 'Lấy danh sách khoản vay của borrower',
@@ -369,7 +369,7 @@ export class LoansController {
   }
 
   @Get(':id')
-  @Roles(Role.BORROWER, Role.LENDER, Role.ADMIN)
+  @Roles(Role.ADMIN)
   @ResponseMessage('Lấy chi tiết khoản vay thành công')
   @ApiOperation({
     summary: 'Lấy chi tiết khoản vay',
