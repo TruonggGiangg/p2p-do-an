@@ -18,6 +18,7 @@ import { RolesGuard } from '@auth/guard/roles.guard';
 import { ResponseInterceptor } from './common/interceptor/response.interceptor';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 import { CommonModule } from './common/common.module';
+import { SettlementsModule } from './settlements/settlements.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { CommonModule } from './common/common.module';
     UsersModule,
     AuthModule,
     LoansModule,
+    SettlementsModule,
     ConfigRateModule,
   ],
   controllers: [AppController],

@@ -12,6 +12,7 @@ import { ConfigRateService } from '../../config-rate/services/config-rate.servic
 import moment from 'moment-timezone';
 import { iUser } from '@users/user.interface';
 import { User, UserDocument } from '../../users/schemas/user.schema';
+import { SettlementsService } from '../../settlements/settlements.service';
 
 @Injectable()
 export class LoansService {
@@ -38,6 +39,7 @@ export class LoansService {
     @InjectModel(Loan.name) private loanModel: Model<LoanDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private hyperledgerService: HyperledgerService,
+    private settlementsService: SettlementsService,
     private configRateService: ConfigRateService,
   ) {}
 
@@ -221,6 +223,23 @@ export class LoansService {
     this.logger.log(
       `Loan contract ${txData.contractId} created successfully`,
     );
+
+    // Tự động tạo Settlement ở DB và Blockchain
+    try {
+      console.log('[LoansService] Creating settlements for loan...');
+      await this.settlementsService.createManyForLoan({
+        loanId: txData.contractId,
+        borrowerId: borrower._id.toString(),
+        periodMonth: txData.info.periodMonth,
+        principal: txData.info.monthlyPrincipalPay,
+        interest: txData.info.monthlyInterestPay,
+        monthlyPay: txData.info.monthlyPay,
+        disbursementDateISO: txData.info.disbursementDate,
+      });
+      console.log('[LoansService] Settlements created successfully');
+    } catch (e) {
+      this.logger.error(`Failed to create settlements: ${e?.message || e}`);
+    }
 
     const result = {
       ...txData,

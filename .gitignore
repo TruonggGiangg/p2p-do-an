@@ -9,6 +9,15 @@ node_modules
 /node_modules
 /server_do_an/node_modules
 
+
+# Giữ dạng nhị phân nguyên vẹn
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+
 # Logs
 logs
 *.log

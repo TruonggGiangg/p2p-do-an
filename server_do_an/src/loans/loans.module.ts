@@ -7,6 +7,7 @@ import { HyperledgerService } from './services/hyperledger.service';
 import { Loan, LoanSchema } from './schemas/loan.schema';
 import { AuthModule } from '@auth/auth.module';
 import { ConfigRateModule } from '../config-rate/config-rate.module';
+import { SettlementsModule } from '../settlements/settlements.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 
 @Module({
@@ -18,6 +19,7 @@ import { User, UserSchema } from '../users/schemas/user.schema';
     AuthModule,
     ThrottlerModule,
     ConfigRateModule, // Import ConfigRateModule để dùng ConfigRateService
+    SettlementsModule,
   ],
   controllers: [LoansController],
   providers: [LoansService, HyperledgerService],

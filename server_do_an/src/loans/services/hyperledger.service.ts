@@ -209,6 +209,8 @@ export class HyperledgerService implements OnModuleInit {
     }
   }
 
+  
+
   /**
    * Gửi nhắc hẹn tự động
    * Gọi chaincode: sendPaymentReminder
@@ -275,6 +277,21 @@ export class HyperledgerService implements OnModuleInit {
       return JSON.parse(result.toString());
     } catch (error) {
       this.logger.error(`Failed to calculate early repayment: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Lấy danh sách settlements của loan từ blockchain (đã sort)
+   */
+  async getSettlementsByLoanId(loanId: string): Promise<any[]> {
+    await this.ensureConnection();
+    try {
+      const contract = this.getContract();
+      const result = await contract.evaluateTransaction('querySettlementsByLoanId', loanId);
+      return JSON.parse(result.toString());
+    } catch (error) {
+      this.logger.error(`Failed to get settlements by loanId: ${error}`);
       throw error;
     }
   }

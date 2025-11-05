@@ -401,6 +401,26 @@ class P2PLendingContract extends Contract {
   }
 
   /**
+   * Lấy tất cả SettlementContracts theo loanId, sắp xếp theo orderNo (hoặc maturityDate)
+   * Trả về JSON array
+   */
+  async querySettlementsByLoanId(ctx, loanId) {
+    const list = [];
+    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
+      const item = JSON.parse(value.toString());
+      if (item.loanId === loanId) {
+        list.push(item);
+      }
+    }
+    // Sắp xếp theo orderNo nếu có, fallback maturityDate
+    list.sort((a, b) => {
+      if (a.orderNo != null && b.orderNo != null) return a.orderNo - b.orderNo;
+      return new Date(a.info.maturityDate) - new Date(b.info.maturityDate);
+    });
+    return JSON.stringify(list);
+  }
+
+  /**
    * Trả nợ sớm với ưu đãi
    */
   async earlyRepayment(ctx, loanId, discountRate) {
