@@ -1,11 +1,10 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
-import { TransformInterceptor } from '@core/transform.interceptor';
-import { AllExceptionsFilter } from '@core/exception.filter';
+import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
 async function bootstrap() {
@@ -13,7 +12,6 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 8080;
-  const reflector = app.get(Reflector);
 
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
   app.use(cookieParser());
@@ -22,7 +20,6 @@ async function bootstrap() {
     origin: true, // hoặc cấu hình domain cụ thể
     credentials: true,
   });
-  app.useGlobalInterceptors(new TransformInterceptor(reflector));
   app.useGlobalFilters(new AllExceptionsFilter());
   //Có tác dụng để tự động validate các DTO đầu vào
   //whitelist: true => Loại bỏ các thuộc tính không được định nghĩa trong DTO

@@ -62,9 +62,4 @@ export class AppController {
       ...payloadAndToken,
     };
   }
-
-
-
-
-
 }

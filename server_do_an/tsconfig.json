@@ -13,13 +13,16 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./src",   // 👈 Đặt base từ thư mục src
+    "baseUrl": "./src",
     "paths": {
       "@auth/*": ["auth/*"],
       "@core/*": ["core/*"],
       "@decorator/*": ["decorator/*"],
       "@users/*": ["users/*"],
-      "@guard/*": ["guard/*"]
+      "@guard/*": ["guard/*"],
+      "@common/*": ["common/*"],
+      "@utils/*": ["utils/*"],
+      "@loans/*": ["loans/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

@@ -16,7 +16,7 @@ import {
 import { AuthService } from '@auth/auth.service';
 import { UsersService } from '@users/users.service';
 import { OtpService } from '@auth/otp/otp.service';
-import { PhoneHelper } from '../utils/phone.helper';
+import { PhoneHelper } from '@utils/phone.helper';
 import { LocalAuthGuard } from '@auth/guard/local-auth.guard';
 import { JwtAuthGuard } from '@auth/guard/jwt-guard.strategy';
 import type { Response, Request } from 'express';
