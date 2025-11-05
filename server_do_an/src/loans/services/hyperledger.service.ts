@@ -1,130 +1,46 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Wallets, Gateway } from 'fabric-network';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Contract } from 'fabric-network';
+import { FabricService } from '@common/services/fabric.service';
 
 @Injectable()
 export class HyperledgerService implements OnModuleInit {
   private readonly logger = new Logger(HyperledgerService.name);
-  private gateway: Gateway | null = null;
-  private network: any = null;
-  private contract: any = null;
   private readonly channelName = 'mychannel';
   private readonly chaincodeName = 'p2plending';
-  private isConnecting = false;
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private fabricService: FabricService,
+  ) {}
 
   async onModuleInit() {
     // Luôn bật Hyperledger Fabric - không có fallback mode
     await this.ensureConnection();
   }
 
+  /**
+   * Đảm bảo connection đã được thiết lập
+   * Sử dụng FabricService chung
+   */
   async ensureConnection(): Promise<void> {
-    if (this.contract) {
-      return;
-    }
-
-    if (this.isConnecting) {
-      while (this.isConnecting) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      if (this.contract) {
-        return;
-      }
-    }
-
-    this.isConnecting = true;
-    try {
-      await this.connect();
-    } finally {
-      this.isConnecting = false;
-    }
+    await this.fabricService.ensureConnection({
+      channelName: this.channelName,
+      chaincodeName: this.chaincodeName,
+    });
   }
 
-  private async connect(): Promise<void> {
-    try {
-      // Load network configuration - đọc từ config/connection.json trong cùng project
-      // Ưu tiên: server_do_an/config/connection.json
-      let ccpPath = path.resolve(process.cwd(), 'config/connection.json');
-
-      // Nếu không có, thử đọc từ organizations folder (fallback)
-      if (!fs.existsSync(ccpPath)) {
-        const org1ConnectionPath = path.resolve(
-          process.cwd(),
-          'organizations/peerOrganizations/org1.example.com/connection-org1.json',
-        );
-        if (fs.existsSync(org1ConnectionPath)) {
-          ccpPath = org1ConnectionPath;
-          this.logger.log(
-            `Using connection.json from organizations folder: ${ccpPath}`,
-          );
-        } else {
-          throw new Error(
-            `Hyperledger Fabric config not found. Tried:
-            - ${ccpPath}
-            - ${org1ConnectionPath}
-            Please ensure connection.json exists in config/ folder or run ccp-generate.sh script.`,
-          );
-        }
-      } else {
-        this.logger.log(`Using connection.json from config folder: ${ccpPath}`);
-      }
-
-      const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
-
-      // Create wallet - tương tự server cũ: wallet ở thư mục gốc của project
-      const walletPath = path.join(process.cwd(), 'wallet');
-      this.logger.log(`Using wallet at: ${walletPath}`);
-      const wallet = await Wallets.newFileSystemWallet(walletPath);
-
-      // Check admin identity
-      const adminExists = await wallet.get('admin');
-      if (!adminExists) {
-        throw new Error(
-          'Admin identity not found in wallet. Please enroll admin identity first.',
-        );
-      }
-
-      // Create gateway
-      this.gateway = new Gateway();
-      await this.gateway.connect(ccp, {
-        wallet,
-        identity: 'admin',
-        discovery: {
-          enabled: true,
-          asLocalhost: true,
-        },
-      });
-
-      // Get network
-      this.network = await this.gateway.getNetwork(this.channelName);
-
-      // Get contract
-      this.contract = this.network.getContract(this.chaincodeName);
-
-      this.logger.log('Successfully connected to Hyperledger Fabric');
-    } catch (error) {
-      this.logger.error(`Failed to connect to Fabric network: ${error}`);
-      throw new Error(
-        `Cannot connect to Hyperledger Fabric: ${error.message}. Blockchain is required.`,
-      );
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.gateway) {
-      await this.gateway.disconnect();
-      this.gateway = null;
-      this.network = null;
-      this.contract = null;
-    }
+  /**
+   * Lấy contract instance
+   */
+  private getContract(): Contract {
+    return this.fabricService.getContract(this.chaincodeName);
   }
 
   /**
    * Tạo hợp đồng vay với tính toán tự động
    * Gọi chaincode: createLoanContractAuto
+   * Config được truyền từ MongoDB (các tham số riêng lẻ)
    */
   async createLoanContractAuto(
     loanId: string,
@@ -134,6 +50,10 @@ export class HyperledgerService implements OnModuleInit {
     willing: string,
     borrowerJson: string,
     disbursementDateISO: string,
+    factorConstant: number,
+    ficoCoefficient: number,
+    capitalCoefficient: number,
+    monthCoefficient: number,
   ): Promise<any> {
     console.log('=== [HyperledgerService] createLoanContractAuto - START ===');
     console.log('[HyperledgerService] Parameters:', {
@@ -143,6 +63,10 @@ export class HyperledgerService implements OnModuleInit {
       score,
       willing,
       disbursementDateISO,
+      factorConstant,
+      ficoCoefficient,
+      capitalCoefficient,
+      monthCoefficient,
     });
 
     await this.ensureConnection();
@@ -159,9 +83,14 @@ export class HyperledgerService implements OnModuleInit {
         willing,
         borrowerJson,
         disbursementDateISO || '',
+        factorConstant.toString(),
+        ficoCoefficient.toString(),
+        capitalCoefficient.toString(),
+        monthCoefficient.toString(),
       ]);
 
-      const result = await this.contract.submitTransaction(
+      const contract = this.getContract();
+      const result = await contract.submitTransaction(
         'createLoanContractAuto',
         loanId,
         capital.toString(),
@@ -170,6 +99,10 @@ export class HyperledgerService implements OnModuleInit {
         willing,
         borrowerJson,
         disbursementDateISO || '',
+        factorConstant.toString(),
+        ficoCoefficient.toString(),
+        capitalCoefficient.toString(),
+        monthCoefficient.toString(),
       );
 
       console.log('[HyperledgerService] Blockchain transaction successful');
@@ -190,6 +123,76 @@ export class HyperledgerService implements OnModuleInit {
   }
 
   /**
+   * Tính toán lãi suất và lịch thanh toán (preview, không lưu blockchain)
+   * Gọi chaincode: calculateRatePreview
+   * Config được truyền từ MongoDB (các tham số riêng lẻ)
+   */
+  async calculateRatePreview(
+    capital: number,
+    periodMonth: number,
+    score: number,
+    factorConstant: number,
+    ficoCoefficient: number,
+    capitalCoefficient: number,
+    monthCoefficient: number,
+  ): Promise<any> {
+    console.log('=== [HyperledgerService] calculateRatePreview - START ===');
+    console.log('[HyperledgerService] Parameters:', {
+      capital,
+      periodMonth,
+      score,
+      factorConstant,
+      ficoCoefficient,
+      capitalCoefficient,
+      monthCoefficient,
+    });
+
+    await this.ensureConnection();
+    console.log('[HyperledgerService] Connection ensured');
+
+    try {
+      console.log('[HyperledgerService] Evaluating transaction (read-only)...');
+      console.log('[HyperledgerService] Chaincode method: calculateRatePreview');
+      console.log('[HyperledgerService] Arguments:', [
+        capital.toString(),
+        periodMonth.toString(),
+        score.toString(),
+        factorConstant.toString(),
+        ficoCoefficient.toString(),
+        capitalCoefficient.toString(),
+        monthCoefficient.toString(),
+      ]);
+
+      const contract = this.getContract();
+      // Dùng evaluateTransaction vì chỉ đọc, không ghi blockchain
+      const result = await contract.evaluateTransaction(
+        'calculateRatePreview',
+        capital.toString(),
+        periodMonth.toString(),
+        score.toString(),
+        factorConstant.toString(),
+        ficoCoefficient.toString(),
+        capitalCoefficient.toString(),
+        monthCoefficient.toString(),
+      );
+
+      console.log('[HyperledgerService] Blockchain evaluation successful');
+      console.log('[HyperledgerService] Raw result length:', result.toString().length);
+
+      const parsedResult = JSON.parse(result.toString());
+      console.log('[HyperledgerService] Parsed result:', JSON.stringify(parsedResult, null, 2));
+      console.log('[HyperledgerService] Calculated rate:', parsedResult.rate);
+      console.log('=== [HyperledgerService] calculateRatePreview - END ===');
+
+      return parsedResult;
+    } catch (error) {
+      console.error('[HyperledgerService] ERROR:', error);
+      this.logger.error(`Failed to calculate rate preview: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
    * Kiểm tra và cập nhật trạng thái các khoản đến hạn
    * Gọi chaincode: checkDuePayments
    */
@@ -197,7 +200,8 @@ export class HyperledgerService implements OnModuleInit {
     await this.ensureConnection();
 
     try {
-      const result = await this.contract.submitTransaction('checkDuePayments');
+      const contract = this.getContract();
+      const result = await contract.submitTransaction('checkDuePayments');
       return JSON.parse(result.toString());
     } catch (error) {
       this.logger.error(`Failed to check due payments: ${error}`);
@@ -213,7 +217,8 @@ export class HyperledgerService implements OnModuleInit {
     await this.ensureConnection();
 
     try {
-      const result = await this.contract.submitTransaction(
+      const contract = this.getContract();
+      const result = await contract.submitTransaction(
         'sendPaymentReminder',
         loanId,
       );
@@ -236,7 +241,8 @@ export class HyperledgerService implements OnModuleInit {
     await this.ensureConnection();
 
     try {
-      const result = await this.contract.submitTransaction(
+      const contract = this.getContract();
+      const result = await contract.submitTransaction(
         'partialPayment',
         settledId,
         amount.toString(),
@@ -260,7 +266,8 @@ export class HyperledgerService implements OnModuleInit {
     await this.ensureConnection();
 
     try {
-      const result = await this.contract.submitTransaction(
+      const contract = this.getContract();
+      const result = await contract.submitTransaction(
         'earlyRepayment',
         loanId,
         discountRate.toString(),
@@ -285,7 +292,8 @@ export class HyperledgerService implements OnModuleInit {
 
     try {
       console.log('[HyperledgerService] Querying all loan contracts from blockchain...');
-      const result = await this.contract.evaluateTransaction(
+      const contract = this.getContract();
+      const result = await contract.evaluateTransaction(
         'queryAllLoanContracts',
       );
       
@@ -294,11 +302,24 @@ export class HyperledgerService implements OnModuleInit {
       console.log('[HyperledgerService] Total loans found:', loans.length);
 
       // Kiểm tra xem có khoản vay nào đang chờ của borrower này không
-      const activeLoans = loans.filter(
-        (loan: any) =>
-          loan.borrower?._id === borrowerId &&
-          (loan.status === 'waiting' || loan.status === 'success'),
-      );
+      const activeLoans = loans.filter((loan: any) => {
+        // So sánh borrower._id (có thể là string hoặc object)
+        const loanBorrowerId = loan.borrower?._id?.toString() || loan.borrower?._id;
+        const isMatch = loanBorrowerId === borrowerId.toString();
+        const isActiveStatus = loan.status === 'waiting' || loan.status === 'success';
+        
+        if (isMatch) {
+          console.log(`[HyperledgerService] Found loan for borrower:`, {
+            contractId: loan.contractId,
+            loanBorrowerId: loanBorrowerId,
+            borrowerId: borrowerId.toString(),
+            status: loan.status,
+            isActiveStatus: isActiveStatus,
+          });
+        }
+        
+        return isMatch && isActiveStatus;
+      });
       
       console.log('[HyperledgerService] Active loans for borrower:', activeLoans.length);
       if (activeLoans.length > 0) {
@@ -306,6 +327,7 @@ export class HyperledgerService implements OnModuleInit {
           console.log(`[HyperledgerService] Active loan ${index + 1}:`, {
             contractId: loan.contractId,
             status: loan.status,
+            borrowerId: loan.borrower?._id,
           });
         });
       }
@@ -321,6 +343,42 @@ export class HyperledgerService implements OnModuleInit {
         `Failed to check existing loan contract: ${error}`,
       );
       return false;
+    }
+  }
+
+  /**
+   * Query một hợp đồng vay từ blockchain theo contractId
+   * Gọi chaincode: queryLoanContract
+   */
+  async queryLoanContract(loanId: string): Promise<any> {
+    console.log('=== [HyperledgerService] queryLoanContract - START ===');
+    console.log('[HyperledgerService] Loan ID:', loanId);
+
+    await this.ensureConnection();
+    console.log('[HyperledgerService] Connection ensured');
+
+    try {
+      console.log('[HyperledgerService] Querying loan contract from blockchain...');
+      const contract = this.getContract();
+      const result = await contract.evaluateTransaction(
+        'queryLoanContract',
+        loanId,
+      );
+
+      console.log('[HyperledgerService] Raw result length:', result.toString().length);
+      const loanContract = JSON.parse(result.toString());
+      console.log('[HyperledgerService] Found loan contract:', {
+        contractId: loanContract.contractId,
+        status: loanContract.status,
+        capital: loanContract.info?.capital,
+      });
+      console.log('=== [HyperledgerService] queryLoanContract - END ===');
+
+      return loanContract;
+    } catch (error) {
+      console.error('[HyperledgerService] ERROR:', error);
+      this.logger.error(`Failed to query loan contract: ${error}`);
+      throw error;
     }
   }
 }

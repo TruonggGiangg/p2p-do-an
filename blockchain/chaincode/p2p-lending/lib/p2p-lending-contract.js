@@ -6,14 +6,6 @@ const {
 
 class P2PLendingContract extends Contract {
 
-  // Data Constant ( các hệ số để tính lãi tự động )
-  dataConstant = {
-    factorConstant: 15,
-    ficoCoefficient: 0.01,
-    capitalCoefficient: 0.000001,
-    monthCoefficient: 0.1
-  }
-
   async initLedger(ctx) {
     return;
   }
@@ -21,41 +13,74 @@ class P2PLendingContract extends Contract {
   // ===== TÍNH TOÁN TỰ ĐỘNG =====
 
   /**
-   * Hàm dùng để cập nhật cấu hình hệ số từ admin
+   * Validate và parse config từ MongoDB
+   * @param {string} factorConstant - Hằng số cơ bản
+   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
+   * @param {string} capitalCoefficient - Hệ số số tiền vay
+   * @param {string} monthCoefficient - Hệ số kỳ hạn
+   * @returns {Object} Config object với các giá trị đã parse
    */
-  setConfig(newConfig) {
-    this.dataConstant = {
-      ...this.dataConstant, // giữ lại giá trị cũ nếu không truyền đủ
-      ...newConfig // ghi đè các giá trị mới
+  _validateAndParseConfig(factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
+    // Validate: Config phải được truyền từ MongoDB (bắt buộc)
+    const requiredParams = [
+      { name: 'factorConstant', value: factorConstant },
+      { name: 'ficoCoefficient', value: ficoCoefficient },
+      { name: 'capitalCoefficient', value: capitalCoefficient },
+      { name: 'monthCoefficient', value: monthCoefficient }
+    ];
+
+    for (const param of requiredParams) {
+      if (param.value === undefined || param.value === null || param.value === '') {
+        throw new Error(`${param.name} is required from MongoDB config`);
+      }
+    }
+
+    // Parse config từ MongoDB
+    const config = {
+      factorConstant: parseFloat(factorConstant),
+      ficoCoefficient: parseFloat(ficoCoefficient),
+      capitalCoefficient: parseFloat(capitalCoefficient),
+      monthCoefficient: parseFloat(monthCoefficient)
     };
+
+    // Validate: Các giá trị parse phải là số hợp lệ
+    if (isNaN(config.factorConstant) || isNaN(config.ficoCoefficient) || 
+        isNaN(config.capitalCoefficient) || isNaN(config.monthCoefficient)) {
+      throw new Error('Invalid config values: all config parameters must be valid numbers');
+    }
+
+    return config;
   }
 
   /**
    * Tính toán lãi suất dựa trên điểm tín dụng
+   * Config được truyền từ MongoDB (server đảm bảo luôn có)
+   * @param {string} capital - Số tiền vay
+   * @param {string} periodMonth - Kỳ hạn vay (tháng)
+   * @param {string} score - Điểm tín dụng
+   * @param {string} factorConstant - Hằng số cơ bản
+   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
+   * @param {string} capitalCoefficient - Hệ số số tiền vay
+   * @param {string} monthCoefficient - Hệ số kỳ hạn
+   * @returns {number} Lãi suất đã tính toán (%)
    */
-  calculateLoanRate(capital, periodMonth, score) {
-    const {
-      factorConstant,
-      ficoCoefficient,
-      capitalCoefficient,
-      monthCoefficient
-    } = this.dataConstant;
+  calculateLoanRate(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
+    const capitalNum = parseFloat(capital);
+    const periodMonthNum = parseFloat(periodMonth);
+    const scoreNum = parseFloat(score);
+    const config = this._validateAndParseConfig(factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient);
 
-    // Tính lãi suất dựa trên các yếu tố: điểm tín dụng, số tiền vay và Kỳ hạn vay
-    // Sửa logic: capital cao -> lãi suất thấp hơn (trừ thay vì cộng)
-    const capitalDiscount = Math.log10(capital / 1000000) * 0.5; // Giảm 0.5% cho mỗi 10x capital
+    // Tính lãi suất: capital cao -> lãi suất thấp hơn
+    const capitalDiscount = Math.log10(capitalNum / 1000000) * 0.5;
     
     const rate = (
-      factorConstant // Hằng số cơ bản dùng để điều chỉnh lãi suất nền
-      -
-      (ficoCoefficient * score) // Giảm lãi suất nếu điểm tín dụng (score) cao
-      -
-      capitalDiscount // Capital cao -> giảm lãi suất
-      -
-      (monthCoefficient * periodMonth) // Điều chỉnh lãi suất theo Kỳ hạn vay
+      config.factorConstant -
+      (config.ficoCoefficient * scoreNum) -
+      capitalDiscount -
+      (config.monthCoefficient * periodMonthNum)
     );
     
-    // Giới hạn lãi suất trong khoảng hợp lý (3% - 25%)
+    // Giới hạn lãi suất trong khoảng 3% - 25%
     const minRate = 3;
     const maxRate = 25;
     const finalRate = Math.max(minRate, Math.min(maxRate, rate));
@@ -64,21 +89,25 @@ class P2PLendingContract extends Contract {
   }
 
   /**
-   * Tính toán khoản vay tự động
+   * Tính toán khoản vay tự động (lịch thanh toán)
+   * @param {string} capital - Số tiền vay
+   * @param {string} periodMonth - Kỳ hạn vay (tháng)
+   * @param {string} score - Điểm tín dụng
+   * @param {string} factorConstant - Hằng số cơ bản
+   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
+   * @param {string} capitalCoefficient - Hệ số số tiền vay
+   * @param {string} monthCoefficient - Hệ số kỳ hạn
+   * @returns {Object} Lịch thanh toán {rate, monthlyPrincipal, monthlyInterest, monthlyPayment, totalPayment}
    */
-  calculateLoanSchedule(capital, periodMonth, score) {
-    const rate = this.calculateLoanRate(capital, periodMonth, score);
+  calculateLoanSchedule(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
+    const capitalNum = parseFloat(capital);
+    const periodMonthNum = parseFloat(periodMonth);
+    const rate = this.calculateLoanRate(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient);
 
-    // Tính gốc hàng tháng
-    const monthlyPrincipal = Math.round(capital / periodMonth);
-
-    // Tính lãi hàng tháng (lãi đơn)
+    const monthlyPrincipal = Math.round(capitalNum / periodMonthNum);
     const monthlyInterest = Math.round(monthlyPrincipal * rate / 100);
-
-    // Tổng thanh toán hàng tháng 
     const monthlyPayment = monthlyPrincipal + monthlyInterest;
-
-    const totalPayment = monthlyPayment * periodMonth;
+    const totalPayment = monthlyPayment * periodMonthNum;
 
     return {
       rate,
@@ -89,35 +118,111 @@ class P2PLendingContract extends Contract {
     };
   }
 
+  // ===== TÍNH TOÁN LÃI SUẤT (PREVIEW) =====
+
+  /**
+   * Tính toán lãi suất và lịch thanh toán (preview, không lưu blockchain)
+   * Transaction function để expose calculateLoanSchedule ra ngoài
+   * Tái sử dụng logic calculateLoanSchedule và calculateLoanRate
+   * Config được truyền từ MongoDB
+   * @param {Context} ctx - Transaction context (không dùng, chỉ để tương thích)
+   * @param {string} capital - Số tiền vay
+   * @param {string} periodMonth - Kỳ hạn vay (tháng)
+   * @param {string} score - Điểm tín dụng
+   * @param {string} factorConstant - Hằng số cơ bản
+   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
+   * @param {string} capitalCoefficient - Hệ số số tiền vay
+   * @param {string} monthCoefficient - Hệ số kỳ hạn
+   * @returns {string} Lịch thanh toán (JSON string)
+   */
+  async calculateRatePreview(ctx, capital, periodMonth, score,
+    factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
+    
+    // Validate các tham số bắt buộc
+    if (!capital || !periodMonth || score === undefined || score === null || score === '') {
+      throw new Error('Missing required parameters: capital, periodMonth, score');
+    }
+
+    // Tái sử dụng logic calculateLoanSchedule (đã gọi calculateLoanRate bên trong)
+    const schedule = this.calculateLoanSchedule(
+      capital, periodMonth, score, 
+      factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient
+    );
+
+    // Trả về kết quả preview (không lưu blockchain)
+    const preview = {
+      capital: parseFloat(capital),
+      periodMonth: parseInt(periodMonth),
+      score: parseInt(score),
+      rate: schedule.rate,
+      monthlyPrincipalPay: schedule.monthlyPrincipal,
+      monthlyInterestPay: schedule.monthlyInterest,
+      monthlyPay: schedule.monthlyPayment,
+      entirelyPay: schedule.totalPayment,
+      config: {
+        factorConstant: parseFloat(factorConstant),
+        ficoCoefficient: parseFloat(ficoCoefficient),
+        capitalCoefficient: parseFloat(capitalCoefficient),
+        monthCoefficient: parseFloat(monthCoefficient)
+      }
+    };
+
+    return JSON.stringify(preview);
+  }
+
   // ===== TẠO HỢP ĐỒNG VAY TỰ ĐỘNG =====
 
   /**
    * Tạo hợp đồng vay với tính toán tự động
+   * Config được truyền từ MongoDB
+   * @param {Context} ctx - Transaction context
+   * @param {string} loanId - ID hợp đồng vay
+   * @param {string} capital - Số tiền vay
+   * @param {string} periodMonth - Kỳ hạn vay (tháng)
+   * @param {string} score - Điểm tín dụng
+   * @param {string} willing - Mục đích vay
+   * @param {string} borrowerJson - Thông tin borrower (JSON string)
+   * @param {string} disbursementDateISO - Ngày giải ngân (ISO string, optional)
+   * @param {string} factorConstant - Hằng số cơ bản
+   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
+   * @param {string} capitalCoefficient - Hệ số số tiền vay
+   * @param {string} monthCoefficient - Hệ số kỳ hạn
+   * @returns {string} Loan contract (JSON string)
    */
   async createLoanContractAuto(ctx, loanId, capital, periodMonth, score,
-    willing, borrowerJson, disbursementDateISO) {
+    willing, borrowerJson, disbursementDateISO, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
+    
+    // Validate các tham số bắt buộc
+    if (!loanId || !capital || !periodMonth || !score) {
+      throw new Error('Missing required parameters: loanId, capital, periodMonth, score');
+    }
+
     const borrower = JSON.parse(borrowerJson);
+    const capitalNum = parseFloat(capital);
+    const periodMonthNum = parseInt(periodMonth);
 
-    // Tính toán tự động
-    const schedule = this.calculateLoanSchedule(capital, periodMonth, score);
+    // Tính toán tự động (config từ MongoDB)
+    const schedule = this.calculateLoanSchedule(
+      capital, periodMonth, score, 
+      factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient
+    );
 
-    // Sử dụng timestamp từ transaction để đảm bảo tính nhất quán
+    // Lấy timestamp từ transaction
     const txTimestamp = ctx.stub.getTxTimestamp();
     const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
 
+    // Xử lý ngày giải ngân
+    const disbursementDate = (disbursementDateISO && disbursementDateISO.trim() !== '') 
+      ? disbursementDateISO 
+      : createdAt;
 
-    // Sử dụng disbursementDate từ user hoặc fallback về createdAt
-    const disbursementDate = disbursementDateISO && disbursementDateISO.trim() !== '' ?
-      disbursementDateISO :
-      createdAt;
-
-    // Tính maturity date dựa trên periodMonth
+    // Tính ngày đáo hạn
     const maturityDate = new Date(disbursementDate);
-    maturityDate.setMonth(maturityDate.getMonth() + parseInt(periodMonth));
+    maturityDate.setMonth(maturityDate.getMonth() + periodMonthNum);
 
     const info = {
       capital: parseInt(capital),
-      periodMonth: parseInt(periodMonth),
+      periodMonth: periodMonthNum,
       score: parseInt(score),
       willing: willing,
       rate: schedule.rate,
@@ -133,10 +238,10 @@ class P2PLendingContract extends Contract {
     const loanContract = {
       contractId: loanId,
       info,
-      totalNotes: Math.ceil(capital / 500000), // unit price
+      totalNotes: Math.ceil(capitalNum / 500000), // unit price = 500,000 VNĐ
       status: 'waiting',
       borrower,
-      lastReminderSent: null // để hỗ trợ nhắc hẹn sau này
+      lastReminderSent: null
     };
 
     await ctx.stub.putState('LoanContract_' + loanId, Buffer.from(JSON.stringify(loanContract)));

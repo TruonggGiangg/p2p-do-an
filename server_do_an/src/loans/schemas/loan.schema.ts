@@ -80,12 +80,6 @@ export class Loan {
   extra: string | null;
 
   @Prop({ type: Boolean, default: false })
-  odoo_sync: boolean;
-
-  @Prop({ type: Date, default: null })
-  odoo_sync_date: Date | null;
-
-  @Prop({ type: Boolean, default: false })
   disburse_done: boolean;
 
   @Prop({ type: Date, default: null })

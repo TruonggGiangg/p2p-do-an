@@ -7,8 +7,12 @@ import cookieParser from 'cookie-parser';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import helmet from 'helmet';
+import { NestExpressApplication } from '@nestjs/platform-express';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  
+  // Cấu hình query parser để hỗ trợ nested objects và operators (gte, lte, etc.)
+  app.set('query parser', 'extended');
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 8080;

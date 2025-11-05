@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 import { UsersModule } from '@users/users.module';
 import { LoansModule } from './loans/loans.module';
+import { ConfigRateModule } from './config-rate/config-rate.module';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { JwtAuthGuard } from '@auth/guard/jwt-guard.strategy';
 import { AuthModule } from '@auth/auth.module';
@@ -16,9 +17,11 @@ import { CombinedAuthGuard } from '@guard/combined-auth.guard';
 import { RolesGuard } from '@auth/guard/roles.guard';
 import { ResponseInterceptor } from './common/interceptor/response.interceptor';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
+    CommonModule, // Import CommonModule để FabricService có thể dùng toàn cục
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -57,6 +60,7 @@ import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
     UsersModule,
     AuthModule,
     LoansModule,
+    ConfigRateModule,
   ],
   controllers: [AppController],
   providers: [
