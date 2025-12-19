@@ -1,172 +1,93 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { RegisterUserDto } from '@users/dto/create-user.dto';
-import { iUser } from '@users/user.interface';
-import { UsersService } from '@users/users.service';
-import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
 import ms = require('ms');
+
+interface UserPayload {
+  _id: string;
+  email?: string;
+  name?: string;
+  username?: string;
+  roles?: string[];
+  keycloakUserId?: string;
+  fineractClientId?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
-    private jwtService: JwtService,
-    private readonly configService: ConfigService, // ConfigService should be injected here if needed
-  ) {}
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) { }
 
-  async validateUser(username: string, pass: string): Promise<any> {
-    const user = await this.usersService.findOneByEmail(username);
-    if (!user) {
-      return null;
-    }
-    const isMatch = await this.usersService.isValidPass(pass, user.password);
-    if (isMatch) {
-      return user;
-    } else {
-      return null;
-    }
-  }
-
-  async validateOAuthLogin(user: iUser) {
-    const payload = { name: user.name, email: user.email, role: 'USER' };
+  async login(user: UserPayload, res: Response) {
+    const payload = {
+      _id: user._id || user.keycloakUserId,
+      email: user.email,
+      name: user.name,
+      username: user.username,
+      roles: user.roles,
+      keycloakUserId: user.keycloakUserId,
+      fineractClientId: user.fineractClientId,
+    };
 
     const accessToken = this.jwtService.sign(payload);
-
     const refreshToken = await this.createRefreshToken(payload);
 
-    return {
-      accessToken,
-      refreshToken,
-      ...payload,
-    };
-  }
-
-  async login(user: any, res: Response) {
-    const payload = {
-      email: user.email,
-      _id: user._id,
-      role: user.role,
-      name: user.name,
-    };
-
-    const refreshToken = await this.createRefreshToken(payload);
-
-    console.log('refreshToken', refreshToken);
-
-    const refreshExpire = this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d';
+    const refreshExpire = this.configService.get('JWT_REFRESH_EXPIRE') || '7d';
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      // secure: process.env.NODE_ENV === 'production', // Set to true in production
-      maxAge: ms(refreshExpire as any) as unknown as number,
+      maxAge: ms(refreshExpire as ms.StringValue),
     });
 
-    await this.usersService.updateUserToken(user._id, refreshToken);
+    return { accessToken, refreshToken, ...payload };
+  }
 
-    // Set the refresh token as a cookie
+  async refreshToken(token: string, res: Response) {
+    if (!token) throw new UnauthorizedException('Token không hợp lệ');
+
+    let decoded: any;
+    try {
+      decoded = this.jwtService.verify(token, {
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+      });
+    } catch (err: any) {
+      throw new UnauthorizedException(
+        err.name === 'TokenExpiredError' ? 'Token đã hết hạn' : 'Token không hợp lệ'
+      );
+    }
+
+    const payload = {
+      _id: decoded._id,
+      email: decoded.email,
+      name: decoded.name,
+      username: decoded.username,
+      roles: decoded.roles,
+      keycloakUserId: decoded.keycloakUserId,
+    };
 
     const accessToken = this.jwtService.sign(payload);
+    const newRefreshToken = await this.createRefreshToken(payload);
 
-    return {
-      accessToken,
-      refreshToken,
-      ...payload,
-    };
-  }
-
-  async register(user: RegisterUserDto) {
-    const newUser = { ...user, role: 'USER' };
-
-    const result = await this.usersService.register(newUser);
-
-    return result;
-  }
-
-  createRefreshToken = async (payload: any) => {
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET') || 'REFRESHSECRET';
-    const refreshExpire = this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d';
-    
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: refreshSecret,
-      expiresIn: refreshExpire as any,
+    const refreshExpire = this.configService.get('JWT_REFRESH_EXPIRE') || '7d';
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: ms(refreshExpire as ms.StringValue),
     });
-    return refreshToken;
-  };
 
-  refreshToken = async (refreshToken: string, res: Response) => {
-    try {
-      if (!refreshToken) {
-        throw new UnauthorizedException(
-          'Token không hợp lệ hoặc đã hết hạn, vui lòng đăng nhập lại',
-        );
-      }
+    return { accessToken, ...payload };
+  }
 
-      const user = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
-
-      console.log('user', user);
-
-      let userInDB =
-        await this.usersService.findOneByRefreshToken(refreshToken);
-
-      console.log('userInDB', userInDB);
-
-      if (!userInDB) {
-        throw new UnauthorizedException(
-          'Token không hợp lệ hoặc đã hết hạn, vui lòng đăng nhập lại',
-        );
-      } else {
-        //update refresh token
-        const newRefreshToken = await this.createRefreshToken({
-          email: userInDB.email,
-          _id: userInDB._id,
-          role: userInDB.role,
-          name: userInDB.name,
-        });
-
-        // Cập nhật cookie với refresh token mới
-        const refreshExpire2 = this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d';
-        res.cookie('refreshToken', newRefreshToken, {
-          httpOnly: true,
-          sameSite: 'lax',
-          secure: false, // chỉ đặt true khi chạy trên HTTPS
-          maxAge: ms(refreshExpire2 as any) as unknown as number, // Convert string to milliseconds
-        });
-
-        const accessToken = this.jwtService.sign({
-          _id: userInDB._id,
-          email: userInDB.email,
-          role: userInDB.role,
-          name: userInDB.name,
-        });
-
-        // Cập nhật refresh token vào DB
-        await this.usersService.updateUserToken(
-          userInDB._id.toString(),
-          newRefreshToken,
-        );
-
-        return {
-          accessToken: accessToken,
-          _id: userInDB._id,
-          email: userInDB.email,
-          role: userInDB.role,
-          name: userInDB.name,
-        };
-      }
-    } catch (error) {
-      console.error('Refresh token error:', error?.message || error);
-      if (error.name === 'TokenExpiredError') {
-        throw new UnauthorizedException(
-          'Token đã hết hạn, vui lòng đăng nhập lại',
-        );
-      }
-      throw new UnauthorizedException('Token không hợp lệ');
-    }
-  };
-
-  logout = async (user: iUser, res: Response) => {
+  async logout(res: Response) {
     res.clearCookie('refreshToken');
-    return await this.usersService.updateUserToken(user._id, '');
-  };
+  }
+
+  private async createRefreshToken(payload: any): Promise<string> {
+    return this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_REFRESH_SECRET') || 'REFRESHSECRET',
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRE') || '7d',
+    });
+  }
 }
