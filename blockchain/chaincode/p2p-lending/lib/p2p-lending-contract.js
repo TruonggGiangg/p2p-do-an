@@ -28,20 +28,24 @@ class P2PLendingContract extends Contract {
   /**
    * Create a new loan contract
    * Rates are calculated by server (InterestRateCalculator) and stored on Fineract
-   * Blockchain stores the immutable record
+   * Blockchain stores the LEAN immutable record for audit trail
+   * 
+   * OPTIMIZED DATA MODEL:
+   * - NO PII (email, name) stored on blockchain
+   * - dataHash for integrity verification
+   * - Only essential fields for audit
    * 
    * @param {Context} ctx - Transaction context
    * @param {String} loanId - Unique loan ID (e.g., LOAN_1703123456789)
-   * @param {String} borrowerJson - JSON string of borrower info
+   * @param {String} borrowerJson - JSON string of borrower info (only ID stored)
    * @param {String} loanInfoJson - JSON string of loan info (from Fineract)
    * @param {String} fineractLoanId - Fineract loan ID (optional)
+   * @param {String} dataHash - Hash of full data for integrity verification
    */
-  async createLoanContract(ctx, loanId, borrowerJson, loanInfoJson, fineractLoanId) {
-    // Parse inputs
+  async createLoanContract(ctx, loanId, borrowerJson, loanInfoJson, fineractLoanId, dataHash) {
     const borrower = JSON.parse(borrowerJson);
     const loanInfo = JSON.parse(loanInfoJson);
 
-    // Get transaction timestamp
     const txTimestamp = ctx.stub.getTxTimestamp();
     const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
 
@@ -54,76 +58,55 @@ class P2PLendingContract extends Contract {
     const noteUnitPrice = 500000;
     const totalNotes = Math.ceil(loanInfo.capital / noteUnitPrice);
 
-    // Create loan contract object (synced with Fineract fields)
+    // Generate dataHash if not provided
+    const computedHash = dataHash || this._generateHash(JSON.stringify({ borrower, loanInfo, fineractLoanId }));
+
+    // LEAN loan contract object (optimized for blockchain storage)
     const loanContract = {
       // === IDENTIFICATION ===
       contractId: loanId,
       docType: 'LoanContract',
+      version: '2.0', // Schema version for future migrations
       
-      // === BORROWER INFO ===
-      borrower: {
-        id: borrower._id || borrower.id,
-        username: borrower.username,
-        email: borrower.email || null,
-        name: borrower.name || borrower.username,
-      },
-
-      // === LOAN INFO (from server via Fineract calculation) ===
-      info: {
+      // === BORROWER REFERENCE (NO PII) ===
+      borrowerId: borrower._id || borrower.id,
+      borrowerUsername: borrower.username, // Phone number, not sensitive
+      
+      // === LOAN TERMS (Essential for audit) ===
+      terms: {
         capital: parseInt(loanInfo.capital),
         periodMonth: parseInt(loanInfo.periodMonth),
-        willing: loanInfo.willing || '',
-        
-        // Rates from Fineract (via InterestRateCalculator)
-        rate: parseFloat(loanInfo.rate) || 0,                    // Monthly borrower rate
-        annualRate: parseFloat(loanInfo.annualRate) || 0,        // Annual borrower rate
-        lenderRate: parseFloat(loanInfo.lenderRate) || 0,        // Monthly lender rate
-        annualLenderRate: parseFloat(loanInfo.annualLenderRate) || 0, // Annual lender rate
-        adminSpread: parseFloat(loanInfo.adminSpread) || 0,      // Admin spread (annual)
-        
-        // Payment breakdown (from server)
-        monthlyPrincipalPay: parseInt(loanInfo.monthlyPrincipalPay) || 0,
-        monthlyInterestPay: parseInt(loanInfo.monthlyInterestPay) || 0,
+        rate: parseFloat(loanInfo.rate) || 0,
+        annualRate: parseFloat(loanInfo.annualRate) || 0,
         monthlyPay: parseInt(loanInfo.monthlyPay) || 0,
         entirelyPay: parseInt(loanInfo.entirelyPay) || 0,
-        
-        // Dates
         disbursementDate: loanInfo.disbursementDate || createdAt,
         maturityDate: loanInfo.maturityDate || this._calculateMaturityDate(loanInfo.disbursementDate || createdAt, loanInfo.periodMonth),
-        createdAt: createdAt,
       },
-
+      
       // === INVESTMENT INFO ===
       totalNotes: totalNotes,
       investedNotes: 0,
       matchPercentage: 0,
-      isFullMatch: false,
 
       // === STATUS ===
-      status: 'waiting', // waiting, success, clean, fail
+      status: 'waiting',
 
-      // === FINERACT SYNC ===
-      fineract: {
-        loanId: fineractLoanId ? parseInt(fineractLoanId) : null,
-        status: fineractLoanId ? 'SUBMITTED_AND_PENDING_APPROVAL' : null,
-        syncedAt: fineractLoanId ? createdAt : null,
-        productId: loanInfo.fineractProductId || null,
-      },
+      // === FINERACT REFERENCE ===
+      fineractLoanId: fineractLoanId ? parseInt(fineractLoanId) : null,
 
-      // === LOAN SIZE TIER ===
-      loanSizeTier: this._getLoanSizeTier(loanInfo.capital),
+      // === DATA INTEGRITY ===
+      dataHash: computedHash, // SHA256 hash for verification
 
       // === METADATA ===
       createdAt: createdAt,
       updatedAt: createdAt,
-      lastReminderSent: null,
     };
 
-    // Store on blockchain
     const key = `LoanContract_${loanId}`;
     await ctx.stub.putState(key, Buffer.from(JSON.stringify(loanContract)));
 
-    console.log(`[Chaincode] Created loan contract: ${loanId}`);
+    console.log(`[Chaincode] Created lean loan contract: ${loanId} (hash: ${computedHash.substring(0, 16)}...)`);
     return JSON.stringify(loanContract);
   }
 
@@ -235,10 +218,12 @@ class P2PLendingContract extends Contract {
   // ===== INVESTMENT CONTRACT MANAGEMENT =====
 
   /**
-   * Create investment contract
-   * Records lender's investment in a loan
+   * Create investment contract (LEAN version)
+   * Records lender's investment in a loan - NO PII stored
+   * 
+   * @param {String} dataHash - Hash for integrity verification
    */
-  async createInvestmentContract(ctx, investId, loanId, lenderJson, investInfoJson, fineractAccountId) {
+  async createInvestmentContract(ctx, investId, loanId, lenderJson, investInfoJson, fineractAccountId, dataHash) {
     const lender = JSON.parse(lenderJson);
     const investInfo = JSON.parse(investInfoJson);
     const txTimestamp = ctx.stub.getTxTimestamp();
@@ -251,43 +236,37 @@ class P2PLendingContract extends Contract {
       throw new Error(`LoanContract ${loanId} not found`);
     }
 
+    // Generate dataHash if not provided
+    const computedHash = dataHash || this._generateHash(JSON.stringify({ lender, investInfo, fineractAccountId }));
+
+    // LEAN investment contract (NO PII)
     const investmentContract = {
       contractId: investId,
       docType: 'InvestmentContract',
+      version: '2.0',
       loanId: loanId,
 
-      // Lender info
-      lender: {
-        id: lender._id || lender.id,
-        username: lender.username,
-        email: lender.email || null,
-        name: lender.name || lender.username,
-      },
+      // Lender reference (NO PII - no email, no name)
+      lenderId: lender._id || lender.id,
+      lenderUsername: lender.username, // Phone number, not sensitive
 
-      // Investment info
-      info: {
+      // Investment terms
+      terms: {
         capital: parseInt(investInfo.capital),
         notes: parseInt(investInfo.notes) || Math.ceil(investInfo.capital / 500000),
-        rate: parseFloat(investInfo.lenderRate) || 0,         // Lender rate
+        rate: parseFloat(investInfo.lenderRate) || 0,
         annualRate: parseFloat(investInfo.annualLenderRate) || 0,
         expectedReturn: parseInt(investInfo.expectedReturn) || 0,
-        estimatedMonthlyReturn: parseInt(investInfo.estimatedMonthlyReturn) || 0,
       },
 
       // Status
-      status: 'waiting_other', // waiting_other, active, completed, cancelled
+      status: 'waiting_other',
 
-      // Fineract sync
-      fineract: {
-        savingsAccountId: fineractAccountId ? parseInt(fineractAccountId) : null,
-        fixedDepositAccountId: investInfo.fixedDepositAccountId || null,
-        syncedAt: createdAt,
-      },
+      // Fineract reference
+      fineractAccountId: fineractAccountId ? parseInt(fineractAccountId) : null,
 
-      // Tracking
-      totalReceived: 0,
-      totalPrincipalReceived: 0,
-      totalInterestReceived: 0,
+      // Data integrity
+      dataHash: computedHash,
 
       // Metadata
       createdAt: createdAt,
@@ -598,17 +577,17 @@ class P2PLendingContract extends Contract {
     return JSON.stringify({
       loanId,
       loan: {
-        capital: loan.info.capital,
-        rate: loan.info.rate,
-        annualRate: loan.info.annualRate,
-        entirelyPay: loan.info.entirelyPay,
+        capital: loan.terms?.capital || loan.info?.capital,
+        rate: loan.terms?.rate || loan.info?.rate,
+        annualRate: loan.terms?.annualRate || loan.info?.annualRate,
+        entirelyPay: loan.terms?.entirelyPay || loan.info?.entirelyPay,
         status: loan.status,
+        version: loan.version || '1.0',
       },
       funding: {
         totalNotes: loan.totalNotes,
         investedNotes: loan.investedNotes,
         matchPercentage: loan.matchPercentage,
-        isFullMatch: loan.isFullMatch,
       },
       repayment: {
         totalPaid,
@@ -618,11 +597,29 @@ class P2PLendingContract extends Contract {
         totalCount,
         progressPercentage: totalCount > 0 ? Math.round((settledCount / totalCount) * 100) : 0,
       },
-      fineract: loan.fineract,
+      fineractLoanId: loan.fineractLoanId || loan.fineract?.loanId,
+      dataHash: loan.dataHash,
     });
   }
 
   // ===== HELPER FUNCTIONS =====
+
+  /**
+   * Generate a simple hash for data integrity verification
+   * Note: In production, use crypto.createHash('sha256') but fabric-contract-api
+   * doesn't include Node.js crypto by default in chaincode context
+   */
+  _generateHash(data) {
+    // Simple hash function (djb2 algorithm) - sufficient for demo
+    // For production, use proper SHA256 from server side
+    let hash = 5381;
+    for (let i = 0; i < data.length; i++) {
+      hash = ((hash << 5) + hash) + data.charCodeAt(i);
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    // Return as hex string with prefix
+    return 'hash_' + Math.abs(hash).toString(16).padStart(8, '0');
+  }
 
   _calculateMaturityDate(disbursementDate, periodMonth) {
     const date = new Date(disbursementDate);

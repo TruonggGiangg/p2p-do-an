@@ -501,18 +501,15 @@ export class LoanService {
     }
 
     /**
-     * Helper: Resolve Fineract Client ID from username (tries KEYCLOAK_ prefix first)
+     * Helper: Resolve Fineract Client ID from username
+     * Uses FineractService.resolveClientId with multiple fallback methods:
+     * 1. KEYCLOAK_{username} externalId
+     * 2. Plain username externalId
+     * 3. Phone number lookup (mobileNo)
+     * 4. Email lookup (if provided)
      */
-    private async resolveFineractClientId(username: string): Promise<number | null> {
-        // Try KEYCLOAK_{username} first (legacy format)
-        let client = await this.fineractService.getClientByExternalId(`KEYCLOAK_${username}`);
-        if (client?.id) return client.id;
-
-        // Fallback to plain username
-        client = await this.fineractService.getClientByExternalId(username);
-        if (client?.id) return client.id;
-
-        return null;
+    private async resolveFineractClientId(username: string, email?: string): Promise<number | null> {
+        return this.fineractService.resolveClientId(username, email);
     }
 
     /**

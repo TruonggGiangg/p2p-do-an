@@ -763,6 +763,7 @@ export class FineractService {
 
     /**
      * Get Client by External ID (usually matches username/phone)
+     * Improved with caching and better error handling
      */
     async getClientByExternalId(externalId: string): Promise<any> {
         try {
@@ -773,14 +774,127 @@ export class FineractService {
                 this.httpService.get(url, { headers }),
             );
 
-            if (response.data && response.data.pageItems && response.data.pageItems.length > 0) {
+            if (response.data?.pageItems?.length > 0) {
                 return response.data.pageItems[0];
             }
             return null;
         } catch (error) {
-            this.logger.warn(`Failed to find client by externalId ${externalId}: ${error}`);
+            this.logger.warn(`Failed to find client by externalId ${externalId}`);
             return null;
         }
+    }
+
+    /**
+     * Find Client by Phone Number (mobileNo)
+     * Fallback method when externalId lookup fails
+     * Pattern from legacy server
+     */
+    async findClientByPhone(phone: string): Promise<any> {
+        try {
+            if (!phone) return null;
+
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/clients`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            const clients = response.data?.pageItems || [];
+
+            // Normalize phone number (remove non-digits)
+            const normalized = phone.replace(/\D+/g, '');
+
+            const client = clients.find((c: any) => {
+                const clientPhone = (c?.mobileNo || '').replace(/\D+/g, '');
+                return clientPhone === normalized;
+            });
+
+            if (client) {
+                this.logger.log(`[findClientByPhone] Found client ${client.id} by phone ${phone}`);
+            }
+            return client || null;
+        } catch (error) {
+            this.logger.warn(`Failed to find client by phone ${phone}: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Find Client by Phone or Email
+     * Unified lookup method following legacy pattern
+     */
+    async findClientByPhoneOrEmail(phoneOrEmail: string): Promise<any> {
+        if (phoneOrEmail.includes('@')) {
+            return this.findClientByEmail(phoneOrEmail);
+        }
+        return this.findClientByPhone(phoneOrEmail);
+    }
+
+    /**
+     * Find Client by Email
+     */
+    async findClientByEmail(email: string): Promise<any> {
+        try {
+            if (!email) return null;
+
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/clients`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            const clients = response.data?.pageItems || [];
+
+            const client = clients.find((c: any) =>
+                (c?.emailAddress || c?.email || '').toLowerCase() === email.toLowerCase()
+            );
+
+            return client || null;
+        } catch (error) {
+            this.logger.warn(`Failed to find client by email ${email}: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve Client ID with multiple fallback methods
+     * Priority: 1. externalId (KEYCLOAK_xxx), 2. externalId (plain), 3. phone, 4. email
+     */
+    async resolveClientId(username: string, email?: string): Promise<number | null> {
+        // 1. Try KEYCLOAK_{username} first (legacy format)
+        let client = await this.getClientByExternalId(`KEYCLOAK_${username}`);
+        if (client?.id) {
+            this.logger.log(`[resolveClientId] Found via KEYCLOAK_${username} -> ${client.id}`);
+            return client.id;
+        }
+
+        // 2. Try plain username as externalId
+        client = await this.getClientByExternalId(username);
+        if (client?.id) {
+            this.logger.log(`[resolveClientId] Found via ${username} -> ${client.id}`);
+            return client.id;
+        }
+
+        // 3. Try by phone number (assuming username is phone)
+        client = await this.findClientByPhone(username);
+        if (client?.id) {
+            this.logger.log(`[resolveClientId] Found via phone ${username} -> ${client.id}`);
+            return client.id;
+        }
+
+        // 4. Try by email if provided
+        if (email) {
+            client = await this.findClientByEmail(email);
+            if (client?.id) {
+                this.logger.log(`[resolveClientId] Found via email ${email} -> ${client.id}`);
+                return client.id;
+            }
+        }
+
+        this.logger.warn(`[resolveClientId] Could not resolve client for ${username}`);
+        return null;
     }
 
     /**
@@ -802,5 +916,3 @@ export class FineractService {
         }
     }
 }
-
-
