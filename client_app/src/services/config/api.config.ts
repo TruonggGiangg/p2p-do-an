@@ -39,11 +39,17 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
     return defaultValue;
 };
 
+// DEBUG: Log config on startup
+console.log('[ApiConfig] Environment check:', {
+    extra: Constants.expoConfig?.extra,
+    API_BASE_URL: getEnvVar('API_BASE_URL', 'DEFAULT'),
+});
+
 const KEYCLOAK_BASE_URL = getEnvVar('KEYCLOAK_BASE_URL', 'http://118.69.41.95:9000');
 const KEYCLOAK_REALM = getEnvVar('KEYCLOAK_REALM', 'fineract');
 
 export const apiConfig: ApiConfig = {
-    baseUrl: getEnvVar('API_BASE_URL', 'http://10.10.2.230:8080'),
+    baseUrl: getEnvVar('API_BASE_URL', 'http://192.168.1.56:3000'),
     keycloak: {
         baseUrl: KEYCLOAK_BASE_URL,
         realm: KEYCLOAK_REALM,

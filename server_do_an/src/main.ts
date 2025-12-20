@@ -22,6 +22,9 @@ async function bootstrap() {
     'http://localhost:8081',
     'http://localhost:19006',
     'http://10.10.2.230:8081',
+    'http://192.168.1.56:8081',
+    'http://192.168.1.56:19000',
+    'exp://192.168.1.56:8081',
   ];
 
 
@@ -47,8 +50,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api-docs', app, document);
 
-  await app.listen(port);
-  console.log(`App is running on http://localhost:${port}`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`App is running on http://0.0.0.0:${port}`);
   console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 }
 bootstrap();

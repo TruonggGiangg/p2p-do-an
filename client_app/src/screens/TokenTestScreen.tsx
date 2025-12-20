@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Card, Text, Button, Snackbar, List, Divider, Chip } from 'react-native-paper';
 import { useAuth } from '../contexts/AuthContext';
-import { authApi, storageService, keycloakApi } from '../services';
+import { authApi, storageService, keycloakApi, loanApi } from '../services';
 
 interface TokenPayload {
     _id: string;
@@ -101,6 +101,24 @@ export default function TokenTestScreen() {
         }
     };
 
+    const handleTestBlockchain = async () => {
+        setLoading(true);
+        try {
+            const status = await loanApi.checkBlockchainStatus();
+            if (status.enabled && status.connected) {
+                showMessage('✅ Blockchain Connected & Ready!', 'success');
+            } else if (status.enabled && !status.connected) {
+                showMessage('⚠️ Blockchain Enabled but Connection Failed', 'error');
+            } else {
+                showMessage('ℹ️ Blockchain is Disabled', 'error');
+            }
+        } catch (error: any) {
+            showMessage('❌ Blockchain Check Error: ' + (error.response?.data?.message || error.message), 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const formatTimestamp = (timestamp: number): string => {
         return new Date(timestamp * 1000).toLocaleString();
     };
@@ -163,6 +181,16 @@ export default function TokenTestScreen() {
                         icon="account-details"
                     >
                         Test /auth/userinfo
+                    </Button>
+
+                    <Button
+                        mode="outlined"
+                        onPress={handleTestBlockchain}
+                        loading={loading}
+                        style={styles.testButton}
+                        icon="link-variant"
+                    >
+                        Test Connect Blockchain
                     </Button>
                 </Card.Content>
             </Card>

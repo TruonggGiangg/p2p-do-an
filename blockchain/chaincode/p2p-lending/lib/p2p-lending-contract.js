@@ -1,980 +1,641 @@
 'use strict';
 
-const {
-  Contract
-} = require('fabric-contract-api');
+const { Contract } = require('fabric-contract-api');
 
+/**
+ * P2P Lending Smart Contract - Redesigned for Fineract Integration
+ * 
+ * DESIGN PRINCIPLES:
+ * 1. NO rate calculation on blockchain - rates come from Fineract via server
+ * 2. Blockchain stores immutable records for audit trail
+ * 3. Fields are synced with Fineract loan structure
+ * 4. Simplified data model focusing on essential fields
+ * 
+ * DATA FLOW:
+ * Server (InterestRateCalculator) → Fineract (Loan Management) → Blockchain (Immutable Record)
+ */
 class P2PLendingContract extends Contract {
 
+  // ===== INITIALIZATION =====
+
   async initLedger(ctx) {
+    console.log('P2P Lending Chaincode initialized');
     return;
   }
 
-  // ===== TÍNH TOÁN TỰ ĐỘNG =====
+  // ===== LOAN CONTRACT MANAGEMENT =====
 
   /**
-   * Validate và parse config từ MongoDB
-   * @param {string} factorConstant - Hằng số cơ bản
-   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
-   * @param {string} capitalCoefficient - Hệ số số tiền vay
-   * @param {string} monthCoefficient - Hệ số kỳ hạn
-   * @returns {Object} Config object với các giá trị đã parse
-   */
-  _validateAndParseConfig(factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
-    // Validate: Config phải được truyền từ MongoDB (bắt buộc)
-    const requiredParams = [
-      { name: 'factorConstant', value: factorConstant },
-      { name: 'ficoCoefficient', value: ficoCoefficient },
-      { name: 'capitalCoefficient', value: capitalCoefficient },
-      { name: 'monthCoefficient', value: monthCoefficient }
-    ];
-
-    for (const param of requiredParams) {
-      if (param.value === undefined || param.value === null || param.value === '') {
-        throw new Error(`${param.name} is required from MongoDB config`);
-      }
-    }
-
-    // Parse config từ MongoDB
-    const config = {
-      factorConstant: parseFloat(factorConstant),
-      ficoCoefficient: parseFloat(ficoCoefficient),
-      capitalCoefficient: parseFloat(capitalCoefficient),
-      monthCoefficient: parseFloat(monthCoefficient)
-    };
-
-    // Validate: Các giá trị parse phải là số hợp lệ
-    if (isNaN(config.factorConstant) || isNaN(config.ficoCoefficient) || 
-        isNaN(config.capitalCoefficient) || isNaN(config.monthCoefficient)) {
-      throw new Error('Invalid config values: all config parameters must be valid numbers');
-    }
-
-    return config;
-  }
-
-  /**
-   * Tính toán lãi suất dựa trên điểm tín dụng
-   * Config được truyền từ MongoDB (server đảm bảo luôn có)
-   * @param {string} capital - Số tiền vay
-   * @param {string} periodMonth - Kỳ hạn vay (tháng)
-   * @param {string} score - Điểm tín dụng
-   * @param {string} factorConstant - Hằng số cơ bản
-   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
-   * @param {string} capitalCoefficient - Hệ số số tiền vay
-   * @param {string} monthCoefficient - Hệ số kỳ hạn
-   * @returns {number} Lãi suất đã tính toán (%)
-   */
-  calculateLoanRate(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
-    const capitalNum = parseFloat(capital);
-    const periodMonthNum = parseFloat(periodMonth);
-    const scoreNum = parseFloat(score);
-    const config = this._validateAndParseConfig(factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient);
-
-    // Tính lãi suất: capital cao -> lãi suất thấp hơn
-    const capitalDiscount = Math.log10(capitalNum / 1000000) * 0.5;
-    
-    const rate = (
-      config.factorConstant -
-      (config.ficoCoefficient * scoreNum) -
-      capitalDiscount -
-      (config.monthCoefficient * periodMonthNum)
-    );
-    
-    // Giới hạn lãi suất trong khoảng 3% - 25%
-    const minRate = 3;
-    const maxRate = 25;
-    const finalRate = Math.max(minRate, Math.min(maxRate, rate));
-    
-    return Math.round(finalRate * 100) / 100;
-  }
-
-  /**
-   * Tính toán khoản vay tự động (lịch thanh toán)
-   * @param {string} capital - Số tiền vay
-   * @param {string} periodMonth - Kỳ hạn vay (tháng)
-   * @param {string} score - Điểm tín dụng
-   * @param {string} factorConstant - Hằng số cơ bản
-   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
-   * @param {string} capitalCoefficient - Hệ số số tiền vay
-   * @param {string} monthCoefficient - Hệ số kỳ hạn
-   * @returns {Object} Lịch thanh toán {rate, monthlyPrincipal, monthlyInterest, monthlyPayment, totalPayment}
-   */
-  calculateLoanSchedule(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
-    const capitalNum = parseFloat(capital);
-    const periodMonthNum = parseFloat(periodMonth);
-    const rate = this.calculateLoanRate(capital, periodMonth, score, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient);
-
-    const monthlyPrincipal = Math.round(capitalNum / periodMonthNum);
-    const monthlyInterest = Math.round(monthlyPrincipal * rate / 100);
-    const monthlyPayment = monthlyPrincipal + monthlyInterest;
-    const totalPayment = monthlyPayment * periodMonthNum;
-
-    return {
-      rate,
-      monthlyPrincipal,
-      monthlyInterest,
-      monthlyPayment,
-      totalPayment
-    };
-  }
-
-  // ===== TÍNH TOÁN LÃI SUẤT (PREVIEW) =====
-
-  /**
-   * Tính toán lãi suất và lịch thanh toán (preview, không lưu blockchain)
-   * Transaction function để expose calculateLoanSchedule ra ngoài
-   * Tái sử dụng logic calculateLoanSchedule và calculateLoanRate
-   * Config được truyền từ MongoDB
-   * @param {Context} ctx - Transaction context (không dùng, chỉ để tương thích)
-   * @param {string} capital - Số tiền vay
-   * @param {string} periodMonth - Kỳ hạn vay (tháng)
-   * @param {string} score - Điểm tín dụng
-   * @param {string} factorConstant - Hằng số cơ bản
-   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
-   * @param {string} capitalCoefficient - Hệ số số tiền vay
-   * @param {string} monthCoefficient - Hệ số kỳ hạn
-   * @returns {string} Lịch thanh toán (JSON string)
-   */
-  async calculateRatePreview(ctx, capital, periodMonth, score,
-    factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
-    
-    // Validate các tham số bắt buộc
-    if (!capital || !periodMonth || score === undefined || score === null || score === '') {
-      throw new Error('Missing required parameters: capital, periodMonth, score');
-    }
-
-    // Tái sử dụng logic calculateLoanSchedule (đã gọi calculateLoanRate bên trong)
-    const schedule = this.calculateLoanSchedule(
-      capital, periodMonth, score, 
-      factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient
-    );
-
-    // Trả về kết quả preview (không lưu blockchain)
-    const preview = {
-      capital: parseFloat(capital),
-      periodMonth: parseInt(periodMonth),
-      score: parseInt(score),
-      rate: schedule.rate,
-      monthlyPrincipalPay: schedule.monthlyPrincipal,
-      monthlyInterestPay: schedule.monthlyInterest,
-      monthlyPay: schedule.monthlyPayment,
-      entirelyPay: schedule.totalPayment,
-      config: {
-        factorConstant: parseFloat(factorConstant),
-        ficoCoefficient: parseFloat(ficoCoefficient),
-        capitalCoefficient: parseFloat(capitalCoefficient),
-        monthCoefficient: parseFloat(monthCoefficient)
-      }
-    };
-
-    return JSON.stringify(preview);
-  }
-
-  // ===== TẠO HỢP ĐỒNG VAY TỰ ĐỘNG =====
-
-  /**
-   * Tạo hợp đồng vay với tính toán tự động
-   * Config được truyền từ MongoDB
+   * Create a new loan contract
+   * Rates are calculated by server (InterestRateCalculator) and stored on Fineract
+   * Blockchain stores the immutable record
+   * 
    * @param {Context} ctx - Transaction context
-   * @param {string} loanId - ID hợp đồng vay
-   * @param {string} capital - Số tiền vay
-   * @param {string} periodMonth - Kỳ hạn vay (tháng)
-   * @param {string} score - Điểm tín dụng
-   * @param {string} willing - Mục đích vay
-   * @param {string} borrowerJson - Thông tin borrower (JSON string)
-   * @param {string} disbursementDateISO - Ngày giải ngân (ISO string, optional)
-   * @param {string} factorConstant - Hằng số cơ bản
-   * @param {string} ficoCoefficient - Hệ số điểm tín dụng
-   * @param {string} capitalCoefficient - Hệ số số tiền vay
-   * @param {string} monthCoefficient - Hệ số kỳ hạn
-   * @returns {string} Loan contract (JSON string)
+   * @param {String} loanId - Unique loan ID (e.g., LOAN_1703123456789)
+   * @param {String} borrowerJson - JSON string of borrower info
+   * @param {String} loanInfoJson - JSON string of loan info (from Fineract)
+   * @param {String} fineractLoanId - Fineract loan ID (optional)
    */
-  async createLoanContractAuto(ctx, loanId, capital, periodMonth, score,
-    willing, borrowerJson, disbursementDateISO, factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient) {
-    
-    // Validate các tham số bắt buộc
-    if (!loanId || !capital || !periodMonth || !score) {
-      throw new Error('Missing required parameters: loanId, capital, periodMonth, score');
-    }
-
+  async createLoanContract(ctx, loanId, borrowerJson, loanInfoJson, fineractLoanId) {
+    // Parse inputs
     const borrower = JSON.parse(borrowerJson);
-    const capitalNum = parseFloat(capital);
-    const periodMonthNum = parseInt(periodMonth);
+    const loanInfo = JSON.parse(loanInfoJson);
 
-    // Tính toán tự động (config từ MongoDB)
-    const schedule = this.calculateLoanSchedule(
-      capital, periodMonth, score, 
-      factorConstant, ficoCoefficient, capitalCoefficient, monthCoefficient
-    );
-
-    // Lấy timestamp từ transaction
+    // Get transaction timestamp
     const txTimestamp = ctx.stub.getTxTimestamp();
     const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
 
-    // Xử lý ngày giải ngân
-    const disbursementDate = (disbursementDateISO && disbursementDateISO.trim() !== '') 
-      ? disbursementDateISO 
-      : createdAt;
+    // Validate required fields
+    if (!loanInfo.capital || !loanInfo.periodMonth) {
+      throw new Error('Missing required loan info: capital, periodMonth');
+    }
 
-    // Tính ngày đáo hạn
-    const maturityDate = new Date(disbursementDate);
-    maturityDate.setMonth(maturityDate.getMonth() + periodMonthNum);
+    // Calculate totalNotes (unit: 500,000 VND)
+    const noteUnitPrice = 500000;
+    const totalNotes = Math.ceil(loanInfo.capital / noteUnitPrice);
 
-    const info = {
-      capital: parseInt(capital),
-      periodMonth: periodMonthNum,
-      score: parseInt(score),
-      willing: willing,
-      rate: schedule.rate,
-      monthlyPrincipalPay: schedule.monthlyPrincipal,
-      monthlyInterestPay: schedule.monthlyInterest,
-      monthlyPay: schedule.monthlyPayment,
-      entirelyPay: schedule.totalPayment,
-      disbursementDate: disbursementDate,
-      maturityDate: maturityDate.toISOString(),
-      createdAt: createdAt
-    };
-
+    // Create loan contract object (synced with Fineract fields)
     const loanContract = {
+      // === IDENTIFICATION ===
       contractId: loanId,
-      info,
-      totalNotes: Math.ceil(capitalNum / 500000), // unit price = 500,000 VNĐ
-      status: 'waiting',
-      borrower,
-      lastReminderSent: null
+      docType: 'LoanContract',
+      
+      // === BORROWER INFO ===
+      borrower: {
+        id: borrower._id || borrower.id,
+        username: borrower.username,
+        email: borrower.email || null,
+        name: borrower.name || borrower.username,
+      },
+
+      // === LOAN INFO (from server via Fineract calculation) ===
+      info: {
+        capital: parseInt(loanInfo.capital),
+        periodMonth: parseInt(loanInfo.periodMonth),
+        willing: loanInfo.willing || '',
+        
+        // Rates from Fineract (via InterestRateCalculator)
+        rate: parseFloat(loanInfo.rate) || 0,                    // Monthly borrower rate
+        annualRate: parseFloat(loanInfo.annualRate) || 0,        // Annual borrower rate
+        lenderRate: parseFloat(loanInfo.lenderRate) || 0,        // Monthly lender rate
+        annualLenderRate: parseFloat(loanInfo.annualLenderRate) || 0, // Annual lender rate
+        adminSpread: parseFloat(loanInfo.adminSpread) || 0,      // Admin spread (annual)
+        
+        // Payment breakdown (from server)
+        monthlyPrincipalPay: parseInt(loanInfo.monthlyPrincipalPay) || 0,
+        monthlyInterestPay: parseInt(loanInfo.monthlyInterestPay) || 0,
+        monthlyPay: parseInt(loanInfo.monthlyPay) || 0,
+        entirelyPay: parseInt(loanInfo.entirelyPay) || 0,
+        
+        // Dates
+        disbursementDate: loanInfo.disbursementDate || createdAt,
+        maturityDate: loanInfo.maturityDate || this._calculateMaturityDate(loanInfo.disbursementDate || createdAt, loanInfo.periodMonth),
+        createdAt: createdAt,
+      },
+
+      // === INVESTMENT INFO ===
+      totalNotes: totalNotes,
+      investedNotes: 0,
+      matchPercentage: 0,
+      isFullMatch: false,
+
+      // === STATUS ===
+      status: 'waiting', // waiting, success, clean, fail
+
+      // === FINERACT SYNC ===
+      fineract: {
+        loanId: fineractLoanId ? parseInt(fineractLoanId) : null,
+        status: fineractLoanId ? 'SUBMITTED_AND_PENDING_APPROVAL' : null,
+        syncedAt: fineractLoanId ? createdAt : null,
+        productId: loanInfo.fineractProductId || null,
+      },
+
+      // === LOAN SIZE TIER ===
+      loanSizeTier: this._getLoanSizeTier(loanInfo.capital),
+
+      // === METADATA ===
+      createdAt: createdAt,
+      updatedAt: createdAt,
+      lastReminderSent: null,
     };
 
-    await ctx.stub.putState('LoanContract_' + loanId, Buffer.from(JSON.stringify(loanContract)));
+    // Store on blockchain
+    const key = `LoanContract_${loanId}`;
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loanContract)));
+
+    console.log(`[Chaincode] Created loan contract: ${loanId}`);
     return JSON.stringify(loanContract);
   }
 
-  // ===== HỆ THỐNG NHẮC HẸN TỰ ĐỘNG =====
-
   /**
-   * Kiểm tra và cập nhật trạng thái các khoản đến hạn
+   * Update loan with Fineract sync data
+   * Called after Fineract loan is created/updated
    */
-  async checkDuePayments(ctx) {
-    // Sử dụng timestamp từ transaction
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const currentDate = new Date(txTimestamp.seconds.low * 1000);
-    const updatedContracts = [];
-
-    // Kiểm tra tất cả settlement contracts
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-
-      if (settlement.status === 'undue') {
-        const dueDate = new Date(settlement.info.maturityDate);
-
-        if (currentDate >= dueDate) {
-          settlement.status = 'due';
-          settlement.info.daysOverDue = Math.floor((currentDate - dueDate) / (1000 * 60 * 60 * 24));
-
-          // Nếu quá hạn -> Tính phạt
-          if (settlement.info.daysOverDue > 0) {
-            const penaltyRatePerDay = 0.01; // 1% phạt / ngày
-            const penaltyAmount = Math.round(
-              settlement.info.totalAmount * penaltyRatePerDay * settlement.info.daysOverDue
-            );
-
-            settlement.info.penaltyAmount = penaltyAmount;
-            settlement.info.totalAmount += penaltyAmount;
-            settlement.status = 'overdue';
-          }
-
-          await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlement)));
-          updatedContracts.push(settlement);
-        }
-      }
+  async syncLoanWithFineract(ctx, loanId, fineractDataJson) {
+    const key = `LoanContract_${loanId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`LoanContract ${loanId} not found`);
     }
 
-    return JSON.stringify(updatedContracts);
+    const loan = JSON.parse(bytes.toString());
+    const fineractData = JSON.parse(fineractDataJson);
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    // Update Fineract sync info
+    loan.fineract = {
+      ...loan.fineract,
+      loanId: fineractData.fineractLoanId || loan.fineract.loanId,
+      status: fineractData.status || loan.fineract.status,
+      syncedAt: now,
+      productId: fineractData.productId || loan.fineract.productId,
+      // Repayment schedule from Fineract
+      repaymentSchedule: fineractData.repaymentSchedule || null,
+      // Timeline from Fineract
+      timeline: fineractData.timeline || null,
+    };
+
+    // Update rates if provided
+    if (fineractData.interestRate) {
+      loan.info.rate = fineractData.interestRate.perPeriod || loan.info.rate;
+      loan.info.annualRate = fineractData.interestRate.annual || loan.info.annualRate;
+    }
+
+    loan.updatedAt = now;
+
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
+    return JSON.stringify(loan);
   }
 
   /**
-   * Gửi nhắc hẹn tự động
+   * Update loan status
    */
-  async sendPaymentReminder(ctx, loanId) {
-    const loanBytes = await ctx.stub.getState('LoanContract_' + loanId);
+  async updateLoanStatus(ctx, loanId, status) {
+    const key = `LoanContract_${loanId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`LoanContract ${loanId} not found`);
+    }
+
+    const loan = JSON.parse(bytes.toString());
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    // Validate status
+    const validStatuses = ['waiting', 'success', 'clean', 'fail'];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid status: ${status}. Valid: ${validStatuses.join(', ')}`);
+    }
+
+    loan.status = status;
+    loan.updatedAt = now;
+
+    // If success (fully funded), update match status
+    if (status === 'success') {
+      loan.isFullMatch = true;
+      loan.matchPercentage = 100;
+    }
+
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
+    return JSON.stringify(loan);
+  }
+
+  /**
+   * Update investment progress
+   */
+  async updateInvestmentProgress(ctx, loanId, investedNotes) {
+    const key = `LoanContract_${loanId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`LoanContract ${loanId} not found`);
+    }
+
+    const loan = JSON.parse(bytes.toString());
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    loan.investedNotes = parseInt(investedNotes);
+    loan.matchPercentage = Math.round((loan.investedNotes / loan.totalNotes) * 100);
+    loan.isFullMatch = loan.investedNotes >= loan.totalNotes;
+    loan.updatedAt = now;
+
+    // Auto-update status if fully funded
+    if (loan.isFullMatch && loan.status === 'waiting') {
+      loan.status = 'success';
+    }
+
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
+    return JSON.stringify(loan);
+  }
+
+  // ===== INVESTMENT CONTRACT MANAGEMENT =====
+
+  /**
+   * Create investment contract
+   * Records lender's investment in a loan
+   */
+  async createInvestmentContract(ctx, investId, loanId, lenderJson, investInfoJson, fineractAccountId) {
+    const lender = JSON.parse(lenderJson);
+    const investInfo = JSON.parse(investInfoJson);
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    // Verify loan exists
+    const loanKey = `LoanContract_${loanId}`;
+    const loanBytes = await ctx.stub.getState(loanKey);
     if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
+      throw new Error(`LoanContract ${loanId} not found`);
     }
 
-    const loan = JSON.parse(loanBytes.toString());
+    const investmentContract = {
+      contractId: investId,
+      docType: 'InvestmentContract',
+      loanId: loanId,
 
-    // Sử dụng timestamp từ transaction
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const currentDate = new Date(txTimestamp.seconds.low * 1000);
+      // Lender info
+      lender: {
+        id: lender._id || lender.id,
+        username: lender.username,
+        email: lender.email || null,
+        name: lender.name || lender.username,
+      },
 
-    // Kiểm tra thời gian gửi nhắc gần nhất
-    if (loan.lastReminderSent) {
-      const lastReminder = new Date(loan.lastReminderSent);
-      const daysSinceLastReminder = Math.floor((currentDate - lastReminder) / (1000 * 60 * 60 * 24));
-      if (daysSinceLastReminder < 3) {
-        return 'Reminder already sent within 3 days';
-      }
-    }
+      // Investment info
+      info: {
+        capital: parseInt(investInfo.capital),
+        notes: parseInt(investInfo.notes) || Math.ceil(investInfo.capital / 500000),
+        rate: parseFloat(investInfo.lenderRate) || 0,         // Lender rate
+        annualRate: parseFloat(investInfo.annualLenderRate) || 0,
+        expectedReturn: parseInt(investInfo.expectedReturn) || 0,
+        estimatedMonthlyReturn: parseInt(investInfo.estimatedMonthlyReturn) || 0,
+      },
 
-    // Kiểm tra settlement đến hạn
-    const dueSettlements = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-      if (settlement.loanId === loanId && (settlement.status === 'due' || settlement.status === 'overdue')) {
-        dueSettlements.push(settlement);
-      }
-    }
+      // Status
+      status: 'waiting_other', // waiting_other, active, completed, cancelled
 
-    if (dueSettlements.length > 0) {
-      // Cập nhật thời gian gửi nhắc
-      loan.lastReminderSent = currentDate.toISOString();
-      await ctx.stub.putState('LoanContract_' + loanId, Buffer.from(JSON.stringify(loan)));
+      // Fineract sync
+      fineract: {
+        savingsAccountId: fineractAccountId ? parseInt(fineractAccountId) : null,
+        fixedDepositAccountId: investInfo.fixedDepositAccountId || null,
+        syncedAt: createdAt,
+      },
 
-      // Trả về thông tin để gửi thông báo ngoài (email, SMS, v.v.)
-      return JSON.stringify({
-        message: 'Reminder sent',
-        loanId,
-        reminderSentAt: currentDate.toISOString(),
-        dueSettlements
-      });
-    }
+      // Tracking
+      totalReceived: 0,
+      totalPrincipalReceived: 0,
+      totalInterestReceived: 0,
 
-    return 'No reminders to send';
+      // Metadata
+      createdAt: createdAt,
+      updatedAt: createdAt,
+    };
+
+    const key = `InvestmentContract_${investId}`;
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(investmentContract)));
+
+    return JSON.stringify(investmentContract);
   }
 
-  // ===== TRẢ NỢ LINH HOẠT =====
+  /**
+   * Update investment status
+   */
+  async updateInvestmentStatus(ctx, investId, status) {
+    const key = `InvestmentContract_${investId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`InvestmentContract ${investId} not found`);
+    }
+
+    const investment = JSON.parse(bytes.toString());
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    investment.status = status;
+    investment.updatedAt = now;
+
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(investment)));
+    return JSON.stringify(investment);
+  }
+
+  // ===== SETTLEMENT (REPAYMENT) MANAGEMENT =====
 
   /**
-   * Trả nợ một phần của kỳ hạn
+   * Create settlement contract for a repayment period
+   * Synced with Fineract repayment schedule
    */
-  async partialPayment(ctx, settledId, amount, realpaidDate) {
+  async createSettlementContract(ctx, settledId, loanId, settlementInfoJson) {
+    const settlementInfo = JSON.parse(settlementInfoJson);
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
+
+    const settlementContract = {
+      contractId: settledId,
+      docType: 'SettlementContract',
+      loanId: loanId,
+
+      // Payment info (from Fineract schedule)
+      info: {
+        principalAmount: parseInt(settlementInfo.principalDue) || 0,
+        interestAmount: parseInt(settlementInfo.interestDue) || 0,
+        feeAmount: parseInt(settlementInfo.feeChargesDue) || 0,
+        penaltyAmount: parseInt(settlementInfo.penaltyChargesDue) || 0,
+        totalAmount: parseInt(settlementInfo.totalDue) || 0,
+        maturityDate: settlementInfo.dueDate,
+        period: parseInt(settlementInfo.period) || 1,
+      },
+
+      // Status
+      status: 'undue', // undue, due, overdue, settled, partially_paid
+
+      // Fineract sync
+      fineract: {
+        transactionId: settlementInfo.transactionId || null,
+        fromPeriod: settlementInfo.fromPeriod || null,
+        toPeriod: settlementInfo.toPeriod || null,
+      },
+
+      // Payments tracking
+      payments: [],
+      totalPaid: 0,
+      remainingAmount: parseInt(settlementInfo.totalDue) || 0,
+
+      // Metadata
+      orderNo: parseInt(settlementInfo.period) || 1,
+      createdAt: createdAt,
+      updatedAt: createdAt,
+    };
+
+    const key = `SettlementContract_${settledId}`;
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlementContract)));
+
+    return JSON.stringify(settlementContract);
+  }
+
+  /**
+   * Record a payment on settlement
+   */
+  async settlePayment(ctx, settledId, amount, paymentType = 'full') {
     const key = `SettlementContract_${settledId}`;
     const bytes = await ctx.stub.getState(key);
+    
     if (!bytes || bytes.length === 0) {
       throw new Error(`SettlementContract ${settledId} not found`);
     }
 
     const settlement = JSON.parse(bytes.toString());
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
     const paymentAmount = parseInt(amount);
 
-    if (paymentAmount <= 0) {
-      throw new Error('Payment amount must be positive');
-    }
-
-    // Sử dụng timestamp từ transaction để đảm bảo tính nhất quán
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const currentDate = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    // Khởi tạo thông tin thanh toán nếu chưa có
-    if (!settlement.payments) {
-      settlement.payments = [];
-    }
-
-    // Thêm thanh toán mới
-    const payment = {
+    // Add payment record
+    settlement.payments.push({
       amount: paymentAmount,
-      date: realpaidDate || currentDate,
-      type: 'partial'
-    };
+      date: now,
+      type: paymentType, // full, partial, prepay
+    });
 
-    settlement.payments.push(payment);
+    // Update totals
+    settlement.totalPaid += paymentAmount;
+    settlement.remainingAmount = Math.max(0, settlement.info.totalAmount - settlement.totalPaid);
 
-    // Tính tổng đã thanh toán
-    const totalPaid = settlement.payments.reduce((sum, p) => sum + p.amount, 0);
-
-    // Cập nhật trạng thái
-    if (totalPaid >= settlement.info.totalAmount) {
+    // Update status
+    if (settlement.totalPaid >= settlement.info.totalAmount) {
       settlement.status = 'settled';
-      settlement.info.realpaidDate = realpaidDate || currentDate;
-    } else {
+      settlement.info.realpaidDate = now;
+    } else if (settlement.totalPaid > 0) {
       settlement.status = 'partially_paid';
-      settlement.info.remainingAmount = settlement.info.totalAmount - totalPaid;
     }
+
+    settlement.updatedAt = now;
 
     await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlement)));
     return JSON.stringify(settlement);
   }
 
-  /**
-   * Lấy tất cả SettlementContracts theo loanId, sắp xếp theo orderNo (hoặc maturityDate)
-   * Trả về JSON array
-   */
-  async querySettlementsByLoanId(ctx, loanId) {
-    const list = [];
-    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const item = JSON.parse(value.toString());
-      if (item.loanId === loanId) {
-        list.push(item);
-      }
-    }
-    // Sắp xếp theo orderNo nếu có, fallback maturityDate
-    list.sort((a, b) => {
-      if (a.orderNo != null && b.orderNo != null) return a.orderNo - b.orderNo;
-      return new Date(a.info.maturityDate) - new Date(b.info.maturityDate);
-    });
-    return JSON.stringify(list);
-  }
-
-  /**
-   * Trả nợ sớm với ưu đãi
-   */
-  async earlyRepayment(ctx, loanId, discountRate) {
-    const loanBytes = await ctx.stub.getState('LoanContract_' + loanId);
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
-    }
-
-    const loan = JSON.parse(loanBytes.toString());
-
-    // Tính toán số tiền còn lại
-    let remainingPrincipal = loan.info.capital;
-    let remainingInterest = 0;
-
-    // Kiểm tra các kỳ hạn chưa thanh toán
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-      if (settlement.loanId === loanId && settlement.status !== 'settled') {
-        remainingInterest += settlement.info.interestAmount;
-      }
-    }
-
-    // Áp dụng ưu đãi trả nợ sớm
-    const discountAmount = Math.round(remainingInterest * (discountRate / 100));
-    const finalAmount = remainingPrincipal + remainingInterest - discountAmount;
-
-    return JSON.stringify({
-      remainingPrincipal,
-      remainingInterest,
-      discountAmount,
-      finalAmount,
-      discountRate: parseFloat(discountRate)
-    });
-  }
-
   // ===== QUERY FUNCTIONS =====
 
   /**
-   * Lấy danh sách khoản vay đến hạn
+   * Query loan contract by ID
    */
-  async getDuePayments(ctx) {
-    const duePayments = [];
-
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-      if (settlement.status === 'due' || settlement.status === 'overdue') {
-        duePayments.push(settlement);
-      }
+  async queryLoanContract(ctx, loanId) {
+    const key = `LoanContract_${loanId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`LoanContract ${loanId} not found`);
     }
-
-    return JSON.stringify(duePayments);
+    
+    return bytes.toString();
   }
 
   /**
-   * Lấy thống kê khoản vay
+   * Query all loan contracts
+   */
+  async queryAllLoanContracts(ctx) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
+      results.push(JSON.parse(value.toString()));
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query loans by status
+   */
+  async queryLoansByStatus(ctx, status) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
+      const loan = JSON.parse(value.toString());
+      if (loan.status === status) {
+        results.push(loan);
+      }
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query waiting loans (for lenders)
+   */
+  async queryWaitingLoans(ctx) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
+      const loan = JSON.parse(value.toString());
+      if (loan.status === 'waiting' && !loan.isFullMatch) {
+        results.push(loan);
+      }
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query loans by borrower ID
+   */
+  async queryLoansByBorrower(ctx, borrowerId) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
+      const loan = JSON.parse(value.toString());
+      if (loan.borrower && loan.borrower.id === borrowerId) {
+        results.push(loan);
+      }
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query investment contract by ID
+   */
+  async queryInvestmentContract(ctx, investId) {
+    const key = `InvestmentContract_${investId}`;
+    const bytes = await ctx.stub.getState(key);
+    
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`InvestmentContract ${investId} not found`);
+    }
+    
+    return bytes.toString();
+  }
+
+  /**
+   * Query investments by loan ID
+   */
+  async queryInvestmentsByLoan(ctx, loanId) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('InvestmentContract_', 'InvestmentContract_~')) {
+      const investment = JSON.parse(value.toString());
+      if (investment.loanId === loanId) {
+        results.push(investment);
+      }
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query investments by lender ID
+   */
+  async queryInvestmentsByLender(ctx, lenderId) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('InvestmentContract_', 'InvestmentContract_~')) {
+      const investment = JSON.parse(value.toString());
+      if (investment.lender && investment.lender.id === lenderId) {
+        results.push(investment);
+      }
+    }
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Query settlement contracts by loan ID
+   */
+  async querySettlementsByLoan(ctx, loanId) {
+    const results = [];
+    
+    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
+      const settlement = JSON.parse(value.toString());
+      if (settlement.loanId === loanId) {
+        results.push(settlement);
+      }
+    }
+    
+    // Sort by orderNo
+    results.sort((a, b) => a.orderNo - b.orderNo);
+    
+    return JSON.stringify(results);
+  }
+
+  /**
+   * Get loan statistics
    */
   async getLoanStatistics(ctx, loanId) {
-    const loanBytes = await ctx.stub.getState('LoanContract_' + loanId);
+    const loanKey = `LoanContract_${loanId}`;
+    const loanBytes = await ctx.stub.getState(loanKey);
+    
     if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
+      throw new Error(`LoanContract ${loanId} not found`);
     }
 
     const loan = JSON.parse(loanBytes.toString());
+    
+    // Query settlements
     let totalPaid = 0;
     let totalRemaining = 0;
     let overdueAmount = 0;
     let settledCount = 0;
     let totalCount = 0;
 
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
+    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
       const settlement = JSON.parse(value.toString());
       if (settlement.loanId === loanId) {
         totalCount++;
-
+        totalPaid += settlement.totalPaid || 0;
+        totalRemaining += settlement.remainingAmount || 0;
+        
         if (settlement.status === 'settled') {
           settledCount++;
-          totalPaid += settlement.info.totalAmount;
-        } else if (settlement.status === 'due' || settlement.status === 'overdue') {
-          totalRemaining += settlement.info.totalAmount;
-          if (settlement.info.penaltyAmount) {
-            overdueAmount += settlement.info.penaltyAmount;
-          }
+        }
+        if (settlement.status === 'overdue') {
+          overdueAmount += settlement.info.penaltyAmount || 0;
         }
       }
     }
 
     return JSON.stringify({
       loanId,
-      totalPaid,
-      totalRemaining,
-      overdueAmount,
-      settledCount,
-      totalCount,
-      progressPercentage: Math.round((settledCount / totalCount) * 100)
+      loan: {
+        capital: loan.info.capital,
+        rate: loan.info.rate,
+        annualRate: loan.info.annualRate,
+        entirelyPay: loan.info.entirelyPay,
+        status: loan.status,
+      },
+      funding: {
+        totalNotes: loan.totalNotes,
+        investedNotes: loan.investedNotes,
+        matchPercentage: loan.matchPercentage,
+        isFullMatch: loan.isFullMatch,
+      },
+      repayment: {
+        totalPaid,
+        totalRemaining,
+        overdueAmount,
+        settledCount,
+        totalCount,
+        progressPercentage: totalCount > 0 ? Math.round((settledCount / totalCount) * 100) : 0,
+      },
+      fineract: loan.fineract,
     });
   }
 
-  // ===== CÁC HÀM CŨ (GIỮ LẠI ĐỂ TƯƠNG THÍCH) =====
+  // ===== HELPER FUNCTIONS =====
 
-  // Tạo hợp đồng vay
-  async createLoanContract(ctx, loanId, infoJson, totalNotes, borrowerJson) {
-    // infoJson: truyền từ client dạng JSON string
-    const info = JSON.parse(infoJson);
-    const borrower = JSON.parse(borrowerJson);
-
-    const loanContract = {
-      contractId: loanId,
-      info,
-      totalNotes: parseInt(totalNotes),
-      status: 'waiting',
-      borrower
-    };
-    await ctx.stub.putState('LoanContract_' + loanId, Buffer.from(JSON.stringify(loanContract)));
-    return JSON.stringify(loanContract);
+  _calculateMaturityDate(disbursementDate, periodMonth) {
+    const date = new Date(disbursementDate);
+    date.setMonth(date.getMonth() + parseInt(periodMonth));
+    return date.toISOString();
   }
 
-  // Tạo các kỳ hạn thanh toán cho hợp đồng vay
-  async createSettlementContract(ctx, loanId, settledIdsJson, borrower) {
-    // settledIdsJson: truyền từ client dạng JSON string, là mảng settledId
-    const settledIds = JSON.parse(settledIdsJson);
-
-    // Lấy loan contract
-    const loanBytes = await ctx.stub.getState('LoanContract_' + loanId);
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
-    }
-    const loanData = JSON.parse(loanBytes.toString());
-
-    for (let i = 0; i < settledIds.length; i++) {
-      const id = settledIds[i];
-      const payDate = new Date(loanData.info.maturityDate);
-      payDate.setMonth(payDate.getMonth() + i + 1);
-
-      const settlementInfo = {
-        principalAmount: loanData.info.monthlyPrincipalPay,
-        interestAmount: loanData.info.monthlyInterestPay,
-        penaltyAmount: 0,
-        totalAmount: loanData.info.monthlyPay,
-        maturityDate: payDate,
-      };
-
-      const settlementContract = {
-        contractId: id,
-        status: 'undue',
-        info: settlementInfo,
-        orderNo: i + 1,
-        borrower,
-        loanId
-      };
-
-      await ctx.stub.putState('SettlementContract_' + id, Buffer.from(JSON.stringify(settlementContract)));
-    }
-    return 'Settlement contracts created';
-  }
-
-  /**
-   * Borrower pays a portion of a loan
-   * @param {String} settledId
-   * @param {String} realpaidDate ISO string
-   */
-  async settleLoanContract(ctx, settledId, realpaidDate) {
-    const key = `SettlementContract_${settledId}`;
-    const bytes = await ctx.stub.getState(key);
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`SettlementContract ${settledId} not found`);
-    }
-    const settlement = JSON.parse(bytes.toString());
-    settlement.status = 'settled';
-    settlement.info = settlement.info || {};
-
-    // Sử dụng timestamp từ transaction nếu không có realpaidDate
-    if (!realpaidDate) {
-      const txTimestamp = ctx.stub.getTxTimestamp();
-      realpaidDate = new Date(txTimestamp.seconds.low * 1000).toISOString();
-    }
-
-    settlement.info.realpaidDate = realpaidDate;
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlement)));
-    return JSON.stringify(settlement);
-  }
-
-  /**
-   * Create InvestingContract for a lender
-   * @param {String} investId
-   * @param {String} loanId
-   * @param {String} infoJson JSON string
-   * @param {String} lender
-   */
-  async createInvestContract(ctx, investId, loanId, infoJson, lender) {
-    const loanBytes = await ctx.stub.getState(`LoanContract_${loanId}`);
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
-    }
-    const info = JSON.parse(infoJson);
-    const investContract = {
-      contractId: investId,
-      info,
-      status: 'waiting_other',
-      lender,
-      loanId
-    };
-    await ctx.stub.putState(`InvestContract_${investId}`, Buffer.from(JSON.stringify(investContract)));
-    return JSON.stringify(investContract);
-  }
-
-  /**
-   * Create InvestingFeeContract(s) for a loan
-   * @param {String} feeIdsJson JSON array of fee contract ids
-   * @param {String} loanId
-   */
-  async createInvestFeeContract(ctx, feeIdsJson, loanId) {
-    const feeIds = JSON.parse(feeIdsJson);
-
-    // Gather settlement contracts for the loan
-    const settledIds = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const sc = JSON.parse(value.toString());
-      if (sc.loanId === loanId) {
-        settledIds.push(sc.contractId);
-      }
-    }
-
-    // Gather investing contracts and compute fee amount
-    const investIds = [];
-    let feeAmount = 0;
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('InvestContract_', 'InvestContract_~')) {
-      const ic = JSON.parse(value.toString());
-      if (ic.loanId === loanId) {
-        investIds.push(ic.contractId);
-        feeAmount += (ic.info && ic.info.serviceFee) ? ic.info.serviceFee : 0;
-      }
-    }
-
-    // Create fee contracts
-    for (let i = 0; i < feeIds.length; i++) {
-      const fid = feeIds[i];
-      const feeContract = {
-        contractId: fid,
-        feeAmount,
-        settledContractId: settledIds[i] || settledIds[0],
-        investContractIds: investIds
-      };
-      await ctx.stub.putState(`InvestFeeContract_${fid}`, Buffer.from(JSON.stringify(feeContract)));
-    }
-    return 'Invest fee contracts created';
-  }
-
-  /**
-   * Update statuses when loan is fulfilled or fails
-   * @param {String} loanId
-   * @param {String} loanStatus
-   * @param {String} investStatus
-   */
-  async onFullFilledLoanContract(ctx, loanId, loanStatus, investStatus) {
-    // Update invest contracts
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('InvestContract_', 'InvestContract_~')) {
-      const invest = JSON.parse(value.toString());
-      if (invest.loanId === loanId) {
-        invest.status = investStatus;
-        await ctx.stub.putState(key, Buffer.from(JSON.stringify(invest)));
-      }
-    }
-
-    // Update loan contract
-    const loanKey = `LoanContract_${loanId}`;
-    const loanBytes = await ctx.stub.getState(loanKey);
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error('LoanContract not found');
-    }
-    const loan = JSON.parse(loanBytes.toString());
-    loan.status = loanStatus;
-    await ctx.stub.putState(loanKey, Buffer.from(JSON.stringify(loan)));
-    return JSON.stringify(loan);
-  }
-
-  /**
-   * Update settlement & fee contracts when a settlement period is fulfilled
-   * @param {String} settledId
-   * @param {String} status due|overdue
-   */
-  async onFullFilledSettlementContract(ctx, settledId, status) {
-    const settledKey = `SettlementContract_${settledId}`;
-    const bytes = await ctx.stub.getState(settledKey);
-    if (!bytes || bytes.length === 0) {
-      throw new Error('SettlementContract not found');
-    }
-    const settledContract = JSON.parse(bytes.toString());
-
-    // Update status
-    settledContract.status = status;
-    await ctx.stub.putState(settledKey, Buffer.from(JSON.stringify(settledContract)));
-
-    if (status !== 'overdue') {
-      return 'Settlement updated';
-    }
-
-    // handle overdue: add penalty to next settlement and shift fee amount
-    const orderNo = settledContract.orderNo;
-    const borrower = settledContract.borrower;
-    const loanId = settledContract.loanId;
-    let nextSettlement;
-
-    // find next settlement
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const sc = JSON.parse(value.toString());
-      if (sc.orderNo === orderNo + 1 && sc.borrower === borrower && sc.loanId === loanId) {
-        nextSettlement = {
-          key,
-          value: sc
-        };
-        break;
-      }
-    }
-    if (!nextSettlement) {
-      // No next settlement, nothing further to do
-      return 'Last settlement overdue';
-    }
-
-    const penalty = settledContract.info.totalAmount;
-    nextSettlement.value.info.penaltyAmount = penalty;
-    nextSettlement.value.info.totalAmount += penalty;
-    await ctx.stub.putState(nextSettlement.key, Buffer.from(JSON.stringify(nextSettlement.value)));
-
-    // shift fee amounts between invest fee contracts
-    let lastFee, nextFee;
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('InvestFeeContract_', 'InvestFeeContract_~')) {
-      const fc = JSON.parse(value.toString());
-      if (fc.settledContractId === settledId) {
-        lastFee = {
-          key,
-          value: fc
-        };
-      }
-      if (fc.settledContractId === nextSettlement.value.contractId) {
-        nextFee = {
-          key,
-          value: fc
-        };
-      }
-    }
-    if (lastFee && nextFee) {
-      nextFee.value.feeAmount += lastFee.value.feeAmount;
-      lastFee.value.feeAmount = 0;
-      await ctx.stub.putState(lastFee.key, Buffer.from(JSON.stringify(lastFee.value)));
-      await ctx.stub.putState(nextFee.key, Buffer.from(JSON.stringify(nextFee.value)));
-    }
-
-    return 'Settlement overdue handled';
-  }
-
-  // Tạo hàm để lấy danh sách các hợp đồng vay
-  async getLoanContracts(ctx) {
-    const loanContracts = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      const loan = JSON.parse(value.toString());
-      loanContracts.push(loan);
-    }
-    return JSON.stringify(loanContracts);
-  }
-
-  /**
-   * Query một hợp đồng vay theo contractId
-   */
-  async queryLoanContract(ctx, loanId) {
-    const key = 'LoanContract_' + loanId;
-    const bytes = await ctx.stub.getState(key);
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
-    }
-    return bytes.toString();
-  }
-
-  /**
-   * Query tất cả các hợp đồng vay (nâng cao)
-   */
-  async queryAllLoanContracts(ctx) {
-    const results = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      results.push(JSON.parse(value.toString()));
-    }
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query một hợp đồng đầu tư theo contractId
-   */
-  async queryInvestContract(ctx, investId) {
-    const key = 'InvestContract_' + investId;
-    const bytes = await ctx.stub.getState(key);
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`InvestContract ${investId} not found`);
-    }
-    return bytes.toString();
-  }
-
-  /**
-   * Query tất cả các hợp đồng đầu tư
-   */
-  async queryAllInvestContracts(ctx) {
-    const results = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('InvestContract_', 'InvestContract_~')) {
-      results.push(JSON.parse(value.toString()));
-    }
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query tất cả các hợp đồng đầu tư theo loanId
-   */
-  async queryInvestContractsByLoanId(ctx, loanId) {
-    const results = [];
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('InvestContract_', 'InvestContract_~')) {
-      const invest = JSON.parse(value.toString());
-      if (invest.loanId === loanId) {
-        results.push(invest);
-      }
-    }
-    return JSON.stringify(results);
-  }
-
-  // USDT
-  /**
-   * Lưu thông tin giao dịch USDT vào blockchain
-   */
-  async recordUSDTTransaction(ctx, txHash, userId, network, amount, status) {
-    const txKey = `USDTTransaction_${txHash}`;
-
-    // Sử dụng timestamp từ transaction để đảm bảo tính nhất quán
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const currentDate = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    const usdtTx = {
-      txHash,
-      userId,
-      network, // ethereum or tron
-      amount: parseFloat(amount),
-      status, // 'pending', 'success', 'failed'
-      timestamp: currentDate
-    };
-
-    await ctx.stub.putState(txKey, Buffer.from(JSON.stringify(usdtTx)));
-
-    await this.updateUserBalance(ctx, userId, amount, 'add');
-
-    return JSON.stringify(usdtTx);
-  }
-
-  /**
-   * Cập nhật số dư USDT của người dùng
-   */
-  async updateUserBalance(ctx, userId, amount, action = 'add') {
-    const balanceKey = `USDTBalance_${userId}`;
-    let balanceBytes = await ctx.stub.getState(balanceKey);
-    let balance = balanceBytes ? JSON.parse(balanceBytes.toString()) : 0;
-
-    if (action === 'add') {
-      balance += parseFloat(amount);
-    } else if (action === 'subtract') {
-      balance -= parseFloat(amount);
-      if (balance < 0) throw new Error('Insufficient balance');
-    }
-
-    // Sử dụng timestamp từ transaction để đảm bảo tính nhất quán
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const currentDate = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    const balanceData = {
-      userId,
-      balance,
-      lastUpdated: currentDate
-    };
-
-    await ctx.stub.putState(balanceKey, Buffer.from(JSON.stringify(balanceData)));
-    return balance;
-  }
-
-  /**
-   * Lấy số dư USDT của người dùng
-   */
-  async getUserBalance(ctx, userId) {
-    const balanceKey = `USDTBalance_${userId}`;
-    const balanceBytes = await ctx.stub.getState(balanceKey);
-
-    if (!balanceBytes || balanceBytes.length === 0) {
-      return JSON.stringify({
-        userId,
-        balance: 0
-      });
-    }
-    return balanceBytes.toString();
-  }
-
-  /**
-   * Lấy tất cả giao dịch USDT của người dùng
-   */
-  async getUserTransactions(ctx, userId) {
-    const transaction = [];
-
-    for await (const {
-      key,
-      value
-    } of ctx.stub.getStateByRange('USDTTransaction_', 'USDTTransaction_~')) {
-      const tx = JSON.parse(value.toString());
-      if (tx.userId === userId) {
-        transaction.push(tx);
-      }
-    }
-
-    return JSON.stringify(transaction);
-  }
-
-  async getTransactionByHash(ctx, txHash) {
-    const txKey = `USDTTransaction_${txHash}`;
-    const txBytes = await ctx.stub.getState(txKey);
-    if (!txBytes || txBytes.length === 0) throw new Error('Transaction not found');
-
-    return txBytes.toString();
+  _getLoanSizeTier(capital) {
+    if (capital < 10000000) return 'small';
+    if (capital < 50000000) return 'medium';
+    return 'large';
   }
 }
 
-module.exports = P2PLendingContract;
+module.exports.P2PLendingContract = P2PLendingContract;
+module.exports.contracts = [P2PLendingContract];
