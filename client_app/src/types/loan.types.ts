@@ -52,32 +52,33 @@ export interface LoanInfo {
     annualRate?: number;
     periodMonth: number;
     willing: string;
-    disbursementDate: string;
-    maturityDate: string;
-    monthlyPrincipalPay: number;
-    monthlyInterestPay: number;
-    monthlyPay: number;
-    entirelyPay: number;
+    disbursementDate?: string;
+    maturityDate?: string;
+    monthlyPrincipalPay?: number;
+    monthlyInterestPay?: number;
+    monthlyPay?: number;
+    entirelyPay?: number;
     interestType?: string;
+    createdDate?: string;
 }
 
 /**
  * Loan contract data
  */
 export interface LoanContract {
-    _id: string;
+    _id?: string;
     contractId: string;
     borrower: string | BorrowerInfo;
     info: LoanInfo;
-    totalNotes: number;
-    investedNotes: number;
+    totalNotes?: number;
+    investedNotes?: number;
     status: LoanStatus;
     fineractLoanId?: number;
     fineractStatus?: string;
-    blockchainSynced: boolean;
+    blockchainSynced?: boolean;
     blockchainTxId?: string;
-    createdAt: string;
-    updatedAt: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 /**
@@ -91,9 +92,9 @@ export interface BorrowerInfo {
 }
 
 /**
- * Loan status enum
+ * Loan status enum - aligned with Fineract status mapping
  */
-export type LoanStatus = 'waiting' | 'success' | 'clean' | 'fail';
+export type LoanStatus = 'waiting' | 'pending' | 'approved' | 'active' | 'on_going' | 'done' | 'closed' | 'fail' | 'rejected' | 'withdrawn' | 'written-off' | 'rescheduled' | 'overpaid' | 'success' | 'clean' | 'disbursed' | 'overdue';
 
 /**
  * Response from create loan API

@@ -39,16 +39,17 @@ export interface CreateLoanResponse {
         annualRate: number;
         periodMonth: number;
         willing: string;
-        disbursementDate: Date;
-        maturityDate: Date;
-        monthlyPrincipalPay: number;
-        monthlyInterestPay: number;
-        monthlyPay: number;
-        entirelyPay: number;
-        interestType: string;
+        disbursementDate?: Date;
+        maturityDate?: Date;
+        monthlyPrincipalPay?: number;
+        monthlyInterestPay?: number;
+        monthlyPay?: number;
+        entirelyPay?: number;
+        interestType?: string;
+        createdDate?: Date;
     };
     status: string;
-    totalNotes: number;
+    totalNotes?: number;
     fineractLoanId?: number;
     blockchainSynced: boolean;
 }
@@ -173,52 +174,13 @@ export class LoanService {
         const disbDate = moment.tz(disbursementDate, this.timezone);
         const maturityDate = disbDate.clone().add(periodMonth, 'months');
 
-        // 6. Create blockchain contract (if enabled)
-        let blockchainTxId: string | undefined;
-        const isBlockchainEnabled = this.blockchainService.isBlockchainEnabled();
-        this.logger.log(`[DEBUG] Blockchain Enabled: ${isBlockchainEnabled}`);
-
-        if (isBlockchainEnabled) {
-            try {
-                const blockchainData = await this.blockchainService.createLoanContract(
-                    {
-                        id: user._id,
-                        username: user.username,
-                        email: user.email,
-                        name: user.name,
-                    },
-                    {
-                        capital,
-                        periodMonth,
-                        willing,
-                        rate: schedule.rate,
-                        annualRate: schedule.annualRate,
-                        lenderRate: 0,          // Not used - rate from Fineract
-                        annualLenderRate: 0,    // Not used
-                        adminSpread: 0,         // Not used
-                        monthlyPrincipalPay: schedule.monthlyPrincipalPay,
-                        monthlyInterestPay: schedule.monthlyInterestPay,
-                        monthlyPay: schedule.monthlyPay,
-                        entirelyPay: schedule.entirelyPay,
-                        disbursementDate: disbDate.toISOString(),
-                        maturityDate: maturityDate.toISOString(),
-                    },
-                );
-                blockchainTxId = blockchainData.contractId;
-                this.logger.log(`Blockchain contract created: ${blockchainTxId}`);
-            } catch (error) {
-                this.logger.warn(`Blockchain failed, continuing with database: ${error}`);
-            }
-        }
-
-        // 7. Save to MongoDB
+        // 6. Save to MongoDB FIRST (as Waiting)
         // Use username or keycloakUserId as borrower identifier (Keycloak users don't have MongoDB ObjectId)
 
         const loanContract = new this.loanContractModel({
-            contractId: blockchainTxId || contractId,
+            contractId: contractId,
             borrower: borrowerId, // Store as string for Keycloak compatibility
             info: {
-
                 capital,
                 rate: schedule.rate,
                 periodMonth,
@@ -237,48 +199,36 @@ export class LoanService {
             status: 'waiting',
             // Rate source tracking
             rateSource: 'fineract_product',
-            blockchainSynced: !!blockchainTxId,
-            blockchainTxId,
+            blockchainSynced: false,
         });
 
         await loanContract.save();
-        this.logger.log(`Loan saved to MongoDB: ${loanContract.contractId}`);
+        this.logger.log(`Loan saved to MongoDB (Pending): ${loanContract.contractId}`);
 
-        // 8. Create Fineract loan (if enabled)
+        // 7. Create Fineract loan (Source of Truth)
         let fineractLoanId: number | undefined;
-        const isFineractEnabled = this.fineractService.isFineractEnabled();
-        const isLoanCreationEnabled = this.fineractService.isLoanCreationEnabled();
-        this.logger.log(`[DEBUG] Fineract Sync: Enabled=${isFineractEnabled}, Creation=${isLoanCreationEnabled}`);
+        let blockchainTxId: string | undefined;
 
-        if (isFineractEnabled && isLoanCreationEnabled) {
+        if (this.fineractService.isFineractEnabled() && this.fineractService.isLoanCreationEnabled()) {
             try {
-                // Resolve Fineract Client ID if missing
-                let clientId = user.fineractClientId;
-                this.logger.log(`Initial User: ${JSON.stringify(user)} | ClientId: ${clientId}`);
+                // Resolve Fineract Client ID
+                let clientId: number | null = null;
 
-                // Check if clientId is a valid number (Fineract uses integer IDs)
-                if (clientId && isNaN(Number(clientId))) {
-                    this.logger.warn(`Invalid Fineract Client ID in token: ${clientId} (not a number). Ignoring.`);
-                    clientId = undefined;
-                }
+                if (user.fineractClientId && !isNaN(Number(user.fineractClientId))) {
+                    clientId = Number(user.fineractClientId);
+                } else if (user.username) {
+                    clientId = await this.resolveFineractClientId(user.username);
 
-                if (!clientId && user.username) {
-                    this.logger.log(`Fineract Client ID missing for ${user.username}, attempting to lookup by externalId`);
-                    const client = await this.fineractService.getClientByExternalId(user.username);
-                    if (client) {
-                        clientId = client.id;
-                        this.logger.log(`Found Fineract Client ID: ${clientId}`);
-                    } else {
-                        // Auto-create client if not found
-                        this.logger.log(`Client not found. Creating new Fineract Client for ${user.username}...`);
+                    // Auto-create client if not found
+                    if (!clientId) {
+                        this.logger.log(`Creating new Fineract Client for ${user.username}...`);
                         const names = (user.name || user.username || 'User').split(' ');
                         const lastName = names.pop() || 'User';
                         const firstName = names.join(' ') || 'New';
-
                         try {
                             const newClient = await this.fineractService.createClient(firstName, lastName, user.username);
                             clientId = newClient.id;
-                            this.logger.log(`Created new Fineract Client ID: ${clientId}`);
+                            this.logger.log(`Created Fineract Client: ${clientId}`);
                         } catch (err) {
                             this.logger.error(`Failed to auto-create client: ${err}`);
                         }
@@ -286,7 +236,7 @@ export class LoanService {
                 }
 
                 if (!clientId) {
-                    throw new Error(`Cannot find or create Fineract Client ID for user ${user.username}`);
+                    throw new Error(`Cannot resolve Fineract Client ID for user ${user.username}`);
                 }
 
                 const result = await this.fineractService.createLoanApplication(
@@ -319,11 +269,73 @@ export class LoanService {
                 // Rollback MongoDB loan to prevent inconsistent state
                 await this.loanContractModel.deleteOne({ _id: loanContract._id });
                 this.logger.log(`Rolled back MongoDB loan ${loanContract.contractId} due to Fineract failure`);
+                // RE-THROW to notify user
                 throw new Error('Failed to sync with Fineract. Please try again.');
             }
         }
 
-        this.logger.log(`Loan created successfully: ${loanContract.contractId}`);
+        // 8. Create blockchain contract (Wait for Fineract Success)
+        // Only run if Mongo + Fineract success
+        const isBlockchainEnabled = this.blockchainService.isBlockchainEnabled();
+
+        if (isBlockchainEnabled) {
+            try {
+                this.logger.log(`[Blockchain] Creating contract audit record...`);
+                const blockchainData = await this.blockchainService.createLoanContract(
+                    {
+                        id: user._id,
+                        username: user.username,
+                        email: user.email,
+                        name: user.name,
+                    },
+                    {
+                        capital,
+                        periodMonth,
+                        willing,
+                        rate: schedule.rate,
+                        annualRate: schedule.annualRate,
+                        lenderRate: 0,          // Not used - rate from Fineract
+                        annualLenderRate: 0,    // Not used
+                        adminSpread: 0,         // Not used
+                        monthlyPrincipalPay: schedule.monthlyPrincipalPay,
+                        monthlyInterestPay: schedule.monthlyInterestPay,
+                        monthlyPay: schedule.monthlyPay,
+                        entirelyPay: schedule.entirelyPay,
+                        disbursementDate: disbDate.toISOString(),
+                        maturityDate: maturityDate.toISOString(),
+                        // fineractProductId: this.configService.get<number>('FINERACT_P2P_LOAN_PRODUCT_ID') || 1, // field not in LoanInfo type, removed to fix lint
+                    },
+                    fineractLoanId, // Link Fineract ID
+                );
+
+                blockchainTxId = blockchainData.contractId;
+
+                // Update Mongo with Blockchain TX
+                await this.loanContractModel.updateOne(
+                    { _id: loanContract._id },
+                    {
+                        $set: {
+                            blockchainSynced: true,
+                            blockchainTxId: blockchainTxId,
+                        },
+                    },
+                );
+
+                this.logger.log(`Blockchain contract created Audit: ${blockchainTxId}`);
+            } catch (error) {
+                // Do NOT rollback Mongo/Fineract because the valid loan exists.
+                // Just log checking failure. We can sync later.
+                this.logger.warn(`Blockchain audit failed (loan still valid): ${error}`);
+
+                // Mark as not synced
+                await this.loanContractModel.updateOne(
+                    { _id: loanContract._id },
+                    { $set: { blockchainSynced: false } },
+                );
+            }
+        }
+
+        this.logger.log(`Loan process completed: ${loanContract.contractId}`);
 
         return {
             contractId: loanContract.contractId,
@@ -344,7 +356,7 @@ export class LoanService {
             status: loanContract.status,
             totalNotes: loanContract.totalNotes,
             fineractLoanId,
-            blockchainSynced: loanContract.blockchainSynced,
+            blockchainSynced: !!blockchainTxId,
         };
     }
 
@@ -399,11 +411,42 @@ export class LoanService {
 
     /**
      * Get loans for current borrower
+     * Prefer getting from Fineract if enabled
      */
-    async getMyLoans(userId: string): Promise<LoanContract[]> {
-        this.logger.log(`[getMyLoans] userId received: ${userId}`);
+    async getMyLoans(user: AuthUser): Promise<any[]> {
+        const userId = user.username || user.keycloakUserId || user._id;
 
-        // Try to find loans with different borrower field formats
+        // 1. Try to get from Fineract if enabled
+        if (this.fineractService.isFineractEnabled() && user.fineractClientId) {
+            try {
+                let clientId: number | null = null;
+
+                // If fineractClientId is a valid number, use it directly
+                if (!isNaN(Number(user.fineractClientId))) {
+                    clientId = Number(user.fineractClientId);
+                } else if (user.username) {
+                    // Resolve via username lookup
+                    clientId = await this.resolveFineractClientId(user.username);
+                }
+
+                if (clientId) {
+                    const response = await this.fineractService.getLoans({ limit: 1000 });
+                    if (response?.pageItems) {
+                        // Filter loans by clientId (Fineract sqlSearch is unreliable)
+                        const clientLoans = response.pageItems.filter(
+                            (loan: any) => loan.clientId === clientId
+                        );
+                        this.logger.log(`[getMyLoans] Found ${clientLoans.length} loans for client ${clientId}`);
+                        return clientLoans.map(l => this.mapFineractLoanToContract(l));
+                    }
+                }
+            } catch (error) {
+                this.logger.warn(`[getMyLoans] Fineract fetch failed: ${error.message}. Falling back to DB.`);
+            }
+        }
+
+        // 2. Fallback to MongoDB
+        this.logger.log(`[getMyLoans] Fetching from MongoDB...`);
         let loans: LoanContract[] = [];
 
         // Try 1: Match as ObjectId
@@ -412,7 +455,6 @@ export class LoanService {
                 .find({ borrower: new Types.ObjectId(userId) })
                 .sort({ createdAt: -1 })
                 .exec();
-            this.logger.log(`[getMyLoans] Found ${loans.length} loans with ObjectId`);
         }
 
         // Try 2: If no results, also try matching as string (keycloakUserId)
@@ -426,17 +468,99 @@ export class LoanService {
                 })
                 .sort({ createdAt: -1 })
                 .exec();
-            this.logger.log(`[getMyLoans] Found ${loans.length} loans with string match`);
-        }
-
-        // Try 3: Get ALL loans for debugging
-        if (loans.length === 0) {
-            const allLoans = await this.loanContractModel.find().limit(5).exec();
-            this.logger.log(`[getMyLoans] Sample loans in DB: ${allLoans.map(l => JSON.stringify({ contractId: l.contractId, borrower: l.borrower })).join(', ')}`);
-
         }
 
         return loans;
+    }
+
+    /**
+     * Helper: Resolve Fineract Loan ID from contractId, MongoDB ID, or numeric ID
+     */
+    private async resolveFineractLoanId(loanIdOrContractId: string): Promise<number | null> {
+        const loan = await this.loanContractModel.findOne({
+            $or: [
+                { contractId: loanIdOrContractId },
+                { _id: Types.ObjectId.isValid(loanIdOrContractId) ? new Types.ObjectId(loanIdOrContractId) : undefined },
+            ],
+        });
+
+        if (loan?.fineractLoanId) return loan.fineractLoanId;
+        if (!isNaN(Number(loanIdOrContractId))) return Number(loanIdOrContractId);
+
+        // Search in Fineract by externalId
+        if (loanIdOrContractId.startsWith('LOAN_')) {
+            try {
+                const response = await this.fineractService.getLoans({ limit: 1000 });
+                const match = response?.pageItems?.find((l: any) => l.externalId === loanIdOrContractId);
+                if (match) return match.id;
+            } catch (err) {
+                this.logger.warn(`Failed to search loan by externalId: ${err}`);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Helper: Resolve Fineract Client ID from username (tries KEYCLOAK_ prefix first)
+     */
+    private async resolveFineractClientId(username: string): Promise<number | null> {
+        // Try KEYCLOAK_{username} first (legacy format)
+        let client = await this.fineractService.getClientByExternalId(`KEYCLOAK_${username}`);
+        if (client?.id) return client.id;
+
+        // Fallback to plain username
+        client = await this.fineractService.getClientByExternalId(username);
+        if (client?.id) return client.id;
+
+        return null;
+    }
+
+    /**
+     * Helper: Map Fineract Loan to internal LoanContract structure
+     */
+    private parseFineractDate(dateArr: any): Date | undefined {
+        if (!dateArr || !Array.isArray(dateArr) || dateArr.length < 3) return undefined;
+        // Fineract returns [year, month, day]. Month is 1-based.
+        // Javascript Date month is 0-based.
+        return new Date(dateArr[0], dateArr[1] - 1, dateArr[2]);
+    }
+
+    private mapFineractLoanToContract(fLoan: any): LoanContract {
+        const statusMap = {
+            100: 'pending', // Submitted and pending approval
+            200: 'approved', // Approved
+            300: 'active',   // Active
+            400: 'withdrawn', // Withdrawn
+            500: 'rejected', // Rejected
+            600: 'closed',   // Closed
+            601: 'written-off',
+            602: 'rescheduled',
+            700: 'overpaid'
+        };
+
+        const status = statusMap[fLoan.status.id] || 'pending';
+        const fStatus = fLoan.status;
+
+        return {
+            contractId: fLoan.externalId || `LOAN_F${fLoan.id}`,
+            borrower: fLoan.clientId, // Just ID
+            info: {
+                capital: fLoan.principal || 0,
+                rate: fLoan.interestRatePerPeriod || 0,
+                annualRate: fLoan.annualInterestRate || 0, // Approximate
+                periodMonth: fLoan.numberOfRepayments || 0, // Assuming months
+                willing: fLoan.loanPurposeName || 'Personal',
+                disbursementDate: this.parseFineractDate(fLoan.timeline?.actualDisbursementDate),
+                maturityDate: this.parseFineractDate(fLoan.timeline?.expectedMaturityDate),
+                monthlyPay: (fLoan.totalExpectedRepayment || 0) / (fLoan.numberOfRepayments || 1), // Approx
+                entirelyPay: fLoan.totalExpectedRepayment || 0,
+                createdDate: this.parseFineractDate(fLoan.timeline?.submittedOnDate) || new Date(),
+            },
+            status: status,
+            fineractLoanId: fLoan.id,
+            fineractStatus: fStatus.value,
+            blockchainSynced: true // Assume synced if exists in Core
+        } as any;
     }
 
 
@@ -542,24 +666,11 @@ export class LoanService {
      * Get full loan details from Fineract (including schedule and transactions)
      */
     async getFineractLoanDetails(loanIdOrContractId: string): Promise<any> {
-        // Try to get loan from DB first to get fineractLoanId
-        const loan = await this.loanContractModel.findOne({
-            $or: [
-                { contractId: loanIdOrContractId },
-                { _id: Types.ObjectId.isValid(loanIdOrContractId) ? new Types.ObjectId(loanIdOrContractId) : undefined },
-            ],
-        });
+        const fineractLoanId = await this.resolveFineractLoanId(loanIdOrContractId);
 
-        let fineractLoanId: number;
-        if (loan?.fineractLoanId) {
-            fineractLoanId = loan.fineractLoanId;
-        } else {
-            // Assume loanIdOrContractId is Fineract loan ID
-            fineractLoanId = parseInt(loanIdOrContractId.replace('LOAN_', ''), 10);
-        }
-
-        if (!fineractLoanId || isNaN(fineractLoanId)) {
-            throw new BadRequestException('Invalid loan ID');
+        if (!fineractLoanId) {
+            this.logger.warn(`[getFineractDetails] Could not resolve Fineract Loan ID for: ${loanIdOrContractId}`);
+            return null;
         }
 
         try {
@@ -567,7 +678,6 @@ export class LoanService {
             return this.fineractService.extractLoanInfo(fineractDetails);
         } catch (error) {
             if (error.response && error.response.status === 404) {
-                this.logger.warn(`Loan ${fineractLoanId} not found in Fineract`);
                 return null;
             }
             throw error;
@@ -578,17 +688,11 @@ export class LoanService {
      * Get repayment schedule for a loan
      */
     async getRepaymentSchedule(loanId: string): Promise<any> {
-        // Resolve ID
-        const loan = await this.loanContractModel.findOne({
-            $or: [
-                { contractId: loanId },
-                { _id: Types.ObjectId.isValid(loanId) ? new Types.ObjectId(loanId) : undefined },
-            ],
-        });
-        const fineractLoanId = loan?.fineractLoanId || parseInt(loanId.replace('LOAN_', ''), 10);
+        const fineractLoanId = await this.resolveFineractLoanId(loanId);
 
-        if (!fineractLoanId || isNaN(fineractLoanId)) {
-            throw new BadRequestException('Invalid loan ID');
+        if (!fineractLoanId) {
+            this.logger.warn(`[getRepaymentSchedule] Could not resolve Fineract Loan ID for: ${loanId}`);
+            return null;
         }
 
         try {
@@ -603,17 +707,11 @@ export class LoanService {
      * Get transaction history for a loan
      */
     async getTransactions(loanId: string): Promise<any[]> {
-        // Resolve ID
-        const loan = await this.loanContractModel.findOne({
-            $or: [
-                { contractId: loanId },
-                { _id: Types.ObjectId.isValid(loanId) ? new Types.ObjectId(loanId) : undefined },
-            ],
-        });
-        const fineractLoanId = loan?.fineractLoanId || parseInt(loanId.replace('LOAN_', ''), 10);
+        const fineractLoanId = await this.resolveFineractLoanId(loanId);
 
-        if (!fineractLoanId || isNaN(fineractLoanId)) {
-            throw new BadRequestException('Invalid loan ID');
+        if (!fineractLoanId) {
+            this.logger.warn(`[getTransactions] Could not resolve Fineract Loan ID for: ${loanId}`);
+            return [];
         }
 
         try {
@@ -628,17 +726,11 @@ export class LoanService {
      * Get outstanding balance for a loan
      */
     async getOutstandingBalance(loanId: string): Promise<any> {
-        // Resolve ID
-        const loan = await this.loanContractModel.findOne({
-            $or: [
-                { contractId: loanId },
-                { _id: Types.ObjectId.isValid(loanId) ? new Types.ObjectId(loanId) : undefined },
-            ],
-        });
-        const fineractLoanId = loan?.fineractLoanId || parseInt(loanId.replace('LOAN_', ''), 10);
+        const fineractLoanId = await this.resolveFineractLoanId(loanId);
 
-        if (!fineractLoanId || isNaN(fineractLoanId)) {
-            throw new BadRequestException('Invalid loan ID');
+        if (!fineractLoanId) {
+            this.logger.warn(`[getOutstandingBalance] Could not resolve Fineract Loan ID for: ${loanId}`);
+            return null;
         }
 
         try {
@@ -744,6 +836,68 @@ export class LoanService {
         const enabled = this.blockchainService.isBlockchainEnabled();
         const connected = enabled ? await this.blockchainService.ensureConnection() : false;
         return { enabled, connected };
+    }
+
+    // ==================== BLOCKCHAIN UI HELPERS ====================
+
+    async getBlockchainStats() {
+        const totalLoans = await this.loanContractModel.countDocuments();
+        // Since investment logic is not fully implemented in DB, we use 0 or mock
+        const totalInvestments = 0;
+        return { success: true, data: { totalLoans, totalInvestments } };
+    }
+
+    async getLoansPaginated(page: number, limit: number) {
+        const skip = (page - 1) * limit;
+        const [loans, total] = await Promise.all([
+            this.loanContractModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+            this.loanContractModel.countDocuments()
+        ]);
+
+        const data = loans.map(l => ({
+            contractId: l.contractId,
+            amount: l.info.capital,
+            interestRate: l.info.rate,
+            term: l.info.periodMonth,
+            createdAt: l.info.createdDate || l['createdAt'],
+            status: l.status,
+            disbursementDate: l.info.disbursementDate,
+            maturityDate: l.info.maturityDate,
+            totalNotes: l.totalNotes,
+            monthlyPayment: l.info.monthlyPay,
+            totalPayment: l.info.entirelyPay
+        }));
+
+        return {
+            success: true,
+            page: Number(page),
+            totalPages: Math.ceil(total / limit),
+            total,
+            data
+        };
+    }
+
+    async getTransactionsRecent(page: number, limit: number) {
+        // Mock transactions from Loans for now (Creation events)
+        const { data, total, totalPages } = await this.getLoansPaginated(page, limit);
+
+        const txs = data.map(l => ({
+            txhash: l.contractId + '_tx', // Mock hash
+            type: 'createLoanContract',
+            status: l.status,
+            amount: l.amount,
+            createdt: l.createdAt,
+            blockid: Math.floor(Math.random() * 1000) + 100, // Mock block
+            chaincodename: 'p2plending'
+        }));
+
+        return {
+            success: true,
+            page: Number(page),
+            totalPages,
+            total,
+            data: txs
+        };
     }
 }
 

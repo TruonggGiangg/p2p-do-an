@@ -1,46 +1,57 @@
-/**
- * LoanListScreen - Hiển thị danh sách khoản vay của Borrower
- */
-
 import React, { useState, useCallback, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     FlatList,
     TouchableOpacity,
     RefreshControl,
-    ActivityIndicator,
+    StatusBar,
+    ImageBackground
 } from 'react-native';
+import { Text, Surface, Button, Avatar, IconButton } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { loanApi } from '../../services';
 import { LoanContract, LoanStatus } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { Colors } from '../../theme';
 
 // Format number with commas
-const formatNumber = (num: number): string => {
+const formatNumber = (num: number | undefined | null): string => {
+    if (num === undefined || num === null) return '0';
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
-// Format date to DD/MM/YYYY
-const formatDateDisplay = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+// Format date
+const formatDateDisplay = (dateStr: string | undefined): string => {
+    if (!dateStr) return '--/--/----';
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return '--/--/----';
+        return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+    } catch (e) {
+        return '--/--/----';
+    }
 };
 
-// Get status display info
 const getStatusInfo = (status: LoanStatus) => {
     switch (status) {
-        case 'waiting':
-            return { label: 'Đang chờ đầu tư', color: '#FFC107' };
-        case 'success':
-            return { label: 'Đã được đầu tư', color: '#4CAF50' };
-        case 'clean':
-            return { label: 'Đã hoàn tất', color: '#2196F3' };
+        case 'waiting': return { label: 'Chờ đầu tư', color: Colors.warning, bg: '#FFF8E1', icon: 'clock-outline' };
+        case 'pending': return { label: 'Chờ duyệt', color: Colors.warning, bg: '#FFF8E1', icon: 'clock-outline' };
+        case 'approved': return { label: 'Đã duyệt', color: Colors.success, bg: '#E8F5E9', icon: 'check-decagram' };
+        case 'success': return { label: 'Đã giải ngân', color: Colors.success, bg: '#E8F5E9', icon: 'check-circle-outline' };
+        case 'active':
+        case 'on_going': return { label: 'Đang hoạt động', color: Colors.primary, bg: '#E3F2FD', icon: 'trending-up' };
+        case 'done':
+        case 'closed':
+        case 'clean': return { label: 'Đã tất toán', color: Colors.textSecondary, bg: '#ECEFF1', icon: 'check-all' };
+        case 'overdue': return { label: 'Quá hạn', color: Colors.error, bg: '#FFEBEE', icon: 'alert-circle-outline' };
         case 'fail':
-            return { label: 'Thất bại', color: '#F44336' };
-        default:
-            return { label: 'Không xác định', color: '#999' };
+        case 'rejected': return { label: 'Từ chối', color: Colors.error, bg: '#FFEBEE', icon: 'close-circle-outline' };
+        case 'withdrawn': return { label: 'Đã rút', color: Colors.textSecondary, bg: '#ECEFF1', icon: 'cancel' };
+        default: return { label: 'Không xác định', color: Colors.textSecondary, bg: '#F5F5F5', icon: 'help-circle-outline' };
     }
 };
 
@@ -49,178 +60,168 @@ interface Props {
 }
 
 export default function LoanListScreen({ navigation }: Props) {
+    const { user } = useAuth();
     const [loans, setLoans] = useState<LoanContract[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [stats, setStats] = useState({ totalActive: 0, totalDebt: 0 });
 
-    // Fetch loans
     const fetchLoans = useCallback(async () => {
         try {
-            setError(null);
+            setLoading(true);
             const data = await loanApi.getMyLoans();
             setLoans(data);
-        } catch (err: any) {
-            console.error('Fetch loans error:', err);
-            setError(err.message || 'Không thể tải danh sách khoản vay');
+
+            // Calculate simple stats
+            const activeLoans = data.filter(l => ['active', 'disbursed', 'overdue'].includes(l.status));
+            const totalDebt = activeLoans.reduce((sum, l) => sum + (l.info.entirelyPay || 0), 0);
+            setStats({ totalActive: activeLoans.length, totalDebt });
+        } catch (error) {
+            console.error('Failed to fetch loans:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     }, []);
 
-    // Initial load
-    useEffect(() => {
-        fetchLoans();
-    }, [fetchLoans]);
+    const testFineractUser = async () => {
+        try {
+            const response = await loanApi.testFineractUser();
+            console.log('[DEBUG] Fineract User Test:', JSON.stringify(response, null, 2));
+            const data = response.data;
+            const msg = `=== KEYCLOAK ===
+Username: ${data.keycloak.username}
+Name (Token): ${data.keycloak.nameFromToken}
+Keycloak ID: ${data.keycloak.keycloakUserId}
 
-    // Refresh on focus
-    useFocusEffect(
-        useCallback(() => {
-            fetchLoans();
-        }, [fetchLoans]),
-    );
-
-    // Refresh handler
-    const handleRefresh = () => {
-        setRefreshing(true);
-        fetchLoans();
+=== FINERACT ===
+Resolved: ${data.fineract.resolved}
+Client ID: ${data.fineract.clientId}
+Client Name: ${data.fineract.clientName}
+External ID: ${data.fineract.externalId}
+Lookup Method: ${data.fineract.lookupMethod}`;
+            alert(msg);
+        } catch (error: any) {
+            alert('Test failed: ' + error.message);
+        }
     };
 
-    // Navigate to create loan
-    const handleCreateLoan = () => {
-        navigation.navigate('LoanCreate');
-    };
+    useEffect(() => { fetchLoans(); }, [fetchLoans]);
+    useFocusEffect(useCallback(() => { fetchLoans(); }, [fetchLoans]));
 
-    // Navigate to loan detail
-    const handleLoanPress = (loan: LoanContract) => {
-        navigation.navigate('LoanDetail', { loanId: loan.contractId });
-    };
+    const handleRefresh = () => { setRefreshing(true); fetchLoans(); };
 
-    // Render loan item
     const renderLoanItem = ({ item }: { item: LoanContract }) => {
-        const statusInfo = getStatusInfo(item.status);
-        const fundingPercent = item.totalNotes > 0
-            ? Math.round((item.investedNotes / item.totalNotes) * 100)
-            : 0;
+        const status = getStatusInfo(item.status);
 
         return (
             <TouchableOpacity
-                style={styles.loanCard}
-                onPress={() => handleLoanPress(item)}
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('LoanDetail', { loanId: item.contractId })}
             >
-                <View style={styles.cardHeader}>
-                    <Text style={styles.contractId}>{item.contractId}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
-                        <Text style={styles.statusText}>{statusInfo.label}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.cardBody}>
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Số tiền vay:</Text>
-                        <Text style={styles.infoValue}>{formatNumber(item.info.capital)} VND</Text>
-                    </View>
-
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Lãi suất:</Text>
-                        <Text style={styles.infoValue}>{item.info.rate}%/tháng</Text>
+                <Surface style={styles.card} elevation={0}>
+                    <View style={styles.cardHeader}>
+                        <View style={styles.row}>
+                            <View style={[styles.iconBox, { backgroundColor: status.bg }]}>
+                                <MaterialCommunityIcons name={status.icon} size={20} color={status.color} />
+                            </View>
+                            <View style={{ marginLeft: 12 }}>
+                                <Text style={styles.loanTitle}>Khoản vay tiêu dùng</Text>
+                                <Text style={styles.loanId}>#{item.contractId}</Text>
+                            </View>
+                        </View>
+                        <View style={[styles.badge, { backgroundColor: status.bg }]}>
+                            <Text style={[styles.badgeText, { color: status.color }]}>{status.label}</Text>
+                        </View>
                     </View>
 
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Kỳ hạn:</Text>
-                        <Text style={styles.infoValue}>{item.info.periodMonth} tháng</Text>
+                    <View style={styles.divider} />
+
+                    <View style={styles.cardBody}>
+                        <View style={styles.infoCol}>
+                            <Text style={styles.label}>Số tiền vay</Text>
+                            <Text style={styles.valueHighlight}>{formatNumber(item.info.capital)} ₫</Text>
+                        </View>
+                        <View style={styles.infoColRight}>
+                            <Text style={styles.label}>Kỳ hạn</Text>
+                            <Text style={styles.value}>{item.info.periodMonth} tháng</Text>
+                        </View>
                     </View>
 
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Mục đích:</Text>
-                        <Text style={styles.infoValue}>{item.info.willing}</Text>
+                    <View style={styles.cardFooter}>
+                        <View style={styles.row}>
+                            <MaterialCommunityIcons name="calendar-month" size={14} color={Colors.textSecondary} />
+                            <Text style={styles.dateText}> {formatDateDisplay(item.info.createdDate)}</Text>
+                        </View>
+                        <Text style={styles.rateText}>{item.info.rate}% / tháng</Text>
                     </View>
-
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Tổng trả:</Text>
-                        <Text style={[styles.infoValue, styles.highlightValue]}>
-                            {formatNumber(item.info.entirelyPay)} VND
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Funding Progress */}
-                <View style={styles.fundingProgress}>
-                    <View style={styles.progressHeader}>
-                        <Text style={styles.progressLabel}>Tiến độ đầu tư</Text>
-                        <Text style={styles.progressPercent}>{fundingPercent}%</Text>
-                    </View>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${fundingPercent}%` }]} />
-                    </View>
-                    <Text style={styles.progressNotes}>
-                        {item.investedNotes}/{item.totalNotes} phiếu
-                    </Text>
-                </View>
-
-                <View style={styles.cardFooter}>
-                    <Text style={styles.dateText}>
-                        Tạo ngày: {formatDateDisplay(item.createdAt)}
-                    </Text>
-                    {item.fineractLoanId && (
-                        <Text style={styles.fineractId}>Fineract: #{item.fineractLoanId}</Text>
-                    )}
-                </View>
+                </Surface>
             </TouchableOpacity>
         );
     };
 
-    // Empty state
-    const renderEmpty = () => (
-        <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Bạn chưa có khoản vay nào</Text>
-            <TouchableOpacity style={styles.createButton} onPress={handleCreateLoan}>
-                <Text style={styles.createButtonText}>Tạo khoản vay đầu tiên</Text>
-            </TouchableOpacity>
-        </View>
-    );
-
-    // Loading state
-    if (loading) {
-        return (
-            <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color="#2196F3" />
-            </View>
-        );
-    }
-
-    // Error state
-    if (error) {
-        return (
-            <View style={styles.centerContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={fetchLoans}>
-                    <Text style={styles.retryButtonText}>Thử lại</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
-
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Khoản vay của tôi</Text>
-                <TouchableOpacity style={styles.addButton} onPress={handleCreateLoan}>
-                    <Text style={styles.addButtonText}>+ Tạo mới</Text>
-                </TouchableOpacity>
-            </View>
+            <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
 
-            <FlatList
-                data={loans}
-                renderItem={renderLoanItem}
-                keyExtractor={(item) => item._id || item.contractId}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-                }
-                ListEmptyComponent={renderEmpty}
-            />
+            {/* Header Dashboard Section */}
+            <LinearGradient
+                colors={[Colors.primary, '#64B5F6']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={styles.headerGradient}
+            >
+                <View style={styles.headerTop}>
+                    <View>
+                        <Text style={styles.welcomeText}>Xin chào,</Text>
+                        <Text style={styles.userName}>{user?.name || 'Borrower'}!</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <TouchableOpacity onPress={testFineractUser} style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8 }}>
+                            <MaterialCommunityIcons name="bug" size={20} color="white" />
+                        </TouchableOpacity>
+                        <Avatar.Image size={40} source={{ uri: 'https://i.pravatar.cc/150' }} style={{ backgroundColor: 'white' }} />
+                    </View>
+                </View>
+
+                <View style={styles.statsContainer}>
+                    <View style={styles.statItem}>
+                        <Text style={styles.statLabel}>Dư nợ hiện tại</Text>
+                        <Text style={styles.statValue}>{formatNumber(stats.totalDebt)} ₫</Text>
+                    </View>
+                    <View style={styles.verticalLine} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statLabel}>Khoản vay active</Text>
+                        <Text style={styles.statValue}>{stats.totalActive}</Text>
+                    </View>
+                </View>
+            </LinearGradient>
+
+            <View style={styles.contentContainer}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Danh sách khoản vay</Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('LoanCreate')}>
+                        <Text style={styles.seeAll}>+ Tạo mới</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <FlatList
+                    data={loans}
+                    renderItem={renderLoanItem}
+                    keyExtractor={(item) => item.contractId}
+                    contentContainerStyle={styles.list}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <MaterialCommunityIcons name="clipboard-text-outline" size={60} color="#E0E0E0" />
+                            <Text style={styles.emptyText}>Bạn chưa có khoản vay nào</Text>
+                            <Button mode="contained" onPress={() => navigation.navigate('LoanCreate')} style={styles.createBtn}>
+                                Tạo ngay
+                            </Button>
+                        </View>
+                    }
+                />
+            </View>
         </View>
     );
 }
@@ -228,182 +229,189 @@ export default function LoanListScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
+        backgroundColor: Colors.background,
     },
-    centerContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
+    headerGradient: {
+        paddingTop: 60,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
     },
-    header: {
-        backgroundColor: '#2196F3',
-        padding: 20,
-        paddingTop: 40,
+    headerTop: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: 20,
     },
-    title: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#fff',
+    welcomeText: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.8)',
     },
-    addButton: {
-        backgroundColor: '#fff',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+    userName: {
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 24,
+        color: '#ffffff',
+    },
+    statsContainer: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 16,
+        padding: 15,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+    },
+    statItem: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    verticalLine: {
+        width: 1,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    statLabel: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
+        color: '#E3F2FD',
+    },
+    statValue: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 18,
+        color: '#ffffff',
+        marginTop: 4,
+    },
+    contentContainer: {
+        flex: 1,
+        marginTop: -20,
+        paddingHorizontal: 20,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 15,
+        paddingHorizontal: 5,
+    },
+    sectionTitle: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 16,
+        color: Colors.text,
+    },
+    seeAll: {
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 14,
+        color: Colors.primary,
+    },
+    list: {
+        paddingBottom: 20,
+    },
+    // Card Styles
+    card: {
+        backgroundColor: '#ffffff',
         borderRadius: 20,
-    },
-    addButtonText: {
-        color: '#2196F3',
-        fontWeight: '600',
-    },
-    listContent: {
-        padding: 16,
-    },
-    loanCard: {
-        backgroundColor: '#fff',
-        borderRadius: 12,
         padding: 16,
         marginBottom: 16,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 1, // Minimal elevation for Android
     },
     cardHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'flex-start',
+    },
+    row: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
     },
-    contractId: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#333',
-    },
-    statusBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+    iconBox: {
+        width: 40,
+        height: 40,
         borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    statusText: {
+    loanTitle: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 14,
+        color: Colors.text,
+    },
+    loanId: {
+        fontFamily: 'Poppins_400Regular',
         fontSize: 12,
-        color: '#fff',
-        fontWeight: '500',
+        color: Colors.textSecondary,
+    },
+    badge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    badgeText: {
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 11,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: '#F5F5F5',
+        marginVertical: 12,
     },
     cardBody: {
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-        paddingTop: 12,
-    },
-    infoRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 8,
     },
-    infoLabel: {
-        fontSize: 14,
-        color: '#666',
+    infoCol: {
+        alignItems: 'flex-start',
     },
-    infoValue: {
-        fontSize: 14,
-        color: '#333',
-        fontWeight: '500',
+    infoColRight: {
+        alignItems: 'flex-end',
     },
-    highlightValue: {
-        color: '#2196F3',
-        fontWeight: 'bold',
-    },
-    fundingProgress: {
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-    },
-    progressHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
-    },
-    progressLabel: {
+    label: {
+        fontFamily: 'Poppins_400Regular',
         fontSize: 12,
-        color: '#666',
+        color: Colors.textSecondary,
+        marginBottom: 4,
     },
-    progressPercent: {
-        fontSize: 12,
-        fontWeight: 'bold',
-        color: '#4CAF50',
+    value: {
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 15,
+        color: Colors.text,
     },
-    progressBar: {
-        height: 6,
-        backgroundColor: '#e0e0e0',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: '100%',
-        backgroundColor: '#4CAF50',
-        borderRadius: 3,
-    },
-    progressNotes: {
-        fontSize: 11,
-        color: '#999',
-        marginTop: 4,
-        textAlign: 'right',
+    valueHighlight: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 16,
+        color: Colors.primary,
     },
     cardFooter: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        paddingTop: 8,
     },
     dateText: {
+        fontFamily: 'Poppins_400Regular',
         fontSize: 12,
-        color: '#999',
+        color: Colors.textSecondary,
     },
-    fineractId: {
+    rateText: {
+        fontFamily: 'Poppins_500Medium',
         fontSize: 12,
-        color: '#999',
+        color: Colors.secondary,
     },
-    emptyContainer: {
+    emptyState: {
         alignItems: 'center',
-        paddingTop: 60,
+        paddingTop: 50,
     },
     emptyText: {
-        fontSize: 16,
-        color: '#666',
+        fontFamily: 'Poppins_400Regular',
+        color: Colors.textSecondary,
+        marginTop: 10,
         marginBottom: 20,
     },
-    createButton: {
-        backgroundColor: '#2196F3',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 24,
-    },
-    createButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    errorText: {
-        fontSize: 14,
-        color: '#F44336',
-        marginBottom: 16,
-        textAlign: 'center',
-    },
-    retryButton: {
-        backgroundColor: '#2196F3',
+    createBtn: {
+        borderRadius: 12,
         paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: 20,
-    },
-    retryButtonText: {
-        color: '#fff',
-        fontWeight: '600',
-    },
+    }
 });

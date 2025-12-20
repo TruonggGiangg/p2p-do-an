@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Lending - Blockchain Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #2979FF;
+            --primary-light: #E3F2FD;
+            --success: #00C853;
+            --success-light: #E8F5E9;
+            --warning: #FFAB00;
+            --warning-light: #FFF8E1;
+            --danger: #FF3D00;
+            --danger-light: #FFEBEE;
+            
+            --bg-body: #F7F9FC;
+            --bg-card: #FFFFFF;
+            --text-main: #1A1D1E;
+            --text-secondary: #90A4AE;
+            --border: #ECEFF1;
+            
+            --radius-xl: 24px;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            
+            --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 20px 40px -10px rgba(41, 121, 255, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* HEADER */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 40px;
+        }
+
+        .header-content h1 {
+            font-weight: 700;
+            font-size: 2rem;
+            color: var(--text-main);
+            margin-bottom: 5px;
+        }
+
+        .header-content p {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .badge-status {
+            background: var(--success-light);
+            color: var(--success);
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0, 200, 83, 0.1);
+        }
+
+        .badge-status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: currentColor;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 200, 83, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 200, 83, 0); }
+        }
+
+        /* STATS GRID */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-xl);
+            padding: 30px;
+            box-shadow: var(--shadow-card);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 14px;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .stat-card:nth-child(2) .stat-icon { background: var(--warning-light); color: var(--warning); }
+        .stat-card:nth-child(3) .stat-icon { background: var(--success-light); color: var(--success); }
+        .stat-card:nth-child(4) .stat-icon { background: var(--danger-light); color: var(--danger); }
+
+        .stat-number {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.2;
+        }
+
+        .stat-label {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            font-weight: 500;
+        }
+
+        /* NAVIGATION TABS */
+        .tabs-container {
+            background: var(--bg-card);
+            padding: 8px;
+            border-radius: var(--radius-xl);
+            display: inline-flex;
+            gap: 5px;
+            box-shadow: var(--shadow-card);
+            margin-bottom: 30px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            border-radius: var(--radius-lg);
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(41, 121, 255, 0.3);
+        }
+
+        /* CONTENT SECTION */
+        .content-section {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* CUSTOM TABLE STYLE using Divs or cleaner table */
+        .clean-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 15px; /* Spacing between rows */
+        }
+
+        .clean-table thead th {
+            text-align: left;
+            padding: 0 20px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .clean-table tbody tr {
+            background: var(--bg-card);
+            box-shadow: var(--shadow-card);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .clean-table tbody tr:hover {
+            transform: scale(1.01);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .clean-table td {
+            padding: 20px;
+            font-size: 0.95rem;
+            border-top: 1px solid transparent;
+            border-bottom: 1px solid transparent;
+        }
+
+        .clean-table td:first-child {
+            border-top-left-radius: var(--radius-lg);
+            border-bottom-left-radius: var(--radius-lg);
+        }
+
+        .clean-table td:last-child {
+            border-top-right-radius: var(--radius-lg);
+            border-bottom-right-radius: var(--radius-lg);
+            text-align: right;
+        }
+        
+        /* Specific Columns */
+        .col-id {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        
+        .col-amount {
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        
+        .col-date {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        /* STATUS PILLS */
+        .status-pill {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-waiting { background: var(--warning-light); color: var(--warning); }
+        .status-active { background: var(--success-light); color: var(--success); }
+        .status-settled { background: var(--primary-light); color: var(--primary); }
+        .status-overdue { background: var(--danger-light); color: var(--danger); }
+
+        /* LOADING */
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-secondary);
+        }
+        .loading i {
+            font-size: 2rem;
+            margin-bottom: 15px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* PAGINATION */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 40px;
+        }
+
+        .page-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            border: none;
+            background: #fff;
+            color: var(--text-main);
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: var(--shadow-card);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .page-btn:hover:not(:disabled) {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+        
+        .page-btn.active {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(41, 121, 255, 0.3);
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 30, 50, 0.4);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #fff;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 500px;
+            padding: 0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+        
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 { font-size: 1.2rem; font-weight: 700; }
+        .modal-close { 
+            background: #F1F5F9; border: none; width: 32px; height: 32px; 
+            border-radius: 50%; cursor: pointer; color: #64748B;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-close:hover { background: #E2E8F0; color: #1E293B; }
+
+        .modal-body { padding: 24px; }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        
+        .detail-label { color: var(--text-secondary); font-size: 0.9rem; }
+        .detail-val { font-weight: 600; text-align: right; }
+        
+        .code-block {
+            background: #F8FAFC;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--primary);
+            word-break: break-all;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="header-content">
+                <h1>Overview</h1>
+                <p>Hệ thống quản lý P2P Lending minh bạch trên Blockchain</p>
+            </div>
+            <div class="badge-status">
+                Connected to Fabric
+            </div>
+        </header>
+
+        <!-- STATS GRID -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-cube"></i></div>
+                <div class="stat-number" id="totalBlocks">--</div>
+                <div class="stat-label">Tổng Block Height</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-arrow-right-arrow-left"></i></div>
+                <div class="stat-number" id="totalTx">--</div>
+                <div class="stat-label">Tổng Giao dịch</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-file-contract"></i></div>
+                <div class="stat-number" id="totalLoans">--</div>
+                <div class="stat-label">Hợp đồng Vay</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-seedling"></i></div>
+                <div class="stat-number" id="totalInvests">--</div>
+                <div class="stat-label">Lượt Đầu tư</div>
+            </div>
+        </div>
+
+        <!-- TABS -->
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="showTab('loans')">Khoản Vay</button>
+            <button class="tab-btn" onclick="showTab('investments')">Đầu Tư</button>
+            <button class="tab-btn" onclick="showTab('transactions')">Lịch Sử Giao Dịch</button>
+        </div>
+
+        <!-- LOANS TAB -->
+        <div id="loans-content" class="content-section" style="display: block;">
+            <div class="section-header">
+                <h2 class="section-title">Danh Sách Khoản Vay</h2>
+                <span id="loans-info" style="font-size: 0.9rem; color: var(--text-secondary);"></span>
+            </div>
+            
+            <div id="loans-list" class="loading">
+                <i class="fa-solid fa-circle-notch"></i>
+                <p>Đang đồng bộ dữ liệu...</p>
+            </div>
+            <div id="loans-pagination" class="pagination"></div>
+        </div>
+
+        <!-- INVESTMENTS TAB -->
+        <div id="investments-content" class="content-section">
+            <div class="section-header">
+                <h2 class="section-title">Danh Sách Đầu Tư</h2>
+                <span id="investments-info" style="font-size: 0.9rem; color: var(--text-secondary);"></span>
+            </div>
+
+            <div id="investments-list" class="loading">
+                <i class="fa-solid fa-circle-notch"></i>
+                <p>Đang đồng bộ dữ liệu...</p>
+            </div>
+            <div id="investments-pagination" class="pagination"></div>
+        </div>
+
+        <!-- TRANSACTIONS TAB -->
+        <div id="transactions-content" class="content-section">
+            <div class="section-header">
+                <h2 class="section-title">Giao Dịch Blockchain Gần Đây</h2>
+                <span id="transactions-info" style="font-size: 0.9rem; color: var(--text-secondary);"></span>
+            </div>
+
+            <div id="transactions-list" class="loading">
+                <i class="fa-solid fa-circle-notch"></i>
+                <p>Đang đồng bộ dữ liệu...</p>
+            </div>
+            <div id="transactions-pagination" class="pagination"></div>
+        </div>
+
+        <footer>
+            <p>Powered by Hyperledger Fabric & NestJS</p>
+            <p style="margin-top: 5px; opacity: 0.7;">Channel: mychannel • Chaincode: p2plending</p>
+        </footer>
+    </div>
+
+    <!-- DETAILS MODAL -->
+    <div id="detailsModal" class="modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalTitle">Chi tiết</h3>
+                <button class="modal-close" onclick="closeDetailsModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Data injection here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIG
+        const EXPLORER_API = 'http://localhost:8080/api';
+        const SERVER_API = 'http://localhost:3000/blockchain';
+
+        // UTILS
+        const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+        const formatDateTime = (dateStr) => {
+            if (!dateStr) return '--';
+            const date = new Date(dateStr);
+            return isNaN(date.getTime()) ? '--' : date.toLocaleString('vi-VN', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+        };
+        const formatDate = (dateStr) => {
+            if (!dateStr) return '--';
+            const date = new Date(dateStr);
+            return isNaN(date.getTime()) ? '--' : date.toLocaleDateString('vi-VN');
+        };
+
+        const getStatusPill = (status) => {
+            const map = {
+                'waiting': 'status-waiting', 'waiting_other': 'status-waiting',
+                'active': 'status-active', 'disbursed': 'status-active',
+                'settled': 'status-settled', 'completed': 'status-settled',
+                'overdue': 'status-overdue', 'due': 'status-overdue'
+            };
+            const textMap = {
+                'waiting': 'Chờ đầu tư', 'active': 'Đang hoạt động',
+                'settled': 'Đã tất toán', 'overdue': 'Quá hạn',
+                'waiting_other': 'Đợi vốn'
+            };
+            const cls = map[status] || 'status-waiting';
+            const txt = textMap[status] || status;
+            return `<span class="status-pill ${cls}">${txt}</span>`;
+        };
+
+        // GLOBAL DATA
+        let loansData = [], investmentsData = [], transactionsData = [];
+        const pageLimit = 10;
+
+        // TABS
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
+            
+            // Activate button based on onclick text matching or index (simple logic here just target event)
+            // But since this is called from onclick(event), we can use event.target
+            if(event && event.target) event.target.classList.add('active');
+            
+            document.getElementById(tabName + '-content').style.display = 'block';
+        }
+
+        // FETCH STATS
+        async function fetchStats() {
+            try {
+                const [channelRes, serverRes] = await Promise.all([
+                    fetch(`${SERVER_API}/channel/info`).catch(() => null),
+                    fetch(`${SERVER_API}/stats`).catch(() => null)
+                ]);
+
+                if (channelRes && channelRes.ok) {
+                    const data = await channelRes.json();
+                    if (data.success) {
+                        document.getElementById('totalBlocks').textContent = '#' + data.latestBlock;
+                        document.getElementById('totalTx').textContent = data.txCount;
+                    }
+                }
+                if (serverRes && serverRes.ok) {
+                    const data = await serverRes.json();
+                    if (data.success) {
+                        document.getElementById('totalLoans').textContent = data.data.totalLoans;
+                        document.getElementById('totalInvests').textContent = data.data.totalInvestments;
+                    }
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // PAGINATION RENDERER
+        function renderPagination(containerId, curr, total, callbackName) {
+            const container = document.getElementById(containerId);
+            if (total <= 1) { container.innerHTML = ''; return; }
+            
+            let html = '';
+            // Simple prev
+            html += `<button class="page-btn" ${curr===1?'disabled':''} onclick="${callbackName}(${curr-1})"><i class="fa-solid fa-chevron-left"></i></button>`;
+            
+            const maxVisible = 5;
+            let start = Math.max(1, curr - 2);
+            let end = Math.min(total, start + maxVisible - 1);
+            if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+
+            for (let i = start; i <= end; i++) {
+                html += `<button class="page-btn ${i===curr?'active':''}" onclick="${callbackName}(${i})">${i}</button>`;
+            }
+            
+            // Simple next
+            html += `<button class="page-btn" ${curr>=total?'disabled':''} onclick="${callbackName}(${curr+1})"><i class="fa-solid fa-chevron-right"></i></button>`;
+            
+            container.innerHTML = html;
+        }
+
+        // LOANS
+        async function fetchLoans(page = 1) {
+            const list = document.getElementById('loans-list');
+            const info = document.getElementById('loans-info');
+            
+            try {
+                const res = await fetch(`${SERVER_API}/loans?page=${page}&limit=${pageLimit}`);
+                const json = await res.json();
+                
+                if (!json.success || !json.data || json.data.length === 0) {
+                    list.innerHTML = `<div class="loading"><p>Chưa có khoản vay nào được ghi nhận.</p></div>`;
+                    info.textContent = '';
+                    list.classList.remove('loading'); // remove spinner style
+                    return;
+                }
+                
+                loansData = json.data;
+                info.textContent = `Hiển thị ${json.data.length} trên tổng ${json.total} kết quả`;
+                
+                let html = `<table class="clean-table">
+                    <thead><tr>
+                        <th>Mã Hợp Đồng</th> <th>Số Tiền</th> <th>Lãi Suất</th> <th>Ngày Tạo</th> <th>Trạng Thái</th> <th></th>
+                    </tr></thead><tbody>`;
+                    
+                json.data.forEach(item => {
+                    html += `<tr onclick="showDetailsModal('loan', '${item.contractId}')">
+                        <td class="col-id">${item.contractId}</td>
+                        <td class="col-amount">${formatCurrency(item.amount)}</td>
+                        <td>${item.interestRate}% <span style="font-size:0.8em;color:#aaa">/tháng</span></td>
+                        <td class="col-date">${formatDateTime(item.createdAt)}</td>
+                        <td>${getStatusPill(item.status)}</td>
+                        <td><i class="fa-solid fa-chevron-right" style="color:#ddd"></i></td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+                
+                list.innerHTML = html;
+                list.classList.remove('loading');
+                renderPagination('loans-pagination', json.page, json.totalPages, 'fetchLoans');
+            } catch (e) {
+                list.innerHTML = `<div class="loading" style="color:var(--danger)"><p>Lỗi kết nối Server!</p></div>`;
+            }
+        }
+
+        // INVESTMENTS
+        async function fetchInvestments(page = 1) {
+             const list = document.getElementById('investments-list');
+             // Similar logic ... Mocking empty for now as implementation is pending
+             list.innerHTML = `<div class="loading"><p>Chưa có dữ liệu đầu tư.</p></div>`;
+             list.classList.remove('loading');
+        }
+
+        // TRANSACTIONS
+        async function fetchTransactions(page = 1) {
+            const list = document.getElementById('transactions-list');
+            try {
+                const res = await fetch(`${SERVER_API}/transactions/recent?page=${page}&limit=${pageLimit}`);
+                const json = await res.json();
+                
+                if (!json.success || !json.data || json.data.length === 0) {
+                     list.innerHTML = `<div class="loading"><p>Chưa có giao dịch.</p></div>`;
+                     list.classList.remove('loading'); return;
+                }
+                
+                transactionsData = json.data;
+                
+                let html = `<table class="clean-table">
+                    <thead><tr>
+                        <th>Transaction Hash</th> <th>Loại</th> <th>Giá Trị</th> <th>Thời Gian</th> <th>Trạng Thái</th>
+                    </tr></thead><tbody>`;
+                
+                json.data.forEach(tx => {
+                    const icon = tx.type === 'createLoanContract' ? '<i class="fa-solid fa-file-contract"></i>' : '<i class="fa-solid fa-money-bill-transfer"></i>';
+                    html += `<tr onclick="showDetailsModal('transaction', '${tx.txhash}')">
+                        <td class="col-id" style="font-family:monospace; font-size:0.85rem">
+                             <span style="color:var(--primary);margin-right:8px">${icon}</span> ${tx.txhash.substring(0, 16)}...
+                        </td>
+                        <td>${tx.type}</td>
+                        <td class="col-amount">${tx.amount ? formatCurrency(tx.amount) : '--'}</td>
+                        <td class="col-date">${formatDateTime(tx.createdt)}</td>
+                        <td>${getStatusPill(tx.status)}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+                
+                list.innerHTML = html;
+                list.classList.remove('loading');
+                renderPagination('transactions-pagination', json.page, json.totalPages, 'fetchTransactions');
+            } catch(e) {}
+        }
+
+        // MODAL LOGIC
+        function showDetailsModal(type, id) {
+            const modal = document.getElementById('detailsModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            let html = '';
+            
+            if (type === 'loan') {
+                const item = loansData.find(i => i.contractId === id);
+                if(!item) return;
+                title.textContent = 'Chi Tiết Hợp Đồng Vay';
+                html = `
+                    <div class="detail-item"><span class="detail-label">Mã Hợp Đồng</span><span class="code-block">${item.contractId}</span></div>
+                    <div class="detail-item"><span class="detail-label">Trạng Thái</span><div>${getStatusPill(item.status)}</div></div>
+                    <hr style="border:0; border-top:1px dashed #eee; margin:15px 0;">
+                    <div class="detail-item"><span class="detail-label">Số Tiền Vay</span><span class="detail-val" style="color:var(--primary);font-size:1.2em">${formatCurrency(item.amount)}</span></div>
+                    <div class="detail-item"><span class="detail-label">Lãi Suất</span><span class="detail-val">${item.interestRate}% / tháng</span></div>
+                    <div class="detail-item"><span class="detail-label">Kỳ Hạn</span><span class="detail-val">${item.term} tháng</span></div>
+                    <div class="detail-item"><span class="detail-label">Trả Hàng Tháng</span><span class="detail-val">${formatCurrency(item.monthlyPayment||0)}</span></div>
+                    <div class="detail-item"><span class="detail-label">Tổng Thanh Toán</span><span class="detail-val">${formatCurrency(item.totalPayment||0)}</span></div>
+                    <hr style="border:0; border-top:1px dashed #eee; margin:15px 0;">
+                    <div class="detail-item"><span class="detail-label">Ngày Giải Ngân</span><span class="detail-val">${formatDate(item.disbursementDate)}</span></div>
+                    <div class="detail-item"><span class="detail-label">Ngày Đáo Hạn</span><span class="detail-val">${formatDate(item.maturityDate)}</span></div>
+                `;
+            } else if (type === 'transaction') {
+                const item = transactionsData.find(i => i.txhash === id);
+                if(!item) return;
+                title.textContent = 'Chi Tiết Giao Dịch';
+                 html = `
+                    <div class="detail-item"><span class="detail-label">TxHash</span><span class="code-block">${item.txhash}</span></div>
+                    <div class="detail-item"><span class="detail-label">Block ID</span><span class="detail-val">#${item.blockid}</span></div>
+                    <div class="detail-item"><span class="detail-label">Thời gian</span><span class="detail-val">${formatDateTime(item.createdt)}</span></div>
+                    <hr style="border:0; border-top:1px dashed #eee; margin:15px 0;">
+                    <div class="detail-item"><span class="detail-label">Loại Giao Dịch</span><span class="detail-val">${item.type}</span></div>
+                    <div class="detail-item"><span class="detail-label">Số Tiền</span><span class="detail-val" style="color:var(--success)">${formatCurrency(item.amount)}</span></div>
+                    <div class="detail-item"><span class="detail-label">Smart Contract</span><span class="code-block">${item.chaincodename}</span></div>
+                `;
+            }
+
+            body.innerHTML = html;
+            modal.classList.add('show');
+        }
+
+        function closeDetailsModal() { document.getElementById('detailsModal').classList.remove('show'); }
+        function closeModal(e) { if(e.target.classList.contains('modal')) closeDetailsModal(); }
+
+        // INIT
+        document.addEventListener('DOMContentLoaded', () => {
+             fetchStats();
+             fetchLoans(1);
+             fetchInvestments(1);
+             fetchTransactions(1);
+
+             // Auto refresh
+             setInterval(() => {
+                 fetchStats();
+                 // fetchTransactions(); // Optional
+             }, 15000);
+        });
+    </script>
+</body>
+</html>

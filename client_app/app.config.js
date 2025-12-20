@@ -29,7 +29,8 @@ export default {
         },
         plugins: [
             "expo-secure-store",
-            "@react-native-community/datetimepicker"
+            "@react-native-community/datetimepicker",
+            "expo-font"
         ],
         // Pass environment variables to the app
         extra: {

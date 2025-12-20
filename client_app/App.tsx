@@ -2,11 +2,19 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Provider as PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
+import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold
+} from '@expo-google-fonts/poppins';
+import { PremiumTheme } from './src/theme';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -32,17 +40,19 @@ function LoanStack() {
         component={LoanCreateScreen}
         options={{
           title: 'Tạo Khoản Vay',
-          headerStyle: { backgroundColor: '#2196F3' },
+          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
           headerTintColor: '#fff',
+          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
         }}
       />
       <Stack.Screen
         name="LoanDetail"
         component={LoanDetailScreen}
         options={{
-          title: 'Chi Tiết Khoản Vay',
-          headerStyle: { backgroundColor: '#2196F3' },
+          title: 'Chi Tiết',
+          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
           headerTintColor: '#fff',
+          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
         }}
       />
       <Stack.Screen
@@ -50,8 +60,9 @@ function LoanStack() {
         component={RepaymentScreen}
         options={{
           title: 'Thanh Toán',
-          headerStyle: { backgroundColor: '#2196F3' },
+          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
           headerTintColor: '#fff',
+          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
         }}
       />
     </Stack.Navigator>
@@ -76,17 +87,16 @@ function MainTabs() {
 
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#2196F3',
+        tabBarActiveTintColor: PremiumTheme.colors.primary,
         tabBarInactiveTintColor: 'gray',
+        tabBarLabelStyle: { fontFamily: 'Poppins_500Medium', marginBottom: 5 },
+        headerShown: false,
       })}
     >
       <Tab.Screen
         name="Loans"
         component={LoanStack}
-        options={{
-          title: 'Khoản Vay',
-          headerShown: false,
-        }}
+        options={{ title: 'Khoản Vay' }}
       />
       <Tab.Screen
         name="Profile"
@@ -119,7 +129,7 @@ function RootNavigator() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2196F3" />
+        <ActivityIndicator size="large" color={PremiumTheme.colors.primary} />
       </View>
     );
   }
@@ -131,20 +141,25 @@ function RootNavigator() {
   );
 }
 
-// Theme
-const theme = {
-  ...MD3LightTheme,
-  colors: {
-    ...MD3LightTheme.colors,
-    primary: '#2196F3',
-    secondary: '#4CAF50',
-  },
-};
-
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2979FF" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
-      <PaperProvider theme={theme}>
+      <PaperProvider theme={PremiumTheme}>
         <AuthProvider>
           <RootNavigator />
         </AuthProvider>
@@ -158,6 +173,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F7F9FC',
   },
 });

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { TextInput, Button, Text, Card, Snackbar } from 'react-native-paper';
+import { TextInput, Button, Text, Surface, Snackbar } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
+import { Colors } from '../theme';
 
 interface RegisterScreenProps {
     navigation: any;
@@ -46,28 +48,41 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <LinearGradient
+            colors={['#E3F2FD', '#F7F9FC']}
             style={styles.container}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
         >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <Card style={styles.card}>
-                    <Card.Content>
-                        <Text variant="headlineMedium" style={styles.title}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+
+                    <View style={styles.header}>
+                        <Text variant="headlineLarge" style={styles.title}>
                             Đăng Ký
                         </Text>
-                        <Text variant="bodyMedium" style={styles.subtitle}>
-                            Tạo tài khoản Keycloak mới
+                        <Text variant="bodyLarge" style={styles.subtitle}>
+                            Tạo tài khoản mới
                         </Text>
+                    </View>
 
+                    <Surface style={styles.card} elevation={0}>
                         <TextInput
-                            label="Số điện thoại (username)"
+                            label="Số điện thoại"
                             value={username}
                             onChangeText={setUsername}
                             mode="outlined"
                             keyboardType="phone-pad"
                             style={styles.input}
-                            left={<TextInput.Icon icon="phone" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="phone" color={Colors.textSecondary} />}
                         />
 
                         <TextInput
@@ -78,39 +93,59 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             keyboardType="email-address"
                             autoCapitalize="none"
                             style={styles.input}
-                            left={<TextInput.Icon icon="email" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="email" color={Colors.textSecondary} />}
                         />
 
-                        <TextInput
-                            label="Họ"
-                            value={firstName}
-                            onChangeText={setFirstName}
-                            mode="outlined"
-                            style={styles.input}
-                            left={<TextInput.Icon icon="account" />}
-                        />
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TextInput
+                                label="Họ"
+                                value={firstName}
+                                onChangeText={setFirstName}
+                                mode="outlined"
+                                style={[styles.input, { flex: 1 }]}
+                                contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                                outlineColor="transparent"
+                                activeOutlineColor={Colors.primary}
+                                textColor={Colors.text}
+                                theme={{ roundness: 12 }}
+                            />
+                            <TextInput
+                                label="Tên"
+                                value={lastName}
+                                onChangeText={setLastName}
+                                mode="outlined"
+                                style={[styles.input, { flex: 1 }]}
+                                contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                                outlineColor="transparent"
+                                activeOutlineColor={Colors.primary}
+                                textColor={Colors.text}
+                                theme={{ roundness: 12 }}
+                            />
+                        </View>
 
                         <TextInput
-                            label="Tên"
-                            value={lastName}
-                            onChangeText={setLastName}
-                            mode="outlined"
-                            style={styles.input}
-                            left={<TextInput.Icon icon="account" />}
-                        />
-
-                        <TextInput
-                            label="Mật khẩu (ít nhất 12 ký tự)"
+                            label="Mật khẩu"
                             value={password}
                             onChangeText={setPassword}
                             mode="outlined"
                             secureTextEntry={!showPassword}
                             style={styles.input}
-                            left={<TextInput.Icon icon="lock" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="lock" color={Colors.textSecondary} />}
                             right={
                                 <TextInput.Icon
                                     icon={showPassword ? 'eye-off' : 'eye'}
                                     onPress={() => setShowPassword(!showPassword)}
+                                    color={Colors.textSecondary}
                                 />
                             }
                         />
@@ -122,8 +157,15 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             mode="outlined"
                             secureTextEntry={!showPassword}
                             style={styles.input}
-                            left={<TextInput.Icon icon="lock-check" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="lock-check" color={Colors.textSecondary} />}
                         />
+
+                        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
                         <Button
                             mode="contained"
@@ -131,6 +173,8 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             loading={isLoading}
                             disabled={isLoading}
                             style={styles.button}
+                            labelStyle={styles.buttonLabel}
+                            contentStyle={{ height: 50 }}
                         >
                             Đăng Ký
                         </Button>
@@ -139,64 +183,86 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             mode="text"
                             onPress={() => navigation.navigate('Login')}
                             style={styles.linkButton}
+                            labelStyle={{ fontFamily: 'Poppins_500Medium', color: Colors.primary }}
                         >
                             Đã có tài khoản? Đăng nhập
                         </Button>
-                    </Card.Content>
-                </Card>
-            </ScrollView>
+                    </Surface>
+                </ScrollView>
 
-            <Snackbar
-                visible={!!error}
-                onDismiss={() => setError('')}
-                duration={3000}
-            >
-                {error}
-            </Snackbar>
-
-            <Snackbar
-                visible={!!success}
-                onDismiss={() => setSuccess('')}
-                duration={2000}
-                style={{ backgroundColor: '#4CAF50' }}
-            >
-                {success}
-            </Snackbar>
-        </KeyboardAvoidingView>
+                <Snackbar
+                    visible={!!success}
+                    onDismiss={() => setSuccess('')}
+                    duration={2000}
+                    style={{ backgroundColor: Colors.success, borderRadius: 12 }}
+                >
+                    {success}
+                </Snackbar>
+            </KeyboardAvoidingView>
+        </LinearGradient>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     scrollContent: {
         flexGrow: 1,
+        padding: 24,
         justifyContent: 'center',
-        padding: 16,
     },
-    card: {
-        padding: 8,
+    header: {
+        alignItems: 'center',
+        marginBottom: 30,
     },
     title: {
-        textAlign: 'center',
+        fontFamily: 'Poppins_700Bold',
+        color: Colors.text,
         marginBottom: 8,
-        fontWeight: 'bold',
     },
     subtitle: {
-        textAlign: 'center',
-        marginBottom: 24,
-        color: '#666',
+        fontFamily: 'Poppins_400Regular',
+        color: Colors.textSecondary,
+    },
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 30,
+        padding: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.05,
+        shadowRadius: 30,
+        elevation: 5,
     },
     input: {
-        marginBottom: 12,
+        marginBottom: 16,
+        backgroundColor: '#F7F9FC',
+        fontSize: 14,
     },
     button: {
-        marginTop: 8,
-        paddingVertical: 8,
+        marginTop: 10,
+        borderRadius: 16,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 15,
+        elevation: 8,
+    },
+    buttonLabel: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 16,
+        paddingVertical: 2,
     },
     linkButton: {
         marginTop: 16,
+        alignSelf: 'center',
+    },
+    errorText: {
+        color: Colors.error,
+        textAlign: 'center',
+        marginBottom: 10,
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
     },
 });

@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 
 import { LoanController } from './loan.controller';
+import { BlockchainController } from './blockchain.controller';
+
 import { LoanService } from './loan.service';
 import { LoanContract, LoanContractSchema } from './schemas';
 import { BlockchainService, FineractService } from './services';
@@ -25,7 +27,7 @@ import {
             { name: LoanContract.name, schema: LoanContractSchema },
         ]),
     ],
-    controllers: [LoanController],
+    controllers: [LoanController, BlockchainController],
     providers: [
         LoanService,
         BlockchainService,

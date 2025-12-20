@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 
 import { LoanService } from './loan.service';
+import { FineractService } from './services/fineract.service';
 import { CreateLoanDto, CheckRateDto } from './dto';
 import { BorrowerGuard, LenderGuard, BorrowerOrLenderGuard } from './guards';
 import { DualAuthGuard } from '@auth/guard/dual-auth.guard';
@@ -39,7 +40,10 @@ interface AuthUser {
 @ApiTags('Loan')
 @Controller('loan')
 export class LoanController {
-    constructor(private readonly loanService: LoanService) { }
+    constructor(
+        private readonly loanService: LoanService,
+        private readonly fineractService: FineractService,
+    ) { }
 
     // ==================== PUBLIC ENDPOINTS ====================
 
@@ -160,12 +164,65 @@ export class LoanController {
     })
     async getMyLoans(@User() user: AuthUser) {
         // Use username as primary identifier to match DB storage
-        const userId = user.username || user.keycloakUserId || user._id;
-        const loans = await this.loanService.getMyLoans(userId);
+        // const userId = user.username || user.keycloakUserId || user._id; // Deprecated: Service now takes user object
+        const loans = await this.loanService.getMyLoans(user);
         return {
             statusCode: HttpStatus.OK,
             message: 'Danh sách khoản vay của bạn',
             data: loans,
+        };
+    }
+
+    /**
+     * GET /loan/debug/fineract-user
+     * Test Fineract user lookup (Debug endpoint)
+     */
+    @Get('debug/fineract-user')
+    @UseGuards(DualAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: '[DEBUG] Test Fineract user lookup' })
+    async testFineractUser(@User() user: AuthUser) {
+        const username = user.username;
+        const keycloakUserId = user.keycloakUserId;
+        const fineractClientIdFromToken = user.fineractClientId;
+
+        // Try to resolve Fineract client
+        let resolvedClient: any = null;
+        let lookupMethod = 'none';
+
+        // Try KEYCLOAK_{username} first
+        resolvedClient = await this.fineractService.getClientByExternalId(`KEYCLOAK_${username}`);
+        if (resolvedClient && resolvedClient.id) {
+            lookupMethod = `KEYCLOAK_${username}`;
+        } else {
+            // Fallback to plain username
+            resolvedClient = await this.fineractService.getClientByExternalId(username);
+            if (resolvedClient && resolvedClient.id) {
+                lookupMethod = username;
+            }
+        }
+
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Fineract User Debug Info',
+            data: {
+                keycloak: {
+                    username,
+                    keycloakUserId,
+                    fineractClientIdFromToken,
+                    nameFromToken: user.name,
+                },
+                fineract: {
+                    resolved: !!resolvedClient,
+                    lookupMethod,
+                    clientId: resolvedClient?.id || null,
+                    clientName: resolvedClient ? `${resolvedClient.firstname || ''} ${resolvedClient.lastname || ''}`.trim() : null,
+                    externalId: resolvedClient?.externalId || null,
+                    mobileNo: resolvedClient?.mobileNo || null,
+                    officeId: resolvedClient?.officeId || null,
+                    status: resolvedClient?.status?.value || null,
+                },
+            },
         };
     }
 

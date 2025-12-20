@@ -21,6 +21,8 @@ async function bootstrap() {
   const allowedOrigins = configService.get<string>('CORS_ORIGINS')?.split(',') || [
     'http://localhost:8081',
     'http://localhost:19006',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
     'http://10.10.2.230:8081',
     'http://192.168.1.56:8081',
     'http://192.168.1.56:19000',
@@ -29,7 +31,7 @@ async function bootstrap() {
 
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: true, // Allow all origins for dev
     credentials: true,
   });
 

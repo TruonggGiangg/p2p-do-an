@@ -1,12 +1,11 @@
 /**
  * LoanDetailScreen - Displays full loan details including repayment schedule
- * Refactored to match @p2p UI style
+ * Refactored to match Premium Clean UI style
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     ScrollView,
     ActivityIndicator,
@@ -15,8 +14,8 @@ import {
     Alert,
     Platform,
     StatusBar,
-    Animated,
 } from 'react-native';
+import { Text, Surface, Button, Divider } from 'react-native-paper';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -25,24 +24,8 @@ import {
     LoanContract,
     FineractLoanDetails,
     OutstandingBalance,
-    RepaymentSchedulePeriod,
 } from '../../types';
-
-// Colors based on @p2p theme
-const COLORS = {
-    primaryGradientStart: '#1AA5A5',
-    primaryGradientEnd: '#26C6DA',
-    background: '#F5F5F5',
-    card: '#FFFFFF',
-    text: '#333333',
-    textLight: '#666666',
-    border: '#E0E0E0',
-    success: '#4CAF50',
-    warning: '#FF9800',
-    danger: '#F44336',
-    info: '#2196F3',
-    teal: '#00B4B4',
-};
+import { Colors } from '../../theme';
 
 // Format currency
 const formatCurrency = (value: number | undefined): string => {
@@ -153,62 +136,46 @@ export const LoanDetailScreen: React.FC = () => {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.teal} />
-                <Text style={styles.loadingText}>Đang tải chi tiết khoản vay...</Text>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loadingText}>Đang tải chi tiết...</Text>
             </View>
         );
     }
 
     const renderHeader = () => (
         <LinearGradient
-            colors={[COLORS.primaryGradientStart, COLORS.primaryGradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={[Colors.primary, '#64B5F6']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={styles.header}
         >
-            <TouchableOpacity
-                style={styles.backBtn}
-                onPress={() => navigation.goBack()}
-            >
-                <MaterialCommunityIcons name="chevron-left" size={28} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi Tiết Khoản Vay</Text>
-            <Text style={styles.contractSubtitle}>Mã hợp đồng</Text>
-            <Text style={styles.contractId}>
-                {loan?.contractId || `LOAN_${fineractDetails?.fineractLoanId || '???'}`}
-            </Text>
+            <View style={styles.headerTop}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <MaterialCommunityIcons name="arrow-left" size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Chi Tiết Khoản Vay</Text>
+                <View style={{ width: 24 }} />
+            </View>
+
+            <View style={styles.headerContent}>
+                <Text style={styles.contractSubtitle}>Mã Hợp Đồng</Text>
+                <Text style={styles.contractId}>
+                    {loan?.contractId || `LOAN_${fineractDetails?.fineractLoanId || '???'}`}
+                </Text>
+            </View>
         </LinearGradient>
     );
 
     const renderPaymentReminder = () => {
-        if (!fineractDetails) {
-            if (!loading && loan) {
-                return (
-                    <View style={[styles.reminderContainer, { borderLeftColor: COLORS.info }]}>
-                        <View style={styles.reminderContent}>
-                            <MaterialCommunityIcons name="cloud-sync" size={20} color={COLORS.info} />
-                            <Text style={[styles.reminderText, { color: COLORS.info }]}>
-                                Đang đồng bộ dữ liệu
-                            </Text>
-                        </View>
-                        <Text style={styles.reminderSubtext}>
-                            Dữ liệu chi tiết từ hệ thống lõi chưa sẵn sàng.
-                        </Text>
-                    </View>
-                );
-            }
-            return null;
-        }
+        if (!fineractDetails) return null;
 
         const nextPeriod = getNextUnpaidPeriod();
         if (!nextPeriod) return null;
 
-        const dueDateArr = nextPeriod.dueDate; // [year, month, day]
+        const dueDateArr = nextPeriod.dueDate;
         if (!dueDateArr || dueDateArr.length < 3) return null;
 
         const dueDate = new Date(dueDateArr[0], dueDateArr[1] - 1, dueDateArr[2]);
         const today = new Date();
-        // Reset time parts for accurate day diff
         today.setHours(0, 0, 0, 0);
         dueDate.setHours(0, 0, 0, 0);
 
@@ -216,47 +183,49 @@ export const LoanDetailScreen: React.FC = () => {
         const daysUntilDue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         let reminderText = '';
-        let reminderColor = COLORS.teal;
+        let reminderColor = Colors.primary;
         let iconName = 'clock-outline';
+        let bg = '#E3F2FD';
 
         if (daysUntilDue < 0) {
-            reminderText = `⚠️ Quá hạn ${Math.abs(daysUntilDue)} ngày`;
-            reminderColor = COLORS.danger;
+            reminderText = `Đã quá hạn ${Math.abs(daysUntilDue)} ngày`;
+            reminderColor = Colors.error;
             iconName = 'alert-circle';
+            bg = '#FFEBEE';
         } else if (daysUntilDue === 0) {
-            reminderText = '🔥 Hôm nay là ngày đáo hạn';
-            reminderColor = COLORS.warning;
+            reminderText = 'Hôm nay đáo hạn';
+            reminderColor = Colors.warning;
             iconName = 'fire';
+            bg = '#FFF8E1';
         } else if (daysUntilDue <= 3) {
-            reminderText = `⏰ Còn ${daysUntilDue} ngày đến hạn`;
-            reminderColor = COLORS.warning;
+            reminderText = `Còn ${daysUntilDue} ngày`;
+            reminderColor = Colors.warning;
+            bg = '#FFF8E1';
         } else {
-            reminderText = `📅 Còn ${daysUntilDue} ngày đến hạn`;
+            reminderText = `Hạn trả ${daysUntilDue} ngày nữa`;
         }
 
         return (
-            <View style={[styles.reminderContainer, { borderLeftColor: reminderColor }]}>
-                <View style={styles.reminderContent}>
-                    <MaterialCommunityIcons name={iconName} size={20} color={reminderColor} />
-                    <Text style={[styles.reminderText, { color: reminderColor }]}>
-                        {reminderText}
-                    </Text>
+            <Surface style={[styles.reminderCard, { backgroundColor: bg }]} elevation={0}>
+                <View style={styles.row}>
+                    <MaterialCommunityIcons name={iconName} size={24} color={reminderColor} />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={[styles.reminderTitle, { color: reminderColor }]}>{reminderText}</Text>
+                        <Text style={styles.reminderAmount}>
+                            Số tiền: {formatCurrency(nextPeriod.totalDue)}
+                        </Text>
+                    </View>
                 </View>
-                <Text style={styles.reminderSubtext}>
-                    {daysUntilDue < 0
-                        ? 'Vui lòng thanh toán ngay để tránh phí phạt'
-                        : 'Số tiền: ' + formatCurrency(nextPeriod.totalDue)}
-                </Text>
-            </View>
+            </Surface>
         );
     };
 
     const renderInfoRow = (icon: string, label: string, value: string) => (
         <View style={styles.infoRow}>
-            <View style={styles.infoItemIcon}>
-                <MaterialCommunityIcons name={icon} size={20} color="#666" />
+            <View style={styles.iconBox}>
+                <MaterialCommunityIcons name={icon} size={20} color={Colors.textSecondary} />
             </View>
-            <View style={styles.infoItemContent}>
+            <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>{label}</Text>
                 <Text style={styles.infoValue}>{value}</Text>
             </View>
@@ -268,42 +237,31 @@ export const LoanDetailScreen: React.FC = () => {
         const periods = fineractDetails?.numberOfRepayments || loan?.info?.periodMonth || 0;
         const disbursement = fineractDetails?.timeline?.actualDisbursementDate
             ? formatDate(fineractDetails.timeline.actualDisbursementDate)
-            : (loan?.info?.disbursementDate ? formatDate(new Date(loan.info.disbursementDate).toISOString()) : 'Chưa giải ngân');
-
+            : 'Chờ giải ngân';
         const rate = fineractDetails?.interestRate?.perPeriod || loan?.info?.rate || 0;
 
-        // Approx monthly pay calculation if not available directly
-        // const monthlyPay = ...
-
         return (
-            <View style={styles.card}>
+            <Surface style={styles.card} elevation={1}>
+                <Text style={styles.cardTitle}>Thông tin chung</Text>
+                <Divider style={styles.divider} />
+
                 {renderInfoRow('cash', 'Số tiền vay', formatCurrency(principal))}
-                {renderInfoRow('calendar-clock', 'Thời gian', `${periods} tháng`)}
+                {renderInfoRow('calendar-clock', 'Thời gian vay', `${periods} tháng`)}
                 {renderInfoRow('calendar-check', 'Ngày giải ngân', disbursement)}
-                {renderInfoRow('bullseye-arrow', 'Mục đích vay', loan?.info?.willing || 'Tiêu dùng')}
+                {renderInfoRow('target', 'Mục đích vay', loan?.info?.willing || 'Tiêu dùng')}
                 {renderInfoRow('percent', 'Lãi suất', `${rate}% / tháng`)}
 
-                {/* Outstanding summary if available */}
                 {outstanding && (
-                    <View style={styles.outstandingSummary}>
-                        <View style={styles.divider} />
+                    <View style={styles.outstandingBox}>
+                        <Text style={styles.outstandingTitle}>Tổng dư nợ hiện tại</Text>
+                        <Text style={styles.outstandingValue}>{formatCurrency(outstanding.totalOutstanding)}</Text>
                         <View style={styles.rowBetween}>
-                            <Text style={styles.summaryLabel}>Dư nợ gốc:</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(outstanding.principalOutstanding)}</Text>
-                        </View>
-                        <View style={styles.rowBetween}>
-                            <Text style={styles.summaryLabel}>Dư nợ lãi:</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(outstanding.interestOutstanding)}</Text>
-                        </View>
-                        <View style={[styles.rowBetween, { marginTop: 8 }]}>
-                            <Text style={[styles.summaryLabel, { fontWeight: 'bold', color: COLORS.text }]}>Tổng phải trả:</Text>
-                            <Text style={[styles.summaryValue, { color: COLORS.danger, fontWeight: 'bold' }]}>
-                                {formatCurrency(outstanding.totalOutstanding)}
-                            </Text>
+                            <Text style={styles.subText}>Gốc còn lại: {formatCurrency(outstanding.principalOutstanding)}</Text>
+                            <Text style={styles.subText}>Lãi chưa trả: {formatCurrency(outstanding.interestOutstanding)}</Text>
                         </View>
                     </View>
                 )}
-            </View>
+            </Surface>
         );
     };
 
@@ -314,153 +272,86 @@ export const LoanDetailScreen: React.FC = () => {
         if (filteredPeriods.length === 0) return null;
 
         return (
-            <View style={styles.timelineContainer}>
+            <Surface style={styles.card} elevation={1}>
                 <TouchableOpacity
-                    style={styles.timelineHeader}
+                    style={styles.rowBetween}
                     onPress={() => setTimelineCollapsed(!timelineCollapsed)}
-                    activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="timeline-text-outline" size={24} color="#666" />
-                    <View style={styles.timelineHeaderContent}>
-                        <Text style={styles.timelineHeaderText}>Lịch thanh toán</Text>
-                        <Text style={styles.timelineSubtitle}>
-                            {filteredPeriods.length} kỳ • {filteredPeriods.filter(p => p.complete).length} đã trả
-                        </Text>
-                    </View>
+                    <Text style={styles.cardTitle}>Lịch thanh toán ({filteredPeriods.length} kỳ)</Text>
                     <MaterialCommunityIcons
                         name={timelineCollapsed ? "chevron-down" : "chevron-up"}
                         size={24}
-                        color="#666"
+                        color={Colors.textSecondary}
                     />
                 </TouchableOpacity>
+                <Divider style={styles.divider} />
 
                 {!timelineCollapsed && (
-                    <View style={styles.timelineContent}>
+                    <View style={{ marginTop: 8 }}>
                         {filteredPeriods.map((period, index) => {
                             const isCompleted = period.complete;
                             const isNext = !isCompleted && getNextUnpaidPeriod()?.period === period.period;
 
-                            let statusColor = COLORS.textLight;
-                            let statusIcon = 'circle-outline';
-                            let statusText = 'Chưa đến hạn';
-
-                            if (isCompleted) {
-                                statusColor = COLORS.success;
-                                statusIcon = 'check-circle';
-                                statusText = 'Đã thanh toán';
-                            } else if (isNext) {
-                                statusColor = COLORS.warning;
-                                statusIcon = 'clock-alert-outline';
-                                statusText = 'Cần thanh toán';
-                            }
-
                             return (
                                 <View key={index} style={styles.timelineItem}>
-                                    {/* Left Status Line */}
                                     <View style={styles.timelineLeft}>
-                                        <View style={[styles.timelineDot, { backgroundColor: isCompleted ? COLORS.success : (isNext ? COLORS.warning : '#E0E0E0') }]}>
-                                            <MaterialCommunityIcons name={statusIcon} size={14} color="#fff" />
-                                        </View>
-                                        {index < filteredPeriods.length - 1 && (
-                                            <View style={[styles.timelineLine, { backgroundColor: isCompleted ? COLORS.success : '#E0E0E0' }]} />
-                                        )}
+                                        <View style={[styles.dot, isCompleted ? styles.dotSuccess : (isNext ? styles.dotActive : styles.dotPending)]} />
+                                        {index < filteredPeriods.length - 1 && <View style={styles.line} />}
                                     </View>
-
-                                    {/* Right Content Card */}
-                                    <View style={styles.timelineRight}>
-                                        <View style={[styles.timelineCard, isNext && styles.timelineCardActive]}>
-                                            <View style={styles.timelineCardHeader}>
-                                                <Text style={styles.timelinePeriodText}>Kỳ {period.period}</Text>
-                                                <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                                                    <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
-                                                </View>
-                                            </View>
-
-                                            <View style={styles.rowBetween}>
-                                                <Text style={styles.timelineLabel}>Hạn trả:</Text>
-                                                <Text style={styles.timelineValue}>{formatDate(period.dueDate)}</Text>
-                                            </View>
-
-                                            <View style={[styles.rowBetween, { marginTop: 4 }]}>
-                                                <Text style={styles.timelineLabel}>Số tiền:</Text>
-                                                <Text style={[styles.timelineValue, { fontWeight: 'bold' }]}>
-                                                    {formatCurrency(period.totalDue)}
-                                                </Text>
-                                            </View>
-
-                                            <View style={styles.breakdownRow}>
-                                                <Text style={styles.breakdownText}>Gốc: {formatCurrency(period.principalDue)}</Text>
-                                                <Text style={styles.breakdownText}> • </Text>
-                                                <Text style={styles.breakdownText}>Lãi: {formatCurrency(period.interestDue)}</Text>
-                                            </View>
+                                    <View style={styles.timelineContent}>
+                                        <View style={styles.rowBetween}>
+                                            <Text style={styles.periodText}>Kỳ {period.period}</Text>
+                                            <Text style={[styles.statusText, isCompleted ? { color: Colors.success } : (isNext ? { color: Colors.warning } : {})]}>
+                                                {isCompleted ? 'Đã trả' : (isNext ? 'Sắp đến hạn' : 'Chưa đến hạn')}
+                                            </Text>
                                         </View>
+                                        <Text style={styles.dueDate}>Hạn: {formatDate(period.dueDate)}</Text>
+                                        <Text style={styles.dueAmount}>{formatCurrency(period.totalDue)}</Text>
                                     </View>
                                 </View>
                             );
                         })}
                     </View>
                 )}
-            </View>
-        );
-    };
-
-    const renderActionButtons = () => {
-        const canPay = outstanding && outstanding.totalOutstanding > 0;
-
-        return (
-            <View style={styles.actionContainer}>
-                {canPay && (
-                    <>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.primaryButton]}
-                            onPress={handleRepayment}
-                        >
-                            <MaterialCommunityIcons name="credit-card-outline" size={20} color="#fff" />
-                            <Text style={styles.actionButtonText}>THANH TOÁN</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.secondaryButton]}
-                            onPress={handlePrepay}
-                        >
-                            <MaterialCommunityIcons name="cash-fast" size={20} color={COLORS.teal} />
-                            <Text style={[styles.actionButtonText, { color: COLORS.teal }]}>TẤT TOÁN SỚM</Text>
-                        </TouchableOpacity>
-                    </>
-                )}
-
-                {!canPay && (
-                    <View style={styles.completedBanner}>
-                        <MaterialCommunityIcons name="check-decagram" size={32} color={COLORS.success} />
-                        <Text style={styles.completedText}>Khoản vay đã hoàn tất</Text>
-                    </View>
-                )}
-            </View>
+            </Surface>
         );
     };
 
     return (
         <View style={styles.container}>
-            {/* Custom Status Bar to match gradient */}
-            <StatusBar backgroundColor={COLORS.primaryGradientStart} barStyle="light-content" />
-
+            <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
             >
                 {renderHeader()}
-                <View style={styles.contentBody}>
+
+                <View style={styles.bodyContainer}>
                     {renderPaymentReminder()}
                     {renderLoanInfo()}
                     {renderTimeline()}
                 </View>
             </ScrollView>
 
-            {/* Bottom Actions Fixed */}
             {outstanding && outstanding.totalOutstanding > 0 && (
-                <View style={styles.bottomActions}>
-                    {renderActionButtons()}
-                </View>
+                <Surface style={styles.bottomBar} elevation={4}>
+                    <Button
+                        mode="contained"
+                        onPress={handleRepayment}
+                        style={styles.payButton}
+                        labelStyle={styles.payButtonLabel}
+                    >
+                        Thanh Toán
+                    </Button>
+                    <Button
+                        mode="outlined"
+                        onPress={handlePrepay}
+                        style={styles.prepayButton}
+                        labelStyle={{ fontFamily: 'Poppins_600SemiBold', color: Colors.primary }}
+                    >
+                        Tất Toán
+                    </Button>
+                </Surface>
             )}
         </View>
     );
@@ -469,10 +360,7 @@ export const LoanDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
-    },
-    scrollContent: {
-        paddingBottom: 100, // Space for fixed bottom buttons
+        backgroundColor: Colors.background,
     },
     loadingContainer: {
         flex: 1,
@@ -480,284 +368,227 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     loadingText: {
-        marginTop: 10,
-        color: COLORS.textLight,
+        marginTop: 12,
+        fontFamily: 'Poppins_400Regular',
+        color: Colors.textSecondary,
+    },
+    scrollContent: {
+        paddingBottom: 100,
     },
     header: {
-        paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight || 20,
-        paddingBottom: 30,
+        paddingTop: 50,
+        paddingBottom: 40,
         paddingHorizontal: 20,
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
+    },
+    headerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
     },
     backBtn: {
-        marginBottom: 10,
+        padding: 4,
     },
     headerTitle: {
-        color: '#fff',
+        fontFamily: 'Poppins_600SemiBold',
         fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 5,
+        color: '#fff',
+    },
+    headerContent: {
+        alignItems: 'center',
     },
     contractSubtitle: {
-        color: 'rgba(255,255,255,0.8)',
+        fontFamily: 'Poppins_400Regular',
         fontSize: 12,
+        color: 'rgba(255,255,255,0.8)',
     },
     contractId: {
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 20,
         color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+        letterSpacing: 1,
     },
-    contentBody: {
-        paddingHorizontal: 16,
-        marginTop: -20, // Overlap header
+    bodyContainer: {
+        marginTop: -30,
+        paddingHorizontal: 20,
     },
-    // Payment Reminder
-    reminderContainer: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 16,
-        borderLeftWidth: 4,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-    },
-    reminderContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 4,
-    },
-    reminderText: {
-        fontWeight: 'bold',
-        fontSize: 16,
-        marginLeft: 8,
-    },
-    reminderSubtext: {
-        color: COLORS.textLight,
-        fontSize: 14,
-        marginLeft: 28,
-    },
-    // Card Styles
     card: {
         backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 16,
+        borderRadius: 20,
+        padding: 20,
         marginBottom: 16,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
     },
-    infoRow: {
+    reminderCard: {
+        borderRadius: 20,
+        padding: 20,
+        marginBottom: 16,
+    },
+    row: {
         flexDirection: 'row',
-        marginBottom: 16,
-        alignItems: 'flex-start',
-    },
-    infoItemIcon: {
-        width: 30,
         alignItems: 'center',
-        paddingTop: 2,
-    },
-    infoItemContent: {
-        flex: 1,
-        marginLeft: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-        paddingBottom: 8,
-    },
-    infoLabel: {
-        fontSize: 12,
-        color: COLORS.textLight,
-        marginBottom: 2,
-    },
-    infoValue: {
-        fontSize: 15,
-        color: COLORS.text,
-        fontWeight: '600',
-    },
-    outstandingSummary: {
-        marginTop: 8,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#f0f0f0',
-        marginBottom: 12,
     },
     rowBetween: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+    },
+    reminderTitle: {
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 16,
         marginBottom: 4,
     },
-    summaryLabel: {
+    reminderAmount: {
+        fontFamily: 'Poppins_500Medium',
         fontSize: 14,
-        color: COLORS.textLight,
+        color: Colors.text,
     },
-    summaryValue: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: COLORS.text,
-    },
-    // Timeline
-    timelineContainer: {
-        marginBottom: 16,
-    },
-    timelineHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 8,
-        elevation: 2,
-    },
-    timelineHeaderContent: {
-        flex: 1,
-        marginLeft: 12,
-    },
-    timelineHeaderText: {
+    cardTitle: {
+        fontFamily: 'Poppins_600SemiBold',
         fontSize: 16,
-        fontWeight: 'bold',
-        color: COLORS.text,
+        color: Colors.text,
     },
-    timelineSubtitle: {
-        fontSize: 12,
-        color: COLORS.textLight,
+    divider: {
+        marginVertical: 12,
+        backgroundColor: '#F5F5F5',
     },
-    timelineContent: {
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 16,
-        paddingLeft: 8,
-    },
-    timelineItem: {
+    infoRow: {
         flexDirection: 'row',
-    },
-    timelineLeft: {
+        marginBottom: 16,
         alignItems: 'center',
-        width: 30,
     },
-    timelineDot: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
+    iconBox: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#F5F7FA',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 1,
-        marginTop: 2,
+        marginRight: 12,
     },
-    timelineLine: {
-        width: 2,
+    infoContent: {
         flex: 1,
+    },
+    infoLabel: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
+        color: Colors.textSecondary,
+    },
+    infoValue: {
+        fontFamily: 'Poppins_500Medium',
+        fontSize: 14,
+        color: Colors.text,
+    },
+    outstandingBox: {
+        marginTop: 8,
+        padding: 16,
+        backgroundColor: '#F7F9FC',
+        borderRadius: 12,
+    },
+    outstandingTitle: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+    },
+    outstandingValue: {
+        fontFamily: 'Poppins_700Bold',
+        fontSize: 24,
+        color: Colors.error,
+        textAlign: 'center',
         marginVertical: 4,
     },
-    timelineRight: {
-        flex: 1,
-        paddingLeft: 10,
-        paddingBottom: 24,
+    subText: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 11,
+        color: Colors.textSecondary,
     },
-    timelineCard: {
-        backgroundColor: '#F8F9FA',
-        borderRadius: 8,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: '#eee',
-    },
-    timelineCardActive: {
-        borderColor: COLORS.warning,
-        backgroundColor: '#FFF8E1',
-    },
-    timelineCardHeader: {
+    // Timeline
+    timelineItem: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
+        marginBottom: 0,
     },
-    timelinePeriodText: {
-        fontWeight: 'bold',
-        color: COLORS.text,
+    timelineLeft: {
+        width: 30,
+        alignItems: 'center',
     },
-    statusBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 10,
+    dot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        zIndex: 1,
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    dotSuccess: {
+        backgroundColor: Colors.success,
+    },
+    dotActive: {
+        backgroundColor: Colors.warning,
+    },
+    dotPending: {
+        backgroundColor: '#E0E0E0',
+    },
+    line: {
+        width: 2,
+        flex: 1,
+        backgroundColor: '#F0F0F0',
+        marginVertical: -2,
+    },
+    timelineContent: {
+        flex: 1,
+        paddingBottom: 24,
+        paddingLeft: 8,
+    },
+    periodText: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 14,
+        color: Colors.text,
     },
     statusText: {
-        fontSize: 10,
-        fontWeight: 'bold',
-    },
-    timelineLabel: {
+        fontFamily: 'Poppins_500Medium',
         fontSize: 12,
-        color: COLORS.textLight,
+        color: Colors.textSecondary,
     },
-    timelineValue: {
-        fontSize: 13,
-        color: COLORS.text,
+    dueDate: {
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
+        color: Colors.textSecondary,
     },
-    breakdownRow: {
-        flexDirection: 'row',
-        marginTop: 6,
-        paddingTop: 6,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.05)',
+    dueAmount: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 14,
+        color: Colors.text,
+        marginTop: 4,
     },
-    breakdownText: {
-        fontSize: 11,
-        color: COLORS.textLight,
-    },
-    // Bottom Actions
-    bottomActions: {
+    // Bottom Bar
+    bottomBar: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
         backgroundColor: '#fff',
         padding: 16,
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    actionContainer: {
         flexDirection: 'row',
         gap: 12,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
     },
-    actionButton: {
+    payButton: {
         flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderRadius: 8,
-        gap: 8,
+        borderRadius: 12,
+        backgroundColor: Colors.primary,
     },
-    primaryButton: {
-        backgroundColor: COLORS.teal,
-    },
-    secondaryButton: {
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: COLORS.teal,
-    },
-    actionButtonText: {
-        fontWeight: 'bold',
-        fontSize: 14,
-        color: '#fff',
-    },
-    completedBanner: {
-        alignItems: 'center',
-        padding: 10,
-    },
-    completedText: {
+    payButtonLabel: {
+        fontFamily: 'Poppins_600SemiBold',
         fontSize: 16,
-        fontWeight: 'bold',
-        color: COLORS.success,
-        marginTop: 4,
+        paddingVertical: 4,
+    },
+    prepayButton: {
+        flex: 1,
+        borderRadius: 12,
+        borderColor: Colors.primary,
     },
 });
 

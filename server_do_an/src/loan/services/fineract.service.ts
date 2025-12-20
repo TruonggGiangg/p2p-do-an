@@ -417,6 +417,39 @@ export class FineractService {
         return loan.repaymentSchedule?.periods || [];
     }
 
+    /**
+     * Get Loans list with criteria
+     */
+    async getLoans(params: any = {}): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const { offset = 0, limit = 100, orderBy = 'id', sortOrder = 'DESC', sqlSearch, clientId } = params;
+
+            let url = `${this.baseUrl}/fineract-provider/api/v1/loans?offset=${offset}&limit=${limit}&orderBy=${orderBy}&sortOrder=${sortOrder}`;
+            if (clientId) {
+                // Fineract allows filtering by clientId directly via sqlSearch or specific param if supported.
+                // Standard Fineract /loans supports sqlSearch. 
+                // Let's try appending to sqlSearch or using a direct param if supported version.
+                // Safest for lists is often sqlSearch for flexibility, or just check documentation.
+                // Assuming standard Fineract 1.x: sqlSearch is robust.
+                const clientFilter = `l.client_id = ${clientId}`;
+                url += sqlSearch ? `&sqlSearch=${sqlSearch} AND ${clientFilter}` : `&sqlSearch=${clientFilter}`;
+            } else if (sqlSearch) {
+                url += `&sqlSearch=${sqlSearch}`;
+            }
+
+            console.log(`[FineractService] Fetching loans: ${url}`);
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to get loans list: ${error}`);
+            throw error;
+        }
+    }
+
     // ================ LOAN LIFECYCLE METHODS ================
 
     /**
@@ -747,6 +780,25 @@ export class FineractService {
         } catch (error) {
             this.logger.warn(`Failed to find client by externalId ${externalId}: ${error}`);
             return null;
+        }
+    }
+
+    /**
+     * Get Client Accounts (Loans, Savings, etc.)
+     */
+    async getClientAccounts(clientId: number | string): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}/accounts`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to get client accounts for ${clientId}: ${error}`);
+            throw error;
         }
     }
 }

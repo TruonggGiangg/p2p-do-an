@@ -50,6 +50,8 @@ const ENDPOINTS = {
     repay: '/loan/repay',
     prepay: '/loan/prepay',
     blockchainStatus: '/loan/blockchain/status',
+    // Debug
+    debugFineractUser: '/loan/debug/fineract-user',
 };
 
 /**
@@ -242,6 +244,14 @@ export const loanApi = {
             throw new Error('Prepay failed');
         }
         return response.data.data;
+    },
+
+    /**
+     * [DEBUG] Test Fineract user lookup
+     */
+    testFineractUser: async (): Promise<any> => {
+        const response = await httpClient.get<any>(ENDPOINTS.debugFineractUser);
+        return response.data;
     },
 };
 

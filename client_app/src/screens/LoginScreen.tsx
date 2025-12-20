@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { TextInput, Button, Text, Card, Snackbar } from 'react-native-paper';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
+import { TextInput, Button, Text, Surface } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
+import { Colors } from '../theme';
 
 interface LoginScreenProps {
     navigation: any;
@@ -29,20 +31,31 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <LinearGradient
+            colors={['#E3F2FD', '#F7F9FC']}
             style={styles.container}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
         >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <Card style={styles.card}>
-                    <Card.Content>
-                        <Text variant="headlineMedium" style={styles.title}>
-                            Đăng Nhập
-                        </Text>
-                        <Text variant="bodyMedium" style={styles.subtitle}>
-                            Sử dụng tài khoản Keycloak của bạn
-                        </Text>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent}>
 
+                    <View style={styles.header}>
+                        <View style={styles.iconContainer}>
+                            <Text style={styles.iconText}>P2P</Text>
+                        </View>
+                        <Text variant="headlineLarge" style={styles.title}>
+                            Welcome Back
+                        </Text>
+                        <Text variant="bodyLarge" style={styles.subtitle}>
+                            Đăng nhập để tiếp tục
+                        </Text>
+                    </View>
+
+                    <Surface style={styles.card} elevation={0}>
                         <TextInput
                             label="Số điện thoại"
                             value={username}
@@ -50,7 +63,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                             mode="outlined"
                             keyboardType="phone-pad"
                             style={styles.input}
-                            left={<TextInput.Icon icon="phone" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="phone" color={Colors.textSecondary} />}
                         />
 
                         <TextInput
@@ -60,14 +78,24 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                             mode="outlined"
                             secureTextEntry={!showPassword}
                             style={styles.input}
-                            left={<TextInput.Icon icon="lock" />}
+                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
+                            outlineColor="transparent"
+                            activeOutlineColor={Colors.primary}
+                            textColor={Colors.text}
+                            theme={{ roundness: 12 }}
+                            left={<TextInput.Icon icon="lock" color={Colors.textSecondary} />}
                             right={
                                 <TextInput.Icon
                                     icon={showPassword ? 'eye-off' : 'eye'}
                                     onPress={() => setShowPassword(!showPassword)}
+                                    color={Colors.textSecondary}
                                 />
                             }
                         />
+
+                        {error ? (
+                            <Text style={styles.errorText}>{error}</Text>
+                        ) : null}
 
                         <Button
                             mode="contained"
@@ -75,6 +103,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                             loading={isLoading}
                             disabled={isLoading}
                             style={styles.button}
+                            labelStyle={styles.buttonLabel}
+                            contentStyle={{ height: 50 }}
                         >
                             Đăng Nhập
                         </Button>
@@ -83,106 +113,154 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                             mode="text"
                             onPress={() => navigation.navigate('Register')}
                             style={styles.linkButton}
+                            labelStyle={{ fontFamily: 'Poppins_500Medium', color: Colors.primary }}
                         >
-                            Chưa có tài khoản? Đăng ký
+                            Tạo tài khoản mới
                         </Button>
 
-                        {/* Quick Fill Test Accounts */}
-                        <View style={styles.quickFillContainer}>
-                            <Text variant="labelMedium" style={styles.quickFillLabel}>
-                                Tài khoản test:
-                            </Text>
-                            <View style={styles.quickFillButtons}>
-                                <Button
-                                    mode="outlined"
-                                    compact
-                                    onPress={() => {
-                                        setUsername('0987654321');
-                                        setPassword('TestClient123@');
-                                    }}
-                                    style={styles.quickFillButton}
-                                >
-                                    Account 1
-                                </Button>
-                                <Button
-                                    mode="outlined"
-                                    compact
-                                    onPress={() => {
-                                        setUsername('0329646588');
-                                        setPassword('TestClient123@');
-                                    }}
-                                    style={styles.quickFillButton}
-                                >
-                                    Account 2
-                                </Button>
-                            </View>
+                        <View style={styles.divider}>
+                            <View style={styles.line} />
+                            <Text style={styles.orText}>Test Account</Text>
+                            <View style={styles.line} />
                         </View>
-                    </Card.Content>
-                </Card>
-            </ScrollView>
 
-            <Snackbar
-                visible={!!error}
-                onDismiss={() => setError('')}
-                duration={3000}
-                action={{ label: 'Đóng', onPress: () => setError('') }}
-            >
-                {error}
-            </Snackbar>
-        </KeyboardAvoidingView>
+                        <View style={styles.quickFillContainer}>
+                            <Button
+                                mode="outlined"
+                                compact
+                                onPress={() => {
+                                    setUsername('0987654321');
+                                    setPassword('TestClient123@');
+                                }}
+                                style={styles.quickBtn}
+                                labelStyle={{ fontSize: 12, fontFamily: 'Poppins_400Regular' }}
+                            >
+                                User 1
+                            </Button>
+                            <Button
+                                mode="outlined"
+                                compact
+                                onPress={() => {
+                                    setUsername('0329646588');
+                                    setPassword('TestClient123@');
+                                }}
+                                style={styles.quickBtn}
+                                labelStyle={{ fontSize: 12 }}
+                            >
+                                User 2
+                            </Button>
+                        </View>
+                    </Surface>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </LinearGradient>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     scrollContent: {
         flexGrow: 1,
+        padding: 24,
         justifyContent: 'center',
-        padding: 16,
     },
-    card: {
-        padding: 8,
+    header: {
+        alignItems: 'center',
+        marginBottom: 40,
+    },
+    iconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 24,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    iconText: {
+        color: '#fff',
+        fontSize: 24,
+        fontFamily: 'Poppins_700Bold',
     },
     title: {
-        textAlign: 'center',
+        fontFamily: 'Poppins_700Bold',
+        color: Colors.text,
         marginBottom: 8,
-        fontWeight: 'bold',
     },
     subtitle: {
-        textAlign: 'center',
-        marginBottom: 24,
-        color: '#666',
+        fontFamily: 'Poppins_400Regular',
+        color: Colors.textSecondary,
+    },
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 30,
+        padding: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.05,
+        shadowRadius: 30,
+        elevation: 5,
     },
     input: {
         marginBottom: 16,
+        backgroundColor: '#F7F9FC',
+        fontSize: 14,
     },
     button: {
-        marginTop: 8,
-        paddingVertical: 8,
+        marginTop: 10,
+        borderRadius: 16,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 15,
+        elevation: 8,
+    },
+    buttonLabel: {
+        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 16,
+        paddingVertical: 2,
     },
     linkButton: {
         marginTop: 16,
+        alignSelf: 'center',
+    },
+    errorText: {
+        color: Colors.error,
+        textAlign: 'center',
+        marginBottom: 10,
+        fontFamily: 'Poppins_400Regular',
+        fontSize: 12,
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 20,
+    },
+    line: {
+        flex: 1,
+        height: 1,
+        backgroundColor: '#ECEFF1',
+    },
+    orText: {
+        marginHorizontal: 10,
+        color: Colors.textSecondary,
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
     },
     quickFillContainer: {
-        marginTop: 24,
-        paddingTop: 16,
-        borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
-    },
-    quickFillLabel: {
-        textAlign: 'center',
-        color: '#888',
-        marginBottom: 8,
-    },
-    quickFillButtons: {
         flexDirection: 'row',
-        justifyContent: 'center',
         gap: 12,
     },
-    quickFillButton: {
+    quickBtn: {
         flex: 1,
-    },
+        borderRadius: 12,
+        borderColor: '#E3F2FD',
+    }
 });
