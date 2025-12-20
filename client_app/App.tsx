@@ -14,7 +14,7 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold
 } from '@expo-google-fonts/poppins';
-import { PremiumTheme } from './src/theme';
+import { PremiumTheme, DarkTheme, DarkColors } from './src/theme';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -26,10 +26,30 @@ import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen } f
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Dark theme header options
+const darkHeaderOptions = {
+  headerStyle: {
+    backgroundColor: DarkColors.surface,
+    elevation: 0,
+    shadowOpacity: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: DarkColors.border,
+  },
+  headerTintColor: DarkColors.text,
+  headerTitleStyle: {
+    fontFamily: 'Poppins_600SemiBold',
+    color: DarkColors.text,
+  },
+};
+
 // Loan Stack Navigator
 function LoanStack() {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        ...darkHeaderOptions,
+      }}
+    >
       <Stack.Screen
         name="LoanList"
         component={LoanListScreen}
@@ -38,38 +58,23 @@ function LoanStack() {
       <Stack.Screen
         name="LoanCreate"
         component={LoanCreateScreen}
-        options={{
-          title: 'Tạo Khoản Vay',
-          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
-        }}
+        options={{ title: 'Tạo Khoản Vay' }}
       />
       <Stack.Screen
         name="LoanDetail"
         component={LoanDetailScreen}
-        options={{
-          title: 'Chi Tiết',
-          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
-        }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="Repayment"
         component={RepaymentScreen}
-        options={{
-          title: 'Thanh Toán',
-          headerStyle: { backgroundColor: PremiumTheme.colors.primary },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontFamily: 'Poppins_600SemiBold' },
-        }}
+        options={{ title: 'Thanh Toán' }}
       />
     </Stack.Navigator>
   );
 }
 
-// Main tabs for authenticated users
+// Main tabs for authenticated users - Dark Theme
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -80,16 +85,29 @@ function MainTabs() {
           if (route.name === 'Profile') {
             iconName = focused ? 'account' : 'account-outline';
           } else if (route.name === 'Loans') {
-            iconName = focused ? 'cash' : 'cash-multiple';
+            iconName = focused ? 'wallet' : 'wallet-outline';
           } else if (route.name === 'TokenTest') {
-            iconName = focused ? 'key' : 'key-outline';
+            iconName = focused ? 'cog' : 'cog-outline';
           }
 
           return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: PremiumTheme.colors.primary,
-        tabBarInactiveTintColor: 'gray',
-        tabBarLabelStyle: { fontFamily: 'Poppins_500Medium', marginBottom: 5 },
+        // Dark theme tab bar styling
+        tabBarActiveTintColor: DarkColors.primary,
+        tabBarInactiveTintColor: DarkColors.textMuted,
+        tabBarStyle: {
+          backgroundColor: DarkColors.surface,
+          borderTopWidth: 1,
+          borderTopColor: DarkColors.border,
+          paddingTop: 8,
+          paddingBottom: 25,
+          height: 85,
+        },
+        tabBarLabelStyle: {
+          fontFamily: 'Poppins_500Medium',
+          fontSize: 11,
+          marginTop: 2,
+        },
         headerShown: false,
       })}
     >
@@ -106,7 +124,7 @@ function MainTabs() {
       <Tab.Screen
         name="TokenTest"
         component={TokenTestScreen}
-        options={{ title: 'Test Token' }}
+        options={{ title: 'Cài Đặt' }}
       />
     </Tab.Navigator>
   );
@@ -152,14 +170,14 @@ export default function App() {
   if (!fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2979FF" />
+        <ActivityIndicator size="large" color={DarkColors.primary} />
       </View>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <PaperProvider theme={PremiumTheme}>
+      <PaperProvider theme={DarkTheme}>
         <AuthProvider>
           <RootNavigator />
         </AuthProvider>
@@ -173,6 +191,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F7F9FC',
+    backgroundColor: DarkColors.background,
   },
 });

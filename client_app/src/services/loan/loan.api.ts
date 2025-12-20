@@ -50,6 +50,8 @@ const ENDPOINTS = {
     repay: '/loan/repay',
     prepay: '/loan/prepay',
     blockchainStatus: '/loan/blockchain/status',
+    // Wallet endpoints
+    walletBalance: '/loan/wallet/balance',
     // Debug
     debugFineractUser: '/loan/debug/fineract-user',
 };
@@ -66,6 +68,29 @@ export const loanApi = {
             ENDPOINTS.blockchainStatus,
         );
         return response.data.data ?? { enabled: false, connected: false };
+    },
+
+    /**
+     * Get wallet balance from Fineract savings account
+     */
+    getWalletBalance: async (): Promise<{
+        balance: number;
+        availableBalance: number;
+        accountId?: number;
+        accountNo?: string;
+    }> => {
+        try {
+            const response = await httpClient.get<LoanApiResponse<{
+                balance: number;
+                availableBalance: number;
+                accountId?: number;
+                accountNo?: string;
+            }>>(ENDPOINTS.walletBalance);
+            return response.data.data ?? { balance: 0, availableBalance: 0 };
+        } catch (error) {
+            console.warn('[loanApi.getWalletBalance] Failed:', error);
+            return { balance: 0, availableBalance: 0 };
+        }
     },
 
     /**

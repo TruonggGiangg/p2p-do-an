@@ -722,48 +722,51 @@ export class LoanService {
     /**
      * Get outstanding balance for a loan
      */
-    async getOutstandingBalance(loanId: string): Promise<any> {
-        const fineractLoanId = await this.resolveFineractLoanId(loanId);
+    async getOutstandingBalance(id: string | number): Promise<any> {
+        let fineractId = Number(id);
+        if (isNaN(fineractId) || id.toString().length > 10) {
+            // Assume MongoID or ContractID
+            const query = id.toString().match(/^[0-9a-fA-F]{24}$/)
+                ? { _id: id }
+                : { contractId: id };
 
-        if (!fineractLoanId) {
-            this.logger.warn(`[getOutstandingBalance] Could not resolve Fineract Loan ID for: ${loanId}`);
-            return null;
-        }
+            const loan = await this.loanContractModel.findOne(query);
 
-        try {
-            return await this.fineractService.getOutstandingBalance(fineractLoanId);
-        } catch (error) {
-            if (error.response && error.response.status === 404) {
-                return null;
+            if (!loan || !loan.fineractLoanId) {
+                // Try parsing as number again just in case string was numeric
+                if (!isNaN(Number(id))) fineractId = Number(id);
+                else throw new NotFoundException('Loan not found or not synced with Fineract');
+            } else {
+                fineractId = loan.fineractLoanId;
             }
-            throw error;
         }
+
+        return this.fineractService.getOutstandingBalance(fineractId);
     }
 
     /**
      * Get prepayment amount for early loan closure
      */
-    async getPrepayAmount(loanId: string): Promise<any> {
-        // Resolve ID
-        const loan = await this.loanContractModel.findOne({
-            $or: [
-                { contractId: loanId },
-                { _id: Types.ObjectId.isValid(loanId) ? new Types.ObjectId(loanId) : undefined },
-            ],
-        });
-        const fineractLoanId = loan?.fineractLoanId || parseInt(loanId.replace('LOAN_', ''), 10);
+    async getPrepayAmount(id: string | number): Promise<any> {
+        let fineractId = Number(id);
+        if (isNaN(fineractId) || id.toString().length > 10) {
+            const query = id.toString().match(/^[0-9a-fA-F]{24}$/)
+                ? { _id: id }
+                : { contractId: id };
 
-        if (!fineractLoanId || isNaN(fineractLoanId)) {
-            throw new BadRequestException('Invalid loan ID');
-        }
+            const loan = await this.loanContractModel.findOne(query);
 
-        try {
-            return await this.fineractService.getPrepaymentAmount(fineractLoanId);
-        } catch (error) {
-            if (error.response && error.response.status === 404) return null;
-            throw error;
+            if (!loan || !loan.fineractLoanId) {
+                if (!isNaN(Number(id))) fineractId = Number(id);
+                else throw new NotFoundException('Loan not found');
+            } else {
+                fineractId = loan.fineractLoanId;
+            }
         }
+        return this.fineractService.getPrepaymentAmount(fineractId);
     }
+
+
 
     /**
      * Make a repayment on a loan
@@ -777,7 +780,7 @@ export class LoanService {
         if (!fineractLoanId || !transactionAmount) {
             throw new BadRequestException('fineractLoanId and transactionAmount are required');
         }
-        return this.fineractService.makeRepayment(fineractLoanId, transactionAmount, transactionDate, note);
+        return this.fineractService.makeLoanRepayment(fineractLoanId, transactionAmount, transactionDate);
     }
 
     /**
@@ -793,14 +796,29 @@ export class LoanService {
             throw new BadRequestException('fineractLoanId is required');
         }
 
-        // If no amount specified, get from prepay template
+        // If no amount specified, get from prepay template or outstanding balance
         let amount = transactionAmount;
         if (!amount) {
-            const prepayInfo = await this.fineractService.getPrepaymentAmount(fineractLoanId);
-            amount = prepayInfo.amount;
+            try {
+                const prepayInfo = await this.fineractService.getPrepaymentAmount(fineractLoanId);
+                amount = prepayInfo.amount;
+            } catch {
+                // Fallback to outstanding balance
+                const outstanding = await this.fineractService.getOutstandingBalance(fineractLoanId);
+                amount = outstanding.totalOutstanding;
+            }
         }
 
-        return this.fineractService.prepayLoan(fineractLoanId, amount, transactionDate, note);
+        // Make repayment with full amount
+        const result = await this.fineractService.makeLoanRepayment(fineractLoanId, amount, transactionDate);
+
+        // Update status if fully paid
+        await this.loanContractModel.updateOne(
+            { fineractLoanId },
+            { $set: { status: 'closed' } }
+        );
+
+        return result;
     }
     /**
      * Cleanup failed loans (waiting but missing Fineract ID)
@@ -896,5 +914,8 @@ export class LoanService {
             data: txs
         };
     }
+
+
+
 }
 

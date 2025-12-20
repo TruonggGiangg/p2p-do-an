@@ -98,6 +98,52 @@ export class LoanController {
         };
     }
 
+    // ==================== WALLET ENDPOINTS ====================
+
+    /**
+     * GET /loan/wallet/balance
+     * Get wallet balance for authenticated user
+     * Pattern from legacy WalletController.getWalletBalance
+     */
+    @Get('wallet/balance')
+    @UseGuards(DualAuthGuard, BorrowerOrLenderGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Lấy số dư ví của user' })
+    @ApiResponse({
+        status: 200,
+        description: 'Số dư ví',
+        schema: {
+            example: {
+                balance: 5000000,
+                availableBalance: 5000000,
+                accountId: 12,
+                accountNo: 'SA0000012',
+            },
+        },
+    })
+    async getWalletBalance(@User() user: AuthUser) {
+        const username = user.username;
+
+        // Resolve Fineract client ID
+        const clientId = await this.fineractService.resolveClientId(username, user.email);
+
+        if (!clientId) {
+            return {
+                statusCode: HttpStatus.OK,
+                message: 'Chưa liên kết Fineract',
+                data: { balance: 0, availableBalance: 0 },
+            };
+        }
+
+        const walletData = await this.fineractService.getWalletBalance(clientId);
+
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Lấy số dư ví thành công',
+            data: walletData,
+        };
+    }
+
     // ==================== BORROWER ENDPOINTS ====================
 
     /**

@@ -6,9 +6,9 @@ import {
     TouchableOpacity,
     RefreshControl,
     StatusBar,
-    ImageBackground
+    Dimensions,
 } from 'react-native';
-import { Text, Surface, Button, Avatar, IconButton } from 'react-native-paper';
+import { Text, Avatar, Button } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -16,12 +16,21 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { loanApi } from '../../services';
 import { LoanContract, LoanStatus } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors } from '../../theme';
+import { DarkColors, DarkStatusColors, DarkStyling } from '../../theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Format number with commas
 const formatNumber = (num: number | undefined | null): string => {
     if (num === undefined || num === null) return '0';
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+// Format amount with split decimals (like reference: $965.44)
+const formatAmountSplit = (num: number | undefined | null): { main: string; decimal: string } => {
+    if (num === undefined || num === null) return { main: '0', decimal: '00' };
+    const formatted = formatNumber(Math.floor(num));
+    return { main: formatted, decimal: '₫' };
 };
 
 // Format date
@@ -37,22 +46,27 @@ const formatDateDisplay = (dateStr: string | undefined): string => {
 };
 
 const getStatusInfo = (status: LoanStatus) => {
-    switch (status) {
-        case 'waiting': return { label: 'Chờ đầu tư', color: Colors.warning, bg: '#FFF8E1', icon: 'clock-outline' };
-        case 'pending': return { label: 'Chờ duyệt', color: Colors.warning, bg: '#FFF8E1', icon: 'clock-outline' };
-        case 'approved': return { label: 'Đã duyệt', color: Colors.success, bg: '#E8F5E9', icon: 'check-decagram' };
-        case 'success': return { label: 'Đã giải ngân', color: Colors.success, bg: '#E8F5E9', icon: 'check-circle-outline' };
-        case 'active':
-        case 'on_going': return { label: 'Đang hoạt động', color: Colors.primary, bg: '#E3F2FD', icon: 'trending-up' };
-        case 'done':
-        case 'closed':
-        case 'clean': return { label: 'Đã tất toán', color: Colors.textSecondary, bg: '#ECEFF1', icon: 'check-all' };
-        case 'overdue': return { label: 'Quá hạn', color: Colors.error, bg: '#FFEBEE', icon: 'alert-circle-outline' };
-        case 'fail':
-        case 'rejected': return { label: 'Từ chối', color: Colors.error, bg: '#FFEBEE', icon: 'close-circle-outline' };
-        case 'withdrawn': return { label: 'Đã rút', color: Colors.textSecondary, bg: '#ECEFF1', icon: 'cancel' };
-        default: return { label: 'Không xác định', color: Colors.textSecondary, bg: '#F5F5F5', icon: 'help-circle-outline' };
-    }
+    const statusKey = status as keyof typeof DarkStatusColors;
+    const colors = DarkStatusColors[statusKey] || { color: DarkColors.textSecondary, bg: 'rgba(139, 141, 151, 0.15)' };
+
+    const labels: Record<string, { label: string; icon: string }> = {
+        waiting: { label: 'Chờ đầu tư', icon: 'clock-outline' },
+        pending: { label: 'Chờ duyệt', icon: 'clock-outline' },
+        approved: { label: 'Đã duyệt', icon: 'check-decagram' },
+        success: { label: 'Đã giải ngân', icon: 'check-circle-outline' },
+        active: { label: 'Đang hoạt động', icon: 'trending-up' },
+        on_going: { label: 'Đang hoạt động', icon: 'trending-up' },
+        done: { label: 'Đã tất toán', icon: 'check-all' },
+        closed: { label: 'Đã tất toán', icon: 'check-all' },
+        clean: { label: 'Đã tất toán', icon: 'check-all' },
+        overdue: { label: 'Quá hạn', icon: 'alert-circle-outline' },
+        fail: { label: 'Từ chối', icon: 'close-circle-outline' },
+        rejected: { label: 'Từ chối', icon: 'close-circle-outline' },
+        withdrawn: { label: 'Đã rút', icon: 'cancel' },
+    };
+
+    const info = labels[status] || { label: 'Không xác định', icon: 'help-circle-outline' };
+    return { ...info, ...colors };
 };
 
 interface Props {
@@ -64,18 +78,25 @@ export default function LoanListScreen({ navigation }: Props) {
     const [loans, setLoans] = useState<LoanContract[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [stats, setStats] = useState({ totalActive: 0, totalDebt: 0 });
+    const [stats, setStats] = useState({ totalActive: 0, totalDebt: 0, totalLoans: 0 });
+    const [walletBalance, setWalletBalance] = useState({ balance: 0, availableBalance: 0 });
 
     const fetchLoans = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await loanApi.getMyLoans();
-            setLoans(data);
 
-            // Calculate simple stats
-            const activeLoans = data.filter(l => ['active', 'disbursed', 'overdue'].includes(l.status));
+            // Fetch loans and wallet balance in parallel
+            const [data, balanceData] = await Promise.all([
+                loanApi.getMyLoans(),
+                loanApi.getWalletBalance(),
+            ]);
+
+            setLoans(data);
+            setWalletBalance(balanceData);
+
+            const activeLoans = data.filter(l => ['active', 'disbursed', 'overdue', 'on_going', 'success'].includes(l.status));
             const totalDebt = activeLoans.reduce((sum, l) => sum + (l.info.entirelyPay || 0), 0);
-            setStats({ totalActive: activeLoans.length, totalDebt });
+            setStats({ totalActive: activeLoans.length, totalDebt, totalLoans: data.length });
         } catch (error) {
             console.error('Failed to fetch loans:', error);
         } finally {
@@ -84,124 +105,117 @@ export default function LoanListScreen({ navigation }: Props) {
         }
     }, []);
 
-    const testFineractUser = async () => {
-        try {
-            const response = await loanApi.testFineractUser();
-            console.log('[DEBUG] Fineract User Test:', JSON.stringify(response, null, 2));
-            const data = response.data;
-            const msg = `=== KEYCLOAK ===
-Username: ${data.keycloak.username}
-Name (Token): ${data.keycloak.nameFromToken}
-Keycloak ID: ${data.keycloak.keycloakUserId}
-
-=== FINERACT ===
-Resolved: ${data.fineract.resolved}
-Client ID: ${data.fineract.clientId}
-Client Name: ${data.fineract.clientName}
-External ID: ${data.fineract.externalId}
-Lookup Method: ${data.fineract.lookupMethod}`;
-            alert(msg);
-        } catch (error: any) {
-            alert('Test failed: ' + error.message);
-        }
-    };
-
     useEffect(() => { fetchLoans(); }, [fetchLoans]);
     useFocusEffect(useCallback(() => { fetchLoans(); }, [fetchLoans]));
 
     const handleRefresh = () => { setRefreshing(true); fetchLoans(); };
 
-    const renderLoanItem = ({ item }: { item: LoanContract }) => {
+    const renderLoanItem = ({ item, index }: { item: LoanContract; index: number }) => {
         const status = getStatusInfo(item.status);
+        const amount = formatAmountSplit(item.info.capital);
 
         return (
             <TouchableOpacity
-                activeOpacity={0.9}
+                activeOpacity={0.85}
                 onPress={() => navigation.navigate('LoanDetail', { loanId: item.contractId })}
+                style={styles.cardWrapper}
             >
-                <Surface style={styles.card} elevation={0}>
-                    <View style={styles.cardHeader}>
-                        <View style={styles.row}>
-                            <View style={[styles.iconBox, { backgroundColor: status.bg }]}>
-                                <MaterialCommunityIcons name={status.icon} size={20} color={status.color} />
-                            </View>
-                            <View style={{ marginLeft: 12 }}>
-                                <Text style={styles.loanTitle}>Khoản vay tiêu dùng</Text>
-                                <Text style={styles.loanId}>#{item.contractId}</Text>
-                            </View>
+                <View style={styles.card}>
+                    {/* Left side: Icon + Info */}
+                    <View style={styles.cardLeft}>
+                        <View style={[styles.iconCircle, { backgroundColor: status.bg }]}>
+                            <MaterialCommunityIcons name={status.icon} size={22} color={status.color} />
                         </View>
-                        <View style={[styles.badge, { backgroundColor: status.bg }]}>
-                            <Text style={[styles.badgeText, { color: status.color }]}>{status.label}</Text>
+                        <View style={styles.cardInfo}>
+                            <Text style={styles.cardTitle}>Khoản vay #{index + 1}</Text>
+                            <Text style={styles.cardSubtitle}>{item.info.periodMonth} tháng • {item.info.rate}%</Text>
                         </View>
                     </View>
 
-                    <View style={styles.divider} />
-
-                    <View style={styles.cardBody}>
-                        <View style={styles.infoCol}>
-                            <Text style={styles.label}>Số tiền vay</Text>
-                            <Text style={styles.valueHighlight}>{formatNumber(item.info.capital)} ₫</Text>
-                        </View>
-                        <View style={styles.infoColRight}>
-                            <Text style={styles.label}>Kỳ hạn</Text>
-                            <Text style={styles.value}>{item.info.periodMonth} tháng</Text>
+                    {/* Right side: Amount */}
+                    <View style={styles.cardRight}>
+                        <Text style={[styles.amountText, { color: status.color }]}>
+                            {amount.main}<Text style={styles.amountCurrency}>{amount.decimal}</Text>
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+                            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                         </View>
                     </View>
-
-                    <View style={styles.cardFooter}>
-                        <View style={styles.row}>
-                            <MaterialCommunityIcons name="calendar-month" size={14} color={Colors.textSecondary} />
-                            <Text style={styles.dateText}> {formatDateDisplay(item.info.createdDate)}</Text>
-                        </View>
-                        <Text style={styles.rateText}>{item.info.rate}% / tháng</Text>
-                    </View>
-                </Surface>
+                </View>
             </TouchableOpacity>
         );
     };
 
+    const balanceFormatted = formatAmountSplit(walletBalance.balance);
+    const debtFormatted = formatAmountSplit(stats.totalDebt);
+
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
 
-            {/* Header Dashboard Section */}
-            <LinearGradient
-                colors={[Colors.primary, '#64B5F6']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={styles.headerGradient}
-            >
+            {/* Header with Balance Card */}
+            <View style={styles.header}>
                 <View style={styles.headerTop}>
                     <View>
-                        <Text style={styles.welcomeText}>Xin chào,</Text>
-                        <Text style={styles.userName}>{user?.name || 'Borrower'}!</Text>
+                        <Text style={styles.welcomeLabel}>Xin chào,</Text>
+                        <Text style={styles.userName}>{user?.name || 'Borrower'}</Text>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <TouchableOpacity onPress={testFineractUser} style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8 }}>
-                            <MaterialCommunityIcons name="bug" size={20} color="white" />
-                        </TouchableOpacity>
-                        <Avatar.Image size={40} source={{ uri: 'https://i.pravatar.cc/150' }} style={{ backgroundColor: 'white' }} />
-                    </View>
-                </View>
-
-                <View style={styles.statsContainer}>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>Dư nợ hiện tại</Text>
-                        <Text style={styles.statValue}>{formatNumber(stats.totalDebt)} ₫</Text>
-                    </View>
-                    <View style={styles.verticalLine} />
-                    <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>Khoản vay active</Text>
-                        <Text style={styles.statValue}>{stats.totalActive}</Text>
-                    </View>
-                </View>
-            </LinearGradient>
-
-            <View style={styles.contentContainer}>
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Danh sách khoản vay</Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('LoanCreate')}>
-                        <Text style={styles.seeAll}>+ Tạo mới</Text>
+                    <TouchableOpacity style={styles.avatarContainer}>
+                        <Avatar.Image
+                            size={48}
+                            source={{ uri: 'https://i.pravatar.cc/150' }}
+                        />
                     </TouchableOpacity>
+                </View>
+
+                {/* Balance Card - Glassmorphism */}
+                <View style={styles.balanceCard}>
+                    <Text style={styles.balanceLabel}>Số dư ví</Text>
+                    <View style={styles.balanceRow}>
+                        <Text style={styles.balanceAmount}>
+                            {balanceFormatted.main}
+                            <Text style={styles.balanceDecimal}>{balanceFormatted.decimal}</Text>
+                        </Text>
+                    </View>
+
+                    {/* Debt Info */}
+                    {stats.totalDebt > 0 && (
+                        <View style={styles.debtRow}>
+                            <MaterialCommunityIcons name="alert-circle-outline" size={14} color={DarkColors.warning} />
+                            <Text style={styles.debtLabel}>  Dư nợ: </Text>
+                            <Text style={styles.debtAmount}>{debtFormatted.main}{debtFormatted.decimal}</Text>
+                        </View>
+                    )}
+
+                    {/* Quick Action Buttons */}
+                    <View style={styles.quickActions}>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
+                            <View style={styles.actionIcon}>
+                                <MaterialCommunityIcons name="plus" size={20} color={DarkColors.text} />
+                            </View>
+                            <Text style={styles.actionLabel}>Tạo vay</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionBtn}>
+                            <View style={styles.actionIcon}>
+                                <MaterialCommunityIcons name="wallet-outline" size={20} color={DarkColors.text} />
+                            </View>
+                            <Text style={styles.actionLabel}>Thanh toán</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionBtn}>
+                            <View style={styles.actionIcon}>
+                                <MaterialCommunityIcons name="history" size={20} color={DarkColors.text} />
+                            </View>
+                            <Text style={styles.actionLabel}>Lịch sử</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+
+            {/* Loans Section */}
+            <View style={styles.loansSection}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Khoản vay của bạn</Text>
+                    <Text style={styles.loanCount}>{stats.totalLoans} khoản</Text>
                 </View>
 
                 <FlatList
@@ -210,14 +224,34 @@ Lookup Method: ${data.fineract.lookupMethod}`;
                     keyExtractor={(item) => item.contractId}
                     contentContainerStyle={styles.list}
                     showsVerticalScrollIndicator={false}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={DarkColors.primary}
+                            colors={[DarkColors.primary]}
+                        />
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <MaterialCommunityIcons name="clipboard-text-outline" size={60} color="#E0E0E0" />
-                            <Text style={styles.emptyText}>Bạn chưa có khoản vay nào</Text>
-                            <Button mode="contained" onPress={() => navigation.navigate('LoanCreate')} style={styles.createBtn}>
-                                Tạo ngay
-                            </Button>
+                            <View style={styles.emptyIcon}>
+                                <MaterialCommunityIcons name="clipboard-text-outline" size={48} color={DarkColors.textMuted} />
+                            </View>
+                            <Text style={styles.emptyTitle}>Chưa có khoản vay</Text>
+                            <Text style={styles.emptySubtitle}>Tạo khoản vay đầu tiên của bạn ngay</Text>
+                            <TouchableOpacity
+                                style={styles.createBtn}
+                                onPress={() => navigation.navigate('LoanCreate')}
+                            >
+                                <LinearGradient
+                                    colors={['#4347FF', '#6366F1'] as const}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.createBtnGradient}
+                                >
+                                    <Text style={styles.createBtnText}>Tạo khoản vay</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
                         </View>
                     }
                 />
@@ -229,189 +263,227 @@ Lookup Method: ${data.fineract.lookupMethod}`;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.background,
+        backgroundColor: DarkColors.background,
     },
-    headerGradient: {
+    // Header
+    header: {
         paddingTop: 60,
         paddingHorizontal: 20,
-        paddingBottom: 40,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
+        paddingBottom: 20,
     },
     headerTop: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 20,
+        marginBottom: 24,
     },
-    welcomeText: {
-        fontFamily: 'Poppins_400Regular',
+    welcomeLabel: {
         fontSize: 14,
-        color: 'rgba(255,255,255,0.8)',
+        color: DarkColors.textSecondary,
+        marginBottom: 2,
     },
     userName: {
-        fontFamily: 'Poppins_700Bold',
         fontSize: 24,
-        color: '#ffffff',
+        fontWeight: '700',
+        color: DarkColors.text,
     },
-    statsContainer: {
-        flexDirection: 'row',
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        borderRadius: 16,
-        padding: 15,
+    avatarContainer: {
+        borderWidth: 2,
+        borderColor: DarkColors.primary,
+        borderRadius: 26,
+        padding: 2,
+    },
+    // Balance Card
+    balanceCard: {
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.xl,
+        padding: 24,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderColor: DarkColors.border,
     },
-    statItem: {
-        flex: 1,
+    balanceLabel: {
+        fontSize: 14,
+        color: DarkColors.textSecondary,
+        marginBottom: 8,
+    },
+    balanceRow: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        marginBottom: 24,
+    },
+    balanceAmount: {
+        fontSize: 42,
+        fontWeight: '700',
+        color: DarkColors.text,
+    },
+    balanceDecimal: {
+        fontSize: 24,
+        fontWeight: '500',
+        color: DarkColors.textSecondary,
+    },
+    // Quick Actions
+    quickActions: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+    },
+    actionBtn: {
         alignItems: 'center',
     },
-    verticalLine: {
-        width: 1,
-        backgroundColor: 'rgba(255,255,255,0.3)',
+    actionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: DarkColors.surfaceLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
     },
-    statLabel: {
-        fontFamily: 'Poppins_400Regular',
+    actionLabel: {
         fontSize: 12,
-        color: '#E3F2FD',
+        color: DarkColors.textSecondary,
     },
-    statValue: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 18,
-        color: '#ffffff',
-        marginTop: 4,
-    },
-    contentContainer: {
+    // Loans Section
+    loansSection: {
         flex: 1,
-        marginTop: -20,
         paddingHorizontal: 20,
     },
     sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 15,
-        paddingHorizontal: 5,
+        marginBottom: 16,
     },
     sectionTitle: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 16,
-        color: Colors.text,
+        fontSize: 18,
+        fontWeight: '600',
+        color: DarkColors.text,
     },
-    seeAll: {
-        fontFamily: 'Poppins_500Medium',
+    loanCount: {
         fontSize: 14,
-        color: Colors.primary,
+        color: DarkColors.textSecondary,
     },
     list: {
-        paddingBottom: 20,
+        paddingBottom: 100,
     },
-    // Card Styles
+    // Card
+    cardWrapper: {
+        marginBottom: 12,
+    },
     card: {
-        backgroundColor: '#ffffff',
-        borderRadius: 20,
-        padding: 16,
-        marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 1, // Minimal elevation for Android
-    },
-    cardHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: 'center',
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.lg,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
     },
-    row: {
+    cardLeft: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
     },
-    iconBox: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
+    iconCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    loanTitle: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 14,
-        color: Colors.text,
+    cardInfo: {
+        marginLeft: 12,
+        flex: 1,
     },
-    loanId: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 12,
-        color: Colors.textSecondary,
+    cardTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: DarkColors.text,
+        marginBottom: 2,
     },
-    badge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
+    cardSubtitle: {
+        fontSize: 13,
+        color: DarkColors.textSecondary,
     },
-    badgeText: {
-        fontFamily: 'Poppins_500Medium',
-        fontSize: 11,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#F5F5F5',
-        marginVertical: 12,
-    },
-    cardBody: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    infoCol: {
-        alignItems: 'flex-start',
-    },
-    infoColRight: {
+    cardRight: {
         alignItems: 'flex-end',
     },
-    label: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 12,
-        color: Colors.textSecondary,
-        marginBottom: 4,
-    },
-    value: {
-        fontFamily: 'Poppins_500Medium',
-        fontSize: 15,
-        color: Colors.text,
-    },
-    valueHighlight: {
-        fontFamily: 'Poppins_600SemiBold',
+    amountText: {
         fontSize: 16,
-        color: Colors.primary,
+        fontWeight: '700',
     },
-    cardFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 12,
-        paddingTop: 8,
-    },
-    dateText: {
-        fontFamily: 'Poppins_400Regular',
+    amountCurrency: {
         fontSize: 12,
-        color: Colors.textSecondary,
+        fontWeight: '500',
     },
-    rateText: {
-        fontFamily: 'Poppins_500Medium',
-        fontSize: 12,
-        color: Colors.secondary,
+    statusBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        marginTop: 4,
     },
+    statusText: {
+        fontSize: 11,
+        fontWeight: '500',
+    },
+    // Empty State
     emptyState: {
         alignItems: 'center',
-        paddingTop: 50,
+        paddingTop: 60,
+        paddingHorizontal: 40,
     },
-    emptyText: {
-        fontFamily: 'Poppins_400Regular',
-        color: Colors.textSecondary,
-        marginTop: 10,
+    emptyIcon: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: DarkColors.surfaceLight,
+        justifyContent: 'center',
+        alignItems: 'center',
         marginBottom: 20,
     },
+    emptyTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: DarkColors.text,
+        marginBottom: 8,
+    },
+    emptySubtitle: {
+        fontSize: 14,
+        color: DarkColors.textSecondary,
+        textAlign: 'center',
+        marginBottom: 24,
+    },
     createBtn: {
-        borderRadius: 12,
-        paddingHorizontal: 20,
-    }
+        borderRadius: DarkStyling.borderRadius.md,
+        overflow: 'hidden',
+    },
+    createBtnGradient: {
+        paddingVertical: 14,
+        paddingHorizontal: 32,
+    },
+    createBtnText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: DarkColors.white,
+    },
+    // Debt info in balance card
+    debtRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: DarkColors.border,
+    },
+    debtLabel: {
+        fontSize: 13,
+        color: DarkColors.textSecondary,
+    },
+    debtAmount: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: DarkColors.warning,
+    },
 });

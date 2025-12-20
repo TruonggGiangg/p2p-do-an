@@ -395,8 +395,11 @@ export class FineractService {
      * Get outstanding balance
      */
     async getOutstandingBalance(loanId: number): Promise<OutstandingBalance> {
-        const loan = await this.getLoanDetails(loanId);
-        const summary = loan.summary || {};
+        const details = await this.getLoanDetails(loanId);
+        const summary = details.summary || {};
+
+        this.logger.log(`[getOutstandingBalance] DEBUG Loan ${loanId} Full Status:`, JSON.stringify(details.status));
+        this.logger.log(`[getOutstandingBalance] DEBUG Loan ${loanId} Summary:`, JSON.stringify(summary));
 
         return {
             totalOutstanding: summary.totalOutstanding || 0,
@@ -549,6 +552,11 @@ export class FineractService {
         const details = await this.getLoanDetails(loanId);
         return details.transactions || [];
     }
+
+    /**
+     * Get outstanding balance for a loan
+     * Fetches from loan summary in Fineract
+     */
 
 
 
@@ -914,5 +922,183 @@ export class FineractService {
             this.logger.error(`Failed to get client accounts for ${clientId}: ${error}`);
             throw error;
         }
+    }
+
+    /**
+     * Get Client Details (includes savings accounts list)
+     */
+    async getClientDetails(clientId: number | string): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to get client details for ${clientId}: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get Savings Account Details (balance, transactions, etc.)
+     * Pattern from legacy: /savingsaccounts/{accountId}
+     */
+    async getSavingsAccountDetails(accountId: number | string): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${accountId}`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            return response.data;
+        } catch (error) {
+            this.logger.warn(`Failed to get savings account ${accountId}: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Get Wallet Balance for a client
+     * Flow: resolve client -> get savings accounts -> get primary account balance
+     * Pattern from legacy WalletController.getWalletBalance
+     */
+    async getWalletBalance(clientId: number | string): Promise<{
+        balance: number;
+        availableBalance: number;
+        accountId?: number;
+        accountNo?: string;
+    }> {
+        try {
+            // Get client accounts (includes savings accounts)
+            const accounts = await this.getClientAccounts(clientId);
+            const savingsAccounts = accounts?.savingsAccounts || [];
+
+            if (savingsAccounts.length === 0) {
+                this.logger.warn(`No savings accounts found for client ${clientId}`);
+                return { balance: 0, availableBalance: 0 };
+            }
+
+            // Find primary account (first active account)
+            const primaryAccount = savingsAccounts.find((acc: any) =>
+                acc.status?.active || acc.status?.id === 300
+            ) || savingsAccounts[0];
+
+            if (!primaryAccount) {
+                return { balance: 0, availableBalance: 0 };
+            }
+
+            // Get account details with balance
+            const accountDetails = await this.getSavingsAccountDetails(primaryAccount.id);
+
+            const balance = accountDetails?.summary?.accountBalance || 0;
+            const availableBalance = accountDetails?.summary?.availableBalance || balance;
+
+            this.logger.log(`[getWalletBalance] Client ${clientId}: balance=${balance}, available=${availableBalance}`);
+
+            return {
+                balance,
+                availableBalance,
+                accountId: primaryAccount.id,
+                accountNo: primaryAccount.accountNo,
+            };
+        } catch (error) {
+            this.logger.error(`Failed to get wallet balance for ${clientId}: ${error}`);
+            return { balance: 0, availableBalance: 0 };
+        }
+    }
+
+    /**
+     * Make Loan Repayment on Fineract
+     * Pattern from legacy RepaymentController
+     */
+    async makeLoanRepayment(
+        loanId: number,
+        amount: number,
+        paymentDate: string = new Date().toISOString().split('T')[0],
+    ): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/loans/${loanId}/transactions?command=repayment`;
+
+            const payload = {
+                transactionAmount: amount,
+                transactionDate: this.formatDateForFineract(paymentDate),
+                paymentTypeId: 1, // Default payment type
+                locale: 'en',
+                dateFormat: 'dd MMMM yyyy',
+            };
+
+            this.logger.log(`[makeLoanRepayment] Loan ${loanId}: amount=${amount}, date=${paymentDate}`);
+
+            const response = await firstValueFrom(
+                this.httpService.post(url, payload, { headers }),
+            );
+
+            this.logger.log(`[makeLoanRepayment] Success: transactionId=${response.data?.resourceId}`);
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to make repayment for loan ${loanId}: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Transfer between Savings Accounts (for repayment flow)
+     * Pattern from legacy FineractService.transferBetweenAccounts
+     */
+    async transferBetweenAccounts(
+        fromAccountId: number,
+        toAccountId: number,
+        amount: number,
+        description: string = 'P2P Transfer',
+    ): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`;
+
+            const transferDate = new Date();
+            const payload = {
+                fromOfficeId: 1,
+                fromClientId: null, // Will be auto-resolved
+                fromAccountType: 2, // Savings account
+                fromAccountId: fromAccountId,
+                toOfficeId: 1,
+                toClientId: null, // Will be auto-resolved
+                toAccountType: 2, // Savings account
+                toAccountId: toAccountId,
+                transferAmount: amount,
+                transferDate: this.formatDateForFineract(transferDate.toISOString().split('T')[0]),
+                transferDescription: description,
+                locale: 'en',
+                dateFormat: 'dd MMMM yyyy',
+            };
+
+            this.logger.log(`[transfer] ${fromAccountId} -> ${toAccountId}: ${amount}`);
+
+            const response = await firstValueFrom(
+                this.httpService.post(url, payload, { headers }),
+            );
+
+            return response.data;
+        } catch (error) {
+            this.logger.error(`Failed to transfer: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Helper: Format date for Fineract API (dd MMMM yyyy)
+     */
+    private formatDateForFineract(dateStr: string): string {
+        const date = new Date(dateStr);
+        const months = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
+        return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
     }
 }
