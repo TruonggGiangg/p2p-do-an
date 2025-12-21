@@ -22,6 +22,7 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import TokenTestScreen from './src/screens/TokenTestScreen';
 import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen } from './src/screens/loan';
+import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen } from './src/screens/invest';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -74,8 +75,46 @@ function LoanStack() {
   );
 }
 
+// Invest Stack Navigator
+function InvestStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        ...darkHeaderOptions,
+      }}
+    >
+      <Stack.Screen
+        name="InvestList"
+        component={InvestListScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="InvestDetail"
+        component={InvestDetailScreen}
+        options={{ title: 'Chi tiết đầu tư' }}
+      />
+      <Stack.Screen
+        name="MyInvestments"
+        component={MyInvestmentsScreen}
+        options={{ title: 'Portfolio của tôi' }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 // Main tabs for authenticated users - Dark Theme
 function MainTabs() {
+  const { user } = useAuth();
+
+  // Check user roles from Keycloak
+  const isLender = user?.roles?.includes('lender') ||
+    user?.roles?.includes('LENDER') ||
+    user?.roles?.includes('Lender');
+
+  const isBorrower = user?.roles?.includes('borrower') ||
+    user?.roles?.includes('BORROWER') ||
+    user?.roles?.includes('Borrower');
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -86,6 +125,10 @@ function MainTabs() {
             iconName = focused ? 'account' : 'account-outline';
           } else if (route.name === 'Loans') {
             iconName = focused ? 'wallet' : 'wallet-outline';
+          } else if (route.name === 'Invest') {
+            iconName = focused ? 'chart-line' : 'chart-line-variant';
+          } else if (route.name === 'Wallet') {
+            iconName = focused ? 'credit-card' : 'credit-card-outline';
           } else if (route.name === 'TokenTest') {
             iconName = focused ? 'cog' : 'cog-outline';
           }
@@ -111,11 +154,30 @@ function MainTabs() {
         headerShown: false,
       })}
     >
-      <Tab.Screen
-        name="Loans"
-        component={LoanStack}
-        options={{ title: 'Khoản Vay' }}
-      />
+      {/* Borrower sees Loans tab */}
+      {isBorrower && (
+        <Tab.Screen
+          name="Loans"
+          component={LoanStack}
+          options={{ title: 'Khoản Vay' }}
+        />
+      )}
+
+      {isLender && (
+        <Tab.Screen
+          name="Invest"
+          component={InvestStack}
+          options={{ title: 'Đầu Tư' }}
+        />
+      )}
+      {isLender && (
+        <Tab.Screen
+          name="Wallet"
+          component={WalletScreen}
+          options={{ title: 'Ví' }}
+        />
+      )}
+
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
@@ -123,12 +185,14 @@ function MainTabs() {
       />
       <Tab.Screen
         name="TokenTest"
+
         component={TokenTestScreen}
         options={{ title: 'Cài Đặt' }}
       />
     </Tab.Navigator>
   );
 }
+
 
 // Auth stack for non-authenticated users
 function AuthStack() {

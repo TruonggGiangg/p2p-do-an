@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Card, Text, Button, Avatar, List, Divider, Chip } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, Avatar, Divider, ActivityIndicator } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services';
 import type { KeycloakUserDetails } from '../types';
+import { DarkColors, DarkStyling } from '../theme';
 
 export default function ProfileScreen() {
     const { user, logout, isLoading } = useAuth();
@@ -34,133 +37,207 @@ export default function ProfileScreen() {
         }
     };
 
+    const getRoleColor = (role: string) => {
+        switch (role.toLowerCase()) {
+            case 'lender': return DarkColors.success;
+            case 'borrower': return DarkColors.warning;
+            case 'admin': return DarkColors.error;
+            default: return DarkColors.primary;
+        }
+    };
+
     return (
         <ScrollView style={styles.container}>
-            <Card style={styles.card}>
-                <Card.Content style={styles.profileHeader}>
-                    <Avatar.Text
-                        size={80}
-                        label={user?.name?.charAt(0) || 'U'}
-                        style={styles.avatar}
-                    />
-                    <Text variant="headlineSmall" style={styles.name}>
-                        {user?.name || 'Unknown User'}
+            {/* Profile Header Card */}
+            <View style={styles.headerCard}>
+                <LinearGradient
+                    colors={DarkColors.gradientPrimary}
+                    style={styles.avatarContainer}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                >
+                    <Text style={styles.avatarText}>
+                        {user?.name?.charAt(0)?.toUpperCase() || 'U'}
                     </Text>
-                    <Text variant="bodyMedium" style={styles.email}>
-                        {user?.email}
-                    </Text>
-                    <View style={styles.rolesContainer}>
-                        {user?.roles?.map((role, index) => (
-                            <Chip key={index} style={styles.roleChip} textStyle={styles.roleText}>
-                                {role}
-                            </Chip>
-                        ))}
-                    </View>
-                </Card.Content>
-            </Card>
+                </LinearGradient>
+                <Text style={styles.userName}>{user?.name || 'Unknown User'}</Text>
+                <Text style={styles.userEmail}>{user?.email}</Text>
 
-            <Card style={styles.card}>
-                <Card.Content>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>
-                        Thông tin tài khoản
-                    </Text>
-                    <Divider style={styles.divider} />
-
-                    <List.Item
-                        title="Keycloak ID"
-                        description={user?.keycloakUserId}
-                        left={(props) => <List.Icon {...props} icon="account-key" />}
-                    />
-                    <List.Item
-                        title="Username"
-                        description={user?.username}
-                        left={(props) => <List.Icon {...props} icon="phone" />}
-                    />
-                    <List.Item
-                        title="Email"
-                        description={user?.email}
-                        left={(props) => <List.Icon {...props} icon="email" />}
-                    />
-
-                    {keycloakDetails && (
-                        <>
-                            <Divider style={styles.divider} />
-                            <Text variant="titleMedium" style={styles.sectionTitle}>
-                                Keycloak Details
+                {/* Role Badges */}
+                <View style={styles.rolesContainer}>
+                    {user?.roles?.map((role, index) => (
+                        <View
+                            key={index}
+                            style={[styles.roleBadge, { backgroundColor: `${getRoleColor(role)}20` }]}
+                        >
+                            <Text style={[styles.roleText, { color: getRoleColor(role) }]}>
+                                {role.charAt(0).toUpperCase() + role.slice(1)}
                             </Text>
-                            <List.Item
-                                title="First Name"
-                                description={keycloakDetails.firstName}
-                                left={(props) => <List.Icon {...props} icon="account" />}
-                            />
-                            <List.Item
-                                title="Last Name"
-                                description={keycloakDetails.lastName}
-                                left={(props) => <List.Icon {...props} icon="account" />}
-                            />
-                            <List.Item
-                                title="Email Verified"
-                                description={keycloakDetails.emailVerified ? 'Yes' : 'No'}
-                                left={(props) => <List.Icon {...props} icon="check-circle" />}
-                            />
-                            <List.Item
-                                title="Account Enabled"
-                                description={keycloakDetails.enabled ? 'Yes' : 'No'}
-                                left={(props) => <List.Icon {...props} icon="account-check" />}
-                            />
-                        </>
-                    )}
-                </Card.Content>
-            </Card>
+                        </View>
+                    ))}
+                </View>
+            </View>
 
-            <Button
-                mode="contained"
+            {/* Account Info Card */}
+            <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Thông tin tài khoản</Text>
+
+                <InfoRow
+                    icon="account-key"
+                    label="Keycloak ID"
+                    value={user?.keycloakUserId || '-'}
+                />
+                <Divider style={styles.divider} />
+                <InfoRow
+                    icon="phone"
+                    label="Số điện thoại"
+                    value={user?.username || '-'}
+                />
+                <Divider style={styles.divider} />
+                <InfoRow
+                    icon="email"
+                    label="Email"
+                    value={user?.email || '-'}
+                />
+            </View>
+
+            {/* Keycloak Details Card */}
+            {keycloakDetails && (
+                <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>Chi tiết Keycloak</Text>
+
+                    <InfoRow
+                        icon="account"
+                        label="Họ"
+                        value={keycloakDetails.firstName || '-'}
+                    />
+                    <Divider style={styles.divider} />
+                    <InfoRow
+                        icon="account"
+                        label="Tên"
+                        value={keycloakDetails.lastName || '-'}
+                    />
+                    <Divider style={styles.divider} />
+                    <InfoRow
+                        icon="check-circle"
+                        label="Email xác thực"
+                        value={keycloakDetails.emailVerified ? 'Đã xác thực' : 'Chưa xác thực'}
+                        valueColor={keycloakDetails.emailVerified ? DarkColors.success : DarkColors.warning}
+                    />
+                    <Divider style={styles.divider} />
+                    <InfoRow
+                        icon="account-check"
+                        label="Trạng thái"
+                        value={keycloakDetails.enabled ? 'Hoạt động' : 'Đã khóa'}
+                        valueColor={keycloakDetails.enabled ? DarkColors.success : DarkColors.error}
+                    />
+                </View>
+            )}
+
+            {/* Action Buttons */}
+            <TouchableOpacity
                 onPress={loadUserDetails}
-                loading={loadingDetails}
+                disabled={loadingDetails}
                 style={styles.refreshButton}
-                icon="refresh"
+                activeOpacity={0.8}
             >
-                Refresh Details
-            </Button>
+                {loadingDetails ? (
+                    <ActivityIndicator size="small" color={DarkColors.primary} />
+                ) : (
+                    <>
+                        <MaterialCommunityIcons name="refresh" size={20} color={DarkColors.primary} />
+                        <Text style={styles.refreshButtonText}>Làm mới</Text>
+                    </>
+                )}
+            </TouchableOpacity>
 
-            <Button
-                mode="contained"
+            <TouchableOpacity
                 onPress={handleLogout}
-                loading={isLoading}
-                style={styles.logoutButton}
-                buttonColor="#f44336"
-                icon="logout"
+                disabled={isLoading}
+                activeOpacity={0.8}
             >
-                Đăng Xuất
-            </Button>
+                <LinearGradient
+                    colors={['#FF4757', '#FF6B81']}
+                    style={styles.logoutButton}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                >
+                    <MaterialCommunityIcons name="logout" size={20} color={DarkColors.white} />
+                    <Text style={styles.logoutButtonText}>
+                        {isLoading ? 'Đang đăng xuất...' : 'Đăng Xuất'}
+                    </Text>
+                </LinearGradient>
+            </TouchableOpacity>
         </ScrollView>
+    );
+}
+
+interface InfoRowProps {
+    icon: string;
+    label: string;
+    value: string;
+    valueColor?: string;
+}
+
+function InfoRow({ icon, label, value, valueColor }: InfoRowProps) {
+    return (
+        <View style={styles.infoRow}>
+            <View style={styles.infoRowLeft}>
+                <View style={styles.iconContainer}>
+                    <MaterialCommunityIcons name={icon as any} size={20} color={DarkColors.textSecondary} />
+                </View>
+                <Text style={styles.infoLabel}>{label}</Text>
+            </View>
+            <Text
+                style={[styles.infoValue, valueColor ? { color: valueColor } : null]}
+                numberOfLines={1}
+            >
+                {value}
+            </Text>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
+        backgroundColor: DarkColors.background,
         padding: 16,
     },
-    card: {
-        marginBottom: 16,
-    },
-    profileHeader: {
+    headerCard: {
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.lg,
+        padding: 24,
         alignItems: 'center',
-        paddingVertical: 24,
-    },
-    avatar: {
+        borderWidth: 1,
+        borderColor: DarkColors.border,
         marginBottom: 16,
-        backgroundColor: '#6200ee',
+        ...DarkStyling.shadow.card,
     },
-    name: {
-        fontWeight: 'bold',
+    avatarContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    avatarText: {
+        fontSize: 32,
+        fontFamily: 'Poppins_700Bold',
+        color: DarkColors.white,
+    },
+    userName: {
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
+        color: DarkColors.text,
         marginBottom: 4,
     },
-    email: {
-        color: '#666',
-        marginBottom: 12,
+    userEmail: {
+        fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
+        color: DarkColors.textSecondary,
+        marginBottom: 16,
     },
     rolesContainer: {
         flexDirection: 'row',
@@ -168,23 +245,94 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 8,
     },
-    roleChip: {
-        backgroundColor: '#e3f2fd',
+    roleBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: DarkStyling.borderRadius.full,
     },
     roleText: {
         fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    card: {
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.md,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
+        marginBottom: 16,
     },
     sectionTitle: {
-        fontWeight: 'bold',
-        marginBottom: 8,
+        fontSize: 16,
+        fontFamily: 'Poppins_600SemiBold',
+        color: DarkColors.text,
+        marginBottom: 16,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+    },
+    infoRowLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    iconContainer: {
+        width: 36,
+        height: 36,
+        borderRadius: DarkStyling.borderRadius.xs,
+        backgroundColor: DarkColors.surfaceLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    infoLabel: {
+        fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
+        color: DarkColors.textSecondary,
+    },
+    infoValue: {
+        fontSize: 14,
+        fontFamily: 'Poppins_500Medium',
+        color: DarkColors.text,
+        maxWidth: '50%',
+        textAlign: 'right',
     },
     divider: {
-        marginVertical: 8,
+        backgroundColor: DarkColors.border,
     },
     refreshButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.sm,
+        borderWidth: 1,
+        borderColor: DarkColors.primary,
+        paddingVertical: 14,
         marginBottom: 12,
+        gap: 8,
+    },
+    refreshButtonText: {
+        fontSize: 15,
+        fontFamily: 'Poppins_600SemiBold',
+        color: DarkColors.primary,
     },
     logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: DarkStyling.borderRadius.sm,
+        paddingVertical: 16,
         marginBottom: 32,
+        gap: 8,
+        ...DarkStyling.shadow.subtle,
+    },
+    logoutButtonText: {
+        fontSize: 16,
+        fontFamily: 'Poppins_600SemiBold',
+        color: DarkColors.white,
     },
 });

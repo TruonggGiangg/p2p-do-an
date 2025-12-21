@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { TextInput, Button, Text, Surface, Snackbar } from 'react-native-paper';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity } from 'react-native';
+import { TextInput, Text, Snackbar } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { Colors } from '../theme';
+import { DarkColors, DarkStyling } from '../theme';
 
 interface RegisterScreenProps {
     navigation: any;
@@ -38,6 +38,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
         }
 
         try {
+            setError('');
             await register(username, password, email, firstName, lastName);
             setSuccess('Đăng ký thành công! Bạn có thể đăng nhập ngay.');
             setTimeout(() => navigation.navigate('Login'), 2000);
@@ -49,7 +50,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 
     return (
         <LinearGradient
-            colors={['#E3F2FD', '#F7F9FC']}
+            colors={[DarkColors.background, DarkColors.surface]}
             style={styles.container}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
@@ -59,142 +60,175 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                 style={{ flex: 1 }}
             >
                 <ScrollView contentContainerStyle={styles.scrollContent}>
-
+                    {/* Header */}
                     <View style={styles.header}>
-                        <Text variant="headlineLarge" style={styles.title}>
-                            Đăng Ký
-                        </Text>
-                        <Text variant="bodyLarge" style={styles.subtitle}>
-                            Tạo tài khoản mới
-                        </Text>
+                        <Text style={styles.title}>Đăng Ký</Text>
+                        <Text style={styles.subtitle}>Tạo tài khoản mới để bắt đầu</Text>
                     </View>
 
-                    <Surface style={styles.card} elevation={0}>
-                        <TextInput
-                            label="Số điện thoại"
-                            value={username}
-                            onChangeText={setUsername}
-                            mode="outlined"
-                            keyboardType="phone-pad"
-                            style={styles.input}
-                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                            outlineColor="transparent"
-                            activeOutlineColor={Colors.primary}
-                            textColor={Colors.text}
-                            theme={{ roundness: 12 }}
-                            left={<TextInput.Icon icon="phone" color={Colors.textSecondary} />}
-                        />
-
-                        <TextInput
-                            label="Email"
-                            value={email}
-                            onChangeText={setEmail}
-                            mode="outlined"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            style={styles.input}
-                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                            outlineColor="transparent"
-                            activeOutlineColor={Colors.primary}
-                            textColor={Colors.text}
-                            theme={{ roundness: 12 }}
-                            left={<TextInput.Icon icon="email" color={Colors.textSecondary} />}
-                        />
-
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {/* Register Card */}
+                    <View style={styles.card}>
+                        {/* Phone Input */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Số điện thoại</Text>
                             <TextInput
-                                label="Họ"
-                                value={firstName}
-                                onChangeText={setFirstName}
-                                mode="outlined"
-                                style={[styles.input, { flex: 1 }]}
-                                contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                                outlineColor="transparent"
-                                activeOutlineColor={Colors.primary}
-                                textColor={Colors.text}
-                                theme={{ roundness: 12 }}
-                            />
-                            <TextInput
-                                label="Tên"
-                                value={lastName}
-                                onChangeText={setLastName}
-                                mode="outlined"
-                                style={[styles.input, { flex: 1 }]}
-                                contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                                outlineColor="transparent"
-                                activeOutlineColor={Colors.primary}
-                                textColor={Colors.text}
-                                theme={{ roundness: 12 }}
+                                value={username}
+                                onChangeText={setUsername}
+                                mode="flat"
+                                keyboardType="phone-pad"
+                                style={styles.input}
+                                contentStyle={styles.inputContent}
+                                underlineColor="transparent"
+                                activeUnderlineColor={DarkColors.primary}
+                                textColor={DarkColors.text}
+                                placeholder="Nhập số điện thoại"
+                                placeholderTextColor={DarkColors.textMuted}
+                                left={<TextInput.Icon icon="phone" color={DarkColors.textSecondary} />}
                             />
                         </View>
 
-                        <TextInput
-                            label="Mật khẩu"
-                            value={password}
-                            onChangeText={setPassword}
-                            mode="outlined"
-                            secureTextEntry={!showPassword}
-                            style={styles.input}
-                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                            outlineColor="transparent"
-                            activeOutlineColor={Colors.primary}
-                            textColor={Colors.text}
-                            theme={{ roundness: 12 }}
-                            left={<TextInput.Icon icon="lock" color={Colors.textSecondary} />}
-                            right={
-                                <TextInput.Icon
-                                    icon={showPassword ? 'eye-off' : 'eye'}
-                                    onPress={() => setShowPassword(!showPassword)}
-                                    color={Colors.textSecondary}
+                        {/* Email Input */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Email</Text>
+                            <TextInput
+                                value={email}
+                                onChangeText={setEmail}
+                                mode="flat"
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                style={styles.input}
+                                contentStyle={styles.inputContent}
+                                underlineColor="transparent"
+                                activeUnderlineColor={DarkColors.primary}
+                                textColor={DarkColors.text}
+                                placeholder="email@example.com"
+                                placeholderTextColor={DarkColors.textMuted}
+                                left={<TextInput.Icon icon="email" color={DarkColors.textSecondary} />}
+                            />
+                        </View>
+
+                        {/* Name Row */}
+                        <View style={styles.nameRow}>
+                            <View style={[styles.inputContainer, { flex: 1 }]}>
+                                <Text style={styles.inputLabel}>Họ</Text>
+                                <TextInput
+                                    value={firstName}
+                                    onChangeText={setFirstName}
+                                    mode="flat"
+                                    style={styles.input}
+                                    contentStyle={styles.inputContent}
+                                    underlineColor="transparent"
+                                    activeUnderlineColor={DarkColors.primary}
+                                    textColor={DarkColors.text}
+                                    placeholder="Nguyễn"
+                                    placeholderTextColor={DarkColors.textMuted}
                                 />
-                            }
-                        />
+                            </View>
+                            <View style={{ width: 12 }} />
+                            <View style={[styles.inputContainer, { flex: 1 }]}>
+                                <Text style={styles.inputLabel}>Tên</Text>
+                                <TextInput
+                                    value={lastName}
+                                    onChangeText={setLastName}
+                                    mode="flat"
+                                    style={styles.input}
+                                    contentStyle={styles.inputContent}
+                                    underlineColor="transparent"
+                                    activeUnderlineColor={DarkColors.primary}
+                                    textColor={DarkColors.text}
+                                    placeholder="Văn A"
+                                    placeholderTextColor={DarkColors.textMuted}
+                                />
+                            </View>
+                        </View>
 
-                        <TextInput
-                            label="Xác nhận mật khẩu"
-                            value={confirmPassword}
-                            onChangeText={setConfirmPassword}
-                            mode="outlined"
-                            secureTextEntry={!showPassword}
-                            style={styles.input}
-                            contentStyle={{ fontFamily: 'Poppins_400Regular' }}
-                            outlineColor="transparent"
-                            activeOutlineColor={Colors.primary}
-                            textColor={Colors.text}
-                            theme={{ roundness: 12 }}
-                            left={<TextInput.Icon icon="lock-check" color={Colors.textSecondary} />}
-                        />
+                        {/* Password Input */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Mật khẩu (tối thiểu 12 ký tự)</Text>
+                            <TextInput
+                                value={password}
+                                onChangeText={setPassword}
+                                mode="flat"
+                                secureTextEntry={!showPassword}
+                                style={styles.input}
+                                contentStyle={styles.inputContent}
+                                underlineColor="transparent"
+                                activeUnderlineColor={DarkColors.primary}
+                                textColor={DarkColors.text}
+                                placeholder="••••••••••••"
+                                placeholderTextColor={DarkColors.textMuted}
+                                left={<TextInput.Icon icon="lock" color={DarkColors.textSecondary} />}
+                                right={
+                                    <TextInput.Icon
+                                        icon={showPassword ? 'eye-off' : 'eye'}
+                                        onPress={() => setShowPassword(!showPassword)}
+                                        color={DarkColors.textSecondary}
+                                    />
+                                }
+                            />
+                        </View>
 
-                        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                        {/* Confirm Password */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
+                            <TextInput
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                                mode="flat"
+                                secureTextEntry={!showPassword}
+                                style={styles.input}
+                                contentStyle={styles.inputContent}
+                                underlineColor="transparent"
+                                activeUnderlineColor={DarkColors.primary}
+                                textColor={DarkColors.text}
+                                placeholder="••••••••••••"
+                                placeholderTextColor={DarkColors.textMuted}
+                                left={<TextInput.Icon icon="lock-check" color={DarkColors.textSecondary} />}
+                            />
+                        </View>
 
-                        <Button
-                            mode="contained"
+                        {/* Error Message */}
+                        {error ? (
+                            <View style={styles.errorBox}>
+                                <Text style={styles.errorText}>{error}</Text>
+                            </View>
+                        ) : null}
+
+                        {/* Register Button */}
+                        <TouchableOpacity
                             onPress={handleRegister}
-                            loading={isLoading}
                             disabled={isLoading}
-                            style={styles.button}
-                            labelStyle={styles.buttonLabel}
-                            contentStyle={{ height: 50 }}
+                            activeOpacity={0.8}
                         >
-                            Đăng Ký
-                        </Button>
+                            <LinearGradient
+                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkColors.gradientPrimary}
+                                style={styles.registerButton}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                            >
+                                <Text style={styles.registerButtonText}>
+                                    {isLoading ? 'Đang xử lý...' : 'Đăng Ký'}
+                                </Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
 
-                        <Button
-                            mode="text"
+                        {/* Login Link */}
+                        <TouchableOpacity
                             onPress={() => navigation.navigate('Login')}
-                            style={styles.linkButton}
-                            labelStyle={{ fontFamily: 'Poppins_500Medium', color: Colors.primary }}
+                            style={styles.loginLink}
                         >
-                            Đã có tài khoản? Đăng nhập
-                        </Button>
-                    </Surface>
+                            <Text style={styles.loginText}>
+                                Đã có tài khoản? <Text style={styles.loginHighlight}>Đăng nhập</Text>
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
                 </ScrollView>
 
                 <Snackbar
                     visible={!!success}
                     onDismiss={() => setSuccess('')}
                     duration={2000}
-                    style={{ backgroundColor: Colors.success, borderRadius: 12 }}
+                    style={styles.snackbar}
                 >
                     {success}
                 </Snackbar>
@@ -214,55 +248,87 @@ const styles = StyleSheet.create({
     },
     header: {
         alignItems: 'center',
-        marginBottom: 30,
+        marginBottom: 24,
     },
     title: {
+        fontSize: 28,
         fontFamily: 'Poppins_700Bold',
-        color: Colors.text,
+        color: DarkColors.text,
         marginBottom: 8,
     },
     subtitle: {
+        fontSize: 15,
         fontFamily: 'Poppins_400Regular',
-        color: Colors.textSecondary,
+        color: DarkColors.textSecondary,
     },
     card: {
-        backgroundColor: '#fff',
-        borderRadius: 30,
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.xl,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.05,
-        shadowRadius: 30,
-        elevation: 5,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
+        ...DarkStyling.shadow.card,
+    },
+    inputContainer: {
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
+        color: DarkColors.textSecondary,
+        marginBottom: 6,
     },
     input: {
+        backgroundColor: DarkColors.surfaceLight,
+        borderRadius: DarkStyling.borderRadius.sm,
+        fontSize: 15,
+    },
+    inputContent: {
+        fontFamily: 'Poppins_400Regular',
+        paddingLeft: 8,
+    },
+    nameRow: {
+        flexDirection: 'row',
+    },
+    errorBox: {
+        backgroundColor: `${DarkColors.error}15`,
+        borderRadius: DarkStyling.borderRadius.sm,
+        padding: 12,
         marginBottom: 16,
-        backgroundColor: '#F7F9FC',
-        fontSize: 14,
-    },
-    button: {
-        marginTop: 10,
-        borderRadius: 16,
-        shadowColor: Colors.primary,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 15,
-        elevation: 8,
-    },
-    buttonLabel: {
-        fontFamily: 'Poppins_600SemiBold',
-        fontSize: 16,
-        paddingVertical: 2,
-    },
-    linkButton: {
-        marginTop: 16,
-        alignSelf: 'center',
     },
     errorText: {
-        color: Colors.error,
+        color: DarkColors.error,
         textAlign: 'center',
-        marginBottom: 10,
         fontFamily: 'Poppins_400Regular',
-        fontSize: 12,
+        fontSize: 13,
+    },
+    registerButton: {
+        borderRadius: DarkStyling.borderRadius.sm,
+        paddingVertical: 16,
+        alignItems: 'center',
+        marginTop: 8,
+        ...DarkStyling.shadow.subtle,
+    },
+    registerButtonText: {
+        color: DarkColors.white,
+        fontSize: 16,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    loginLink: {
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    loginText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
+        color: DarkColors.textSecondary,
+    },
+    loginHighlight: {
+        color: DarkColors.primary,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    snackbar: {
+        backgroundColor: DarkColors.success,
+        borderRadius: DarkStyling.borderRadius.sm,
     },
 });

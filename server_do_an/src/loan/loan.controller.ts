@@ -509,5 +509,25 @@ export class LoanController {
             data: result,
         };
     }
+
+    /**
+     * POST /loan/:id/disburse
+     * Disburse loan (Admin or Lender usually, but here we allow Borrower for demo/auto flow if needed, 
+     * or we can restrict to Admin. In reference it was Admin/Lender.)
+     */
+    @Post(':id/disburse')
+    @UseGuards(DualAuthGuard, BorrowerOrLenderGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Giải ngân khoản vay' })
+    @ApiParam({ name: 'id', description: 'Contract ID hoặc MongoDB ID' })
+    async disburseLoan(@Param('id') id: string) {
+        const result = await this.loanService.disburseLoan(id);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Giải ngân thành công',
+            data: result,
+        };
+    }
 }
 

@@ -49,10 +49,10 @@ export const DarkColors = {
     white: '#FFFFFF',
     black: '#000000',
 
-    // Gradients (for LinearGradient)
-    gradientPrimary: ['#4347FF', '#6366F1'],
-    gradientDark: ['#18191E', '#0D0D12'],
-    gradientCard: ['rgba(30, 31, 38, 0.9)', 'rgba(24, 25, 30, 0.95)'],
+    // Gradients (for LinearGradient) - use 'as const' for proper typing
+    gradientPrimary: ['#4347FF', '#6366F1'] as const,
+    gradientDark: ['#18191E', '#0D0D12'] as const,
+    gradientCard: ['rgba(30, 31, 38, 0.9)', 'rgba(24, 25, 30, 0.95)'] as const,
 };
 
 // Status colors for loans (dark mode)

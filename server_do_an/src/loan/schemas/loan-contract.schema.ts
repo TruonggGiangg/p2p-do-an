@@ -238,6 +238,9 @@ export class LoanContract extends Document {
     fineractLoanId?: number;
 
     @Prop()
+    borrowerFineractClientId?: number;
+
+    @Prop()
     fineractStatus?: string;
 
     @Prop()

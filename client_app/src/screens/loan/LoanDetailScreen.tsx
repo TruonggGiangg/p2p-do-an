@@ -131,6 +131,34 @@ export const LoanDetailScreen: React.FC = () => {
         });
     };
 
+    const handleDisburse = async () => {
+        const id = contractId || loan?.contractId;
+        if (!id) return;
+
+        Alert.alert(
+            'Xác nhận giải ngân',
+            'Bạn có chắc chắn muốn giải ngân khoản vay này?',
+            [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                    text: 'Giải ngân',
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            await loanApi.disburseLoan(id);
+                            Alert.alert('Thành công', 'Khoản vay đã được giải ngân thành công');
+                            fetchData();
+                        } catch (error: any) {
+                            Alert.alert('Lỗi giải ngân', error.message || 'Có lỗi xảy ra khi giải ngân');
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const getNextUnpaidPeriod = () => {
         if (!fineractDetails?.repaymentSchedule?.periods) return null;
         return fineractDetails.repaymentSchedule.periods.find(p => !p.complete && p.period > 0);
@@ -381,7 +409,7 @@ export const LoanDetailScreen: React.FC = () => {
             </ScrollView>
 
             {/* Show payment buttons for active loans or when there's outstanding balance */}
-            {(outstanding?.totalOutstanding > 0 ||
+            {((outstanding?.totalOutstanding ?? 0) > 0 ||
                 ['active', 'on_going', 'success', 'disbursed', 'overdue'].includes(loan?.status || '')) && (
                     <View style={styles.bottomBar}>
                         <TouchableOpacity style={styles.payButton} onPress={handleRepayment}>
@@ -399,6 +427,22 @@ export const LoanDetailScreen: React.FC = () => {
                         </TouchableOpacity>
                     </View>
                 )}
+
+            {/* Show Disburse button for waiting loans that are fully funded */}
+            {loan?.status === 'waiting' && (loan?.investedNotes ?? 0) >= (loan?.totalNotes ?? 1) && (
+                <View style={styles.bottomBar}>
+                    <TouchableOpacity style={styles.payButton} onPress={handleDisburse}>
+                        <LinearGradient
+                            colors={['#2ed573', '#7bed9f'] as const}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.payButtonGradient}
+                        >
+                            <Text style={styles.payButtonText}>Giải Ngân</Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
+            )}
         </View>
     );
 };

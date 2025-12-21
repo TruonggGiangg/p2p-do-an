@@ -1,5 +1,5 @@
 /**
- * RepaymentScreen - Make loan payments
+ * RepaymentScreen - Make loan payments (Dark Theme)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -14,31 +14,19 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    StatusBar,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { loanApi } from '../../services';
-import { FineractLoanDetails, OutstandingBalance } from '../../types';
-
-// Colors
-const COLORS = {
-    primary: '#1E88E5',
-    success: '#4CAF50',
-    background: '#F5F7FA',
-    card: '#FFFFFF',
-    text: '#333333',
-    textLight: '#666666',
-    border: '#E0E0E0',
-    inputBg: '#F0F2F5',
-};
+import { FineractLoanDetails } from '../../types';
+import { DarkColors, DarkStyling } from '../../theme';
 
 // Format currency
 const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('vi-VN', {
-        style: 'currency',
-        currency: 'VND',
-        minimumFractionDigits: 0,
-    }).format(value);
+    return new Intl.NumberFormat('vi-VN').format(value);
 };
 
 export const RepaymentScreen: React.FC = () => {
@@ -64,23 +52,14 @@ export const RepaymentScreen: React.FC = () => {
             setLoading(true);
             const id = loanId || contractId;
 
-            // Get basic details first
             const details = await loanApi.getFineractDetails(id);
             setLoanDetails(details);
 
             if (isPrepay) {
-                // If prepayment, get calculated amount
                 const prepay = await loanApi.getPrepayAmount(String(details.fineractLoanId));
                 setPrepayInfo(prepay);
                 setAmount(prepay.amount.toString());
-            } else {
-                // If regular repayment, default to next due amount or total outstanding
-                const outstanding = await loanApi.getOutstandingBalance(String(details.fineractLoanId));
-                // TODO: Logic to find next installment amount could be added here
-                // For now just empty or suggest total outstanding
-                // setAmount(outstanding.totalOutstanding.toString());
             }
-
         } catch (error: any) {
             Alert.alert('Lỗi', 'Không thể tải thông tin: ' + error.message);
             navigation.goBack();
@@ -107,13 +86,7 @@ export const RepaymentScreen: React.FC = () => {
         try {
             setSubmitting(true);
             const numAmount = parseFloat(amount.replace(/[^0-9]/g, ''));
-            const dateStr = transactionDate.toISOString().split('T')[0]; // YYYY-MM-DD
-
-            // Format format 'dd MMMM yyyy' for Fineract is handled by backend usually, 
-            // but let's send ISO/standard format and let service handle it.
-            // Actually our service accepts 'dd MMMM yyyy' or ISO? Checked backend code:
-            // It expects "dateFormat" and "locale" to be sent to Fineract.
-            // Our backend service `makeRepayment` takes `transactionDate?: string`.
+            const dateStr = transactionDate.toISOString().split('T')[0];
 
             if (isPrepay) {
                 await loanApi.prepayLoan({
@@ -146,7 +119,8 @@ export const RepaymentScreen: React.FC = () => {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
+                <ActivityIndicator size="large" color={DarkColors.primary} />
+                <Text style={styles.loadingText}>Đang tải...</Text>
             </View>
         );
     }
@@ -156,54 +130,84 @@ export const RepaymentScreen: React.FC = () => {
             style={styles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
+            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
             <ScrollView contentContainerStyle={styles.scrollContent}>
+                {/* Header */}
                 <View style={styles.header}>
+                    <View style={[styles.headerIcon, { backgroundColor: isPrepay ? `${DarkColors.warning}20` : `${DarkColors.primary}20` }]}>
+                        <MaterialCommunityIcons
+                            name={isPrepay ? 'lightning-bolt' : 'cash'}
+                            size={32}
+                            color={isPrepay ? DarkColors.warning : DarkColors.primary}
+                        />
+                    </View>
                     <Text style={styles.title}>
-                        {isPrepay ? 'Tất toán sớm khoản vay' : 'Thanh toán khoản vay'}
+                        {isPrepay ? 'Tất toán sớm' : 'Thanh toán'}
                     </Text>
-                    <Text style={styles.loanId}>#{loanDetails?.fineractLoanId}</Text>
+                    <Text style={styles.loanId}>Khoản vay #{loanDetails?.fineractLoanId}</Text>
                 </View>
 
-                <View style={styles.card}>
-                    {isPrepay && prepayInfo && (
-                        <View style={styles.prepayInfo}>
-                            <Text style={styles.label}>Chi tiết tất toán:</Text>
-                            <View style={styles.row}>
-                                <Text>Gốc còn lại:</Text>
-                                <Text style={styles.value}>{formatCurrency(prepayInfo.principalPortion)}</Text>
-                            </View>
-                            <View style={styles.row}>
-                                <Text>Lãi phải trả:</Text>
-                                <Text style={styles.value}>{formatCurrency(prepayInfo.interestPortion)}</Text>
-                            </View>
-                            <View style={styles.row}>
-                                <Text>Phí & Phạt:</Text>
-                                <Text style={styles.value}>{formatCurrency(prepayInfo.feeChargesPortion + (prepayInfo.penaltyChargesPortion || 0))}</Text>
-                            </View>
-                            <View style={[styles.divider]} />
+                {/* Prepay Info Card */}
+                {isPrepay && prepayInfo && (
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <MaterialCommunityIcons name="calculator" size={20} color={DarkColors.warning} />
+                            <Text style={styles.cardTitle}>Chi tiết tất toán</Text>
                         </View>
-                    )}
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Gốc còn lại</Text>
+                            <Text style={styles.detailValue}>{formatCurrency(prepayInfo.principalPortion)}₫</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Lãi phải trả</Text>
+                            <Text style={styles.detailValue}>{formatCurrency(prepayInfo.interestPortion)}₫</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Phí & Phạt</Text>
+                            <Text style={styles.detailValue}>{formatCurrency((prepayInfo.feeChargesPortion || 0) + (prepayInfo.penaltyChargesPortion || 0))}₫</Text>
+                        </View>
+                        <View style={styles.divider} />
+                        <View style={styles.detailRow}>
+                            <Text style={styles.totalLabel}>Tổng cộng</Text>
+                            <Text style={styles.totalValue}>{formatCurrency(prepayInfo.amount)}₫</Text>
+                        </View>
+                    </View>
+                )}
 
+                {/* Payment Form */}
+                <View style={styles.card}>
+                    {/* Amount Input */}
                     <View style={styles.formGroup}>
-                        <Text style={styles.label}>Số tiền thanh toán (VND)</Text>
-                        <TextInput
-                            style={[styles.input, styles.amountInput]}
-                            value={amount}
-                            onChangeText={setAmount}
-                            keyboardType="numeric"
-                            placeholder="0"
-                            editable={!loading && !submitting} // Editable even for prepay usually, but prepay is exact
-                        />
-                        {isPrepay && <Text style={styles.hint}>Số tiền này được tính toán chính xác để đóng khoản vay</Text>}
+                        <Text style={styles.label}>Số tiền thanh toán</Text>
+                        <View style={styles.amountContainer}>
+                            <TextInput
+                                style={styles.amountInput}
+                                value={amount}
+                                onChangeText={setAmount}
+                                keyboardType="numeric"
+                                placeholder="0"
+                                placeholderTextColor={DarkColors.textMuted}
+                                editable={!loading && !submitting}
+                            />
+                            <Text style={styles.currencyLabel}>VND</Text>
+                        </View>
+                        {isPrepay && (
+                            <Text style={styles.hint}>
+                                <MaterialCommunityIcons name="information" size={14} color={DarkColors.textSecondary} />
+                                {' '}Số tiền được tính toán chính xác để đóng khoản vay
+                            </Text>
+                        )}
                     </View>
 
+                    {/* Date Picker */}
                     <View style={styles.formGroup}>
                         <Text style={styles.label}>Ngày thanh toán</Text>
                         <TouchableOpacity
                             style={styles.dateButton}
                             onPress={() => setShowDatePicker(true)}
                         >
-                            <Text>{transactionDate.toLocaleDateString('vi-VN')}</Text>
+                            <MaterialCommunityIcons name="calendar" size={20} color={DarkColors.textSecondary} />
+                            <Text style={styles.dateText}>{transactionDate.toLocaleDateString('vi-VN')}</Text>
                         </TouchableOpacity>
                         {showDatePicker && (
                             <DateTimePicker
@@ -215,30 +219,44 @@ export const RepaymentScreen: React.FC = () => {
                         )}
                     </View>
 
+                    {/* Note Input */}
                     <View style={styles.formGroup}>
                         <Text style={styles.label}>Ghi chú</Text>
                         <TextInput
-                            style={[styles.input, styles.noteInput]}
+                            style={styles.noteInput}
                             value={note}
                             onChangeText={setNote}
                             placeholder="Nhập ghi chú giao dịch..."
+                            placeholderTextColor={DarkColors.textMuted}
                             multiline
                         />
                     </View>
                 </View>
 
+                {/* Submit Button */}
                 <TouchableOpacity
-                    style={[styles.submitButton, submitting && styles.disabledButton]}
                     onPress={handleSubmit}
                     disabled={submitting}
+                    activeOpacity={0.8}
                 >
-                    {submitting ? (
-                        <ActivityIndicator color="#FFF" />
-                    ) : (
-                        <Text style={styles.submitButtonText}>Xác nhận thanh toán</Text>
-                    )}
+                    <LinearGradient
+                        colors={submitting ? [DarkColors.textMuted, DarkColors.textMuted] : (isPrepay ? ['#FFA502', '#FF6348'] : ['#4347FF', '#6366F1']) as const}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.submitButton}
+                    >
+                        {submitting ? (
+                            <ActivityIndicator color={DarkColors.white} />
+                        ) : (
+                            <>
+                                <MaterialCommunityIcons name="check-circle" size={22} color={DarkColors.white} />
+                                <Text style={styles.submitButtonText}>
+                                    {isPrepay ? 'Xác nhận tất toán' : 'Xác nhận thanh toán'}
+                                </Text>
+                            </>
+                        )}
+                    </LinearGradient>
                 </TouchableOpacity>
-
             </ScrollView>
         </KeyboardAvoidingView>
     );
@@ -247,116 +265,173 @@ export const RepaymentScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: DarkColors.background,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: DarkColors.background,
+    },
+    loadingText: {
+        marginTop: 12,
+        color: DarkColors.textSecondary,
+        fontSize: 14,
     },
     scrollContent: {
-        padding: 16,
+        padding: 20,
+        paddingBottom: 40,
     },
+    // Header
     header: {
-        marginBottom: 20,
         alignItems: 'center',
+        marginBottom: 24,
+    },
+    headerIcon: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
     },
     title: {
-        fontSize: 20,
+        fontSize: 24,
         fontWeight: '700',
-        color: COLORS.text,
+        color: DarkColors.text,
+        marginBottom: 4,
     },
     loanId: {
         fontSize: 14,
-        color: COLORS.textLight,
-        marginTop: 4,
+        color: DarkColors.textSecondary,
     },
+    // Card
     card: {
-        backgroundColor: COLORS.card,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    formGroup: {
+        backgroundColor: DarkColors.surface,
+        borderRadius: DarkStyling.borderRadius.lg,
+        padding: 20,
         marginBottom: 16,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
     },
-    label: {
-        fontSize: 14,
-        color: COLORS.textLight,
-        marginBottom: 8,
-        fontWeight: '600',
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+        gap: 8,
     },
-    input: {
-        backgroundColor: COLORS.inputBg,
-        borderRadius: 8,
-        padding: 12,
+    cardTitle: {
         fontSize: 16,
-        color: COLORS.text,
+        fontWeight: '600',
+        color: DarkColors.text,
     },
-    amountInput: {
-        fontSize: 24,
-        fontWeight: '700',
-        color: COLORS.primary,
-        textAlign: 'center',
-    },
-    noteInput: {
-        minHeight: 80,
-        textAlignVertical: 'top',
-    },
-    dateButton: {
-        backgroundColor: COLORS.inputBg,
-        borderRadius: 8,
-        padding: 12,
-        alignItems: 'center',
-    },
-    submitButton: {
-        backgroundColor: COLORS.primary,
-        borderRadius: 12,
-        paddingVertical: 16,
-        alignItems: 'center',
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    disabledButton: {
-        backgroundColor: COLORS.textLight,
-        shadowOpacity: 0.1,
-    },
-    submitButtonText: {
-        color: '#FFF',
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    prepayInfo: {
-        marginBottom: 16,
-    },
-    row: {
+    // Detail Rows
+    detailRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 4,
+        paddingVertical: 8,
     },
-    value: {
-        fontWeight: '600',
-        color: COLORS.text,
+    detailLabel: {
+        fontSize: 14,
+        color: DarkColors.textSecondary,
+    },
+    detailValue: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: DarkColors.text,
     },
     divider: {
         height: 1,
-        backgroundColor: COLORS.border,
+        backgroundColor: DarkColors.border,
         marginVertical: 12,
+    },
+    totalLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: DarkColors.text,
+    },
+    totalValue: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: DarkColors.warning,
+    },
+    // Form
+    formGroup: {
+        marginBottom: 20,
+    },
+    label: {
+        fontSize: 14,
+        color: DarkColors.textSecondary,
+        marginBottom: 10,
+        fontWeight: '500',
+    },
+    amountContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: DarkColors.surfaceLight,
+        borderRadius: DarkStyling.borderRadius.sm,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
+    },
+    amountInput: {
+        flex: 1,
+        fontSize: 28,
+        fontWeight: '700',
+        color: DarkColors.primary,
+        textAlign: 'center',
+        paddingVertical: 16,
+    },
+    currencyLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: DarkColors.textSecondary,
+        paddingRight: 16,
     },
     hint: {
         fontSize: 12,
-        color: COLORS.textLight,
-        marginTop: 4,
+        color: DarkColors.textSecondary,
+        marginTop: 8,
         textAlign: 'center',
         fontStyle: 'italic',
+    },
+    dateButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: DarkColors.surfaceLight,
+        borderRadius: DarkStyling.borderRadius.sm,
+        padding: 14,
+        gap: 10,
+        borderWidth: 1,
+        borderColor: DarkColors.border,
+    },
+    dateText: {
+        fontSize: 15,
+        color: DarkColors.text,
+    },
+    noteInput: {
+        backgroundColor: DarkColors.surfaceLight,
+        borderRadius: DarkStyling.borderRadius.sm,
+        padding: 14,
+        fontSize: 15,
+        color: DarkColors.text,
+        minHeight: 80,
+        textAlignVertical: 'top',
+        borderWidth: 1,
+        borderColor: DarkColors.border,
+    },
+    // Submit Button
+    submitButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 18,
+        borderRadius: DarkStyling.borderRadius.md,
+        gap: 10,
+    },
+    submitButtonText: {
+        color: DarkColors.white,
+        fontSize: 18,
+        fontWeight: '700',
     },
 });
 

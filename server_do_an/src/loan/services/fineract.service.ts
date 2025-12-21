@@ -95,6 +95,8 @@ export class FineractService {
     private readonly oauthClientId: string;
     private readonly oauthClientSecret: string;
     private readonly keycloakUrl: string;
+    private readonly adminClientId: number;
+    private readonly escrowAccountId: number;
 
     private accessToken: string | null = null;
     private tokenExpiry: Date | null = null;
@@ -116,7 +118,11 @@ export class FineractService {
         this.oauthClientSecret = this.configService.get<string>('FINERACT_OAUTH_CLIENT_SECRET') || '123';
         // Keycloak URL for OAuth2 token
         this.keycloakUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://118.69.41.95:9000';
+        // Admin/Escrow config for transfers
+        this.adminClientId = this.configService.get<number>('FINERACT_ADMIN_CLIENT_ID') || 1;
+        this.escrowAccountId = this.configService.get<number>('FINERACT_ESCROW_ACCOUNT_ID') || 1;
     }
+
 
 
     /**
@@ -1057,19 +1063,19 @@ export class FineractService {
         toAccountId: number,
         amount: number,
         description: string = 'P2P Transfer',
+        fromClientId?: number,
+        toClientId?: number,
     ): Promise<any> {
         try {
             const headers = await this.getHeaders();
             const url = `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`;
 
             const transferDate = new Date();
-            const payload = {
+            const payload: any = {
                 fromOfficeId: 1,
-                fromClientId: null, // Will be auto-resolved
                 fromAccountType: 2, // Savings account
                 fromAccountId: fromAccountId,
                 toOfficeId: 1,
-                toClientId: null, // Will be auto-resolved
                 toAccountType: 2, // Savings account
                 toAccountId: toAccountId,
                 transferAmount: amount,
@@ -1079,7 +1085,15 @@ export class FineractService {
                 dateFormat: 'dd MMMM yyyy',
             };
 
-            this.logger.log(`[transfer] ${fromAccountId} -> ${toAccountId}: ${amount}`);
+            // Add clientIds if provided (required by Fineract API)
+            if (fromClientId) {
+                payload.fromClientId = fromClientId;
+            }
+            if (toClientId) {
+                payload.toClientId = toClientId;
+            }
+
+            this.logger.log(`[transfer] ${fromClientId || 'auto'}:${fromAccountId} -> ${toClientId || 'auto'}:${toAccountId}: ${amount}`);
 
             const response = await firstValueFrom(
                 this.httpService.post(url, payload, { headers }),
@@ -1089,6 +1103,66 @@ export class FineractService {
         } catch (error) {
             this.logger.error(`Failed to transfer: ${error}`);
             throw error;
+        }
+    }
+
+
+    /**
+     * Get Admin Client ID (for escrow transfers)
+     */
+    getAdminClientId(): number {
+        return this.adminClientId;
+    }
+
+    /**
+     * Get Escrow Account ID (for escrow transfers)
+     */
+    getEscrowAccountId(): number {
+        return this.escrowAccountId;
+    }
+
+    /**
+     * Get active savings account for a client
+     * Used in disbursement and repayment flows
+     */
+    async getClientSavingsAccount(clientId: number): Promise<{
+        id: number;
+        accountNo: string;
+        balance: number;
+        clientId: number;
+    } | null> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}/accounts`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            const savingsAccounts = response.data?.savingsAccounts || [];
+            // Find active savings account
+            const activeAccount = savingsAccounts.find((acc: any) => acc.status?.active === true);
+
+            if (!activeAccount) {
+                this.logger.warn(`No active savings account found for client ${clientId}`);
+                return null;
+            }
+
+            // Get account details for balance
+            const accountDetailsUrl = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${activeAccount.id}`;
+            const detailsResponse = await firstValueFrom(
+                this.httpService.get(accountDetailsUrl, { headers }),
+            );
+
+            return {
+                id: activeAccount.id,
+                accountNo: activeAccount.accountNo,
+                balance: detailsResponse.data?.summary?.accountBalance || 0,
+                clientId: clientId,
+            };
+        } catch (error) {
+            this.logger.error(`Failed to get savings account for client ${clientId}: ${error}`);
+            return null;
         }
     }
 

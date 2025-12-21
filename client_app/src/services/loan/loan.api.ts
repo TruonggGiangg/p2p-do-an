@@ -50,6 +50,7 @@ const ENDPOINTS = {
     repay: '/loan/repay',
     prepay: '/loan/prepay',
     blockchainStatus: '/loan/blockchain/status',
+    disburse: (id: string) => `/loan/${id}/disburse`,
     // Wallet endpoints
     walletBalance: '/loan/wallet/balance',
     // Debug
@@ -277,6 +278,17 @@ export const loanApi = {
     testFineractUser: async (): Promise<any> => {
         const response = await httpClient.get<any>(ENDPOINTS.debugFineractUser);
         return response.data;
+    },
+
+    /**
+     * Disburse loan
+     */
+    disburseLoan: async (loanId: string): Promise<any> => {
+        const response = await httpClient.post<LoanApiResponse<any>>(
+            ENDPOINTS.disburse(loanId),
+            {},
+        );
+        return response.data.data;
     },
 };
 

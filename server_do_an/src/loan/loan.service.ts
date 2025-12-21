@@ -259,9 +259,11 @@ export class LoanService {
                         $set: {
                             fineractLoanId: result.fineractLoanId,
                             fineractStatus: result.status,
+                            borrowerFineractClientId: clientId,
                         },
                     },
                 );
+
 
                 this.logger.log(`Fineract loan created: ${fineractLoanId}`);
             } catch (error) {
@@ -782,9 +784,12 @@ export class LoanService {
         }
         return this.fineractService.makeLoanRepayment(fineractLoanId, transactionAmount, transactionDate);
     }
-
     /**
      * Early repayment / prepay loan
+     * 1. Get prepay amount from Fineract
+     * 2. Transfer from Borrower Savings → Escrow Account
+     * 3. Make repayment in Fineract
+     * 4. Update status in MongoDB
      */
     async prepayLoan(
         fineractLoanId: number,
@@ -794,6 +799,12 @@ export class LoanService {
     ): Promise<any> {
         if (!fineractLoanId) {
             throw new BadRequestException('fineractLoanId is required');
+        }
+
+        // Find loan by fineractLoanId to get borrower info
+        const loan = await this.loanContractModel.findOne({ fineractLoanId });
+        if (!loan) {
+            throw new NotFoundException(`Loan with fineractLoanId ${fineractLoanId} not found`);
         }
 
         // If no amount specified, get from prepay template or outstanding balance
@@ -809,17 +820,175 @@ export class LoanService {
             }
         }
 
-        // Make repayment with full amount
+        // Transfer from Borrower Savings → Escrow
+        let transferResult: any = null;
+        try {
+            const borrowerFineractClientId = loan.borrowerFineractClientId;
+
+            if (borrowerFineractClientId) {
+                const borrowerSavingsAccount = await this.fineractService.getClientSavingsAccount(
+                    Number(borrowerFineractClientId)
+                );
+
+                if (borrowerSavingsAccount) {
+                    // Check balance
+                    if (borrowerSavingsAccount.balance < amount) {
+                        throw new BadRequestException(
+                            `Số dư không đủ. Số dư hiện tại: ${borrowerSavingsAccount.balance}, Số tiền cần trả: ${amount}`
+                        );
+                    }
+
+                    const escrowAccountId = this.fineractService.getEscrowAccountId();
+                    const adminClientId = this.fineractService.getAdminClientId();
+
+                    this.logger.log(`Transferring ${amount} VND from Borrower ${borrowerSavingsAccount.id} to Escrow ${escrowAccountId}...`);
+
+                    transferResult = await this.fineractService.transferBetweenAccounts(
+                        borrowerSavingsAccount.id,             // from Borrower Savings
+                        escrowAccountId,                       // to Escrow
+                        amount,
+                        `Tất toán sớm khoản vay ${loan.contractId}`,
+                        Number(borrowerFineractClientId),      // fromClientId
+                        adminClientId                          // toClientId
+                    );
+
+                    this.logger.log(`Transfer successful: ${JSON.stringify(transferResult)}`);
+                }
+            }
+        } catch (error) {
+            this.logger.error(`Failed to transfer funds from borrower: ${error.message}`);
+            throw error; // For prepay, we should fail if transfer fails
+        }
+
+        // Make repayment with full amount in Fineract
         const result = await this.fineractService.makeLoanRepayment(fineractLoanId, amount, transactionDate);
 
-        // Update status if fully paid
+        // Update status to closed
         await this.loanContractModel.updateOne(
             { fineractLoanId },
-            { $set: { status: 'closed' } }
+            {
+                $set: {
+                    status: 'closed',
+                    prepay_transfer_id: transferResult?.resourceId || null,
+                }
+            }
         );
 
-        return result;
+        return {
+            ...result,
+            transferResult,
+            message: 'Tất toán sớm thành công',
+        };
     }
+
+    /**
+     * Disburse loan
+     * 1. Approve loan in Fineract
+     * 2. Disburse loan in Fineract
+     * 3. Transfer funds: Escrow Account → Borrower Savings Account
+     * 4. Update status in MongoDB and Blockchain
+     */
+    async disburseLoan(loanId: string): Promise<any> {
+        const loan = await this.getLoanById(loanId);
+
+        if (!loan.fineractLoanId) {
+            throw new BadRequestException('Khoản vay chưa được đồng bộ với Fineract');
+        }
+
+        // 1. Approve loan in Fineract
+        try {
+            this.logger.log(`Approving loan ${loan.fineractLoanId} in Fineract...`);
+            await this.fineractService.approveLoan(loan.fineractLoanId);
+        } catch (error) {
+            this.logger.error(`Failed to approve loan in Fineract: ${error.message}`);
+            // If already approved, we can continue
+            if (!error.message.includes('already approved')) {
+                throw new Error(`Không thể phê duyệt khoản vay trên Fineract: ${error.message}`);
+            }
+        }
+
+        // 2. Disburse loan in Fineract
+        try {
+            this.logger.log(`Disbursing loan ${loan.fineractLoanId} in Fineract...`);
+            const disbursementDate = moment.tz(this.timezone).format('YYYY-MM-DD');
+            await this.fineractService.disburseLoan(loan.fineractLoanId, disbursementDate);
+        } catch (error) {
+            this.logger.error(`Failed to disburse loan in Fineract: ${error.message}`);
+            throw new Error(`Không thể giải ngân khoản vay trên Fineract: ${error.message}`);
+        }
+
+        // 3. Transfer funds from Escrow → Borrower Savings Account
+        let transferResult: any = null;
+        try {
+            this.logger.log(`Transferring ${loan.info.capital} VND from Escrow to Borrower...`);
+
+            // Get borrower's Fineract client ID from loan
+            const borrowerFineractClientId = loan.borrowerFineractClientId;
+
+            if (!borrowerFineractClientId) {
+                this.logger.warn(`Borrower has no fineractClientId, skipping transfer`);
+            } else {
+                // Get borrower's savings account
+                const borrowerSavingsAccount = await this.fineractService.getClientSavingsAccount(
+                    Number(borrowerFineractClientId)
+                );
+
+                if (!borrowerSavingsAccount) {
+                    this.logger.warn(`Borrower has no active savings account, skipping transfer`);
+                } else {
+                    const escrowAccountId = this.fineractService.getEscrowAccountId();
+                    const adminClientId = this.fineractService.getAdminClientId();
+
+                    transferResult = await this.fineractService.transferBetweenAccounts(
+                        escrowAccountId,                       // from Escrow
+                        borrowerSavingsAccount.id,             // to Borrower Savings
+                        loan.info.capital,                     // amount
+                        `Giải ngân khoản vay ${loan.contractId}`,
+                        adminClientId,                         // fromClientId (Escrow)
+                        Number(borrowerFineractClientId)       // toClientId (Borrower)
+                    );
+
+                    this.logger.log(`Transfer successful: ${JSON.stringify(transferResult)}`);
+                }
+            }
+        } catch (error) {
+            this.logger.error(`Failed to transfer funds to borrower: ${error.message}`);
+            // Don't fail the whole disbursement if transfer fails
+            // The loan is still disbursed in Fineract, just manual transfer needed
+        }
+
+
+        // 4. Update status in MongoDB
+        await this.loanContractModel.updateOne(
+            { _id: loan._id },
+            {
+                $set: {
+                    status: 'disbursed',
+                    disburse_done: true,
+                    disburse_date: new Date(),
+                    disburse_transfer_id: transferResult?.resourceId || null,
+                }
+            }
+        );
+
+        // 5. Update status in Blockchain
+        if (this.blockchainService.isBlockchainEnabled()) {
+            try {
+                await this.blockchainService.updateLoanStatus(loan.contractId, 'disbursed');
+            } catch (error) {
+                this.logger.warn(`Failed to update blockchain status: ${error.message}`);
+            }
+        }
+
+        return {
+            success: true,
+            message: 'Giải ngân thành công',
+            loanId: loan.contractId,
+            fineractLoanId: loan.fineractLoanId,
+            transferResult: transferResult,
+        };
+    }
+
     /**
      * Cleanup failed loans (waiting but missing Fineract ID)
      */
