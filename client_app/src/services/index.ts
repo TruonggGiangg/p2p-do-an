@@ -11,4 +11,7 @@ export { storageService } from './storage/storage.service';
 export { httpClient } from './http/httpClient';
 export { apiConfig } from './config/api.config';
 export { loanApi } from './loan/loan.api';
+export { investApi } from './invest/invest.api';
+export { walletApi } from './wallet/wallet.api';
+export { repaymentApi } from './repayment/repayment.api';
 

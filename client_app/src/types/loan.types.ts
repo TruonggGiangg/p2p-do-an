@@ -230,6 +230,7 @@ export interface PrepayAmount {
  */
 export interface FineractLoanDetails {
     fineractLoanId: number;
+    contractId?: string; // MongoDB contract ID
     fineractStatus: string;
     principal: number;
     numberOfRepayments: number;

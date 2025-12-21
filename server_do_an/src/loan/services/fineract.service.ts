@@ -567,6 +567,55 @@ export class FineractService {
 
 
     /**
+     * Transfer funds between accounts (Savings to Savings)
+     */
+    async transferFunds(
+        fromClientId: number,
+        toClientId: number,
+        fromAccountId: number,
+        toAccountId: number,
+        amount: number,
+        note: string = 'Transfer via P2P'
+    ): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const date = new Date().toISOString().split('T')[0];
+
+            const payload = {
+                fromOfficeId: 1,
+                fromClientId: fromClientId,
+                fromAccountType: 2, // Savings
+                fromAccountId: fromAccountId,
+                toOfficeId: 1,
+                toClientId: toClientId,
+                toAccountType: 2, // Savings
+                toAccountId: toAccountId,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+                transferDate: date,
+                transferAmount: amount,
+                transferDescription: note,
+            };
+
+            const url = `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`;
+            const response = await firstValueFrom(
+                this.httpService.post(url, payload, { headers }),
+            );
+
+            this.logger.log(`Transferred ${amount} from ${fromAccountId} to ${toAccountId}`);
+            return {
+                success: true,
+                resourceId: response.data.resourceId,
+                transactionId: response.data.resourceId, // Mapping for consistency
+                response: response.data
+            };
+        } catch (error) {
+            this.logger.error(`Failed to transfer funds: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
      * Get prepayment amount (for early loan closure)
      */
     async getPrepaymentAmount(loanId: number): Promise<{

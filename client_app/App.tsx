@@ -23,6 +23,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import TokenTestScreen from './src/screens/TokenTestScreen';
 import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen } from './src/screens/loan';
 import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen } from './src/screens/invest';
+import TransactionHistoryScreen from './src/screens/shared/TransactionHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -97,6 +98,11 @@ function InvestStack() {
         name="MyInvestments"
         component={MyInvestmentsScreen}
         options={{ title: 'Portfolio của tôi' }}
+      />
+      <Stack.Screen
+        name="TransactionHistory"
+        component={TransactionHistoryScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

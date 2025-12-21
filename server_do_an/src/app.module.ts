@@ -6,6 +6,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '@auth/auth.module';
 import { LoanModule } from './loan/loan.module';
 import { InvestModule } from './invest/invest.module';
+import { RepaymentModule } from './repayment/repayment.module';
+import { WalletModule } from './wallet/wallet.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -30,6 +32,8 @@ import { APP_GUARD } from '@nestjs/core';
     AuthModule,
     LoanModule,
     InvestModule,
+    RepaymentModule,
+    WalletModule,
   ],
 
   controllers: [AppController],

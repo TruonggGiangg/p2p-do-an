@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
     View,
     Text,
@@ -12,13 +13,14 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { investApi } from '../../services/invest';
+import { walletApi } from '../../services';
 import { DarkColors, DarkStyling } from '../../theme';
 
 /**
  * WalletScreen - Shows lender's wallet balance and transactions (Dark Theme)
  */
 export default function WalletScreen() {
+    const navigation = useNavigation<any>();
     const [balance, setBalance] = useState<{
         balance: number;
         availableBalance: number;
@@ -31,7 +33,7 @@ export default function WalletScreen() {
     const loadData = useCallback(async () => {
         try {
             setRefreshing(true);
-            const balanceData = await investApi.getMyBalance();
+            const balanceData = await walletApi.getBalance();
             setBalance(balanceData);
         } catch (error: any) {
             console.error('Error loading wallet:', error);
@@ -138,7 +140,10 @@ export default function WalletScreen() {
                         <Text style={styles.actionLabel}>Chuyển tiền</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionButton}>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('TransactionHistory')}
+                    >
                         <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.secondary}20` }]}>
                             <MaterialCommunityIcons name="history" size={24} color={DarkColors.secondary} />
                         </View>

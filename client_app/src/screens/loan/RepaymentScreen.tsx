@@ -20,7 +20,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { loanApi } from '../../services';
+import { loanApi, repaymentApi } from '../../services';
 import { FineractLoanDetails } from '../../types';
 import { DarkColors, DarkStyling } from '../../theme';
 
@@ -86,9 +86,10 @@ export const RepaymentScreen: React.FC = () => {
         try {
             setSubmitting(true);
             const numAmount = parseFloat(amount.replace(/[^0-9]/g, ''));
-            const dateStr = transactionDate.toISOString().split('T')[0];
 
             if (isPrepay) {
+                // For prepay, still use loanApi
+                const dateStr = transactionDate.toISOString().split('T')[0];
                 await loanApi.prepayLoan({
                     fineractLoanId: loanDetails.fineractLoanId,
                     transactionAmount: numAmount,
@@ -99,13 +100,12 @@ export const RepaymentScreen: React.FC = () => {
                     { text: 'OK', onPress: () => navigation.goBack() }
                 ]);
             } else {
-                await loanApi.makeRepayment({
-                    fineractLoanId: loanDetails.fineractLoanId,
-                    transactionAmount: numAmount,
-                    transactionDate: dateStr,
-                    note: note,
+                // Use new repayment API that handles distribution automatically
+                await repaymentApi.makeRepayment({
+                    loanId: loanDetails.contractId || String(loanDetails.fineractLoanId),
+                    amount: numAmount,
                 });
-                Alert.alert('Thành công', 'Thanh toán thành công!', [
+                Alert.alert('Thành công', 'Thanh toán thành công! Số tiền đã được phân phối tới các nhà đầu tư.', [
                     { text: 'OK', onPress: () => navigation.goBack() }
                 ]);
             }
@@ -240,7 +240,13 @@ export const RepaymentScreen: React.FC = () => {
                     activeOpacity={0.8}
                 >
                     <LinearGradient
-                        colors={submitting ? [DarkColors.textMuted, DarkColors.textMuted] : (isPrepay ? ['#FFA502', '#FF6348'] : ['#4347FF', '#6366F1']) as const}
+                        colors={
+                            submitting
+                                ? [DarkColors.textMuted, DarkColors.textMuted] as const
+                                : isPrepay
+                                    ? ['#FFA502', '#FF6348'] as const
+                                    : ['#4347FF', '#6366F1'] as const
+                        }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.submitButton}
