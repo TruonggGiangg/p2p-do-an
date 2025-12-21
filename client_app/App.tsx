@@ -72,6 +72,11 @@ function LoanStack() {
         component={RepaymentScreen}
         options={{ title: 'Thanh Toán' }}
       />
+      <Stack.Screen
+        name="TransactionHistory"
+        component={TransactionHistoryScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
