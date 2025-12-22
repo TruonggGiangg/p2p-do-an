@@ -63,6 +63,7 @@ export default function TransactionHistoryScreen() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(0);
+    const [walletNotLinked, setWalletNotLinked] = useState(false);
     const PAGE_SIZE = 20;
 
     const loadTransactions = useCallback(async (pageNum: number = 0, refresh: boolean = false) => {
@@ -85,9 +86,14 @@ export default function TransactionHistoryScreen() {
 
             setHasMore(response.transactions.length === PAGE_SIZE);
             setPage(pageNum);
+            setWalletNotLinked(false); // Clear error if successful
         } catch (error: any) {
             console.error('Error loading transactions:', error);
-            // Silent fail for now - transactions might not be available yet
+            // Check if wallet is not linked
+            if (error.message && error.message.includes('Wallet not linked')) {
+                setWalletNotLinked(true);
+            }
+            // Silent fail - transactions might not be available yet
             if (pageNum === 0) {
                 setTransactions([]);
             }
@@ -100,7 +106,7 @@ export default function TransactionHistoryScreen() {
 
     useEffect(() => {
         loadTransactions(0);
-    }, []);
+    }, [loadTransactions]);
 
     const handleRefresh = () => {
         loadTransactions(0, true);
@@ -150,10 +156,19 @@ export default function TransactionHistoryScreen() {
 
     const renderEmpty = () => (
         <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="history" size={64} color={DarkColors.textMuted} />
-            <Text style={styles.emptyText}>Chưa có giao dịch</Text>
+            <MaterialCommunityIcons
+                name={walletNotLinked ? "wallet-plus" : "history"}
+                size={64}
+                color={DarkColors.textMuted}
+            />
+            <Text style={styles.emptyText}>
+                {walletNotLinked ? 'Chưa liên kết ví' : 'Chưa có giao dịch'}
+            </Text>
             <Text style={styles.emptySubtext}>
-                Lịch sử giao dịch của bạn sẽ hiển thị ở đây
+                {walletNotLinked
+                    ? 'Bạn cần liên kết ví Fineract để xem lịch sử giao dịch'
+                    : 'Lịch sử giao dịch của bạn sẽ hiển thị ở đây'
+                }
             </Text>
         </View>
     );

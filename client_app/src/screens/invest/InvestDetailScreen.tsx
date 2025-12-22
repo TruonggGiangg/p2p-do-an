@@ -66,7 +66,7 @@ export default function InvestDetailScreen() {
                             setLoading(true);
                             await investApi.createInvestment({
                                 loanContractId: loan.contractId,
-                                capital: investmentAmount,
+                                capital: investmentAmount, // FIXED: Send total amount
                                 numNotes: notes,
                             });
                             Alert.alert('Thành công', 'Đầu tư thành công!', [

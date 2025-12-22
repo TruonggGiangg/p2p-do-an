@@ -981,17 +981,33 @@ export class FineractService {
 
     /**
      * Get Client Details (includes savings accounts list)
+     * Uses same approach as p2p reference: call /clients/{id}/accounts separately
      */
     async getClientDetails(clientId: number | string): Promise<any> {
         try {
             const headers = await this.getHeaders();
-            const url = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}`;
 
-            const response = await firstValueFrom(
-                this.httpService.get(url, { headers }),
+            // Step 1: Get client basic info
+            const clientUrl = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}`;
+            const clientResponse = await firstValueFrom(
+                this.httpService.get(clientUrl, { headers }),
             );
+            const client = clientResponse.data;
 
-            return response.data;
+            // Step 2: Get client accounts (includes savings accounts)
+            let savingsAccounts = [];
+            try {
+                const accountsUrl = `${this.baseUrl}/fineract-provider/api/v1/clients/${clientId}/accounts`;
+                const accountsResponse = await firstValueFrom(
+                    this.httpService.get(accountsUrl, { headers }),
+                );
+                savingsAccounts = accountsResponse?.data?.savingsAccounts || [];
+                this.logger.log(`[getClientDetails] Client ${clientId} accounts response: ${savingsAccounts.length} savings accounts`);
+            } catch (error) {
+                this.logger.warn(`[getClientDetails] Could not get accounts for client ${clientId}: ${error.message}`);
+            }
+
+            return { ...client, savingsAccounts };
         } catch (error) {
             this.logger.error(`Failed to get client details for ${clientId}: ${error}`);
             throw error;
@@ -1223,5 +1239,37 @@ export class FineractService {
         const months = ['January', 'February', 'March', 'April', 'May', 'June',
             'July', 'August', 'September', 'October', 'November', 'December'];
         return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+    }
+
+    /**
+     * Get Savings Account Transactions
+     * Fetches transaction history for a savings account
+     * Note: Uses account details API with associations since /transactions endpoint returns 405
+     */
+    async getSavingsAccountTransactions(savingsAccountId: number): Promise<any[]> {
+        try {
+            const headers = await this.getHeaders();
+            // Use account details with associations to get transactions
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=transactions`;
+
+            this.logger.log(`[getSavingsTransactions] Fetching account details with transactions for savings account ${savingsAccountId}`);
+            this.logger.log(`[getSavingsTransactions] URL: ${url}`);
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers }),
+            );
+
+            // Extract transactions from account details response
+            const txns = response.data.transactions || [];
+            this.logger.log(`[getSavingsTransactions] Found ${txns.length} transactions for account ${savingsAccountId}`);
+
+            return txns;
+        } catch (error: any) {
+            this.logger.error(`Failed to get savings transactions for ${savingsAccountId}: ${error.message}`);
+            if (error.response) {
+                this.logger.error(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`);
+            }
+            return [];
+        }
     }
 }

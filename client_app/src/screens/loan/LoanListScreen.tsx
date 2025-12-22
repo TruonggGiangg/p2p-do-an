@@ -199,9 +199,12 @@ export default function LoanListScreen({ navigation }: Props) {
                             <View style={styles.actionIcon}>
                                 <MaterialCommunityIcons name="wallet-outline" size={20} color={DarkColors.text} />
                             </View>
-                            <Text style={styles.actionLabel}>Thanh toán</Text>
+                            <Text style={styles.actionLabel}>Nạp tiền</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn}>
+                        <TouchableOpacity
+                            style={styles.actionBtn}
+                            onPress={() => navigation.navigate('TransactionHistory')}
+                        >
                             <View style={styles.actionIcon}>
                                 <MaterialCommunityIcons name="history" size={20} color={DarkColors.text} />
                             </View>

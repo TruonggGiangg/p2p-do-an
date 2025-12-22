@@ -105,6 +105,13 @@ export class InvestmentContract extends Document {
     @Prop()
     fineractEscrowAccountId?: number;
 
+    // Escrow tracking fields (NEW)
+    @Prop({ index: true })
+    escrowId?: string; // Link to Escrow record in MongoDB
+
+    @Prop()
+    escrowTransactionId?: string; // Lender → Escrow transaction ID
+
     @Prop({ enum: ['pending', 'escrowed', 'disbursed', 'failed'], default: 'pending' })
     escrowStatus: string;
 

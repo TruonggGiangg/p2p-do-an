@@ -23,7 +23,7 @@ export class WalletController {
     async getBalance(@Req() req: Request, @Res() res: Response) {
         try {
             const user = req.user as any;
-            const userId = user.id || user._id || user.keycloakUserId;
+            const userId = user.username || user.keycloakUserId || user._id; // Use username first!
 
             const balance = await this.walletService.getWalletBalance(userId);
             return res.status(HttpStatus.OK).json({ success: true, ...balance });
@@ -37,7 +37,7 @@ export class WalletController {
     async getTransactions(@Req() req: Request, @Query() query: any, @Res() res: Response) {
         try {
             const user = req.user as any;
-            const userId = user.id || user._id || user.keycloakUserId;
+            const userId = user.username || user.keycloakUserId || user._id; // Use username first!
             const { limit, offset } = query;
 
             const transactions = await this.walletService.getWalletTransactions(userId, limit, offset);
@@ -53,7 +53,7 @@ export class WalletController {
         try {
             const { fineractClientId, phone } = body;
             const user = req.user as any;
-            const userId = user.id || user._id || user.keycloakUserId;
+            const userId = user.username || user.keycloakUserId || user._id; // Use username first!
 
             // Simple linking logic for demo: Create or update Wallet record
             // In prod, verify OTP or Fineract ownership

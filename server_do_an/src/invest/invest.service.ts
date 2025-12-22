@@ -13,6 +13,7 @@ import { InvestmentContract } from './schemas';
 import { CreateInvestmentDto } from './dto';
 import { LoanContract } from '../loan/schemas';
 import { FineractService } from '../loan/services/fineract.service';
+import { FineractEscrowService } from '../escrow/services/fineract-escrow.service';
 
 /**
  * User interface from authentication
@@ -50,6 +51,7 @@ export class InvestService {
         @InjectModel(LoanContract.name)
         private readonly loanContractModel: Model<LoanContract>,
         private readonly fineractService: FineractService,
+        private readonly escrowService: FineractEscrowService,
         private readonly configService: ConfigService,
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
@@ -139,8 +141,9 @@ export class InvestService {
             );
         }
 
-        // 2.5. Transfer from Lender Savings → Escrow (deposit investment)
-        let escrowTransferId: number | string | null = null;
+        // 2.5. Create escrow and transfer funds: Lender → Escrow
+        let escrowId: string | null = null;
+        let escrowTransferId: string | null = null;
 
         // Resolve lender's Fineract client ID
         let lenderFineractClientId = await this.fineractService.resolveClientId(user.username);
@@ -166,26 +169,32 @@ export class InvestService {
                     );
                 }
 
-                // Get escrow account
-                const escrowAccountId = this.fineractService.getEscrowAccountId();
-                const adminClientId = this.fineractService.getAdminClientId();
-
-                this.logger.log(`Transferring ${investmentCapital} VND from Lender ${lenderFineractClientId} to Escrow...`);
-
-                // Transfer: Lender → Escrow
-                const transferResult = await this.fineractService.transferBetweenAccounts(
-                    lenderSavingsAccount.id,
-                    escrowAccountId,
+                // Step 1: Create escrow record
+                const borrowerId = loanContract.borrower.toString();
+                const escrowRecord = await this.escrowService.createEscrow(
+                    loanContract.contractId,
+                    user._id,
+                    borrowerId,
                     investmentCapital,
-                    `Đầu tư khoản vay ${loanContract.contractId}`,
-                    lenderFineractClientId,
-                    adminClientId,
+                    {
+                        fineractLenderClientId: lenderFineractClientId,
+                        loanRate: loanContract.info.rate,
+                        periodMonth: loanContract.info.periodMonth,
+                    }
                 );
+                escrowId = escrowRecord.escrowId;
+                this.logger.log(`[Escrow] Created escrow ${escrowId} for loan ${loanContract.contractId}`);
 
-                escrowTransferId = transferResult?.resourceId;
-                this.logger.log(`Lender fund deposited to escrow: ${escrowTransferId}`);
+                // Step 2: Fund escrow (Lender → Escrow)
+                escrowTransferId = await this.escrowService.fundEscrow(
+                    escrowId,
+                    lenderFineractClientId,
+                    lenderSavingsAccount.id
+                );
+                this.logger.log(`[Escrow] Funded escrow ${escrowId}, txn: ${escrowTransferId}`);
+
             } catch (transferError: any) {
-                this.logger.error(`Failed to transfer from lender to escrow: ${transferError.message}`);
+                this.logger.error(`[Escrow] Failed to fund escrow: ${transferError.message}`);
                 throw new BadRequestException(`Không thể trừ tiền từ tài khoản: ${transferError.message}`);
             }
         } else {
@@ -222,6 +231,8 @@ export class InvestService {
             lenderFineractClientId: getLenderFineractClientId(),
             loanContract: loanContract._id,
             loanContractId: loanContract.contractId,
+            escrowId: escrowId, // Track escrow for this investment
+            escrowTransactionId: escrowTransferId, // Track fund transaction
             info: {
                 capital: investmentCapital,
                 numNotes,
@@ -234,7 +245,7 @@ export class InvestService {
                 createdDate: new Date(),
             },
             status: 'waiting_other',
-            escrowStatus: 'pending',
+            escrowStatus: escrowId ? 'funded' : 'pending',
         });
 
 
@@ -290,6 +301,7 @@ export class InvestService {
 
     /**
      * Handle auto-disbursement when loan is 100% funded
+     * Uses escrow service to release funds: Escrow → Borrower
      */
     private async handleFullMatchDisbursement(loanContract: any): Promise<void> {
         try {
@@ -299,17 +311,17 @@ export class InvestService {
                 return;
             }
 
-            this.logger.log(`Starting auto-disbursement for loan ${loanContract.contractId}...`);
+            this.logger.log(`[Disbursement] Starting auto-disbursement for loan ${loanContract.contractId}...`);
 
             // 1. Approve loan on Fineract
             const approveResult = await this.fineractService.approveLoan(loanContract.fineractLoanId);
-            this.logger.log(`Loan ${loanContract.contractId} approved on Fineract: ${JSON.stringify(approveResult)}`);
+            this.logger.log(`[Disbursement] Loan ${loanContract.contractId} approved on Fineract`);
 
             // 2. Disburse loan on Fineract (changes loan status to ACTIVE)
             const disburseResult = await this.fineractService.disburseLoan(loanContract.fineractLoanId);
-            this.logger.log(`Loan ${loanContract.contractId} disbursed on Fineract: ${JSON.stringify(disburseResult)}`);
+            this.logger.log(`[Disbursement] Loan ${loanContract.contractId} disbursed on Fineract`);
 
-            // 3. Transfer funds from Escrow to Borrower's Savings Account
+            // 3. Release escrow funds to borrower
             if (loanContract.borrowerFineractClientId) {
                 try {
                     // Get borrower's savings account
@@ -317,34 +329,56 @@ export class InvestService {
                         loanContract.borrowerFineractClientId,
                     );
 
-                    // Get escrow account ID and admin client ID from config
-                    const escrowAccountId = this.fineractService.getEscrowAccountId();
-                    const adminClientId = this.fineractService.getAdminClientId();
-
-                    if (borrowerSavingsAccount?.id && escrowAccountId && adminClientId) {
-                        const loanCapital = loanContract.info?.capital || 0;
-
-                        // Transfer from Escrow → Borrower Savings (with clientIds)
-                        const transferResult = await this.fineractService.transferBetweenAccounts(
-                            escrowAccountId,
-                            borrowerSavingsAccount.id,
-                            loanCapital,
-                            `Giải ngân khoản vay ${loanContract.contractId}`,
-                            adminClientId,
-                            Number(loanContract.borrowerFineractClientId),
-                        );
-
-
-                        this.logger.log(`Funds transferred to borrower: ${loanCapital} VND, txId: ${transferResult?.resourceId}`);
-                    } else {
-                        this.logger.warn(`Missing escrow (${escrowAccountId}) or borrower savings (${borrowerSavingsAccount?.id}), skipping transfer`);
+                    if (!borrowerSavingsAccount?.id) {
+                        this.logger.warn(`[Disbursement] Borrower ${loanContract.borrowerFineractClientId} has no savings account`);
+                        return;
                     }
+
+                    // Find all escrow records for this loan that are funded
+                    const escrows = await this.escrowService['escrowModel'].find({
+                        loanContractId: loanContract.contractId,
+                        status: 'funded',
+                    });
+
+                    this.logger.log(`[Disbursement] Found ${escrows.length} funded escrows for loan ${loanContract.contractId}`);
+
+                    // Release each escrow: Escrow → Borrower
+                    for (const escrow of escrows) {
+                        try {
+                            const releaseTransactionId = await this.escrowService.releaseEscrow(
+                                escrow.escrowId,
+                                loanContract.borrowerFineractClientId,
+                                borrowerSavingsAccount.id
+                            );
+
+                            this.logger.log(`[Disbursement] Released escrow ${escrow.escrowId}, txn: ${releaseTransactionId}`);
+
+                            // Update investment escrow status
+                            await this.investmentModel.updateOne(
+                                { escrowId: escrow.escrowId },
+                                {
+                                    $set: {
+                                        escrowStatus: 'disbursed',
+                                        status: 'success' // Mark investment as successful
+                                    }
+                                }
+                            );
+
+                        } catch (releaseError) {
+                            this.logger.error(`[Disbursement] Failed to release escrow ${escrow.escrowId}: ${releaseError.message}`);
+                            // Continue with other escrows
+                        }
+                    }
+
+                    const totalReleased = escrows.reduce((sum, e) => sum + e.amount, 0);
+                    this.logger.log(`[Disbursement] Total released to borrower: ${totalReleased} VND`);
+
                 } catch (transferError: any) {
-                    this.logger.error(`Failed to transfer funds to borrower: ${transferError.message}`);
+                    this.logger.error(`[Disbursement] Failed to transfer funds to borrower: ${transferError.message}`);
                     // Don't throw - loan is already active on Fineract
                 }
             } else {
-                this.logger.warn(`Loan ${loanContract.contractId} has no borrowerFineractClientId, skipping fund transfer`);
+                this.logger.warn(`[Disbursement] Loan ${loanContract.contractId} has no borrowerFineractClientId, skipping fund transfer`);
             }
 
             // 4. Update loan status in MongoDB
@@ -359,9 +393,9 @@ export class InvestService {
                 },
             );
 
-            this.logger.log(`Auto-disbursement completed for loan ${loanContract.contractId}`);
+            this.logger.log(`[Disbursement] Auto-disbursement completed for loan ${loanContract.contractId}`);
         } catch (error: any) {
-            this.logger.error(`Auto-disbursement failed: ${error.message}`);
+            this.logger.error(`[Disbursement] Auto-disbursement failed: ${error.message}`);
             throw error;
         }
     }

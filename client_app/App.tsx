@@ -113,6 +113,28 @@ function InvestStack() {
   );
 }
 
+// Wallet stack for lenders - includes transaction history
+function WalletStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        ...darkHeaderOptions,
+      }}
+    >
+      <Stack.Screen
+        name="WalletMain"
+        component={WalletScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TransactionHistory"
+        component={TransactionHistoryScreen}
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 // Main tabs for authenticated users - Dark Theme
 function MainTabs() {
   const { user } = useAuth();
@@ -184,7 +206,7 @@ function MainTabs() {
       {isLender && (
         <Tab.Screen
           name="Wallet"
-          component={WalletScreen}
+          component={WalletStack}
           options={{ title: 'Ví' }}
         />
       )}

@@ -14,20 +14,68 @@ export class WalletService {
     ) { }
 
     /**
+     * Resolve or Create Wallet - Auto-link P2P user to Fineract client
+     * Similar to FineractService.resolveClientId()
+     */
+    private async resolveOrCreateWallet(userId: string): Promise<WalletDocument> {
+        // 1. Check if wallet already exists
+        let wallet = await this.walletModel.findOne({ p2pUserId: userId });
+
+        if (wallet && wallet.isLinked && wallet.fineractClientId) {
+            this.logger.log(`[resolveOrCreateWallet] Wallet already linked for user ${userId} -> Client ${wallet.fineractClientId}`);
+            return wallet;
+        }
+
+        // 2. Auto-resolve Fineract client ID (using FineractService's resolveClientId)
+        // This will find or create Fineract client based on Keycloak username
+        const fineractClientId = await this.fineractService['resolveClientId'](userId);
+
+        if (!fineractClientId) {
+            throw new Error('Could not resolve Fineract client ID');
+        }
+
+        // 3. Create or update wallet record
+        if (!wallet) {
+            wallet = new this.walletModel({
+                p2pUserId: userId,
+                fineractClientId: String(fineractClientId),
+                phone: userId, // Use userId as phone placeholder (can be updated later)
+                isLinked: true,
+                metadata: {
+                    autoLinked: true,
+                    linkedAt: new Date(),
+                }
+            });
+            this.logger.log(`[resolveOrCreateWallet] Created new wallet for user ${userId} -> Client ${fineractClientId}`);
+        } else {
+            wallet.fineractClientId = String(fineractClientId);
+            wallet.isLinked = true;
+            wallet.metadata = {
+                ...wallet.metadata,
+                autoLinked: true,
+                linkedAt: new Date(),
+            };
+            this.logger.log(`[resolveOrCreateWallet] Updated wallet for user ${userId} -> Client ${fineractClientId}`);
+        }
+
+        await wallet.save();
+        return wallet;
+    }
+
+    /**
      * Get Wallet Balance
      */
     async getWalletBalance(userId: string): Promise<any> {
-        // 1. Find Wallet
-        const wallet = await this.walletModel.findOne({ p2pUserId: userId, isLinked: true });
-        if (!wallet || !wallet.fineractClientId) {
-            this.logger.warn(`Wallet not found or not linked for user ${userId}`);
-            throw new Error('Wallet not linked');
-        }
+        // 1. Resolve or create wallet (auto-link if needed)
+        const wallet = await this.resolveOrCreateWallet(userId);
 
         const clientId = Number(wallet.fineractClientId);
 
         // 2. Get Client Details & Accounts
         const clientDetails = await this.fineractService.getClientDetails(clientId);
+
+        // Debug: Log savings accounts
+        this.logger.log(`[getWalletBalance] Client ${clientId} has ${clientDetails.savingsAccounts?.length || 0} savings accounts`);
 
         // Find active savings account
         const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
@@ -36,6 +84,7 @@ export class WalletService {
 
         if (!savingsAccount) {
             // No active savings account
+            this.logger.warn(`[getWalletBalance] No active savings account found for client ${clientId}`);
             return {
                 balance: 0,
                 availableBalance: 0,
@@ -44,14 +93,12 @@ export class WalletService {
             };
         }
 
-        // 3. Get Account Balance from Summary (Already populated in getClientDetails usually, but can be refreshed)
-        // Accessing summary from the list item
+        // 3. Get Account Balance from Summary
         const balance = savingsAccount.accountBalance || 0;
-        // Or fetch fresh details if needed: await this.fineractService.getAccountDetails(savingsAccount.id);
 
         return {
             balance: balance,
-            availableBalance: balance, // Usually same for savings unless blocked
+            availableBalance: balance,
             accountId: savingsAccount.id,
             accountNo: savingsAccount.accountNo,
             currency: savingsAccount.currency?.code || 'VND'
@@ -62,43 +109,69 @@ export class WalletService {
      * Get Wallet Transactions
      */
     async getWalletTransactions(userId: string, limit: number = 20, offset: number = 0): Promise<{ transactions: any[]; total: number; message?: string; }> {
-        // 1. Find Wallet
-        const wallet = await this.walletModel.findOne({ p2pUserId: userId, isLinked: true });
-        if (!wallet || !wallet.fineractClientId) {
-            throw new Error('Wallet not linked');
-        }
+        this.logger.log(`[getWalletTransactions] START: userId=${userId}, limit=${limit}, offset=${offset}`);
+
+        // 1. Resolve or create wallet (auto-link if needed)
+        const wallet = await this.resolveOrCreateWallet(userId);
 
         const clientId = Number(wallet.fineractClientId);
+        this.logger.log(`[getWalletTransactions] Resolved clientId=${clientId}`);
+
         const clientDetails = await this.fineractService.getClientDetails(clientId);
+
+        // Debug: Log all savings accounts
+        this.logger.log(`[getWalletTransactions] Client has ${clientDetails.savingsAccounts?.length || 0} savings accounts`);
+        if (clientDetails.savingsAccounts?.length > 0) {
+            clientDetails.savingsAccounts.forEach((acc: any, idx: number) => {
+                this.logger.log(`[getWalletTransactions] Account ${idx}: id=${acc.id}, active=${acc.status?.active}, depositType=${acc.depositType?.id}`);
+            });
+        }
+
+        // Find active savings account (simplified to match getWalletBalance logic)
         const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
-            acc.status?.active === true && acc.depositType?.id === 100
+            acc.status?.active === true
         );
 
         if (!savingsAccount) {
+            this.logger.warn(`[getWalletTransactions] No active savings account found for client ${clientId}`);
             return { transactions: [], total: 0 };
         }
 
+        this.logger.log(`[getWalletTransactions] Found savings account ID: ${savingsAccount.id}`);
+
         // 2. Fetch Transactions from Fineract
-        // URL: /savingsaccounts/{accountId}/transactions
-        // Need to add method to FineractService for this general get
+        const fineractTxns = await this.fineractService.getSavingsAccountTransactions(savingsAccount.id);
+        this.logger.log(`[getWalletTransactions] Fetched ${fineractTxns.length} transactions from Fineract`);
 
-        // TEMPORARY: using fineractService to make raw request or add method
-        // Ideally we should add getAccountTransactions to FineractService.
-        // For now, I'll assume FineractService has a way or I'll add it here if allowed.
-        // It seems FineractService.ts doesn't have generic GET.
-        // I will use `fineractService['httpService']` (dirty) or Better: Add it to FineractService?
-        // Let's rely on what FineractService exposes. It doesn't seem to expose raw HTTP.
+        // 3. Transform to our format
+        const transactions = fineractTxns
+            .slice(offset, offset + limit)
+            .map((txn: any) => {
+                // Determine transaction type based on Fineract transaction type
+                let type = 'transfer_in';
+                if (txn.transactionType?.deposit) {
+                    type = 'deposit';
+                } else if (txn.transactionType?.withdrawal) {
+                    type = 'withdrawal';
+                } else if (txn.transactionType?.transfer) {
+                    type = txn.submittedByUsername ? 'transfer_in' : 'transfer_out';
+                }
 
-        // WAIT: FineractService.ts shown earlier has `getLoanTransactions` but not Savings Transactions.
-        // I should probably add `getSavingsAccountTransactions` to `FineractService` later.
-        // For now, I will use a simple workaround assuming I can call `this.fineractService.getHeaders()` which is private...
-        // Actually, I can't easily modify FineractService without interrupting the flow excessively.
+                return {
+                    id: String(txn.id),
+                    type: type,
+                    amount: txn.amount || 0,
+                    date: txn.date ? new Date(txn.date[0], txn.date[1] - 1, txn.date[2]).toISOString() : new Date().toISOString(),
+                    description: txn.paymentDetailData?.paymentType?.name || 'Giao dịch ví',
+                    balance: txn.runningBalance || 0,
+                };
+            });
 
-        // RE-CHECK: FineractService has `httpService` injected but it is private.
-        // I will assume I can add a method to `FineractService` or create a new public method in it.
-        // FOR NOW: I will skip the actual API call implementation detail and return mock/empty until I can update FineractService.
-        // OR better: I can implement `getSavingsAccountTransactions` in `FineractService` in the next step.
+        this.logger.log(`[getWalletTransactions] Returning ${transactions.length} transactions`);
 
-        return { transactions: [], total: 0, message: "Transaction fetching requires FineractService update" };
+        return {
+            transactions,
+            total: fineractTxns.length,
+        };
     }
 }

@@ -8,6 +8,7 @@ import { LoanModule } from './loan/loan.module';
 import { InvestModule } from './invest/invest.module';
 import { RepaymentModule } from './repayment/repayment.module';
 import { WalletModule } from './wallet/wallet.module';
+import { EscrowModule } from './escrow/escrow.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -24,16 +25,17 @@ import { APP_GUARD } from '@nestjs/core';
       }),
       inject: [ConfigService],
     }),
-    // Rate limiting: 20 requests per minute globally
+    // Rate limiting: 100 requests per minute globally (increased for development)
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 20,
+      limit: 100,
     }]),
     AuthModule,
     LoanModule,
     InvestModule,
     RepaymentModule,
     WalletModule,
+    EscrowModule,
   ],
 
   controllers: [AppController],
