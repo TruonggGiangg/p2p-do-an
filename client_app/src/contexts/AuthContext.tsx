@@ -77,23 +77,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     /**
-     * Register new user on Keycloak
+     * Register new user via backend (Fineract + Keycloak)
      */
     const register = async (
         username: string,
         password: string,
         email: string,
         firstName: string,
-        lastName: string
+        lastName: string,
+        userType?: 'borrower' | 'lender'
     ): Promise<void> => {
         setIsLoading(true);
         try {
-            await keycloakApi.register({
-                username,
+            await authApi.register({
+                phoneNumber: username,
                 password,
                 email,
                 firstName,
                 lastName,
+                userType: userType || 'borrower',
             });
         } finally {
             setIsLoading(false);

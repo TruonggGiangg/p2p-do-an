@@ -16,7 +16,8 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { loanApi } from '../../services';
 import { LoanContract, LoanStatus } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { DarkColors, DarkStatusColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
+import { GlowCard, GlowBalance, GlowBadge } from '../../components/glow';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,8 +47,24 @@ const formatDateDisplay = (dateStr: string | undefined): string => {
 };
 
 const getStatusInfo = (status: LoanStatus) => {
-    const statusKey = status as keyof typeof DarkStatusColors;
-    const colors = DarkStatusColors[statusKey] || { color: DarkColors.textSecondary, bg: 'rgba(139, 141, 151, 0.15)' };
+    // Local status colors mapping
+    const statusColors: Record<string, { color: string; bg: string }> = {
+        waiting: { color: DarkColors.warning, bg: `${DarkColors.warning}20` },
+        pending: { color: DarkColors.warning, bg: `${DarkColors.warning}20` },
+        approved: { color: DarkColors.success, bg: `${DarkColors.success}20` },
+        success: { color: DarkColors.success, bg: `${DarkColors.success}20` },
+        active: { color: DarkColors.primary, bg: `${DarkColors.primary}20` },
+        on_going: { color: DarkColors.primary, bg: `${DarkColors.primary}20` },
+        done: { color: DarkColors.textMuted, bg: `${DarkColors.textMuted}20` },
+        closed: { color: DarkColors.textMuted, bg: `${DarkColors.textMuted}20` },
+        clean: { color: DarkColors.textMuted, bg: `${DarkColors.textMuted}20` },
+        overdue: { color: DarkColors.error, bg: `${DarkColors.error}20` },
+        fail: { color: DarkColors.error, bg: `${DarkColors.error}20` },
+        rejected: { color: DarkColors.error, bg: `${DarkColors.error}20` },
+        withdrawn: { color: DarkColors.textSecondary, bg: `${DarkColors.textSecondary}20` },
+    };
+
+    const colors = statusColors[status] || { color: DarkColors.textSecondary, bg: 'rgba(139, 141, 151, 0.15)' };
 
     const labels: Record<string, { label: string; icon: string }> = {
         waiting: { label: 'Chờ đầu tư', icon: 'clock-outline' },
@@ -120,7 +137,7 @@ export default function LoanListScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('LoanDetail', { loanId: item.contractId })}
                 style={styles.cardWrapper}
             >
-                <View style={styles.card}>
+                <GlowCard variant="glass" style={styles.card}>
                     {/* Left side: Icon + Info */}
                     <View style={styles.cardLeft}>
                         <View style={[styles.iconCircle, { backgroundColor: status.bg }]}>
@@ -137,11 +154,15 @@ export default function LoanListScreen({ navigation }: Props) {
                         <Text style={[styles.amountText, { color: status.color }]}>
                             {amount.main}<Text style={styles.amountCurrency}>{amount.decimal}</Text>
                         </Text>
-                        <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-                            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-                        </View>
+                        <GlowBadge
+                            label={status.label}
+                            icon={status.icon}
+                            status={status.color === DarkColors.success ? 'success' :
+                                status.color === DarkColors.warning ? 'warning' :
+                                    status.color === DarkColors.error ? 'error' : 'info'}
+                        />
                     </View>
-                </View>
+                </GlowCard>
             </TouchableOpacity>
         );
     };
@@ -150,7 +171,10 @@ export default function LoanListScreen({ navigation }: Props) {
     const debtFormatted = formatAmountSplit(stats.totalDebt);
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={DarkGradients.background}
+            style={styles.container}
+        >
             <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
 
             {/* Header with Balance Card */}
@@ -168,49 +192,44 @@ export default function LoanListScreen({ navigation }: Props) {
                     </TouchableOpacity>
                 </View>
 
-                {/* Balance Card - Glassmorphism */}
-                <View style={styles.balanceCard}>
-                    <Text style={styles.balanceLabel}>Số dư ví</Text>
-                    <View style={styles.balanceRow}>
-                        <Text style={styles.balanceAmount}>
-                            {balanceFormatted.main}
-                            <Text style={styles.balanceDecimal}>{balanceFormatted.decimal}</Text>
-                        </Text>
-                    </View>
+                {/* Balance Card with Glow */}
+                <GlowBalance
+                    amount={walletBalance.balance}
+                    label="SỐ DƯ VÍ"
+                />
 
-                    {/* Debt Info */}
-                    {stats.totalDebt > 0 && (
-                        <View style={styles.debtRow}>
-                            <MaterialCommunityIcons name="alert-circle-outline" size={14} color={DarkColors.warning} />
-                            <Text style={styles.debtLabel}>  Dư nợ: </Text>
-                            <Text style={styles.debtAmount}>{debtFormatted.main}{debtFormatted.decimal}</Text>
+                {/* Debt Info */}
+                {stats.totalDebt > 0 && (
+                    <View style={styles.debtRow}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={14} color={DarkColors.warning} />
+                        <Text style={styles.debtLabel}>  Dư nợ: </Text>
+                        <Text style={styles.debtAmount}>{debtFormatted.main}{debtFormatted.decimal}</Text>
+                    </View>
+                )}
+
+                {/* Quick Action Buttons */}
+                <View style={styles.quickActions}>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
+                        <View style={styles.actionIcon}>
+                            <MaterialCommunityIcons name="plus" size={20} color={DarkColors.text} />
                         </View>
-                    )}
-
-                    {/* Quick Action Buttons */}
-                    <View style={styles.quickActions}>
-                        <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
-                            <View style={styles.actionIcon}>
-                                <MaterialCommunityIcons name="plus" size={20} color={DarkColors.text} />
-                            </View>
-                            <Text style={styles.actionLabel}>Tạo vay</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn}>
-                            <View style={styles.actionIcon}>
-                                <MaterialCommunityIcons name="wallet-outline" size={20} color={DarkColors.text} />
-                            </View>
-                            <Text style={styles.actionLabel}>Nạp tiền</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.actionBtn}
-                            onPress={() => navigation.navigate('TransactionHistory')}
-                        >
-                            <View style={styles.actionIcon}>
-                                <MaterialCommunityIcons name="history" size={20} color={DarkColors.text} />
-                            </View>
-                            <Text style={styles.actionLabel}>Lịch sử</Text>
-                        </TouchableOpacity>
-                    </View>
+                        <Text style={styles.actionLabel}>Tạo vay</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionBtn}>
+                        <View style={styles.actionIcon}>
+                            <MaterialCommunityIcons name="wallet-outline" size={20} color={DarkColors.text} />
+                        </View>
+                        <Text style={styles.actionLabel}>Nạp tiền</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => navigation.navigate('TransactionHistory')}
+                    >
+                        <View style={styles.actionIcon}>
+                            <MaterialCommunityIcons name="history" size={20} color={DarkColors.text} />
+                        </View>
+                        <Text style={styles.actionLabel}>Lịch sử</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -259,7 +278,7 @@ export default function LoanListScreen({ navigation }: Props) {
                     }
                 />
             </View>
-        </View>
+        </LinearGradient>
     );
 }
 

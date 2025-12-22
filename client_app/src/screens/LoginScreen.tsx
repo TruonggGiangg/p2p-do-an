@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Touchable
 import { TextInput, Button, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { DarkColors, DarkStyling } from '../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../theme';
 
 interface LoginScreenProps {
     navigation: any;
@@ -46,7 +46,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                     {/* Logo & Header */}
                     <View style={styles.header}>
                         <LinearGradient
-                            colors={DarkColors.gradientPrimary}
+                            colors={DarkGradients.primaryButton}
                             style={styles.logoContainer}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
@@ -118,7 +118,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                             activeOpacity={0.8}
                         >
                             <LinearGradient
-                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkColors.gradientPrimary}
+                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkGradients.primaryButton}
                                 style={styles.loginButton}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}

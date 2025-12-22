@@ -1,0 +1,922 @@
+# LUỒNG ĐĂNG KÝ TÀI KHOẢN P2P LENDING
+
+## MỤC LỤC
+1. [Tổng Quan](#1-tổng-quan)
+2. [Chi Tiết Từng Bước](#2-chi-tiết-từng-bước)
+3. [Validation & Error Handling](#3-validation--error-handling)
+4. [Database State](#4-database-state)
+5. [Logging](#5-logging)
+
+---
+
+## 1. TỔNG QUAN
+
+### 1.1. Yêu Cầu Đầu Vào
+
+**API Endpoint:**
+```
+POST /fineract/signup
+hoặc
+POST /auth/signup
+```
+
+**Request Body:**
+```json
+{
+  "firstName": "Nguyễn",
+  "lastName": "Văn A",
+  "phoneNumber": "0987654321",
+  "email": "nguyenvana@gmail.com",  // Optional
+  "password": "Password123!@#",
+  "isBusiness": false,  // true nếu là doanh nghiệp
+  "userType": "borrower"  // "borrower" hoặc "lender"
+}
+```
+
+### 1.2. Password Requirements (QUAN TRỌNG!)
+
+Fineract yêu cầu mật khẩu **RẤT CHẶT**:
+
+✅ **Phải có:**
+- Độ dài: 12-50 ký tự
+- Ít nhất 1 chữ HOA (A-Z)
+- Ít nhất 1 chữ thường (a-z)
+- Ít nhất 1 chữ số (0-9)
+- Ít nhất 1 ký tự đặc biệt (!@#$%^&*)
+
+❌ **Không được:**
+- Chứa khoảng trắng
+- Có ký tự lặp liên tiếp (aa, bb, 11, 22...)
+
+**Ví dụ hợp lệ:**
+```
+Password123!@#
+SecurePass2024#$
+MyP@ssw0rd456!
+```
+
+**Ví dụ KHÔNG hợp lệ:**
+```
+12345678        ← Thiếu chữ cái, ký tự đặc biệt
+Password        ← Thiếu số, ký tự đặc biệt
+Pass 123!       ← Có khoảng trắng
+Passwword123!   ← Có ký tự lặp liên tiếp (ww)
+password123!    ← Thiếu chữ HOA
+```
+
+### 1.3. Flow Diagram
+
+```
+┌─────────────┐
+│ Client App  │
+│ (Register)  │
+└──────┬──────┘
+       │ POST /fineract/signup
+       │ {firstName, lastName, phoneNumber, password...}
+       ↓
+┌──────────────────────┐
+│ Server Controller    │
+│ ValidatePassword     │
+└──────┬───────────────┘
+       │
+       ↓
+┌────────────────────────────────────────────┐
+│ FineractSignupService.signup()             │
+├────────────────────────────────────────────┤
+│                                            │
+│ Step 1: Create Fineract CLIENT             │
+│    ├─ POST /fineract/clients               │
+│    └─ POST /fineract/clients/{id}?activate│
+│                                            │
+│ Step 2: Create SAVINGS ACCOUNT            │
+│    ├─ POST /savingsaccounts                │
+│    ├─ POST /savingsaccounts/{id}?approve   │
+│    └─ POST /savingsaccounts/{id}?activate  │
+│                                            │
+│ Step 3: Create Fineract USER               │
+│    └─ POST /fineract/users                 │
+│                                            │
+│ Step 4: Create Keycloak USER               │
+│    ├─ Get Admin Token                      │
+│    ├─ Check username exists                │
+│    ├─ POST /admin/realms/fineract/users    │
+│    └─ Assign role (borrower/lender)        │
+└──────┬─────────────────────────────────────┘
+       │
+       ↓ Return
+┌──────────────────────┐
+│ Response             │
+│ {clientId, userId,   │
+│  savingsId, username,│
+│  keycloakUserId}     │
+└──────────────────────┘
+```
+
+---
+
+## 2. CHI TIẾT TỪNG BƯỚC
+
+### Input Example:
+```javascript
+{
+  "firstName": "Nguyễn",
+  "lastName": "Văn A",
+  "phoneNumber": "0987654321",
+  "email": "nguyenvana@gmail.com",
+  "password": "SecurePass2024#$",
+  "isBusiness": false,
+  "userType": "borrower"
+}
+```
+
+---
+
+### STEP 0: CHUẨN BỊ DỮ LIỆU
+
+```javascript
+// Chuẩn hóa username từ SĐT (lấy 10 số cuối)
+username = phoneNumber.trim().replace(/\D/g, '').slice(-10)
+// => "0987654321"
+
+// Email mặc định nếu không có
+email = email?.trim() || `${username}@example.com`
+// => "nguyenvana@gmail.com"
+
+// Ngày hôm qua để tránh lỗi "date cannot be in future"
+baseDate = new Date()
+baseDate.setDate(baseDate.getDate() - 1)
+
+activationDate = "21 December 2025" // Format: dd MMMM yyyy
+activationDateISO = "2025-12-21"    // Format: yyyy-MM-dd
+```
+
+---
+
+### STEP 1: TẠO FINERACT CLIENT
+
+**Purpose:** Tạo profile khách hàng (lender or borrower) trên Fineract
+
+#### 1.1. Create Client
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/clients
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "firstname": "Nguyễn",
+  "lastname": "Văn A",
+  "mobileNo": "0987654321",
+  "externalId": "0987654321",
+  "officeId": 1,
+  "legalFormId": 1,  // 1 = Person, 2 = Entity/Business
+  "active": false,
+  "submittedOnDate": "21 December 2025",
+  "dateFormat": "dd MMMM yyyy",
+  "locale": "en_US"
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "clientId": 5,
+  "resourceId": 5
+}
+```
+
+**Lưu ý:**
+- `externalId` = username (SĐT) để dễ query sau này
+- `legalFormId`: 1 = cá nhân, 2 = doanh nghiệp
+- `active: false` vì cần activate riêng
+
+#### 1.2. Activate Client
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/clients/5?command=activate
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "activationDate": "2025-12-21",
+  "locale": "en",
+  "dateFormat": "yyyy-MM-dd"
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "clientId": 5,
+  "resourceId": 5,
+  "changes": {
+    "status": { "id": 300, "value": "Active" }
+  }
+}
+```
+
+**Database State After Step 1:**
+```
+Fineract: m_client
+{
+  id: 5,
+  external_id: "0987654321",
+  display_name: "Nguyễn Văn A",
+  firstname: "Nguyễn",
+  lastname: "Văn A",
+  mobile_no: "0987654321",
+  status_enum: 300,  // Active
+  office_id: 1,
+  legal_form_enum: 1
+}
+```
+
+---
+
+### STEP 2: TẠO SAVINGS ACCOUNT
+
+**Purpose:** Tạo tài khoản tiết kiệm cho client để giao dịch tiền
+
+#### 2.1. Create Savings Account
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/savingsaccounts
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "clientId": 5,
+  "productId": 1,  // Savings Product ID
+  "nominalAnnualInterestRate": 5.0,
+  "minRequiredOpeningBalance": 0,
+  "allowOverdraft": false,
+  "externalId": "0987654321-1703289123456",
+  "submittedOnDate": "21 December 2025",
+  "locale": "en_US",
+  "dateFormat": "dd MMMM yyyy"
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "clientId": 5,
+  "savingsId": 8,
+  "resourceId": 8
+}
+```
+
+#### 2.2. Approve Savings Account
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/savingsaccounts/8?command=approve
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "approvedOnDate": "21 December 2025",
+  "dateFormat": "dd MMMM yyyy",
+  "locale": "en_US"
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "clientId": 5,
+  "savingsId": 8,
+  "resourceId": 8,
+  "changes": {
+    "status": { "id": 200, "value": "Approved" }
+  }
+}
+```
+
+#### 2.3. Activate Savings Account
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/savingsaccounts/8?command=activate
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "activatedOnDate": "21 December 2025",
+  "dateFormat": "dd MMMM yyyy",
+  "locale": "en_US"
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "clientId": 5,
+  "savingsId": 8,
+  "resourceId": 8,
+  "changes": {
+    "status": { "id": 300, "value": "Active" }
+  }
+}
+```
+
+**Database State After Step 2:**
+```
+Fineract: m_savings_account
+{
+  id: 8,
+  account_no: "000000008",
+  external_id: "0987654321-1703289123456",
+  client_id: 5,
+  product_id: 1,
+  status_enum: 300,  // Active
+  account_type_enum: 1,  // Individual
+  deposit_type_enum: 100,  // Savings
+  nominal_annual_interest_rate: 5.0,
+  account_balance_derived: 0
+}
+```
+
+---
+
+### STEP 3: TẠO FINERACT USER
+
+**Purpose:** Tạo user để login vào Fineract (self-service)
+
+```http
+POST http://118.69.41.95:8080/fineract-provider/api/v1/users
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "firstname": "Nguyễn",
+  "lastname": "Văn A",
+  "email": "nguyenvana@gmail.com",
+  "password": "SecurePass2024#$",
+  "repeatPassword": "SecurePass2024#$",
+  "username": "0987654321",
+  "officeId": 1,
+  "roles": [1, 2],  // Role IDs
+  "sendPasswordToEmail": false,
+  "isSelfServiceUser": true
+}
+```
+
+**Response:**
+```json
+{
+  "officeId": 1,
+  "resourceId": 12,
+  "userId": 12
+}
+```
+
+#### 3.1. Link Client to User
+```http
+PUT http://118.69.41.95:8080/fineract-provider/api/v1/users/12
+Authorization: Basic bWlmb3M6cGFzc3dvcmQ=
+Content-Type: application/json
+
+{
+  "clients": [5]
+}
+```
+
+**Database State After Step 3:**
+```
+Fineract: m_appuser
+{
+  id: 12,
+  username: "0987654321",
+  firstname: "Nguyễn",
+  lastname: "Văn A",
+  email: "nguyenvana@gmail.com",
+  office_id: 1,
+  is_self_service_user: 1,
+  password: "{bcrypt}$2a$10$..." // Hashed
+}
+
+Fineract: m_selfservice_user_client_mapping
+{
+  id: 5,
+  appuser_id: 12,
+  client_id: 5
+}
+```
+
+---
+
+### STEP 4: TẠO KEYCLOAK USER
+
+**Purpose:** Tạo user trong Keycloak để authentication & SSO
+
+#### 4.1. Get Keycloak Admin Token
+```http
+POST http://118.69.41.95:9000/realms/master/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password
+&client_id=admin-cli
+&username=admin
+&password=admin
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 60,
+  "refresh_expires_in": 1800,
+  "token_type": "Bearer"
+}
+```
+
+#### 4.2. Check Username Exists
+```http
+GET http://118.69.41.95:9000/admin/realms/fineract/users?username=0987654321&exact=true
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Response:**
+```json
+[]  // Empty = user không tồn tại
+```
+
+#### 4.3. Create Keycloak User
+```http
+POST http://118.69.41.95:9000/admin/realms/fineract/users
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "username": "0987654321",
+  "enabled": true,
+  "firstName": "Nguyễn",
+  "lastName": "Văn A",
+  "email": "nguyenvana@gmail.com",
+  "emailVerified": true,
+  "credentials": [{
+    "type": "password",
+    "value": "SecurePass2024#$",
+    "temporary": false
+  }]
+}
+```
+
+**Response:**
+```
+HTTP 201 Created
+Location: http://118.69.41.95:9000/admin/realms/fineract/users/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+**Extract User ID from Location header:**
+```javascript
+const location = response.headers.location
+const keycloakUserId = location.split('/').pop()
+// => "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+```
+
+#### 4.4. Get Role Info
+```http
+GET http://118.69.41.95:9000/admin/realms/fineract/roles/borrower
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Response:**
+```json
+{
+  "id": "role-borrower-id-123",
+  "name": "borrower",
+  "description": "Borrower role",
+  "composite": false,
+  "clientRole": false,
+  "containerId": "fineract"
+}
+```
+
+#### 4.5. Assign Role to User
+```http
+POST http://118.69.41.95:9000/admin/realms/fineract/users/a1b2c3d4-e5f6-7890-abcd-ef1234567890/role-mappings/realm
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+[
+  {
+    "id": "role-borrower-id-123",
+    "name": "borrower",
+    "description": "Borrower role",
+    "composite": false,
+    "clientRole": false,
+    "containerId": "fineract"
+  }
+]
+```
+
+**Response:**
+```
+HTTP 204 No Content  // Success
+```
+
+**Database State After Step 4:**
+```
+Keycloak: user_entity
+{
+  id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  username: "0987654321",
+  email: "nguyenvana@gmail.com",
+  email_verified: true,
+  enabled: true,
+  realm_id: "fineract",
+  first_name: "Nguyễn",
+  last_name: "Văn A"
+}
+
+Keycloak: credential
+{
+  id: "cred-id-xyz",
+  user_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  type: "password",
+  secret_data: "{...hashed password...}",
+  credential_data: "{...}"
+}
+
+Keycloak: user_role_mapping
+{
+  user_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  role_id: "role-borrower-id-123"
+}
+```
+
+---
+
+## 3. VALIDATION & ERROR HANDLING
+
+### 3.1. Password Validation
+
+**Code:**
+```javascript
+function _validatePassword(password) {
+  // Kiểm tra độ dài
+  if (password.length < 12 || password.length > 50) {
+    return { valid: false, message: 'Mật khẩu phải từ 12 đến 50 ký tự' };
+  }
+  
+  // Kiểm tra khoảng trắng
+  if (/\s/.test(password)) {
+    return { valid: false, message: 'Mật khẩu không được chứa khoảng trắng' };
+  }
+  
+  // Kiểm tra ký tự lặp liên tiếp
+  if (/(.)\ 1/.test(password)) {
+    return { valid: false, message: 'Mật khẩu không được có ký tự lặp lại liên tiếp' };
+  }
+  
+  // Kiểm tra ít nhất 1 số
+  if (!/\d/.test(password)) {
+    return { valid: false, message: 'Mật khẩu phải có ít nhất 1 chữ số' };
+  }
+  
+  // Kiểm tra ít nhất 1 chữ thường
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, message: 'Mật khẩu phải có ít nhất 1 chữ thường' };
+  }
+  
+  // Kiểm tra ít nhất 1 chữ HOA
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, message: 'Mật khẩu phải có ít nhất 1 chữ hoa' };
+  }
+  
+  // Kiểm tra ít nhất 1 ký tự đặc biệt
+  if (!/[^\w\s]/.test(password)) {
+    return { valid: false, message: 'Mật khẩu phải có ít nhất 1 ký tự đặc biệt' };
+  }
+  
+  return { valid: true };
+}
+```
+
+### 3.2. Error Cases
+
+| Error | HTTP Code | Message | Giải pháp |
+|-------|-----------|---------|-----------|
+| Password không hợp lệ | 400 | "Mật khẩu không hợp lệ: ..." | Sửa password theo yêu cầu |
+| Thiếu field bắt buộc | 400 | "Thiếu thông tin bắt buộc" | Gửi đủ firstName, lastName, phoneNumber, password |
+| Username đã tồn tại (Fineract) | 409 | "Tài khoản đã tồn tại" | Dùng SĐT khác hoặc login |
+| Username đã tồn tại (Keycloak) | 409 | "Tài khoản đã tồn tại" | Tự động lấy existing user ID |
+| Fineract service chưa khởi tạo | 503 | "Fineract service chưa được khởi tạo" | Restart server |
+| Keycloak connection failed | 500 | "Keycloak error: ..." | Check Keycloak server |
+| Request timeout | 504 | "Request timeout" | Retry hoặc check network |
+
+### 3.3. Rollback Strategy
+
+**Câu hỏi:** Nếu step 4 (Keycloak) fail, có rollback Fineract không?
+
+**Trả lời:** KHÔNG!
+
+Lý do:
+- Fineract đã tạo xong (Client, Savings, User)
+- User có thể login vào Fineract được
+- Keycloak chỉ là authentication layer bổ sung
+- Có thể tạo Keycloak user sau
+
+**Best Practice:**
+- Log chi tiết lỗi Keycloak
+- Return success với note: `keycloakUserId: null`
+- Admin có thể tạo Keycloak user manual sau
+
+---
+
+## 4. DATABASE STATE
+
+### Final State Summary
+
+**Fineract Database:**
+```sql
+-- m_client
+INSERT INTO m_client (id, external_id, display_name, firstname, lastname, mobile_no, status_enum, office_id)
+VALUES (5, '0987654321', 'Nguyễn Văn A', 'Nguyễn', 'Văn A', '0987654321', 300, 1);
+
+-- m_savings_account
+INSERT INTO m_savings_account (id, account_no, client_id, product_id, status_enum, deposit_type_enum)
+VALUES (8, '000000008', 5, 1, 300, 100);
+
+-- m_appuser
+INSERT INTO m_appuser (id, username, firstname, lastname, email, office_id, is_self_service_user)
+VALUES (12, '0987654321', 'Nguyễn', 'Văn A', 'nguyenvana@gmail.com', 1, 1);
+
+-- m_selfservice_user_client_mapping
+INSERT INTO m_selfservice_user_client_mapping (appuser_id, client_id)
+VALUES (12, 5);
+```
+
+**Keycloak Database:**
+```sql
+-- user_entity
+INSERT INTO user_entity (id, username, email, realm_id, enabled)
+VALUES ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', '0987654321', 'nguyenvana@gmail.com', 'fineract', true);
+
+-- user_role_mapping
+INSERT INTO user_role_mapping (user_id, role_id)
+VALUES ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'role-borrower-id-123');
+```
+
+**MongoDB (P2P Backend - Optional):**
+```javascript
+// users collection (nếu có sync)
+{
+  _id: ObjectId("..."),
+  username: "0987654321",
+  phone: "0987654321",
+  email: "nguyenvana@gmail.com",
+  firstName: "Nguyễn",
+  lastName: "Văn A",
+  fineractClientId: 5,
+  fineractUserId: 12,
+  keycloakUserId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  createdAt: ISODate("2025-12-22T..."),
+  role: "borrower"
+}
+```
+
+---
+
+## 5. LOGGING
+
+### 5.1. Success Log Example
+
+```
+[FineractSignupController] ========== REQUEST RECEIVED ==========
+[FineractSignupController] Method: POST
+[FineractSignupController] Path: /fineract/signup
+[FineractSignupController] Body: { firstName: 'Nguyễn', lastName: 'Văn A', phoneNumber: '0987654321', hasEmail: true, hasPassword: true }
+
+[FineractSignupService] Bắt đầu đăng ký: { username: '0987654321', firstName: 'Nguyễn', lastName: 'Văn A' }
+
+[FineractSignupService] Bước 1: Tạo Client...
+[FineractSignupService] Client created: 5
+[FineractSignupService] Client activated
+
+[FineractSignupService] Bước 2: Tạo Savings Account...
+[FineractSignupService] Savings created: 8
+[FineractSignupService] Savings approved
+[FineractSignupService] Savings activated
+
+[FineractSignupService] Bước 3: Tạo User trên Fineract...
+[FineractSignupService] Fineract User created: 12
+[FineractSignupService] Client linked to User
+
+[FineractSignupService] Bước 4: Tạo User trên Keycloak...
+[FineractSignupService] ✓ Admin token lấy thành công
+[FineractSignupService] Keycloak API instance created
+[FineractSignupService] Kiểm tra user đã tồn tại: 0987654321
+[FineractSignupService] User "0987654321" exists in Keycloak: false
+[FineractSignupService] Tạo Keycloak user mới: 0987654321
+[FineractSignupService] Keycloak create response status: 201
+[FineractSignupService] Keycloak User ID từ Location header: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+[FineractSignupService] ✓ Keycloak User created: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+[FineractSignupService] Gán role: borrower cho user: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+[FineractSignupService] Đã gán role "borrower"
+[FineractSignupService] ✓ Role đã được gán
+
+[FineractSignupService] Đăng ký hoàn tất!
+
+[FineractSignupController] Signup completed successfully in 3421ms
+```
+
+### 5.2. Error Log Example (Password Invalid)
+
+```
+[FineractSignupController] ========== REQUEST RECEIVED ==========
+[FineractSignupController] Body: { firstName: 'Test', lastName: 'User', phoneNumber: '0912345678', hasPassword: true }
+
+[FineractSignupService] Bắt đầu đăng ký: { username: '0912345678', firstName: 'Test', lastName: 'User' }
+
+[FineractSignupController] Error after 15ms: Mật khẩu không hợp lệ: Mật khẩu phải có ít nhất 1 chữ hoa
+
+Response: 400 Bad Request
+{
+  "success": false,
+  "statusCode": 400,
+  "message": "Mật khẩu không hợp lệ: Mật khẩu phải có ít nhất 1 chữ hoa"
+}
+```
+
+---
+
+## 6. CLIENT IMPLEMENTATION
+
+### 6.1. React Native Example
+
+```typescript
+// services/auth.api.ts
+
+export interface SignupRequest {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email?: string;
+  password: string;
+  isBusiness?: boolean;
+  userType?: 'borrower' | 'lender';
+}
+
+export interface SignupResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  data?: {
+    clientId: number;
+    userId: number;
+    savingsId: number;
+    username: string;
+    keycloakUserId?: string;
+  };
+}
+
+export const authApi = {
+  signup: async (data: SignupRequest): Promise<SignupResponse> => {
+    const response = await api.post<SignupResponse>('/fineract/signup', data);
+    return response.data;
+  },
+};
+```
+
+### 6.2. Client Usage Example
+
+```typescript
+// screens/RegisterScreen.tsx
+
+const handleRegister = async () => {
+  try {
+    setLoading(true);
+    
+    const result = await authApi.signup({
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      phoneNumber: formData.phoneNumber,
+      email: formData.email,
+      password: formData.password,
+      isBusiness: false,
+      userType: 'borrower',
+    });
+    
+    if (result.success) {
+      Alert.alert('Thành công', 'Đăng ký tài khoản thành công!');
+      navigation.navigate('Login');
+    }
+  } catch (error: any) {
+    const message = error.response?.data?.message || 'Đăng ký thất bại';
+    Alert.alert('Lỗi', message);
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+### 6.3. Password Validation (Client-side)
+
+```typescript
+const validatePassword = (password: string): string | null => {
+  if (password.length < 12 || password.length > 50) {
+    return 'Mật khẩu phải từ 12 đến 50 ký tự';
+  }
+  if (/\s/.test(password)) {
+    return 'Mật khẩu không được chứa khoảng trắng';
+  }
+  if (/(.)\ 1/.test(password)) {
+    return 'Mật khẩu không được có ký tự lặp liên tiếp';
+  }
+  if (!/\d/.test(password)) {
+    return 'Mật khẩu phải có ít nhất 1 chữ số';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Mật khẩu phải có ít nhất 1 chữ thường';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Mật khẩu phải có ít nhất 1 chữ HOA';
+  }
+  if (!/[^\w\s]/.test(password)) {
+    return 'Mật khẩu phải có ít nhất 1 ký tự đặc biệt (!@#$%^&*)';
+  }
+  return null;
+};
+```
+
+---
+
+## 7. TESTING
+
+### 7.1. Manual Test with curl
+
+```bash
+curl -X POST http://localhost:3000/fineract/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firstName": "Test",
+    "lastName": "User",
+    "phoneNumber": "0912345678",
+    "email": "testuser@example.com",
+    "password": "SecurePassword123!",
+    "isBusiness": false,
+    "userType": "borrower"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "statusCode": 201,
+  "message": "Đăng ký Fineract thành công",
+  "data": {
+    "clientId": 5,
+    "userId": 12,
+    "savingsId": 8,
+    "username": "0912345678",
+    "keycloakUserId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+}
+```
+
+### 7.2. Verify Registration
+
+**Check Fineract Client:**
+```bash
+curl -X GET "http://118.69.41.95:8080/fineract-provider/api/v1/clients?externalId=0912345678" \
+  -H "Authorization: Basic bWlmb3M6cGFzc3dvcmQ=" \
+  -H "Fineract-Platform-TenantId: default"
+```
+
+**Check Keycloak User:**
+```bash
+# Get admin token first
+TOKEN=$(curl -X POST http://118.69.41.95:9000/realms/master/protocol/openid-connect/token \
+  -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" | jq -r '.access_token')
+
+# Check user
+curl -X GET "http://118.69.41.95:9000/admin/realms/fineract/users?username=0912345678" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## TÓM TẮT
+
+**4 Bước Chính:**
+1. ✅ Tạo Client trên Fineract → Get clientId
+2. ✅ Tạo Savings Account → Get savingsId
+3. ✅ Tạo User trên Fineract → Get userId
+4. ✅ Tạo User trên Keycloak + Assign Role → Get keycloakUserId
+
+**Kết quả:**
+- User có thể login bằng `username` (SĐT) + `password`
+- Có savings account để giao dịch tiền
+- Được gán role (borrower/lender) trong Keycloak
+- Full integration: Fineract + Keycloak + MongoDB
+
+**Password Requirements (QUAN TRỌNG):**
+- 12-50 ký tự
+- Có chữ HOA, chữ thường, số, ký tự đặc biệt
+- Không có khoảng trắng, không lặp ký tự
+
+---
+
+END OF DOCUMENT

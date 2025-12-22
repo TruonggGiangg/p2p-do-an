@@ -81,4 +81,36 @@ export class WalletController {
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: error.message });
         }
     }
+
+    @Post('transfer')
+    async transfer(@Body() body: any, @Req() req: Request, @Res() res: Response) {
+        try {
+            const { recipientPhone, amount, note } = body;
+            const user = req.user as any;
+            const senderUsername = user.username || user.keycloakUserId;
+
+            this.logger.log(`[transfer] Request: ${senderUsername} → ${recipientPhone}, ${amount} VND`);
+
+            if (!recipientPhone || !amount) {
+                return res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    message: 'Thiếu thông tin: recipientPhone hoặc amount'
+                });
+            }
+
+            const result = await this.walletService.transfer(senderUsername, recipientPhone, amount, note);
+
+            return res.status(HttpStatus.OK).json({
+                success: true,
+                ...result
+            });
+
+        } catch (error) {
+            this.logger.error(`Transfer error: ${error.message}`);
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
 }

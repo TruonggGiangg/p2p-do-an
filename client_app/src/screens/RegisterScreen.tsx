@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Touchable
 import { TextInput, Text, Snackbar } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { DarkColors, DarkStyling } from '../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../theme';
 
 interface RegisterScreenProps {
     navigation: any;
@@ -17,6 +17,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     const [email, setEmail] = useState('');
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
+    const [userType, setUserType] = useState<'borrower' | 'lender'>('borrower');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -37,14 +38,50 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
             return;
         }
 
+        // Validate password strength
+        if (!/[A-Z]/.test(password)) {
+            setError('Mật khẩu phải có ít nhất 1 chữ HOA');
+            return;
+        }
+        if (!/[a-z]/.test(password)) {
+            setError('Mật khẩu phải có ít nhất 1 chữ thường');
+            return;
+        }
+        if (!/\d/.test(password)) {
+            setError('Mật khẩu phải có ít nhất 1 chữ số');
+            return;
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            setError('Mật khẩu phải có ít nhất 1 ký tự đặc biệt');
+            return;
+        }
+
         try {
             setError('');
-            await register(username, password, email, firstName, lastName);
-            setSuccess('Đăng ký thành công! Bạn có thể đăng nhập ngay.');
+            setSuccess('');
+            await register(username, password, email, firstName, lastName, userType);
+            setSuccess('Đăng ký thành công! Đang chuyển đến trang đăng nhập...');
             setTimeout(() => navigation.navigate('Login'), 2000);
         } catch (err: any) {
             console.error('Register error:', err);
-            setError(err.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+
+            // Extract meaningful error message
+            let errorMessage = 'Đăng ký thất bại. Vui lòng thử lại.';
+
+            if (err.message) {
+                if (err.message.includes('already exists') || err.message.includes('duplicate')) {
+                    errorMessage = 'Số điện thoại này đã được đăng ký. Vui lòng sử dụng số khác.';
+                } else if (err.message.includes('password')) {
+                    errorMessage = 'Mật khẩu không hợp lệ. ' + err.message;
+                } else if (err.message.includes('validation')) {
+                    errorMessage = 'Thông tin không hợp lệ. Vui lòng kiểm tra lại.';
+                } else {
+                    errorMessage = err.message;
+                }
+            }
+
+            setError(errorMessage);
+            // Stay on page - do not navigate
         }
     };
 
@@ -187,6 +224,29 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             />
                         </View>
 
+                        {/* Role Selection */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Loại tài khoản</Text>
+                            <View style={styles.roleContainer}>
+                                <TouchableOpacity
+                                    style={[styles.roleButton, userType === 'borrower' && styles.roleButtonActive]}
+                                    onPress={() => setUserType('borrower')}
+                                >
+                                    <Text style={[styles.roleText, userType === 'borrower' && styles.roleTextActive]}>
+                                        Người vay
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.roleButton, userType === 'lender' && styles.roleButtonActive]}
+                                    onPress={() => setUserType('lender')}
+                                >
+                                    <Text style={[styles.roleText, userType === 'lender' && styles.roleTextActive]}>
+                                        Người cho vay
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
                         {/* Error Message */}
                         {error ? (
                             <View style={styles.errorBox}>
@@ -201,7 +261,7 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                             activeOpacity={0.8}
                         >
                             <LinearGradient
-                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkColors.gradientPrimary}
+                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkGradients.primaryButton}
                                 style={styles.registerButton}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}
@@ -324,6 +384,34 @@ const styles = StyleSheet.create({
         color: DarkColors.textSecondary,
     },
     loginHighlight: {
+        color: DarkColors.primary,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    roleContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 8,
+    },
+    roleButton: {
+        flex: 1,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: DarkStyling.borderRadius.sm,
+        borderWidth: 1.5,
+        borderColor: DarkColors.border,
+        backgroundColor: DarkColors.surfaceLight,
+        alignItems: 'center',
+    },
+    roleButtonActive: {
+        borderColor: DarkColors.primary,
+        backgroundColor: `${DarkColors.primary}15`,
+    },
+    roleText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_500Medium',
+        color: DarkColors.textSecondary,
+    },
+    roleTextActive: {
         color: DarkColors.primary,
         fontFamily: 'Poppins_600SemiBold',
     },

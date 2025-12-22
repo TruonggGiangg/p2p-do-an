@@ -24,6 +24,7 @@ import TokenTestScreen from './src/screens/TokenTestScreen';
 import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen } from './src/screens/loan';
 import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen } from './src/screens/invest';
 import TransactionHistoryScreen from './src/screens/shared/TransactionHistoryScreen';
+import { TransferScreen } from './src/screens/shared/TransferScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -131,6 +132,11 @@ function WalletStack() {
         component={TransactionHistoryScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="Transfer"
+        component={TransferScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -203,13 +209,13 @@ function MainTabs() {
           options={{ title: 'Đầu Tư' }}
         />
       )}
-      {isLender && (
-        <Tab.Screen
-          name="Wallet"
-          component={WalletStack}
-          options={{ title: 'Ví' }}
-        />
-      )}
+
+      {/* Wallet tab - available for both Borrower and Lender */}
+      <Tab.Screen
+        name="Wallet"
+        component={WalletStack}
+        options={{ title: 'Ví' }}
+      />
 
       <Tab.Screen
         name="Profile"
@@ -256,6 +262,8 @@ function RootNavigator() {
   );
 }
 
+import ErrorBoundary from './src/components/ErrorBoundary';
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -273,13 +281,15 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <PaperProvider theme={DarkTheme}>
-        <AuthProvider>
-          <RootNavigator />
-        </AuthProvider>
-      </PaperProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <PaperProvider>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </PaperProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

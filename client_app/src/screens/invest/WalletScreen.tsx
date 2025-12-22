@@ -14,7 +14,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { walletApi } from '../../services';
-import { DarkColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
+import { GlowCard } from '../../components/glow';
 
 /**
  * WalletScreen - Shows lender's wallet balance and transactions (Dark Theme)
@@ -62,7 +63,10 @@ export default function WalletScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={DarkGradients.background}
+            style={styles.container}
+        >
             <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
             <ScrollView
                 refreshControl={
@@ -84,12 +88,13 @@ export default function WalletScreen() {
                 </View>
 
                 {/* Balance Card */}
-                <LinearGradient
-                    colors={['#4347FF', '#6366F1'] as const}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.balanceCard}
-                >
+                <GlowCard variant="primary" style={styles.balanceCard}>
+                    <LinearGradient
+                        colors={['rgba(255, 0, 64, 0.15)', 'rgba(255, 0, 64, 0.05)']}
+                        style={StyleSheet.absoluteFillObject}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                    />
                     <View style={styles.balanceHeader}>
                         <View>
                             <Text style={styles.balanceLabel}>Số dư khả dụng</Text>
@@ -98,7 +103,7 @@ export default function WalletScreen() {
                             </Text>
                         </View>
                         <View style={styles.walletIcon}>
-                            <MaterialCommunityIcons name="wallet" size={32} color="rgba(255,255,255,0.9)" />
+                            <MaterialCommunityIcons name="wallet" size={32} color={DarkColors.primary} />
                         </View>
                     </View>
 
@@ -115,7 +120,7 @@ export default function WalletScreen() {
                             </View>
                         )}
                     </View>
-                </LinearGradient>
+                </GlowCard>
 
                 {/* Quick Actions */}
                 <View style={styles.actionsContainer}>
@@ -133,7 +138,10 @@ export default function WalletScreen() {
                         <Text style={styles.actionLabel}>Rút tiền</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionButton}>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => navigation.navigate('Transfer', { balance: balance?.availableBalance || 0 })}
+                    >
                         <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.primary}20` }]}>
                             <MaterialCommunityIcons name="swap-horizontal" size={24} color={DarkColors.primary} />
                         </View>
@@ -154,31 +162,31 @@ export default function WalletScreen() {
                 {/* Account Info */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Thông tin tài khoản</Text>
-                    <View style={styles.infoCard}>
+                    <GlowCard>
                         <InfoRow label="ID Tài khoản" value={balance?.accountId?.toString() || '---'} />
                         <InfoRow label="Số tài khoản" value={balance?.accountNo || '---'} />
                         <InfoRow label="Loại tài khoản" value="Savings Account" isLast />
-                    </View>
+                    </GlowCard>
                 </View>
 
                 {/* Investment Stats */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Tổng quan đầu tư</Text>
                     <View style={styles.statsGrid}>
-                        <View style={styles.statCard}>
+                        <GlowCard style={styles.statCard} variant="glass">
                             <MaterialCommunityIcons name="briefcase-outline" size={24} color={DarkColors.primary} />
                             <Text style={styles.statValue}>---</Text>
                             <Text style={styles.statLabel}>Đang đầu tư</Text>
-                        </View>
-                        <View style={styles.statCard}>
+                        </GlowCard>
+                        <GlowCard style={styles.statCard} variant="glass">
                             <MaterialCommunityIcons name="trending-up" size={24} color={DarkColors.success} />
                             <Text style={[styles.statValue, { color: DarkColors.success }]}>---</Text>
                             <Text style={styles.statLabel}>Lợi nhuận</Text>
-                        </View>
+                        </GlowCard>
                     </View>
                 </View>
             </ScrollView>
-        </View>
+        </LinearGradient>
     );
 }
 
@@ -243,8 +251,9 @@ const styles = StyleSheet.create({
     // Balance Card
     balanceCard: {
         marginHorizontal: 20,
-        borderRadius: DarkStyling.borderRadius.xl,
-        padding: 24,
+        height: 180,
+        justifyContent: 'space-between',
+        overflow: 'hidden',
     },
     balanceHeader: {
         flexDirection: 'row',
@@ -265,9 +274,12 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     balanceValue: {
-        color: DarkColors.white,
+        color: DarkColors.primary,
         fontSize: 36,
         fontWeight: '700',
+        textShadowColor: DarkColors.primaryGlow,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 15,
     },
     balanceFooter: {
         flexDirection: 'row',
@@ -316,6 +328,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8,
+        ...DarkStyling.shadow.glow,
     },
     actionLabel: {
         color: DarkColors.textSecondary,
@@ -334,13 +347,8 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     // Info Card
-    infoCard: {
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.md,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
-    },
+    // statCard style updated to check width if needed, but handled by flex
+    // Info Card
     infoRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',

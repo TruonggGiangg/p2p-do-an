@@ -6,11 +6,14 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { KeycloakService } from '@auth/keycloak/keycloak.service';
 import { DualAuthGuard } from '@auth/guard/dual-auth.guard';
+import { FineractSignupService } from './services/fineract-signup.service';
+import { LoanModule } from '../loan/loan.module';
 
 @Module({
   imports: [
     ConfigModule,
     HttpModule,
+    LoanModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -21,7 +24,7 @@ import { DualAuthGuard } from '@auth/guard/dual-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, KeycloakService, DualAuthGuard],
+  providers: [AuthService, KeycloakService, DualAuthGuard, FineractSignupService],
   exports: [AuthService, KeycloakService, DualAuthGuard],
 })
 export class AuthModule { }

@@ -18,7 +18,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { walletApi } from '../../services';
 import type { WalletTransaction } from '../../services/wallet/wallet.api';
-import { DarkColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
+import { GlowCard } from '../../components/glow';
 
 // Transaction type configurations
 const TRANSACTION_TYPES: Record<string, { icon: string; color: string; label: string }> = {
@@ -127,29 +128,31 @@ export default function TransactionHistoryScreen() {
         const isCredit = ['deposit', 'receipt', 'transfer_in', 'repayment'].includes(item.type);
 
         return (
-            <TouchableOpacity style={styles.transactionCard} activeOpacity={0.7}>
-                <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
-                    <MaterialCommunityIcons name={config.icon} size={24} color={config.color} />
-                </View>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { }}>
+                <GlowCard style={styles.transactionCard} variant="glass">
+                    <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
+                        <MaterialCommunityIcons name={config.icon} size={24} color={config.color} />
+                    </View>
 
-                <View style={styles.transactionInfo}>
-                    <Text style={styles.transactionType}>{config.label}</Text>
-                    <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
-                    {item.description && (
-                        <Text style={styles.transactionDesc} numberOfLines={1}>
-                            {item.description}
+                    <View style={styles.transactionInfo}>
+                        <Text style={styles.transactionType}>{config.label}</Text>
+                        <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
+                        {item.description && (
+                            <Text style={styles.transactionDesc} numberOfLines={1}>
+                                {item.description}
+                            </Text>
+                        )}
+                    </View>
+
+                    <View style={styles.amountContainer}>
+                        <Text style={[styles.amount, { color: isCredit ? DarkColors.success : DarkColors.error }]}>
+                            {isCredit ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}₫
                         </Text>
-                    )}
-                </View>
-
-                <View style={styles.amountContainer}>
-                    <Text style={[styles.amount, { color: isCredit ? DarkColors.success : DarkColors.error }]}>
-                        {isCredit ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}₫
-                    </Text>
-                    {item.balance !== undefined && (
-                        <Text style={styles.balance}>Số dư: {formatCurrency(item.balance)}₫</Text>
-                    )}
-                </View>
+                        {item.balance !== undefined && (
+                            <Text style={styles.balance}>Số dư: {formatCurrency(item.balance)}₫</Text>
+                        )}
+                    </View>
+                </GlowCard>
             </TouchableOpacity>
         );
     };
@@ -192,14 +195,14 @@ export default function TransactionHistoryScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={DarkGradients.background}
+            style={styles.container}
+        >
             <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
 
             {/* Header */}
-            <LinearGradient
-                colors={['#1a1a2e', '#16213e'] as const}
-                style={styles.header}
-            >
+            <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => navigation.goBack()}
@@ -217,7 +220,7 @@ export default function TransactionHistoryScreen() {
                 <TouchableOpacity style={styles.filterButton}>
                     <MaterialCommunityIcons name="filter-variant" size={24} color={DarkColors.textSecondary} />
                 </TouchableOpacity>
-            </LinearGradient>
+            </View>
 
             {/* Transaction List */}
             <FlatList
@@ -238,14 +241,13 @@ export default function TransactionHistoryScreen() {
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
             />
-        </View>
+        </LinearGradient>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: DarkColors.background,
     },
     loadingContainer: {
         flex: 1,
@@ -307,12 +309,8 @@ const styles = StyleSheet.create({
     transactionCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.md,
-        padding: 16,
         marginBottom: 12,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
+        padding: 16,
     },
     iconContainer: {
         width: 48,

@@ -37,7 +37,11 @@ export const globalStyles = StyleSheet.create({
         borderColor: DarkColors.border,
         padding: 16,
         marginBottom: 12,
-        ...DarkStyling.shadow.card,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 3,
     },
     cardGlass: {
         backgroundColor: DarkColors.surfaceGlass,

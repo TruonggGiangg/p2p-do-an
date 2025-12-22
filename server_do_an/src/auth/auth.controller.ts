@@ -4,6 +4,7 @@ import {
   Get,
   Req,
   Res,
+  Body,
   UnauthorizedException,
   UseGuards,
   HttpException,
@@ -12,6 +13,7 @@ import {
 import { AuthService } from '@auth/auth.service';
 import { KeycloakService } from '@auth/keycloak/keycloak.service';
 import { DualAuthGuard } from '@auth/guard/dual-auth.guard';
+import { FineractSignupService } from './services/fineract-signup.service';
 import type { Response, Request } from 'express';
 import { Public, User } from '@decorator/customize';
 import { Throttle } from '@nestjs/throttler';
@@ -30,6 +32,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly keycloakService: KeycloakService,
+    private readonly fineractSignupService: FineractSignupService,
   ) { }
 
   /**
@@ -82,6 +85,51 @@ export class AuthController {
       console.error('[Login] Error:', error.message);
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Lỗi đăng nhập');
+    }
+  }
+
+  /**
+   * POST /auth/register
+   * Register new user with Fineract client + savings account
+   */
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Public()
+  @Post('register')
+  async register(@Body() body: any, @Res() res: Response) {
+    try {
+      const { firstName, lastName, phoneNumber, email, password, userType } = body;
+
+      if (!firstName || !lastName || !phoneNumber || !password) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: 'Thiếu thông tin: firstName, lastName, phoneNumber, password',
+        });
+      }
+
+      const result = await this.fineractSignupService.signup({
+        firstName,
+        lastName,
+        phoneNumber,
+        email,
+        password,
+        userType,
+      });
+
+      return res.status(201).json({
+        statusCode: 201,
+        message: 'Đăng ký thành công',
+        data: {
+          username: result.username,
+          clientId: result.clientId,
+          savingsId: result.savingsId,
+        },
+      });
+    } catch (error: any) {
+      console.error('[Register] Error:', error.message);
+      return res.status(400).json({
+        statusCode: 400,
+        message: error.message || 'Đăng ký thất bại',
+      });
     }
   }
 

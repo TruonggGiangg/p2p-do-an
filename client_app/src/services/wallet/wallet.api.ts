@@ -51,6 +51,7 @@ const ENDPOINTS = {
     balance: '/wallet/balance',
     transactions: '/wallet/transactions',
     link: '/wallet/link',
+    transfer: '/wallet/transfer',
 };
 
 /**
@@ -96,6 +97,32 @@ export const walletApi = {
         } catch (error: any) {
             console.error('[walletApi.linkWallet] Failed:', error);
             throw new Error(error.response?.data?.message || 'Failed to link wallet');
+        }
+    },
+
+    /**
+     * Transfer money to another user
+     */
+    async transfer(
+        recipientPhone: string,
+        amount: number,
+        note?: string
+    ): Promise<{
+        transactionId: string;
+        senderBalance: number;
+        recipientBalance: number;
+        message: string;
+    }> {
+        try {
+            const response = await httpClient.post<any>(ENDPOINTS.transfer, {
+                recipientPhone,
+                amount,
+                note,
+            });
+            return response.data;
+        } catch (error: any) {
+            console.error('[walletApi.transfer] Failed:', error);
+            throw new Error(error.response?.data?.message || 'Chuyển tiền thất bại');
         }
     },
 };

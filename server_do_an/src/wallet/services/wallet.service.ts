@@ -174,4 +174,84 @@ export class WalletService {
             total: fineractTxns.length,
         };
     }
+
+    /**
+     * Transfer money to another user
+     */
+    async transfer(
+        senderUsername: string,
+        recipientPhone: string,
+        amount: number,
+        note?: string
+    ) {
+        this.logger.log(`[transfer] START: ${senderUsername} → ${recipientPhone}, amount: ${amount}`);
+
+        // Validate amount
+        if (amount <= 0) {
+            throw new Error('Số tiền phải lớn hơn 0');
+        }
+
+        // Validate sender != recipient
+        if (senderUsername === recipientPhone) {
+            throw new Error('Không thể chuyển tiền cho chính mình');
+        }
+
+        // Resolve sender
+        const senderWallet = await this.resolveOrCreateWallet(senderUsername);
+        const senderClientId = parseInt(senderWallet.fineractClientId);
+        const senderAccount = await this.fineractService.getClientSavingsAccount(senderClientId);
+
+        if (!senderAccount) {
+            throw new Error('Tài khoản người gửi không tồn tại');
+        }
+
+        // Check balance
+        if (senderAccount.balance < amount) {
+            throw new Error(`Số dư không đủ. Hiện tại: ${senderAccount.balance.toLocaleString('vi-VN')} VND`);
+        }
+
+        // Resolve recipient
+        this.logger.log(`[transfer] Resolving recipient: ${recipientPhone}`);
+        const recipientClientId = await this.fineractService['resolveClientId'](recipientPhone);
+
+        if (!recipientClientId) {
+            throw new Error('Người nhận không tồn tại trong hệ thống');
+        }
+
+        const recipientAccount = await this.fineractService.getClientSavingsAccount(recipientClientId);
+        if (!recipientAccount) {
+            throw new Error('Tài khoản người nhận không tồn tại');
+        }
+
+        // Transfer
+        const transferNote = note || `Chuyển tiền từ ${senderUsername}`;
+        this.logger.log(`[transfer] Transferring ${amount} from ${senderClientId}:${senderAccount.id} → ${recipientClientId}:${recipientAccount.id}`);
+
+        const transferResult = await this.fineractService.transferFunds(
+            senderClientId,
+            recipientClientId,
+            senderAccount.id,
+            recipientAccount.id,
+            amount,
+            transferNote
+        );
+
+        const transactionId = String(transferResult.savingsId || transferResult.resourceId);
+        this.logger.log(`[transfer] SUCCESS: Transaction ID ${transactionId}`);
+
+        // Get updated balances
+        const updatedSender = await this.fineractService.getClientSavingsAccount(senderClientId);
+        const updatedRecipient = await this.fineractService.getClientSavingsAccount(recipientClientId);
+
+        if (!updatedSender || !updatedRecipient) {
+            throw new Error('Không thể lấy thông tin số dư sau giao dịch');
+        }
+
+        return {
+            transactionId,
+            senderBalance: updatedSender.balance,
+            recipientBalance: updatedRecipient.balance,
+            message: `Chuyển ${amount.toLocaleString('vi-VN')} VND thành công đến ${recipientPhone}`
+        };
+    }
 }

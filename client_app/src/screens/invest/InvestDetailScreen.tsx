@@ -14,7 +14,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { investApi, AvailableLoan } from '../../services/invest';
-import { DarkColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
+import { GlowCard, GlowButton } from '../../components/glow';
 
 type RouteParams = {
     InvestDetail: { loan: AvailableLoan };
@@ -84,11 +85,14 @@ export default function InvestDetailScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={DarkGradients.background}
+            style={styles.container}
+        >
             <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Loan Info Card */}
-                <View style={styles.card}>
+                <GlowCard>
                     <View style={styles.cardHeader}>
                         <MaterialCommunityIcons name="file-document-outline" size={24} color={DarkColors.primary} />
                         <Text style={styles.cardTitle}>Thông tin khoản vay</Text>
@@ -115,10 +119,10 @@ export default function InvestDetailScreen() {
                             {loan.investedNotes}/{loan.totalNotes} notes • Còn {formatCurrency(loan.availableAmount)}₫
                         </Text>
                     </View>
-                </View>
+                </GlowCard>
 
                 {/* Investment Form Card */}
-                <View style={styles.card}>
+                <GlowCard style={styles.formCard}>
                     <View style={styles.cardHeader}>
                         <MaterialCommunityIcons name="cash-plus" size={24} color={DarkColors.success} />
                         <Text style={styles.cardTitle}>Đầu tư</Text>
@@ -156,7 +160,7 @@ export default function InvestDetailScreen() {
                     <View style={styles.summary}>
                         <View style={styles.summaryRow}>
                             <Text style={styles.summaryLabel}>Số tiền đầu tư</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(investmentAmount)}₫</Text>
+                            <Text style={[styles.summaryValue, styles.glowText]}>{formatCurrency(investmentAmount)}₫</Text>
                         </View>
                         <View style={styles.summaryRow}>
                             <Text style={styles.summaryLabel}>Thu nhập/tháng (dự kiến)</Text>
@@ -166,37 +170,23 @@ export default function InvestDetailScreen() {
                         </View>
                         <View style={styles.summaryRow}>
                             <Text style={styles.summaryLabel}>Tổng lợi nhuận (dự kiến)</Text>
-                            <Text style={[styles.summaryValue, { color: DarkColors.primary }]}>
+                            <Text style={[styles.summaryValue, { color: DarkColors.primary }, styles.glowText]}>
                                 {formatCurrency(totalProfit)}₫
                             </Text>
                         </View>
                     </View>
 
                     {/* Invest Button */}
-                    <TouchableOpacity
+                    <GlowButton
+                        title="Xác nhận đầu tư"
+                        icon="check-circle"
                         onPress={handleInvest}
-                        disabled={loading}
-                        activeOpacity={0.8}
-                    >
-                        <LinearGradient
-                            colors={loading ? [DarkColors.textMuted, DarkColors.textMuted] : ['#4347FF', '#6366F1'] as const}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.investButton}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color={DarkColors.white} />
-                            ) : (
-                                <>
-                                    <MaterialCommunityIcons name="check-circle" size={20} color={DarkColors.white} />
-                                    <Text style={styles.investButtonText}>Xác nhận đầu tư</Text>
-                                </>
-                            )}
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
+                        loading={loading}
+                        style={{ marginTop: 24 }}
+                    />
+                </GlowCard>
             </ScrollView>
-        </View>
+        </LinearGradient>
     );
 }
 
@@ -226,13 +216,9 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     // Card
-    card: {
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.lg,
-        padding: 20,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
+    // GlowCard usage replaces basic card styles
+    formCard: {
+        marginBottom: 24,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -377,5 +363,10 @@ const styles = StyleSheet.create({
         color: DarkColors.white,
         fontSize: 16,
         fontWeight: '600',
+    },
+    glowText: {
+        textShadowColor: DarkColors.primaryGlow,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 10,
     },
 });

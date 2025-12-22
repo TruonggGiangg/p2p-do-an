@@ -16,7 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { investApi, AvailableLoan, InvestmentStats } from '../../services/invest';
 import { useAuth } from '../../contexts/AuthContext';
-import { DarkColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
+import { GlowCard, GlowBadge } from '../../components/glow';
 
 /**
  * InvestListScreen - Lists available loans for investment (Dark Theme)
@@ -80,54 +81,57 @@ export default function InvestListScreen() {
 
     const renderLoanItem = ({ item }: { item: AvailableLoan }) => (
         <TouchableOpacity
-            style={styles.loanCard}
             activeOpacity={0.8}
             onPress={() => navigation.navigate('InvestDetail', { loan: item })}
         >
-            {/* Header Row */}
-            <View style={styles.loanHeader}>
-                <View style={styles.loanIdContainer}>
-                    <View style={styles.iconCircle}>
-                        <MaterialCommunityIcons name="briefcase-outline" size={18} color={DarkColors.primary} />
+            <GlowCard style={styles.loanCard} variant="glass">
+                {/* Header Row */}
+                <View style={styles.loanHeader}>
+                    <View style={styles.loanIdContainer}>
+                        <View style={styles.iconCircle}>
+                            <MaterialCommunityIcons name="briefcase-outline" size={18} color={DarkColors.primary} />
+                        </View>
+                        <View>
+                            <Text style={styles.loanId}>Khoản vay</Text>
+                            <Text style={styles.loanIdSub}>{item.info.periodMonth} tháng</Text>
+                        </View>
                     </View>
-                    <View>
-                        <Text style={styles.loanId}>Khoản vay</Text>
-                        <Text style={styles.loanIdSub}>{item.info.periodMonth} tháng</Text>
+                    <GlowBadge
+                        label={`${item.fundedPercentage}% funded`}
+                        status="success"
+                        icon="check-circle-outline"
+                    />
+                </View>
+
+                {/* Info Grid */}
+                <View style={styles.infoGrid}>
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Số tiền vay</Text>
+                        <Text style={styles.infoValue}>{formatCurrency(item.info.capital)}₫</Text>
+                    </View>
+                    <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Lãi suất</Text>
+                        <Text style={[styles.infoValue, { color: DarkColors.success }]}>{item.info.rate}%/tháng</Text>
                     </View>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: `${DarkColors.success}20` }]}>
-                    <Text style={[styles.statusText, { color: DarkColors.success }]}>{item.fundedPercentage}% funded</Text>
-                </View>
-            </View>
 
-            {/* Info Grid */}
-            <View style={styles.infoGrid}>
-                <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Số tiền vay</Text>
-                    <Text style={styles.infoValue}>{formatCurrency(item.info.capital)}₫</Text>
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                        <View style={[styles.progressFill, { width: `${item.fundedPercentage}%` }]} />
+                    </View>
+                    <View style={styles.progressInfo}>
+                        <Text style={styles.progressLabel}>Còn trống</Text>
+                        <Text style={styles.progressValue}>{formatCurrency(item.availableAmount)}₫</Text>
+                    </View>
                 </View>
-                <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Lãi suất</Text>
-                    <Text style={[styles.infoValue, { color: DarkColors.success }]}>{item.info.rate}%/tháng</Text>
-                </View>
-            </View>
 
-            {/* Progress Bar */}
-            <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${item.fundedPercentage}%` }]} />
+                {/* Action Row */}
+                <View style={styles.actionRow}>
+                    <Text style={styles.notesText}>{item.availableNotes} notes có thể đầu tư</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={DarkColors.textSecondary} />
                 </View>
-                <View style={styles.progressInfo}>
-                    <Text style={styles.progressLabel}>Còn trống</Text>
-                    <Text style={styles.progressValue}>{formatCurrency(item.availableAmount)}₫</Text>
-                </View>
-            </View>
-
-            {/* Action Row */}
-            <View style={styles.actionRow}>
-                <Text style={styles.notesText}>{item.availableNotes} notes có thể đầu tư</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={DarkColors.textSecondary} />
-            </View>
+            </GlowCard>
         </TouchableOpacity>
     );
 
@@ -145,15 +149,16 @@ export default function InvestListScreen() {
             </View>
 
             {/* Balance Card */}
-            <LinearGradient
-                colors={['#4347FF', '#6366F1'] as const}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.balanceCard}
-            >
+            <GlowCard variant="primary" style={styles.balanceCard}>
+                <LinearGradient
+                    colors={['rgba(255, 0, 64, 0.15)', 'rgba(255, 0, 64, 0.05)']}
+                    style={StyleSheet.absoluteFillObject}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                />
                 <View style={styles.balanceTop}>
                     <Text style={styles.balanceLabel}>Số dư ví</Text>
-                    <MaterialCommunityIcons name="wallet" size={24} color="rgba(255,255,255,0.8)" />
+                    <MaterialCommunityIcons name="wallet" size={24} color={DarkColors.primary} />
                 </View>
                 <Text style={styles.balanceValue}>
                     {balance ? formatCurrency(balance.availableBalance) : '---'}₫
@@ -165,7 +170,7 @@ export default function InvestListScreen() {
                     <Text style={styles.portfolioBtnText}>Xem Portfolio</Text>
                     <MaterialCommunityIcons name="arrow-right" size={16} color={DarkColors.white} />
                 </TouchableOpacity>
-            </LinearGradient>
+            </GlowCard>
 
             {/* Stats Row */}
             {stats && (
@@ -210,7 +215,10 @@ export default function InvestListScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <LinearGradient
+            colors={DarkGradients.background}
+            style={styles.container}
+        >
             <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
             <FlatList
                 data={loans}
@@ -238,7 +246,7 @@ export default function InvestListScreen() {
                     </View>
                 }
             />
-        </View>
+        </LinearGradient>
     );
 }
 
@@ -307,8 +315,11 @@ const styles = StyleSheet.create({
     balanceValue: {
         fontSize: 36,
         fontWeight: '700',
-        color: DarkColors.white,
+        color: DarkColors.primary,
         marginBottom: 16,
+        textShadowColor: DarkColors.primaryGlow,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 15,
     },
     portfolioBtn: {
         flexDirection: 'row',
@@ -373,13 +384,9 @@ const styles = StyleSheet.create({
     },
     // Loan Card
     loanCard: {
-        backgroundColor: DarkColors.surface,
         marginHorizontal: 20,
         marginBottom: 12,
-        borderRadius: DarkStyling.borderRadius.lg,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
+        padding: 0, // GlowCard handles padding
     },
     loanHeader: {
         flexDirection: 'row',

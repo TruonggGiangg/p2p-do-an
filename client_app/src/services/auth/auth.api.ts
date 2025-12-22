@@ -62,6 +62,30 @@ class AuthApiService {
     async logout(): Promise<void> {
         await httpClient.post('/auth/logout');
     }
+
+    /**
+     * Register new user with Fineract + Keycloak
+     */
+    async register(data: {
+        phoneNumber: string;
+        password: string;
+        email?: string;
+        firstName: string;
+        lastName: string;
+        userType?: 'borrower' | 'lender';
+    }): Promise<{
+        statusCode: number;
+        message: string;
+        data?: {
+            username: string;
+            clientId: number;
+            savingsId: number;
+            keycloakUserId?: string;
+        };
+    }> {
+        const response = await httpClient.post('/auth/register', data);
+        return response.data;
+    }
 }
 
 // Export singleton instance
