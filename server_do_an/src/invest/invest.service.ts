@@ -301,7 +301,7 @@ export class InvestService {
 
     /**
      * Handle auto-disbursement when loan is 100% funded
-     * Uses escrow service to release funds: Escrow → Borrower
+     * Uses escrow service to release funds: Escrow → Borrower (SINGLE TRANSFER)
      */
     private async handleFullMatchDisbursement(loanContract: any): Promise<void> {
         try {
@@ -314,14 +314,14 @@ export class InvestService {
             this.logger.log(`[Disbursement] Starting auto-disbursement for loan ${loanContract.contractId}...`);
 
             // 1. Approve loan on Fineract
-            const approveResult = await this.fineractService.approveLoan(loanContract.fineractLoanId);
+            await this.fineractService.approveLoan(loanContract.fineractLoanId);
             this.logger.log(`[Disbursement] Loan ${loanContract.contractId} approved on Fineract`);
 
             // 2. Disburse loan on Fineract (changes loan status to ACTIVE)
-            const disburseResult = await this.fineractService.disburseLoan(loanContract.fineractLoanId);
+            await this.fineractService.disburseLoan(loanContract.fineractLoanId);
             this.logger.log(`[Disbursement] Loan ${loanContract.contractId} disbursed on Fineract`);
 
-            // 3. Release escrow funds to borrower
+            // 3. Release escrow funds to borrower - SINGLE BATCH TRANSFER
             if (loanContract.borrowerFineractClientId) {
                 try {
                     // Get borrower's savings account
@@ -340,38 +340,52 @@ export class InvestService {
                         status: 'funded',
                     });
 
-                    this.logger.log(`[Disbursement] Found ${escrows.length} funded escrows for loan ${loanContract.contractId}`);
-
-                    // Release each escrow: Escrow → Borrower
-                    for (const escrow of escrows) {
-                        try {
-                            const releaseTransactionId = await this.escrowService.releaseEscrow(
-                                escrow.escrowId,
-                                loanContract.borrowerFineractClientId,
-                                borrowerSavingsAccount.id
-                            );
-
-                            this.logger.log(`[Disbursement] Released escrow ${escrow.escrowId}, txn: ${releaseTransactionId}`);
-
-                            // Update investment escrow status
-                            await this.investmentModel.updateOne(
-                                { escrowId: escrow.escrowId },
-                                {
-                                    $set: {
-                                        escrowStatus: 'disbursed',
-                                        status: 'success' // Mark investment as successful
-                                    }
-                                }
-                            );
-
-                        } catch (releaseError) {
-                            this.logger.error(`[Disbursement] Failed to release escrow ${escrow.escrowId}: ${releaseError.message}`);
-                            // Continue with other escrows
-                        }
+                    if (escrows.length === 0) {
+                        this.logger.warn(`[Disbursement] No funded escrows found for loan ${loanContract.contractId}`);
+                        return;
                     }
 
-                    const totalReleased = escrows.reduce((sum, e) => sum + e.amount, 0);
-                    this.logger.log(`[Disbursement] Total released to borrower: ${totalReleased} VND`);
+                    // Calculate total amount to release
+                    const totalAmount = escrows.reduce((sum, e) => sum + e.amount, 0);
+                    this.logger.log(`[Disbursement] Releasing ${escrows.length} escrows, total: ${totalAmount.toLocaleString('vi-VN')} VND`);
+
+                    // SINGLE TRANSFER: Escrow Account → Borrower (batch all escrows)
+                    const releaseTransactionId = await this.escrowService.batchReleaseEscrow(
+                        escrows.map(e => e.escrowId),
+                        loanContract.borrowerFineractClientId,
+                        borrowerSavingsAccount.id,
+                        totalAmount
+                    );
+
+                    this.logger.log(`[Disbursement] Batch released ${escrows.length} escrows in single txn: ${releaseTransactionId}`);
+
+                    // Update all escrow records and investments
+                    for (const escrow of escrows) {
+                        // Update escrow status
+                        await this.escrowService['escrowModel'].updateOne(
+                            { escrowId: escrow.escrowId },
+                            {
+                                $set: {
+                                    status: 'released',
+                                    releaseTransactionId,
+                                    releasedAt: new Date()
+                                }
+                            }
+                        );
+
+                        // Update investment escrow status
+                        await this.investmentModel.updateOne(
+                            { escrowId: escrow.escrowId },
+                            {
+                                $set: {
+                                    escrowStatus: 'disbursed',
+                                    status: 'success'
+                                }
+                            }
+                        );
+                    }
+
+                    this.logger.log(`[Disbursement] Total released to borrower: ${totalAmount.toLocaleString('vi-VN')} VND (1 transaction)`);
 
                 } catch (transferError: any) {
                     this.logger.error(`[Disbursement] Failed to transfer funds to borrower: ${transferError.message}`);

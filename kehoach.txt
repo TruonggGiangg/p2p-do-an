@@ -1,0 +1,50 @@
+🔥 ƯU TIÊN CAO - Cần làm sớm
+1. Test & Fix Luồng Chính
+ Test lại luồng batch disbursement (vừa sửa xong)
+ Test luồng trả nợ (Repayment) đầy đủ
+ Verify số dư ví sau mỗi giao dịch
+ Test edge cases: hủy khoản vay, hoàn tiền escrow
+ Trả tiền lại lender khi hết hạn khoản vay
+
+ 
+2. UI/UX Improvements
+ Dashboard màn hình chính - Hiện tại chỉ có list, chưa có tổng quan (tổng amount, stats)
+ Thông báo/Notification - Push notification khi có người invest, khi được giải ngân
+ Loading states - Skeleton screens, better loading indicators
+ Error handling UI - Toast messages thống nhất
+
+📋 ƯU TIÊN TRUNG BÌNH
+3. Nghiệp Vụ Mới
+Feature	Mô tả
+E-KYC	Xác thực danh tính (CMND/CCCD, selfie)
+Credit Scoring	Tính điểm tín dụng borrower
+Late Payment Fee	Phí phạt trả chậm
+Auto Reminder	Nhắc nhở đến hạn trả nợ
+Investment Portfolio	Phân bổ đầu tư tự động cho lender
+4. Màn Hình Thiếu
+ History Screen - Lịch sử giao dịch chi tiết
+ Settings Screen - Cài đặt app, đổi mật khẩu
+ Help/FAQ Screen - Hướng dẫn sử dụng
+ Lender Dashboard - Tổng quan cho nhà đầu tư
+5. Blockchain Explorer
+ Fix UI hiển thị blocks/transactions (đã có issue)
+ Thêm search/filter cho explorer
+📝 ƯU TIÊN THẤP - Nice to have
+6. Documentation
+ Viết doc cho INVEST_MODULE
+ Viết doc cho WALLET_MODULE
+ API documentation (Swagger)
+7. Performance & Code Quality
+ Optimize API calls (caching, debounce)
+ Unit tests cho services
+ Refactor duplicate code
+8. Security
+ Rate limiting
+ Input validation cho tất cả DTOs
+ Audit logging
+🎯 Gợi ý: Bắt đầu từ đâu?
+Dựa trên trạng thái hiện tại, tôi đề xuất theo thứ tự:
+
+Test luồng batch disbursement (vừa sửa) ✅
+Cải thiện UI Wallet Screen - Thêm phân loại giao dịch rõ ràng hơn
+Thêm Dashboard/Home Screen - Tổng quan cho user

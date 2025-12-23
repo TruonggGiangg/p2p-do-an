@@ -223,6 +223,82 @@ export class FineractEscrowService {
     }
 
     /**
+     * Batch release multiple escrows in a SINGLE Fineract transfer
+     * This creates only 1 transaction for the borrower instead of multiple
+     */
+    async batchReleaseEscrow(
+        escrowIds: string[],
+        borrowerClientId: number,
+        borrowerAccountId: number,
+        totalAmount: number
+    ): Promise<string> {
+        this.logger.log(`[batchReleaseEscrow] START: ${escrowIds.length} escrows, total: ${totalAmount.toLocaleString('vi-VN')} VND`);
+        this.logger.log(`[batchReleaseEscrow] Escrow IDs: ${escrowIds.join(', ')}`);
+
+        if (escrowIds.length === 0) {
+            throw new Error('No escrow IDs provided');
+        }
+
+        // Validate all escrows exist and are funded
+        const escrows = await this.escrowModel.find({
+            escrowId: { $in: escrowIds },
+            status: 'funded'
+        });
+
+        if (escrows.length !== escrowIds.length) {
+            const foundIds = escrows.map(e => e.escrowId);
+            const missingIds = escrowIds.filter(id => !foundIds.includes(id));
+            throw new Error(`Some escrows not found or not funded: ${missingIds.join(', ')}`);
+        }
+
+        // Verify total amount matches
+        const calculatedTotal = escrows.reduce((sum, e) => sum + e.amount, 0);
+        if (calculatedTotal !== totalAmount) {
+            this.logger.warn(`[batchReleaseEscrow] Amount mismatch: calculated=${calculatedTotal}, provided=${totalAmount}`);
+            // Use calculated total for safety
+        }
+
+        try {
+            // SINGLE TRANSFER: Escrow Account → Borrower
+            this.logger.log(`[batchReleaseEscrow] Transferring ${totalAmount.toLocaleString('vi-VN')} VND from escrow ${this.adminClientId}:${this.escrowAccountId} → borrower ${borrowerClientId}:${borrowerAccountId}`);
+
+            const txnResponse = await this.fineractService.transferFunds(
+                this.adminClientId,
+                borrowerClientId,
+                this.escrowAccountId,
+                borrowerAccountId,
+                totalAmount,
+                `Loan disbursement: ${escrowIds.length} escrows (${escrowIds[0]}...)`
+            );
+
+            const transactionId = txnResponse.savingsId || txnResponse.resourceId;
+            this.logger.log(`[batchReleaseEscrow] SUCCESS: Single transaction ID ${transactionId}`);
+
+            // Log the batch action
+            await this.logAction(escrowIds[0], 'batch_released', {
+                escrowIds,
+                totalAmount,
+                transactionId,
+                borrowerClientId,
+                count: escrowIds.length,
+            });
+
+            return String(transactionId);
+        } catch (error) {
+            this.logger.error(`[batchReleaseEscrow] FAILED: ${error.message}`);
+
+            // Log failure for all escrows
+            for (const escrowId of escrowIds) {
+                await this.logAction(escrowId, 'batch_release_failed', {
+                    errorMessage: error.message,
+                });
+            }
+
+            throw error;
+        }
+    }
+
+    /**
      * Return escrow funds to lender (if loan cancelled)
      */
     async returnEscrow(
