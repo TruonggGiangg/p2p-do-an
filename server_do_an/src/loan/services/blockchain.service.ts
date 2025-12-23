@@ -214,13 +214,20 @@ export class BlockchainService implements OnModuleInit {
 
             const loanInfoJson = JSON.stringify(loanInfo);
 
-            // Submit transaction to chaincode
+            // Generate dataHash for integrity verification
+            const crypto = require('crypto');
+            const dataHash = crypto.createHash('sha256')
+                .update(JSON.stringify({ borrower, loanInfo, fineractLoanId }))
+                .digest('hex');
+
+            // Submit transaction to chaincode (5 params: loanId, borrowerJson, loanInfoJson, fineractLoanId, dataHash)
             const result = await this.contract.submitTransaction(
                 'createLoanContract',
                 loanId,
                 borrowerJson,
                 loanInfoJson,
                 fineractLoanId ? String(fineractLoanId) : '',
+                dataHash,
             );
 
             const parsedResult = JSON.parse(result.toString());

@@ -9,6 +9,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { authApi, keycloakApi, storageService } from '../services';
+import { authEvents } from '../services/auth/authEvents';
 
 interface AuthContextType {
     user: User | null;
@@ -28,6 +29,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     useEffect(() => {
         checkAuthStatus();
+    }, []);
+
+    // Listen for session expired events from httpClient
+    useEffect(() => {
+        const unsubscribe = authEvents.on('SESSION_EXPIRED', () => {
+            console.log('[AuthContext] Session expired, resetting user state');
+            setUser(null);
+            setIsLoading(false);
+        });
+
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
     /**

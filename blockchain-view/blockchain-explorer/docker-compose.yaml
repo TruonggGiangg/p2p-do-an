@@ -4,14 +4,12 @@ volumes:
   pgdata:
   walletstore:
 
-
 networks:
   mynetwork.com:
     external: true
     name: fabric_test
 
 services:
-
   explorerdb.mynetwork.com:
     image: ghcr.io/hyperledger-labs/explorer-db:latest
     container_name: explorerdb.mynetwork.com

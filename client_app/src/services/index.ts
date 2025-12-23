@@ -7,6 +7,7 @@
 
 export { authApi } from './auth/auth.api';
 export { keycloakApi } from './auth/keycloak.api';
+export { authEvents } from './auth/authEvents';
 export { storageService } from './storage/storage.service';
 export { httpClient } from './http/httpClient';
 export { apiConfig } from './config/api.config';

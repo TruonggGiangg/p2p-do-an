@@ -43,7 +43,7 @@ export interface InvestmentStats {
 export class InvestService {
     private readonly logger = new Logger(InvestService.name);
     private readonly timezone: string;
-    private readonly noteValue: number = 100000; // 100k VND per note
+    private readonly noteValue: number = 500000; // 500k VND per note
 
     constructor(
         @InjectModel(InvestmentContract.name)
@@ -66,7 +66,7 @@ export class InvestService {
         const loans = await this.loanContractModel
             .find({
                 status: 'waiting',
-                borrower: { $ne: new Types.ObjectId(user._id) }, // Exclude own loans
+                borrower: { $ne: user._id }, // Exclude own loans
             })
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -75,7 +75,7 @@ export class InvestService {
 
         const total = await this.loanContractModel.countDocuments({
             status: 'waiting',
-            borrower: { $ne: new Types.ObjectId(user._id) },
+            borrower: { $ne: user._id },
         });
 
         // Calculate available notes for each loan
@@ -227,7 +227,7 @@ export class InvestService {
         // 5. Create investment
         const investment = new this.investmentModel({
             contractId,
-            lender: new Types.ObjectId(user._id),
+            lender: user._id,
             lenderFineractClientId: getLenderFineractClientId(),
             loanContract: loanContract._id,
             loanContractId: loanContract.contractId,
@@ -245,7 +245,7 @@ export class InvestService {
                 createdDate: new Date(),
             },
             status: 'waiting_other',
-            escrowStatus: escrowId ? 'funded' : 'pending',
+            escrowStatus: escrowId ? 'escrowed' : 'pending',
         });
 
 
@@ -412,7 +412,7 @@ export class InvestService {
         limit = 10,
     ): Promise<any> {
         const skip = (page - 1) * limit;
-        const query: any = { lender: new Types.ObjectId(user._id) };
+        const query: any = { lender: user._id };
 
         if (status) {
             query.status = status;
@@ -444,7 +444,7 @@ export class InvestService {
      */
     async getInvestmentStats(user: AuthUser): Promise<InvestmentStats> {
         const investments = await this.investmentModel
-            .find({ lender: new Types.ObjectId(user._id) })
+            .find({ lender: user._id })
             .lean();
 
         let totalInvested = 0;
@@ -484,7 +484,7 @@ export class InvestService {
                     { contractId: investmentId },
                     { _id: Types.ObjectId.isValid(investmentId) ? investmentId : null },
                 ],
-                lender: new Types.ObjectId(user._id),
+                lender: user._id,
             })
             .populate('loanContract');
 

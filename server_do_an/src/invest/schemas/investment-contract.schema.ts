@@ -72,8 +72,8 @@ export class InvestmentContract extends Document {
     @Prop({ required: true, unique: true, index: true })
     contractId: string;
 
-    @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
-    lender: Types.ObjectId;
+    @Prop({ required: true, index: true })
+    lender: string; // Keycloak UUID
 
     @Prop()
     lenderFineractClientId?: number;

@@ -29,7 +29,7 @@ export default function InvestDetailScreen() {
     const route = useRoute<RouteProp<RouteParams, 'InvestDetail'>>();
     const { loan } = route.params;
 
-    const noteValue = 100000; // 100k VND per note
+    const noteValue = 500000; // 500k VND per note
     const [numNotes, setNumNotes] = useState('1');
     const [loading, setLoading] = useState(false);
 

@@ -51,9 +51,16 @@ export class DualAuthGuard implements CanActivate {
         const token = authHeader.replace('Bearer ', '');
 
         try {
-            // Validate Keycloak token only
-            request.user = await this.validateKeycloakToken(token);
-            console.log('[KeycloakGuard] Token validated for:', request.user.username);
+            // Validate Keycloak token
+            const keycloakUser = await this.validateKeycloakToken(token);
+
+            // Assign Keycloak ID as _id to ensure compatibility with services expecting it
+            request.user = {
+                ...keycloakUser,
+                _id: keycloakUser.keycloakUserId,
+            };
+
+            console.log('[KeycloakGuard] Token validated for:', request.user.username, 'ID:', request.user._id);
             return true;
         } catch (error: any) {
             console.error('[KeycloakGuard] Token validation failed:', error.message);

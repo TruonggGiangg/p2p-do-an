@@ -10,6 +10,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { apiConfig } from '../config/api.config';
 import { storageService } from '../storage/storage.service';
+import { authEvents } from '../auth/authEvents';
 
 // Create axios instance
 const httpClient: AxiosInstance = axios.create({
@@ -77,8 +78,10 @@ httpClient.interceptors.response.use(
                 }
             } catch (refreshError: any) {
                 console.error('[HTTP] Keycloak token refresh failed:', refreshError.message);
-                // Clear tokens and redirect to login
+                // Clear tokens and emit session expired event
                 await storageService.clearAll();
+                // Notify AuthContext to reset user state and redirect to login
+                authEvents.emit('SESSION_EXPIRED');
             }
         }
 
