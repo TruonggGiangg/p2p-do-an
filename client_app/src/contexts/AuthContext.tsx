@@ -16,7 +16,7 @@ interface AuthContextType {
     isLoading: boolean;
     isAuthenticated: boolean;
     login: (username: string, password: string) => Promise<void>;
-    register: (username: string, password: string, email: string, firstName: string, lastName: string) => Promise<void>;
+    register: (username: string, password: string, email: string, firstName: string, lastName: string, userType?: 'borrower' | 'lender') => Promise<void>;
     logout: () => Promise<void>;
     refreshToken: () => Promise<void>;
 }

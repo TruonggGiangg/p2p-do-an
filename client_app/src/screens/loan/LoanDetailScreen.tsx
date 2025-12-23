@@ -24,7 +24,7 @@ import {
     FineractLoanDetails,
     OutstandingBalance,
 } from '../../types';
-import { DarkColors, DarkStatusColors, DarkStyling } from '../../theme';
+import { DarkColors, DarkStyling } from '../../theme';
 
 // Format currency
 const formatCurrency = (value: number | undefined): string => {

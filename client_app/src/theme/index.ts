@@ -43,6 +43,8 @@ export const DarkColors = {
     warningGlow: 'rgba(255, 170, 0, 0.3)',
     error: '#ff0040',
     errorGlow: 'rgba(255, 0, 64, 0.4)',
+    info: '#00d9ff',
+    infoGlow: 'rgba(0, 217, 255, 0.3)',
 
     // Borders and dividers
     border: 'rgba(255, 255, 255, 0.1)',
