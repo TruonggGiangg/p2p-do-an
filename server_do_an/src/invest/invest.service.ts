@@ -201,14 +201,18 @@ export class InvestService {
             this.logger.warn(`Lender ${user.username} has no Fineract account, skipping escrow deposit`);
         }
 
-        // 3. Calculate profit based on loan info
-        const loanRate = loanContract.info.rate || 1.5; // Monthly rate %
+        // 3. Calculate profit based on LENDER rate (not borrower rate)
+        // Lender receives lower rate than borrower pays (admin keeps the spread)
+        const lenderAnnualRate = loanContract.lenderInterestRate || (loanContract.info.rate * 12) || 12; // Annual %
+        const lenderMonthlyRate = lenderAnnualRate / 12; // Monthly %
         const periodMonth = loanContract.info.periodMonth || 6;
 
-        const monthlyInterestIncome = (investmentCapital * loanRate) / 100;
+        const monthlyInterestIncome = (investmentCapital * lenderMonthlyRate) / 100;
         const monthlyPrincipalIncome = investmentCapital / periodMonth;
         const monthlyIncome = monthlyPrincipalIncome + monthlyInterestIncome;
         const entirelyProfit = monthlyInterestIncome * periodMonth;
+
+        this.logger.log(`[Investment] Using lender rate: ${lenderAnnualRate}%/year (${lenderMonthlyRate.toFixed(2)}%/month)`);
 
         // 4. Generate contract ID
         const contractId = `INV_${Date.now()}`;
@@ -224,7 +228,7 @@ export class InvestService {
         };
 
 
-        // 5. Create investment
+        // 5. Create investment with Fixed Deposit fields
         const investment = new this.investmentModel({
             contractId,
             lender: user._id,
@@ -246,6 +250,10 @@ export class InvestService {
             },
             status: 'waiting_other',
             escrowStatus: escrowId ? 'escrowed' : 'pending',
+            // Fixed Deposit fields - lender rate from loan
+            fixedDepositInterestRate: lenderAnnualRate,
+            fixedDepositStatus: 'pending',
+            fixedDepositBalance: investmentCapital,
         });
 
 
@@ -386,6 +394,58 @@ export class InvestService {
                     }
 
                     this.logger.log(`[Disbursement] Total released to borrower: ${totalAmount.toLocaleString('vi-VN')} VND (1 transaction)`);
+
+                    // ✅ NEW: Create Fixed Deposit accounts for each investment
+                    this.logger.log(`[FD Creation] Creating Fixed Deposit accounts for ${escrows.length} investments...`);
+
+                    // Get FD product ID from config (or use default)
+                    const fdProductId = parseInt(this.configService.get('FINERACT_FD_PRODUCT_ID') || '2', 10);
+
+                    for (const escrow of escrows) {
+                        try {
+                            // Find corresponding investment
+                            const investment = await this.investmentModel.findOne({ escrowId: escrow.escrowId });
+
+                            if (!investment || !investment.lenderFineractClientId) {
+                                this.logger.warn(`[FD Creation] Skipping escrow ${escrow.escrowId} - no lender Fineract client ID`);
+                                continue;
+                            }
+
+                            // Create FD Account
+                            const FineractFixedDepositService = require('../loan/services/fineract-fixed-deposit.service').FineractFixedDepositService;
+                            const fdService = new FineractFixedDepositService(this.fineractService);
+
+                            const fdAccount = await fdService.createFixedDepositAccount(
+                                investment.lenderFineractClientId,
+                                fdProductId,
+                                investment.info.capital,
+                                loanContract.lenderInterestRate || 10.0, // FD rate (lower than borrower rate)
+                                loanContract.info.periodMonth,
+                                `FD_INV_${investment.contractId}` // External ID for tracking
+                            );
+
+                            // Update investment with FD info
+                            await this.investmentModel.updateOne(
+                                { _id: investment._id },
+                                {
+                                    $set: {
+                                        fineractFixedDepositAccountId: fdAccount.accountId,
+                                        fixedDepositAccountNo: fdAccount.accountNo,
+                                        fixedDepositStatus: 'active',
+                                        fixedDepositMaturityDate: loanContract.info.maturityDate,
+                                        fixedDepositInterestRate: loanContract.lenderInterestRate || 10.0
+                                    }
+                                }
+                            );
+
+                            this.logger.log(`[FD Creation] ✓ Created FD ${fdAccount.accountId} for investment ${investment.contractId}`);
+                        } catch (fdError: any) {
+                            this.logger.error(`[FD Creation] Failed to create FD for escrow ${escrow.escrowId}: ${fdError.message}`);
+                            // Continue without throwing - FD is enhancement, not critical for disbursement
+                        }
+                    }
+
+                    this.logger.log(`[FD Creation] Completed FD account creation process`);
 
                 } catch (transferError: any) {
                     this.logger.error(`[Disbursement] Failed to transfer funds to borrower: ${transferError.message}`);

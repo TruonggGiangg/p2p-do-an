@@ -19,6 +19,22 @@ export class Wallet {
 
     @Prop()
     phone: string;
+
+    // Lender Investment Account (chung cho tất cả investments của lender)
+    @Prop()
+    lenderInvestmentAccountId?: number;
+
+    @Prop()
+    lenderInvestmentAccountNo?: string;
+
+    @Prop()
+    fineractName?: string;
+
+    @Prop()
+    fineractPhone?: string;
+
+    @Prop()
+    fineractEmail?: string;
 }
 
 export const WalletSchema = SchemaFactory.createForClass(Wallet);

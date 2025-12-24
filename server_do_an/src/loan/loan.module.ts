@@ -9,6 +9,7 @@ import { BlockchainController } from './blockchain.controller';
 import { LoanService } from './loan.service';
 import { LoanContract, LoanContractSchema } from './schemas';
 import { BlockchainService, FineractService } from './services';
+import { FineractFixedDepositService } from './services/fineract-fixed-deposit.service';
 import {
     BorrowerGuard,
     LenderGuard,
@@ -32,12 +33,13 @@ import {
         LoanService,
         BlockchainService,
         FineractService,
+        FineractFixedDepositService,
         // Guards
         BorrowerGuard,
         LenderGuard,
         BorrowerOrLenderGuard,
         AdminGuard,
     ],
-    exports: [LoanService, BlockchainService, FineractService],
+    exports: [LoanService, BlockchainService, FineractService, FineractFixedDepositService],
 })
 export class LoanModule { }

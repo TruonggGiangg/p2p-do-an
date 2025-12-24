@@ -131,4 +131,171 @@ export class RepaymentController {
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: error.message });
         }
     }
+
+    /**
+     * Prepayment endpoint - Borrower pays off entire remaining loan
+     * This will close all Fixed Deposit accounts prematurely
+     */
+    @Post('prepay')
+    async prepayLoan(@Body() body: any, @Req() req: Request, @Res() res: Response) {
+        try {
+            const { loanId } = body;
+            const user = req.user as any;
+            const userId = user.id || user._id || user.keycloakUserId;
+
+            this.logger.log(`Prepayment request: loanId=${loanId}, user=${userId}`);
+
+            // 1. Find Loan
+            let loan = await this.loanModel.findOne({ contractId: loanId });
+            if (!loan && loanId.startsWith('LOAN_')) {
+                const fineractId = parseInt(loanId.replace('LOAN_', ''), 10);
+                loan = await this.loanModel.findOne({ fineractLoanId: fineractId });
+            }
+
+            if (!loan) {
+                return res.status(HttpStatus.NOT_FOUND).json({ message: 'Loan not found' });
+            }
+
+            // 2. Check ownership
+            if (loan.borrower.toString() !== userId) {
+                return res.status(HttpStatus.FORBIDDEN).json({ message: 'Not authorized to prepay this loan' });
+            }
+
+            // 3. Get remaining balance from Fineract
+            if (!loan.fineractLoanId) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Loan not linked to Fineract' });
+            }
+
+            const loanDetails = await this.fineractService.getLoanDetails(loan.fineractLoanId);
+
+            if (!loanDetails.status?.active) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Loan is not active' });
+            }
+
+            // Calculate prepay amount (principal outstanding + accrued interest)
+            const principalOutstanding = loanDetails.summary?.principalOutstanding || 0;
+            const interestOutstanding = loanDetails.summary?.interestOutstanding || 0;
+            const totalPrepayAmount = principalOutstanding + interestOutstanding;
+
+            this.logger.log(`Prepayment calculation: Principal=${principalOutstanding}, Interest=${interestOutstanding}, Total=${totalPrepayAmount}`);
+
+            // 4. Validate borrower balance
+            const wallet = await this.walletModel.findOne({ p2pUserId: userId });
+            if (!wallet || !wallet.fineractClientId) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Wallet not linked' });
+            }
+
+            const clientDetails = await this.fineractService.getClientDetails(Number(wallet.fineractClientId));
+            const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
+
+            if (!savingsAccount || savingsAccount.accountBalance < totalPrepayAmount) {
+                return res.status(HttpStatus.BAD_REQUEST).json({
+                    message: `Insufficient balance for prepayment. Required: ${totalPrepayAmount}, Available: ${savingsAccount?.accountBalance || 0}`
+                });
+            }
+
+            // 5. Make prepayment on Fineract
+            const fineractPrepayment = await this.fineractService.makeRepayment(
+                loan.fineractLoanId,
+                totalPrepayAmount,
+                new Date().toISOString().split('T')[0],
+                `P2P Prepayment (Full Settlement) for ${loanId}`
+            );
+
+            // 6. Transfer Borrower → Escrow
+            const transferRes = await this.fineractService.transferFunds(
+                Number(wallet.fineractClientId),
+                this.escrowService['adminClientId'],
+                savingsAccount.id,
+                this.escrowService['adminEscrowAccountId'],
+                totalPrepayAmount,
+                `Prepayment escrow for ${loanId}`
+            );
+
+            // 7. Distribute to Lenders with isFinalPayment = true
+            // This will trigger premature FD closure
+            const distributionResult = await this.repaymentService['distributeRepaymentToLendersWithFD'](
+                loanId,
+                totalPrepayAmount,
+                [], // Will be fetched inside the method
+                true, // isFinalPayment
+                loan
+            );
+
+            // 8. Update Loan status to closed
+            await this.loanModel.findByIdAndUpdate(loan._id, {
+                $set: {
+                    status: 'closed',
+                    fineractStatus: 'CLOSED',
+                    closedDate: new Date()
+                },
+                $push: {
+                    repaymentHistory: {
+                        date: new Date(),
+                        amount: totalPrepayAmount,
+                        type: 'prepayment',
+                        fineractTransactionId: fineractPrepayment?.transactionId,
+                        escrowTransferId: transferRes.resourceId
+                    }
+                }
+            });
+
+            this.logger.log(`✓ Loan ${loanId} prepaid and closed successfully`);
+
+            return res.status(HttpStatus.OK).json({
+                success: true,
+                loanId,
+                prepaymentAmount: totalPrepayAmount,
+                principalOutstanding,
+                interestOutstanding,
+                distribution: distributionResult,
+                loanStatus: 'closed'
+            });
+
+        } catch (error: any) {
+            this.logger.error(`Prepayment error: ${error.message}`);
+            return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Get repayment schedule for a loan
+     */
+    @Get('schedule/:loanId')
+    async getRepaymentSchedule(@Param('loanId') loanId: string, @Res() res: Response) {
+        try {
+            // Find loan
+            let loan = await this.loanModel.findOne({ contractId: loanId });
+            if (!loan && loanId.startsWith('LOAN_')) {
+                const fineractId = parseInt(loanId.replace('LOAN_', ''), 10);
+                loan = await this.loanModel.findOne({ fineractLoanId: fineractId });
+            }
+
+            if (!loan) {
+                return res.status(HttpStatus.NOT_FOUND).json({ message: 'Loan not found' });
+            }
+
+            // Get schedule from Fineract
+            let schedule: any = null;
+            if (loan.fineractLoanId) {
+                const loanDetails = await this.fineractService.getLoanDetails(loan.fineractLoanId);
+                schedule = loanDetails.repaymentSchedule;
+            }
+
+            // Fallback to MongoDB cached schedule
+            if (!schedule && loan.fineractRepaymentSchedule) {
+                schedule = loan.fineractRepaymentSchedule;
+            }
+
+            return res.status(HttpStatus.OK).json({
+                loanId,
+                schedule: schedule || { periods: [] },
+                source: schedule ? 'fineract' : 'mongodb'
+            });
+
+        } catch (error: any) {
+            this.logger.error(`Get schedule error: ${error.message}`);
+            return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: error.message });
+        }
+    }
 }

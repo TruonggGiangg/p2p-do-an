@@ -25,6 +25,7 @@ import {
     OutstandingBalance,
 } from '../../types';
 import { DarkColors, DarkStyling } from '../../theme';
+import { ScreenContainer, PageHeader } from '../../components/common';
 
 // Format currency
 const formatCurrency = (value: number | undefined): string => {
@@ -384,8 +385,9 @@ export const LoanDetailScreen: React.FC = () => {
     };
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
+        <ScreenContainer scrollable={false}>
+            <PageHeader title="Chi Tiết Khoản Vay" />
+
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={
@@ -397,7 +399,6 @@ export const LoanDetailScreen: React.FC = () => {
                     />
                 }
             >
-                {renderHeader()}
 
                 <View style={styles.bodyContainer}>
                     {renderAmountCard()}
@@ -443,7 +444,7 @@ export const LoanDetailScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
             )}
-        </View>
+        </ScreenContainer>
     );
 };
 

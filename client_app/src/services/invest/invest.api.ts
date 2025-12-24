@@ -43,6 +43,14 @@ export interface Investment {
     totalInterestReceived?: number;
     createdAt?: string;
     updatedAt?: string;
+    // Fixed Deposit fields
+    fixedDepositInterestRate?: number;   // Lãi lender nhận (%/năm)
+    fixedDepositStatus?: 'pending' | 'active' | 'matured' | 'closed';
+    fixedDepositBalance?: number;
+    fixedDepositInterestEarned?: number;
+    // Escrow tracking
+    escrowId?: string;
+    escrowStatus?: 'pending' | 'escrowed' | 'disbursed' | 'failed';
 }
 
 /**
@@ -57,6 +65,7 @@ export interface AvailableLoan {
         periodMonth: number;
         willing: string;
         disbursementDate?: string;
+        annualRate?: number;
     };
     totalNotes: number;
     investedNotes: number;
@@ -64,6 +73,11 @@ export interface AvailableLoan {
     availableAmount: number;
     fundedPercentage: number;
     status: string;
+    // Dynamic rates from server
+    borrowerInterestRate?: number;   // Lãi người vay phải trả (%/năm)
+    lenderInterestRate?: number;     // Lãi lender nhận (%/năm)
+    adminSpread?: number;            // Chênh lệch admin giữ
+    loanSizeTier?: 'small' | 'medium' | 'large';
 }
 
 /**

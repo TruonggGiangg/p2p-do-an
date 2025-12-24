@@ -7,6 +7,8 @@ import { RepaymentService } from './services/repayment.service';
 import { EscrowService } from './services/escrow.service';
 import { Escrow, EscrowSchema } from './schemas/escrow.schema';
 import { FineractService } from '../loan/services/fineract.service';
+import { FineractFixedDepositService } from '../loan/services/fineract-fixed-deposit.service';
+import { FineractEscrowService } from '../escrow/services/fineract-escrow.service';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
 import { Wallet, WalletSchema } from '../invest/schemas/wallet.schema';
@@ -27,6 +29,8 @@ import { Wallet, WalletSchema } from '../invest/schemas/wallet.schema';
         RepaymentService,
         EscrowService,
         FineractService,
+        FineractFixedDepositService,
+        FineractEscrowService,
     ],
     exports: [RepaymentService, EscrowService]
 })

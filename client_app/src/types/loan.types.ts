@@ -79,6 +79,13 @@ export interface LoanContract {
     blockchainTxId?: string;
     createdAt?: string;
     updatedAt?: string;
+    // Dynamic Interest Rates (from server)
+    borrowerInterestRate?: number;    // Lãi người vay phải trả (%/năm)
+    lenderInterestRate?: number;      // Lãi lender nhận (%/năm) 
+    adminSpread?: number;             // Chênh lệch (admin giữ lại)
+    adminSpreadPercentage?: number;   // Tỷ lệ spread (%)
+    loanSizeTier?: 'small' | 'medium' | 'large';  // Tier khoản vay
+    adminSpreadEarned?: number;       // Tổng spread đã kiếm được
 }
 
 /**

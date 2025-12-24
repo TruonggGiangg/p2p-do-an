@@ -110,10 +110,35 @@ export default function InvestListScreen() {
                         <Text style={styles.infoValue}>{formatCurrency(item.info.capital)}₫</Text>
                     </View>
                     <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Lãi suất</Text>
-                        <Text style={[styles.infoValue, { color: DarkColors.success }]}>{item.info.rate}%/tháng</Text>
+                        <Text style={styles.infoLabel}>Lãi bạn nhận</Text>
+                        <Text style={[styles.infoValue, { color: DarkColors.success }]}>
+                            {item.lenderInterestRate
+                                ? `${item.lenderInterestRate}%/năm`
+                                : `${item.info.rate}%/tháng`}
+                        </Text>
                     </View>
                 </View>
+
+                {/* Tier Badge (if available) */}
+                {item.loanSizeTier && (
+                    <View style={styles.tierRow}>
+                        <View style={[styles.tierBadge, {
+                            backgroundColor: item.loanSizeTier === 'large' ? '#FF6B4520'
+                                : item.loanSizeTier === 'medium' ? '#FFB84D20' : '#4ADE8020'
+                        }]}>
+                            <Text style={[styles.tierText, {
+                                color: item.loanSizeTier === 'large' ? '#FF6B45'
+                                    : item.loanSizeTier === 'medium' ? '#FFB84D' : '#4ADE80'
+                            }]}>
+                                {item.loanSizeTier === 'large' ? '🔥 Lớn'
+                                    : item.loanSizeTier === 'medium' ? '📊 Vừa' : '💚 Nhỏ'}
+                            </Text>
+                        </View>
+                        <Text style={styles.tierDesc}>
+                            Spread: {item.adminSpread || 3}%
+                        </Text>
+                    </View>
+                )}
 
                 {/* Progress Bar */}
                 <View style={styles.progressContainer}>
@@ -510,5 +535,25 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: DarkColors.textSecondary,
         textAlign: 'center',
+    },
+    // Tier Badge
+    tierRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        gap: 8,
+    },
+    tierBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    tierText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    tierDesc: {
+        fontSize: 12,
+        color: DarkColors.textSecondary,
     },
 });

@@ -1,5 +1,6 @@
 /**
  * LoanCreateScreen - Màn hình tạo khoản vay (Borrower)
+ * Refactored with Common Components & Glassmorphism Style
  */
 
 import React, { useState, useCallback } from 'react';
@@ -7,14 +8,11 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
-    TextInput,
-    TouchableOpacity,
     Alert,
-    ActivityIndicator,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { loanApi } from '../../services';
 import {
@@ -24,6 +22,16 @@ import {
     LOAN_WILLINGS,
     LOAN_PERIODS,
 } from '../../types';
+import { DarkColors, DarkStyling } from '../../theme';
+import {
+    ScreenContainer,
+    PageHeader,
+    GlassInput,
+    GlassPicker,
+    GlassDatePicker,
+    InfoRow
+} from '../../components/common';
+import { GlowButton } from '../../components/glow';
 
 // Format number with commas
 const formatNumber = (num: number): string => {
@@ -107,7 +115,7 @@ export default function LoanCreateScreen({ navigation }: any) {
                             const result = await loanApi.createLoan(request);
                             Alert.alert(
                                 'Thành công!',
-                                `Khoản vay ${result.contractId} đã được tạo.\nLãi suất: ${result.info.rate}%/tháng\nTổng trả: ${formatNumber(result.info.entirelyPay)} VND`,
+                                `Khoản vay ${result.contractId} đã được tạo.\nLãi suất: ${result.info.rate}%/tháng\nTổng trả: ${formatNumber(result.info.entirelyPay ?? 0)} VND`,
                                 [
                                     {
                                         text: 'OK',
@@ -138,322 +146,191 @@ export default function LoanCreateScreen({ navigation }: any) {
         setRatePreview(null);
     };
 
+    const loanPeriodItems = LOAN_PERIODS.map(p => ({ label: p.label, value: p.value }));
+    const willingItems = LOAN_WILLINGS.map(w => ({ label: w, value: w }));
+
     return (
-        <ScrollView style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Tạo Khoản Vay Mới</Text>
-                <Text style={styles.subtitle}>Điền thông tin để vay tiền</Text>
-            </View>
+        <ScreenContainer scrollable>
+            <PageHeader title="Tạo Khoản Vay" subtitle="Điền thông tin để bắt đầu" />
 
-            {/* Form */}
-            <View style={styles.form}>
-                {/* Capital Input */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Số tiền vay (VND)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={capital}
-                        onChangeText={handleCapitalChange}
-                        keyboardType="numeric"
-                        placeholder="Nhập số tiền"
-                    />
-                    <Text style={styles.hint}>Tối thiểu: 1,000,000 VND</Text>
-                </View>
+            <View style={styles.content}>
+                {/* Form Card */}
+                <BlurView intensity={20} tint="dark" style={styles.glassCard}>
+                    <LinearGradient
+                        colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
+                        style={styles.cardGradient}
+                    >
+                        <GlassInput
+                            label="Số tiền vay (VND)"
+                            value={capital}
+                            onChangeText={handleCapitalChange}
+                            keyboardType="numeric"
+                            placeholder="Nhập số tiền"
+                            icon="cash-outline"
+                            error={parseNumber(capital) > 0 && parseNumber(capital) < 1000000 ? "Tối thiểu 1,000,000 VND" : undefined}
+                        />
 
-                {/* Period Picker */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Kỳ hạn vay</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker
+                        <GlassPicker
+                            label="Kỳ hạn vay"
                             selectedValue={periodMonth}
-                            onValueChange={(value) => {
-                                setPeriodMonth(value);
+                            onValueChange={(val) => {
+                                setPeriodMonth(val);
                                 setRatePreview(null);
                             }}
-                            style={styles.picker}
-                        >
-                            {LOAN_PERIODS.map((period) => (
-                                <Picker.Item
-                                    key={period.value}
-                                    label={period.label}
-                                    value={period.value}
-                                />
-                            ))}
-                        </Picker>
-                    </View>
-                </View>
+                            items={loanPeriodItems}
+                        />
 
-                {/* Willing Picker */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Mục đích vay</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker
+                        <GlassPicker
+                            label="Mục đích vay"
                             selectedValue={willing}
                             onValueChange={setWilling}
-                            style={styles.picker}
-                        >
-                            {LOAN_WILLINGS.map((w) => (
-                                <Picker.Item key={w} label={w} value={w} />
-                            ))}
-                        </Picker>
-                    </View>
-                </View>
+                            items={willingItems}
+                        />
 
-                {/* Disbursement Date */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Ngày giải ngân</Text>
-                    <TouchableOpacity
-                        style={styles.dateButton}
-                        onPress={() => setShowDatePicker(true)}
-                    >
-                        <Text style={styles.dateButtonText}>
-                            {formatDate(disbursementDate)}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                        <GlassDatePicker
+                            label="Ngày giải ngân dự kiến"
+                            value={disbursementDate}
+                            onPress={() => setShowDatePicker(true)}
+                        />
 
-                {showDatePicker && (
-                    <DateTimePicker
-                        value={disbursementDate}
-                        mode="date"
-                        display="default"
-                        minimumDate={new Date()}
-                        maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
-                        onChange={(event, date) => {
-                            setShowDatePicker(false);
-                            if (date) {
-                                setDisbursementDate(date);
-                                setRatePreview(null);
-                            }
-                        }}
-                    />
-                )}
+                        {showDatePicker && (
+                            <DateTimePicker
+                                value={disbursementDate}
+                                mode="date"
+                                display="default"
+                                minimumDate={new Date()}
+                                maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
+                                onChange={(event, date) => {
+                                    setShowDatePicker(false);
+                                    if (date) {
+                                        setDisbursementDate(date);
+                                        setRatePreview(null);
+                                    }
+                                }}
+                            />
+                        )}
 
-                {/* Check Rate Button */}
-                <TouchableOpacity
-                    style={styles.checkRateButton}
-                    onPress={handleCheckRate}
-                    disabled={loadingRate}
-                >
-                    {loadingRate ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.checkRateButtonText}>Xem lãi suất</Text>
-                    )}
-                </TouchableOpacity>
+                        <GlowButton
+                            title={ratePreview ? "TÍNH TOÁN LẠI" : "XEM LÃI SUẤT"}
+                            onPress={handleCheckRate}
+                            loading={loadingRate}
+                            variant="glass"
+                            icon="calculator"
+                            style={{ marginVertical: 8 }}
+                        />
+                    </LinearGradient>
+                </BlurView>
 
-                {/* Rate Preview */}
+                {/* Preview Result */}
                 {ratePreview && (
-                    <View style={styles.previewCard}>
-                        <Text style={styles.previewTitle}>Thông tin khoản vay</Text>
+                    <BlurView intensity={30} tint="dark" style={[styles.glassCard, styles.resultCard]}>
+                        <LinearGradient
+                            colors={['rgba(0, 255, 136, 0.1)', 'rgba(0, 255, 136, 0.02)']}
+                            style={styles.cardGradient}
+                        >
+                            <Text style={styles.resultTitle}>KẾT QUẢ DỰ TÍNH</Text>
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Lãi suất:</Text>
-                            <Text style={styles.previewValue}>
-                                {ratePreview.rate}%/tháng ({ratePreview.annualRate}%/năm)
-                            </Text>
-                        </View>
+                            <InfoRow label="Lãi suất tháng" value={`${ratePreview.rate}%`} icon="percent" />
+                            <InfoRow label="Lãi suất năm" value={`${ratePreview.annualRate}%`} icon="chart-line" />
+                            <InfoRow label="Loại lãi" value={ratePreview.interestType} icon="format-list-bulleted-type" />
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Loại lãi:</Text>
-                            <Text style={styles.previewValue}>{ratePreview.interestType}</Text>
-                        </View>
+                            <View style={styles.divider} />
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Gốc hàng tháng:</Text>
-                            <Text style={styles.previewValue}>
-                                {formatNumber(ratePreview.monthlyPrincipalPay)} VND
-                            </Text>
-                        </View>
+                            <InfoRow label="Gốc hàng tháng" value={`${formatNumber(ratePreview.monthlyPrincipalPay)} đ`} />
+                            <InfoRow label="Lãi hàng tháng" value={`${formatNumber(ratePreview.monthlyInterestPay)} đ`} />
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Lãi hàng tháng:</Text>
-                            <Text style={styles.previewValue}>
-                                {formatNumber(ratePreview.monthlyInterestPay)} VND
-                            </Text>
-                        </View>
+                            <View style={styles.highlightRow}>
+                                <Text style={styles.highlightLabel}>Trả hàng tháng</Text>
+                                <Text style={styles.highlightValue}>{formatNumber(ratePreview.monthlyPay)} đ</Text>
+                            </View>
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Tổng trả hàng tháng:</Text>
-                            <Text style={[styles.previewValue, styles.highlighted]}>
-                                {formatNumber(ratePreview.monthlyPay)} VND
-                            </Text>
-                        </View>
+                            <View style={[styles.highlightRow, { marginTop: 4 }]}>
+                                <Text style={styles.highlightLabel}>Tổng thanh toán</Text>
+                                <Text style={[styles.highlightValue, { color: DarkColors.primary }]}>{formatNumber(ratePreview.entirelyPay)} đ</Text>
+                            </View>
 
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Tổng trả:</Text>
-                            <Text style={[styles.previewValue, styles.highlighted]}>
-                                {formatNumber(ratePreview.entirelyPay)} VND
-                            </Text>
-                        </View>
-
-                        <View style={styles.previewRow}>
-                            <Text style={styles.previewLabel}>Ngày đáo hạn:</Text>
-                            <Text style={styles.previewValue}>{ratePreview.maturityDate}</Text>
-                        </View>
-
-                        <Text style={styles.rateSource}>
-                            Nguồn lãi suất: {ratePreview.rateSource}
-                        </Text>
-                    </View>
+                            <Text style={styles.noteText}>Nguồn lãi suất: {ratePreview.rateSource}</Text>
+                        </LinearGradient>
+                    </BlurView>
                 )}
 
                 {/* Submit Button */}
-                <TouchableOpacity
-                    style={[
-                        styles.submitButton,
-                        (!ratePreview || submitting) && styles.submitButtonDisabled,
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={!ratePreview || submitting}
-                >
-                    {submitting ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.submitButtonText}>Tạo Khoản Vay</Text>
-                    )}
-                </TouchableOpacity>
+                <View style={styles.footer}>
+                    <GlowButton
+                        title="TẠO KHOẢN VAY"
+                        onPress={handleSubmit}
+                        loading={submitting}
+                        disabled={!ratePreview || submitting}
+                        icon="check-circle-outline"
+                        style={{ marginTop: 24 }}
+                    />
+                </View>
             </View>
-        </ScrollView>
+        </ScreenContainer>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
+    content: {
+        paddingHorizontal: 20,
     },
-    header: {
-        backgroundColor: '#2196F3',
-        padding: 20,
-        paddingTop: 40,
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#fff',
-    },
-    subtitle: {
-        fontSize: 14,
-        color: '#fff',
-        opacity: 0.8,
-        marginTop: 4,
-    },
-    form: {
-        padding: 16,
-    },
-    inputGroup: {
-        marginBottom: 16,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 8,
-    },
-    input: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
-        borderWidth: 1,
-        borderColor: '#ddd',
-    },
-    hint: {
-        fontSize: 12,
-        color: '#666',
-        marginTop: 4,
-    },
-    pickerContainer: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ddd',
+    glassCard: {
+        borderRadius: 24,
         overflow: 'hidden',
-    },
-    picker: {
-        height: 50,
-    },
-    dateButton: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 14,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: 'rgba(255,255,255,0.12)',
+        marginBottom: 20,
     },
-    dateButtonText: {
-        fontSize: 16,
-        color: '#333',
+    cardGradient: {
+        padding: 20,
     },
-    checkRateButton: {
-        backgroundColor: '#4CAF50',
-        borderRadius: 8,
-        padding: 14,
-        alignItems: 'center',
+    resultCard: {
+        borderColor: 'rgba(0, 255, 136, 0.3)',
         marginTop: 8,
     },
-    checkRateButtonText: {
-        color: '#fff',
+    resultTitle: {
         fontSize: 16,
-        fontWeight: '600',
+        fontWeight: '700',
+        color: DarkColors.success,
+        textAlign: 'center',
+        marginBottom: 16,
+        fontFamily: 'Poppins_700Bold',
+        letterSpacing: 1,
     },
-    previewCard: {
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 16,
-        marginTop: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginVertical: 12,
     },
-    previewTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 12,
-    },
-    previewRow: {
+    highlightRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    previewLabel: {
-        fontSize: 14,
-        color: '#666',
-    },
-    previewValue: {
-        fontSize: 14,
-        color: '#333',
-        fontWeight: '500',
-    },
-    highlighted: {
-        color: '#2196F3',
-        fontWeight: 'bold',
-    },
-    rateSource: {
-        fontSize: 12,
-        color: '#999',
+        alignItems: 'center',
         marginTop: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        padding: 12,
+        borderRadius: 12,
+    },
+    highlightLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: DarkColors.text,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    highlightValue: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: DarkColors.accent,
+        fontFamily: 'Poppins_700Bold',
+    },
+    noteText: {
+        fontSize: 11,
+        color: DarkColors.textMuted,
+        textAlign: 'center',
+        marginTop: 16,
         fontStyle: 'italic',
     },
-    submitButton: {
-        backgroundColor: '#2196F3',
-        borderRadius: 8,
-        padding: 16,
-        alignItems: 'center',
-        marginTop: 20,
+    footer: {
         marginBottom: 40,
-    },
-    submitButtonDisabled: {
-        backgroundColor: '#ccc',
-    },
-    submitButtonText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
+    }
 });

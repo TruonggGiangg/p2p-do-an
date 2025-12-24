@@ -274,6 +274,14 @@ export class LoanContract extends Document {
     @Prop({ default: 0 })
     adminSpreadEarned: number;
 
+    @Prop({ type: [Object], default: [] })
+    spreadEarnedHistory: Array<{
+        repaymentDate: Date;
+        spreadAmount: number;
+        lenderInterest: number;
+        borrowerInterest: number;
+    }>;
+
     // === DEFAULT HANDLING ===
     @Prop({ default: false })
     isDefaulted: boolean;

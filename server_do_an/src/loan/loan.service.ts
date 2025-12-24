@@ -14,6 +14,7 @@ import { LoanContract } from './schemas';
 import { CreateLoanDto, CheckRateDto } from './dto';
 import { BlockchainService } from './services/blockchain.service';
 import { FineractService } from './services/fineract.service';
+import { calculateRates as calculateDynamicRates } from '../utils/interest-rate-calculator';
 
 /**
  * User interface from authentication
@@ -177,6 +178,11 @@ export class LoanService {
         // 6. Save to MongoDB FIRST (as Waiting)
         // Use username or keycloakUserId as borrower identifier (Keycloak users don't have MongoDB ObjectId)
 
+        // Calculate dynamic interest rates based on loan amount and default credit score
+        const creditScore = 50; // TODO: Get from credit scoring system
+        const dynamicRates = calculateDynamicRates(capital, periodMonth, creditScore);
+        this.logger.log(`[Dynamic Rate] Tier: ${dynamicRates.tier}, Borrower: ${dynamicRates.borrowerRate}%, Lender: ${dynamicRates.lenderRate}%, Spread: ${dynamicRates.spread}%`);
+
         const loanContract = new this.loanContractModel({
             contractId: contractId,
             borrower: borrowerId, // Store as string for Keycloak compatibility
@@ -197,6 +203,13 @@ export class LoanService {
             },
             totalNotes: Math.ceil(capital / 500000),
             status: 'waiting',
+            // Dynamic Interest Rates
+            borrowerInterestRate: dynamicRates.borrowerRate,
+            lenderInterestRate: dynamicRates.lenderRate,
+            adminSpread: dynamicRates.spread,
+            adminSpreadPercentage: dynamicRates.spreadPercentage,
+            loanSizeTier: dynamicRates.tier,
+            spreadCalculationMethod: 'auto',
             // Rate source tracking
             rateSource: 'fineract_product',
             blockchainSynced: false,
