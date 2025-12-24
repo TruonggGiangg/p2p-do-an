@@ -336,23 +336,34 @@ export class FabricGateway {
 	async queryInstantiatedChaincodes(channelName) {
 		logger.info('queryInstantiatedChaincodes', channelName);
 		const network = await this.gateway.getNetwork(channelName);
-		let contract = network.getContract('lscc');
-		let result = await contract.evaluateTransaction('GetChaincodes');
-		let resultJson = fabprotos.protos.ChaincodeQueryResponse.decode(result);
-		if (resultJson.chaincodes.length <= 0) {
-			resultJson = { chaincodes: [], toJSON: null };
-			contract = network.getContract('_lifecycle');
-			result = await contract.evaluateTransaction('QueryChaincodeDefinitions', '');
-			const decodedReult = fabprotos.lifecycle.QueryChaincodeDefinitionsResult.decode(
-				result
-			);
-			for (const cc of decodedReult.chaincode_definitions) {
+		let resultJson = { chaincodes: [], toJSON: null };
+
+		// Try Fabric 2.x _lifecycle first
+		try {
+			logger.info('Trying _lifecycle (Fabric 2.x)...');
+			const contract = network.getContract('_lifecycle');
+			const result = await contract.evaluateTransaction('QueryChaincodeDefinitions', '');
+			const decodedResult = fabprotos.lifecycle.QueryChaincodeDefinitionsResult.decode(result);
+			for (const cc of decodedResult.chaincode_definitions) {
 				resultJson.chaincodes = concat(resultJson.chaincodes, {
 					name: cc.name,
 					version: cc.version
 				});
 			}
+			logger.info('Successfully queried chaincodes via _lifecycle');
+		} catch (lifecycleError: any) {
+			logger.warn('_lifecycle query failed, trying lscc (Fabric 1.x)...', lifecycleError?.message);
+			// Fallback to lscc for Fabric 1.x
+			try {
+				const contract = network.getContract('lscc');
+				const result = await contract.evaluateTransaction('GetChaincodes');
+				resultJson = fabprotos.protos.ChaincodeQueryResponse.decode(result);
+			} catch (lsccError: any) {
+				logger.warn('lscc query also failed:', lsccError?.message);
+				// Return empty chaincodes list instead of throwing
+			}
 		}
+
 		logger.debug('queryInstantiatedChaincodes', resultJson);
 		return resultJson;
 	}

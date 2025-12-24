@@ -48,6 +48,8 @@ services:
       - ${EXPLORER_PROFILE_DIR_PATH}:/opt/explorer/app/platform/fabric/connection-profile
       - ${FABRIC_CRYPTO_PATH}:/tmp/crypto
       - walletstore:/opt/explorer/wallet
+      # Mount modified JS file for Fabric 2.x lifecycle fix
+      - ./app/platform/fabric/gateway/FabricGateway.js:/opt/explorer/app/platform/fabric/gateway/FabricGateway.js
     ports:
       - ${PORT:-8080}:${PORT:-8080}
     depends_on:
