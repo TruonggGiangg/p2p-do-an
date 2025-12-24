@@ -1,3 +1,8 @@
+/**
+ * ScreenContainer - Unified Theme Version
+ * Clean, reusable container with SafeAreaView and optional scroll
+ */
+
 import React from 'react';
 import {
     View,
@@ -7,11 +12,11 @@ import {
     KeyboardAvoidingView,
     Platform,
     ViewStyle,
-    RefreshControl
+    RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { DarkColors } from '../../theme';
+import { UnifiedColors, UnifiedGradients } from '../../theme';
 
 interface ScreenContainerProps {
     children: React.ReactNode;
@@ -30,34 +35,40 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
     refreshing = false,
     onRefresh,
     style,
-    contentContainerStyle
+    contentContainerStyle,
 }) => {
     const ContentWrapper = scrollable ? ScrollView : View;
 
     // Props specific to ScrollView
-    const scrollProps = scrollable ? {
-        contentContainerStyle: [styles.scrollContent, { paddingTop }, contentContainerStyle],
-        showsVerticalScrollIndicator: false,
-        refreshControl: onRefresh ? (
-            <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={DarkColors.primary}
-                colors={[DarkColors.primary]}
-            />
-        ) : undefined,
-        keyboardShouldPersistTaps: 'handled' as const
-    } : {
-        style: [styles.fixedContent, { paddingTop }, contentContainerStyle]
-    };
+    const scrollProps = scrollable
+        ? {
+            contentContainerStyle: [
+                styles.scrollContent,
+                { paddingTop },
+                contentContainerStyle,
+            ],
+            showsVerticalScrollIndicator: false,
+            refreshControl: onRefresh ? (
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={UnifiedColors.primary}
+                    colors={[UnifiedColors.primary]}
+                />
+            ) : undefined,
+            keyboardShouldPersistTaps: 'handled' as const,
+        }
+        : {
+            style: [styles.fixedContent, { paddingTop }, contentContainerStyle],
+        };
 
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-            {/* Background Gradient */}
+            {/* Background Gradient - Unified Theme */}
             <LinearGradient
-                colors={['#0a0e27', '#1a1230', '#0a0e27']}
+                colors={[...UnifiedGradients.background]}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -65,12 +76,11 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                style={{ flex: 1 }}
+                style={styles.keyboardView}
             >
-                <SafeAreaView style={[styles.safeArea, style]}>
-                    <ContentWrapper {...scrollProps}>
-                        {children}
-                    </ContentWrapper>
+                {/* Disable bottom edge to avoid gap above navigation */}
+                <SafeAreaView style={[styles.safeArea, style]} edges={['top', 'left', 'right']}>
+                    <ContentWrapper {...scrollProps}>{children}</ContentWrapper>
                 </SafeAreaView>
             </KeyboardAvoidingView>
         </View>
@@ -80,16 +90,19 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: DarkColors.background,
+        backgroundColor: UnifiedColors.background,
+    },
+    keyboardView: {
+        flex: 1,
     },
     safeArea: {
         flex: 1,
     },
     scrollContent: {
         flexGrow: 1,
-        paddingBottom: 40,
+        paddingBottom: 0, // Controlled by individual screens
     },
     fixedContent: {
         flex: 1,
-    }
+    },
 });

@@ -6,6 +6,7 @@ import {
     TouchableOpacity,
     RefreshControl,
     Dimensions,
+    ScrollView,
 } from 'react-native';
 import { Text, Avatar } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,8 +17,8 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { loanApi } from '../../services';
 import { LoanContract, LoanStatus } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { DarkColors, DarkGradients } from '../../theme';
-import { ScreenContainer } from '../../components/common';
+import { UnifiedColors, UnifiedGradients, UnifiedSpacing, UnifiedRadius, UnifiedBlur } from '../../theme';
+import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -139,127 +140,136 @@ export default function LoanListScreen({ navigation }: Props) {
     };
 
     return (
-        <ScreenContainer scrollable={false}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                        <Text style={styles.greeting}>Xin chào,</Text>
-                        <Text style={styles.username}>{user?.name || 'Borrower'}</Text>
-                    </View>
-                    <Avatar.Image
-                        size={48}
-                        source={{ uri: 'https://i.pravatar.cc/150' }}
-                        style={{ backgroundColor: 'transparent' }}
+        <GradientBackground>
+            <ScrollView
+                style={{ flex: 1 }}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={fetchLoans}
+                        tintColor={UnifiedColors.primary}
+                        colors={[UnifiedColors.primary]}
                     />
+                }
+            >
+                {/* Header */}
+                <View style={styles.header}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                            <Text style={styles.greeting}>Xin chào,</Text>
+                            <Text style={styles.username}>{user?.name || 'Borrower'}</Text>
+                        </View>
+                        <Avatar.Image
+                            size={48}
+                            source={{ uri: 'https://i.pravatar.cc/150' }}
+                            style={{ backgroundColor: 'transparent' }}
+                        />
+                    </View>
+
+                    {/* Stats Row */}
+                    <BlurView intensity={40} tint="dark" style={styles.statsRow}>
+                        <View style={styles.statItem}>
+                            <Text style={styles.statValue}>{stats.totalLoans}</Text>
+                            <Text style={styles.statLabel}>Tổng khoản vay</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: '#60A5FA' }]}>{stats.totalActive}</Text>
+                            <Text style={styles.statLabel}>Đang hoạt động</Text>
+                        </View>
+                    </BlurView>
                 </View>
 
-                {/* Stats Row */}
-                <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{stats.totalLoans}</Text>
-                        <Text style={styles.statLabel}>Tổng khoản vay</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: '#60A5FA' }]}>{stats.totalActive}</Text>
-                        <Text style={styles.statLabel}>Đang hoạt động</Text>
-                    </View>
-                </View>
-            </View>
+                {/* Quick Actions (Circular) */}
+                <View style={styles.actionsContainer}>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
+                        <LinearGradient
+                            colors={[...UnifiedGradients.primary]}
+                            style={styles.actionCircle}
+                        >
+                            <MaterialCommunityIcons name="plus" size={28} color="white" />
+                        </LinearGradient>
+                        <Text style={styles.actionText}>Tạo vay</Text>
+                    </TouchableOpacity>
 
-            {/* Quick Actions (Circular) */}
-            <View style={styles.actionsContainer}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
-                    <LinearGradient
-                        colors={['#4F46E5', '#3730A3']}
-                        style={styles.actionCircle}
-                    >
-                        <MaterialCommunityIcons name="plus" size={28} color="white" />
-                    </LinearGradient>
-                    <Text style={styles.actionText}>Tạo vay</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionBtn}>
+                        <LinearGradient
+                            colors={[...UnifiedGradients.success]}
+                            style={styles.actionCircle}
+                        >
+                            <MaterialCommunityIcons name="wallet" size={28} color="white" />
+                        </LinearGradient>
+                        <Text style={styles.actionText}>Nạp tiền</Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionBtn}>
-                    <LinearGradient
-                        colors={['#10B981', '#059669']}
-                        style={styles.actionCircle}
-                    >
-                        <MaterialCommunityIcons name="wallet" size={28} color="white" />
-                    </LinearGradient>
-                    <Text style={styles.actionText}>Nạp tiền</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('TransactionHistory')}>
-                    <LinearGradient
-                        colors={['#EF4444', '#B91C1C']}
-                        style={styles.actionCircle}
-                    >
-                        <MaterialCommunityIcons name="history" size={28} color="white" />
-                    </LinearGradient>
-                    <Text style={styles.actionText}>Lịch sử</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Glass Bottom Sheet for List */}
-            <BlurView intensity={30} tint="dark" style={styles.listContainer}>
-                <View style={styles.listHeader}>
-                    <Text style={styles.listTitle}>Khoản vay gần đây</Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('LoanListAll')}>
-                        <Text style={styles.seeAll}>Tất cả</Text>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('TransactionHistory')}>
+                        <LinearGradient
+                            colors={[...UnifiedGradients.error]}
+                            style={styles.actionCircle}
+                        >
+                            <MaterialCommunityIcons name="history" size={28} color="white" />
+                        </LinearGradient>
+                        <Text style={styles.actionText}>Lịch sử</Text>
                     </TouchableOpacity>
                 </View>
 
-                <FlatList
-                    data={loans.slice(0, 5)}
-                    renderItem={renderLoanItem}
-                    keyExtractor={(item) => item.contractId}
-                    contentContainerStyle={styles.listContent}
-                    showsVerticalScrollIndicator={false}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={handleRefresh}
-                            tintColor={DarkColors.primary}
-                        />
-                    }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>Chưa có khoản vay nào</Text>
-                        </View>
-                    }
-                />
-            </BlurView>
-        </ScreenContainer>
+                {/* Glass Bottom Sheet for List */}
+                <BlurView intensity={30} tint="dark" style={styles.listContainer}>
+                    <View style={styles.listHeader}>
+                        <Text style={styles.listTitle}>Khoản vay gần đây</Text>
+                        <TouchableOpacity onPress={() => navigation.navigate('LoanListAll')}>
+                            <Text style={styles.seeAll}>Tất cả</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <FlatList
+                        data={loans.slice(0, 5)}
+                        renderItem={renderLoanItem}
+                        keyExtractor={(item) => item.contractId}
+                        ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+                        ListEmptyComponent={
+                            <View style={styles.emptyContainer}>
+                                <Text style={styles.emptyText}>Chưa có khoản vay nào</Text>
+                            </View>
+                        }
+                        scrollEnabled={false}
+                        contentContainerStyle={styles.listContent}
+                    />
+                </BlurView>
+            </ScrollView>
+        </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
     header: {
-        paddingTop: 40, // More top spacing
-        paddingHorizontal: 24,
-        paddingBottom: 20,
+        paddingTop: 40,
+        paddingHorizontal: UnifiedSpacing.md,
+        paddingBottom: UnifiedSpacing.lg,
     },
     greeting: {
         fontSize: 14,
-        color: 'rgba(255,255,255,0.7)',
+        color: UnifiedColors.textSecondary,
         fontFamily: 'Poppins_400Regular',
+        letterSpacing: 0.1,
     },
     username: {
         fontSize: 28,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: UnifiedColors.textPrimary,
         fontFamily: 'Poppins_700Bold',
-        letterSpacing: 0.5,
+        letterSpacing: -0.5,
     },
     statsRow: {
         flexDirection: 'row',
-        marginTop: 24,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 16,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        marginTop: UnifiedSpacing.lg,
+        backgroundColor: UnifiedColors.glassDark,
+        borderRadius: UnifiedRadius.xl,
+        padding: UnifiedSpacing.lg,
+        borderWidth: 1.5,
+        borderColor: UnifiedColors.borderGlass,
+        overflow: 'hidden',
     },
     statItem: {
         flex: 1,
@@ -268,92 +278,102 @@ const styles = StyleSheet.create({
     statValue: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: UnifiedColors.textPrimary,
         fontFamily: 'Poppins_700Bold',
+        letterSpacing: -0.3,
     },
     statLabel: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.6)',
+        color: UnifiedColors.textSecondary,
         marginTop: 4,
+        letterSpacing: 0.1,
     },
     statDivider: {
         width: 1,
         height: '80%',
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: UnifiedColors.borderGlass,
         alignSelf: 'center',
     },
 
     // Quick Actions
     actionsContainer: {
         flexDirection: 'row',
-        justifyContent: 'space-around', // Spread them out
-        paddingHorizontal: 24,
-        marginBottom: 32, // Space between actions and list
+        justifyContent: 'space-around',
+        paddingHorizontal: UnifiedSpacing.md,
+        marginBottom: UnifiedSpacing.xl,
     },
     actionBtn: {
         alignItems: 'center',
-        gap: 12, // Gap between circle and text
+        gap: UnifiedSpacing.sm,
     },
     actionCircle: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: "#000",
+        shadowColor: UnifiedColors.primary,
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.25,
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: UnifiedColors.borderGlass,
     },
     actionText: {
-        fontSize: 14,
-        color: '#FFFFFF',
-        fontWeight: '500',
-        fontFamily: 'Poppins_500Medium',
+        fontSize: 13,
+        color: UnifiedColors.textPrimary,
+        fontWeight: '600',
+        fontFamily: 'Poppins_600SemiBold',
+        letterSpacing: 0.1,
     },
 
     // List Container (Glass Sheet)
     listContainer: {
+        marginTop: UnifiedSpacing.lg,
+        borderTopLeftRadius: UnifiedRadius.xxl,
+        borderTopRightRadius: UnifiedRadius.xxl,
+        overflow: 'hidden',
+        backgroundColor: UnifiedColors.glassDark,
+        minHeight: SCREEN_WIDTH * 1.2, // Ensure glass always extends to bottom
         flex: 1,
-        borderTopLeftRadius: 36,
-        borderTopRightRadius: 36,
-        overflow: 'hidden', // Contain the blur
-        backgroundColor: 'rgba(10, 14, 39, 0.4)', // Semi-transparent dark overlay for contrast
+        marginBottom: 0,
     },
     listHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 28,
-        paddingTop: 28,
-        paddingBottom: 16,
+        paddingHorizontal: UnifiedSpacing.lg,
+        paddingTop: UnifiedSpacing.lg,
+        paddingBottom: UnifiedSpacing.md,
     },
     listTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: UnifiedColors.textPrimary,
         fontFamily: 'Poppins_600SemiBold',
+        letterSpacing: -0.3,
     },
     seeAll: {
         fontSize: 14,
-        color: '#60A5FA',
+        color: UnifiedColors.primary,
         fontFamily: 'Poppins_500Medium',
     },
     listContent: {
-        paddingHorizontal: 24,
-        paddingBottom: 40,
+        paddingHorizontal: UnifiedSpacing.md,
+        paddingBottom: 0,
     },
 
     // Loan Item (Clean Row Style)
     itemWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: UnifiedSpacing.md,
+    },
+    itemSeparator: {
+        height: 1,
+        backgroundColor: UnifiedColors.borderGlassSubtle,
+        marginLeft: 56,
     },
     iconContainer: {
         width: 48,
@@ -361,7 +381,7 @@ const styles = StyleSheet.create({
         borderRadius: 24,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 16,
+        marginRight: UnifiedSpacing.md,
     },
     itemContent: {
         flex: 1,
@@ -369,9 +389,10 @@ const styles = StyleSheet.create({
     itemTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: UnifiedColors.textPrimary,
         marginBottom: 4,
         fontFamily: 'Poppins_600SemiBold',
+        letterSpacing: -0.2,
     },
     itemSubtitle: {
         fontSize: 13,
@@ -383,13 +404,14 @@ const styles = StyleSheet.create({
     itemAmount: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: UnifiedColors.textPrimary,
         marginBottom: 4,
         fontFamily: 'Poppins_700Bold',
+        letterSpacing: -0.2,
     },
     itemDate: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.5)',
+        color: UnifiedColors.textSecondary,
     },
 
     emptyContainer: {
@@ -397,7 +419,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     emptyText: {
-        color: 'rgba(255,255,255,0.5)',
+        color: UnifiedColors.textSecondary,
         fontSize: 14,
     },
 });

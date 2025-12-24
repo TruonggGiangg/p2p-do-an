@@ -10,12 +10,17 @@ import { LoanService } from './loan.service';
 import { LoanContract, LoanContractSchema } from './schemas';
 import { BlockchainService, FineractService } from './services';
 import { FineractFixedDepositService } from './services/fineract-fixed-deposit.service';
+import { CreditScoringService } from './services/credit-scoring.service';
+import { InterestRateCalculatorService } from './services/interest-rate-calculator.service';
 import {
     BorrowerGuard,
     LenderGuard,
     BorrowerOrLenderGuard,
     AdminGuard,
 } from './guards';
+
+// Import Investment schema for credit scoring
+import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
 
 @Module({
     imports: [
@@ -26,6 +31,7 @@ import {
         }),
         MongooseModule.forFeature([
             { name: LoanContract.name, schema: LoanContractSchema },
+            { name: InvestmentContract.name, schema: InvestmentContractSchema }, // For credit scoring
         ]),
     ],
     controllers: [LoanController, BlockchainController],
@@ -34,12 +40,14 @@ import {
         BlockchainService,
         FineractService,
         FineractFixedDepositService,
+        CreditScoringService,
+        InterestRateCalculatorService,
         // Guards
         BorrowerGuard,
         LenderGuard,
         BorrowerOrLenderGuard,
         AdminGuard,
     ],
-    exports: [LoanService, BlockchainService, FineractService, FineractFixedDepositService],
+    exports: [LoanService, BlockchainService, FineractService, FineractFixedDepositService, CreditScoringService, InterestRateCalculatorService],
 })
 export class LoanModule { }

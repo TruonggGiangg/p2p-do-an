@@ -12,7 +12,8 @@ import { DarkColors } from '../../theme';
 interface GlassDatePickerProps {
     label?: string;
     value: Date | string;
-    onPress: () => void;
+    onPress?: () => void;
+    onValueChange?: (date: Date) => void;
     containerStyle?: ViewStyle;
     placeholder?: string;
 }
@@ -21,6 +22,7 @@ export const GlassDatePicker: React.FC<GlassDatePickerProps> = ({
     label,
     value,
     onPress,
+    onValueChange,
     containerStyle,
     placeholder = 'Chọn ngày'
 }) => {
@@ -69,7 +71,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderRadius: 14,
-        borderWidth: 1,
+        borderWidth: 0,
         borderColor: 'rgba(255,255,255,0.08)',
         paddingHorizontal: 12,
         height: 52,

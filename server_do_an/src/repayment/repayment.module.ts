@@ -6,6 +6,7 @@ import { RepaymentController } from './repayment.controller';
 import { RepaymentService } from './services/repayment.service';
 import { EscrowService } from './services/escrow.service';
 import { Escrow, EscrowSchema } from './schemas/escrow.schema';
+import { EscrowLog, EscrowLogSchema } from '../escrow/schemas/escrow-log.schema';
 import { FineractService } from '../loan/services/fineract.service';
 import { FineractFixedDepositService } from '../loan/services/fineract-fixed-deposit.service';
 import { FineractEscrowService } from '../escrow/services/fineract-escrow.service';
@@ -17,6 +18,7 @@ import { Wallet, WalletSchema } from '../invest/schemas/wallet.schema';
     imports: [
         MongooseModule.forFeature([
             { name: Escrow.name, schema: EscrowSchema },
+            { name: EscrowLog.name, schema: EscrowLogSchema },
             { name: LoanContract.name, schema: LoanContractSchema },
             { name: InvestmentContract.name, schema: InvestmentContractSchema },
             { name: Wallet.name, schema: WalletSchema },

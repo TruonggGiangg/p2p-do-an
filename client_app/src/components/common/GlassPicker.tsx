@@ -36,7 +36,7 @@ export const GlassPicker: React.FC<GlassPickerProps> = ({
                             key={item.value}
                             label={item.label}
                             value={item.value}
-                            color={DarkColors.backgroundSecondary} // Color for dropdown items needed for Android sometimes or iOS modal
+                            color={DarkColors.text} // White text for dark mode visibility
                             style={{ fontSize: 14 }}
                         />
                     ))}
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     pickerWrapper: {
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderRadius: 14,
-        borderWidth: 1,
+        borderWidth: 0,
         borderColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
     },

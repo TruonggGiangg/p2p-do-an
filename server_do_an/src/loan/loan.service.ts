@@ -14,6 +14,8 @@ import { LoanContract } from './schemas';
 import { CreateLoanDto, CheckRateDto } from './dto';
 import { BlockchainService } from './services/blockchain.service';
 import { FineractService } from './services/fineract.service';
+import { CreditScoringService } from './services/credit-scoring.service';
+import { InterestRateCalculatorService } from './services/interest-rate-calculator.service';
 import { calculateRates as calculateDynamicRates } from '../utils/interest-rate-calculator';
 
 /**
@@ -84,19 +86,21 @@ export class LoanService {
         private readonly configService: ConfigService,
         private readonly blockchainService: BlockchainService,
         private readonly fineractService: FineractService,
+        private readonly creditScoringService: CreditScoringService,
+        private readonly rateCalculator: InterestRateCalculatorService,
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
     }
 
     /**
      * Check loan rate (preview before creation)
-     * Gets rate from Fineract Loan Product - NO local calculation
+     * Uses dynamic credit-based calculator with assumed credit score (500)
      */
     async checkRate(dto: CheckRateDto): Promise<RateCheckResponse> {
         const { capital, periodMonth, disbursementDate } = dto;
 
-        // Get rate from Fineract Loan Product
-        const schedule = await this.fineractService.calculateLoanSchedule(capital, periodMonth);
+        // Use dynamic calculator with assumed credit score (500 = average)
+        const calculation = this.rateCalculator.calculatePayments(capital, periodMonth, 500);
 
         // Calculate dates if disbursementDate provided
         let disbursementDateStr: string | undefined;
@@ -111,18 +115,18 @@ export class LoanService {
         }
 
         return {
-            rate: schedule.rate,
-            annualRate: schedule.annualRate,
-            monthlyPrincipalPay: schedule.monthlyPrincipalPay,
-            monthlyInterestPay: schedule.monthlyInterestPay,
-            monthlyPay: schedule.monthlyPay,
-            entirelyPay: schedule.entirelyPay,
+            rate: calculation.monthlyBorrowerRate,
+            annualRate: calculation.annualBorrowerRate,
+            monthlyPrincipalPay: calculation.monthlyPrincipalPay,
+            monthlyInterestPay: calculation.monthlyInterestPay,
+            monthlyPay: calculation.monthlyPay,
+            entirelyPay: calculation.totalPayment,
             capital,
             periodMonth,
             disbursementDate: disbursementDateStr,
             maturityDate: maturityDateStr,
-            interestType: schedule.interestType,
-            rateSource: 'Fineract Loan Product',
+            interestType: 'FLAT',
+            rateSource: 'Credit-Based Calculator (Estimated)',
         };
     }
 
@@ -162,11 +166,61 @@ export class LoanService {
             this.logger.log('DEV_MODE: Skipping active loan check');
         }
 
-        // 3. Get rate from Fineract Loan Product (NOT local calculation)
-        const schedule = await this.fineractService.calculateLoanSchedule(capital, periodMonth);
-        this.logger.log(`[DEBUG] Calculated Schedule: Rate=${schedule.rate}%, Annual=${schedule.annualRate}%, MonthlyPay=${schedule.monthlyPay}`);
+        // 3. 🔍 CREDIT ASSESSMENT (New Smart Scoring)
+        this.logger.log(`\n========== CREDIT ASSESSMENT START ==========`);
+        const creditAssessment = await this.creditScoringService.assessCreditworthiness(
+            borrowerId,
+            capital,
+            undefined // monthlyIncome - TODO: get from user profile
+        );
 
-        this.logger.log(`Using Fineract rate: ${schedule.rate}% (${schedule.interestType})`);
+        this.logger.log(`[Credit Score] ${creditAssessment.score} / 850 (Grade: ${creditAssessment.grade})`);
+        this.logger.log(`[Risk Level] ${creditAssessment.riskLevel}`);
+        this.logger.log(`[Factors]:`);
+        Object.entries(creditAssessment.factors).forEach(([key, factor]) => {
+            this.logger.log(`  - ${key}: ${factor.score}/100 (${factor.details})`);
+        });
+
+        // ❌ REJECT if not approved
+        if (!creditAssessment.isApproved) {
+            this.logger.error(`\n❌ LOAN REJECTED - Insufficient Credit Score`);
+            this.logger.error(`Reasons: ${creditAssessment.rejectionReasons?.join(', ')}`);
+            this.logger.log(`==========================================\n`);
+
+            throw new BadRequestException({
+                message: 'Khoản vay bị từ chối do điểm tín dụng không đủ',
+                creditScore: creditAssessment.score,
+                grade: creditAssessment.grade,
+                reasons: creditAssessment.rejectionReasons,
+                recommendations: creditAssessment.recommendations
+            });
+        }
+
+        this.logger.log(`✅ Credit Assessment PASSED`);
+        this.logger.log(`Recommendations: ${creditAssessment.recommendations.join(', ')}`);
+        this.logger.log(`==========================================\n`);
+
+        // 4. 💰 CALCULATE DYNAMIC INTEREST RATE (Based on Credit Score)
+        const rateCalculation = this.rateCalculator.calculatePayments(
+            capital,
+            periodMonth,
+            creditAssessment.score
+        );
+
+        this.logger.log(`\n========== DYNAMIC RATE CALCULATION ==========`);
+        this.logger.log(`[Borrower] Annual: ${rateCalculation.annualBorrowerRate}%, Monthly: ${rateCalculation.monthlyBorrowerRate}%`);
+        this.logger.log(`[Lender FD] Annual: ${rateCalculation.annualLenderRate}%, Monthly: ${rateCalculation.monthlyLenderRate}%`);
+        this.logger.log(`[Admin Spread] ${rateCalculation.annualSpread}% annual (${rateCalculation.spreadPercentage.toFixed(2)}% of borrower rate)`);
+        this.logger.log(`[Loan Tier] ${rateCalculation.tier} (${this.rateCalculator.getTierDescription(capital)})`);
+        this.logger.log(`[Monthly Payment] Principal: ${rateCalculation.monthlyPrincipalPay.toLocaleString()}, Interest: ${rateCalculation.monthlyInterestPay.toLocaleString()}, Total: ${rateCalculation.monthlyPay.toLocaleString()}`);
+        this.logger.log(`===============================================\n`);
+
+        // 5. Get Fineract schedule for validation (optional)
+        const schedule = await this.fineractService.calculateLoanSchedule(capital, periodMonth);
+        this.logger.log(`[Fineract Rate] ${schedule.rate}% (${schedule.interestType}) - Used for Fineract loan creation`);
+
+        // Use our calculated rate for display, Fineract rate for actual loan creation
+        // This ensures borrower sees the credit-adjusted rate but Fineract uses its product rate
 
         // 4. Generate contract ID
         const contractId = `LOAN_${Date.now()}`;
@@ -178,38 +232,40 @@ export class LoanService {
         // 6. Save to MongoDB FIRST (as Waiting)
         // Use username or keycloakUserId as borrower identifier (Keycloak users don't have MongoDB ObjectId)
 
-        // Calculate dynamic interest rates based on loan amount and default credit score
-        const creditScore = 50; // TODO: Get from credit scoring system
-        const dynamicRates = calculateDynamicRates(capital, periodMonth, creditScore);
-        this.logger.log(`[Dynamic Rate] Tier: ${dynamicRates.tier}, Borrower: ${dynamicRates.borrowerRate}%, Lender: ${dynamicRates.lenderRate}%, Spread: ${dynamicRates.spread}%`);
+        // Use calculated rates from credit scoring
+        // Store both Fineract rate (for loan product) and dynamic rate (for FD spread)
 
         const loanContract = new this.loanContractModel({
             contractId: contractId,
             borrower: borrowerId, // Store as string for Keycloak compatibility
             info: {
                 capital,
-                rate: schedule.rate,
+                rate: schedule.rate, // Fineract rate for loan product
                 periodMonth,
                 willing,
                 disbursementDate: disbDate.toDate(),
                 maturityDate: maturityDate.toDate(),
                 createdDate: new Date(),
-                monthlyPrincipalPay: schedule.monthlyPrincipalPay,
-                monthlyInterestPay: schedule.monthlyInterestPay,
-                monthlyPay: schedule.monthlyPay,
-                entirelyPay: schedule.entirelyPay,
-                annualRate: schedule.annualRate,
-                interestType: schedule.interestType,
+                monthlyPrincipalPay: rateCalculation.monthlyPrincipalPay,
+                monthlyInterestPay: rateCalculation.monthlyInterestPay,
+                monthlyPay: rateCalculation.monthlyPay,
+                entirelyPay: rateCalculation.totalPayment,
+                annualRate: rateCalculation.annualBorrowerRate,
+                interestType: 'FLAT', // Our calculation uses FLAT rate
             },
             totalNotes: Math.ceil(capital / 500000),
             status: 'waiting',
-            // Dynamic Interest Rates
-            borrowerInterestRate: dynamicRates.borrowerRate,
-            lenderInterestRate: dynamicRates.lenderRate,
-            adminSpread: dynamicRates.spread,
-            adminSpreadPercentage: dynamicRates.spreadPercentage,
-            loanSizeTier: dynamicRates.tier,
-            spreadCalculationMethod: 'auto',
+            // Credit-based Dynamic Rates
+            borrowerInterestRate: rateCalculation.annualBorrowerRate,
+            lenderInterestRate: rateCalculation.annualLenderRate,
+            adminSpread: rateCalculation.annualSpread,
+            adminSpreadPercentage: rateCalculation.spreadPercentage,
+            loanSizeTier: rateCalculation.tier,
+            spreadCalculationMethod: 'credit_score_based',
+            // Credit Assessment Data
+            creditScore: creditAssessment.score,
+            creditGrade: creditAssessment.grade,
+            riskLevel: creditAssessment.riskLevel,
             // Rate source tracking
             rateSource: 'fineract_product',
             blockchainSynced: false,

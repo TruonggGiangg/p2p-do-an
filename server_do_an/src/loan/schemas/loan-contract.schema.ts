@@ -265,7 +265,7 @@ export class LoanContract extends Document {
     @Prop({ default: 0 })
     adminSpreadPercentage: number;
 
-    @Prop({ enum: ['auto', 'manual'], default: 'auto' })
+    @Prop({ enum: ['auto', 'manual', 'credit_score_based'], default: 'auto' })
     spreadCalculationMethod: string;
 
     @Prop({ enum: ['small', 'medium', 'large'], default: 'medium' })
@@ -281,6 +281,16 @@ export class LoanContract extends Document {
         lenderInterest: number;
         borrowerInterest: number;
     }>;
+
+    // === CREDIT SCORING ===
+    @Prop({ min: 300, max: 850 })
+    creditScore?: number;
+
+    @Prop()
+    creditGrade?: string; // A+, A, B+, B, C+, C, D, F
+
+    @Prop({ enum: ['low', 'medium', 'high', 'very_high'] })
+    riskLevel?: string;
 
     // === DEFAULT HANDLING ===
     @Prop({ default: false })

@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
         alignItems: 'center',
         marginTop: 8,
-        ...DarkStyling.shadow.subtle,
+
     },
     registerButtonText: {
         color: DarkColors.white,
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         paddingHorizontal: 16,
         borderRadius: DarkStyling.borderRadius.sm,
-        borderWidth: 1.5,
+        borderWidth: 0,
         borderColor: DarkColors.border,
         backgroundColor: DarkColors.surfaceLight,
         alignItems: 'center',

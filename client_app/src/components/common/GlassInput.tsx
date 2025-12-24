@@ -14,6 +14,7 @@ import { DarkColors, DarkStyling } from '../../theme';
 
 interface GlassInputProps extends TextInputProps {
     label?: string;
+    rightText?: string;
     error?: string;
     icon?: string; // Ionicons name
     containerStyle?: ViewStyle;
@@ -113,12 +114,19 @@ const styles = StyleSheet.create({
         color: DarkColors.textSecondary,
         marginBottom: 8,
     },
+    inputContainer: {
+        borderRadius: 14,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 0,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderRadius: 14,
-        borderWidth: 1,
+        borderWidth: 0,
         borderColor: 'rgba(255,255,255,0.08)',
         paddingHorizontal: 12,
         height: 52,
