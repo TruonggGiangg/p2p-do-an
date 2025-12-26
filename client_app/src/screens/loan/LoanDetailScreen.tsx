@@ -326,6 +326,11 @@ export const LoanDetailScreen: React.FC = () => {
                                                     statusText = 'Sắp đến hạn';
                                                 }
 
+                                                // Get principal and interest for this period
+                                                const principalDue = period.principalDue || 0;
+                                                const interestDue = period.interestDue || 0;
+                                                const totalDue = period.totalDue || (principalDue + interestDue);
+
                                                 return (
                                                     <View key={index} style={styles.timelineItem}>
                                                         <View style={styles.timelineLeft}>
@@ -342,7 +347,22 @@ export const LoanDetailScreen: React.FC = () => {
                                                                 </View>
                                                             </View>
                                                             <Text style={styles.dueDate}>Hạn: {formatDate(period.dueDate)}</Text>
-                                                            <Text style={styles.dueAmount}>{formatCurrency(period.totalDue)}</Text>
+
+                                                            {/* Detailed breakdown for Declining Balance */}
+                                                            <View style={styles.periodBreakdown}>
+                                                                <View style={styles.breakdownRow}>
+                                                                    <Text style={styles.breakdownLabel}>Gốc:</Text>
+                                                                    <Text style={styles.breakdownValue}>{formatNumber(principalDue)} đ</Text>
+                                                                </View>
+                                                                <View style={styles.breakdownRow}>
+                                                                    <Text style={styles.breakdownLabel}>Lãi:</Text>
+                                                                    <Text style={[styles.breakdownValue, { color: '#FACC15' }]}>
+                                                                        {formatNumber(interestDue)} đ
+                                                                    </Text>
+                                                                </View>
+                                                            </View>
+
+                                                            <Text style={styles.dueAmount}>{formatCurrency(totalDue)}</Text>
                                                         </View>
                                                     </View>
                                                 );
@@ -562,6 +582,28 @@ const styles = StyleSheet.create({
         color: GlassTokens.colors.textPrimary,
         marginTop: 4,
         letterSpacing: -0.2,
+    },
+
+    // Period Breakdown for Declining Balance
+    periodBreakdown: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: GlassTokens.colors.borderGlassSubtle,
+    },
+    breakdownRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 2,
+    },
+    breakdownLabel: {
+        fontSize: 12,
+        color: GlassTokens.colors.textSecondary,
+    },
+    breakdownValue: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: GlassTokens.colors.textPrimary,
     },
 
     // Bottom Bar

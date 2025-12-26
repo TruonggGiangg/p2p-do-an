@@ -328,6 +328,17 @@ export class FineractService {
             // Get rate from loan product (not from input)
             const product = await this.getLoanProductDetails();
 
+            // DEBUG: Log Loan Product settings
+            this.logger.log(`========== CREATE LOAN APPLICATION DEBUG ==========`);
+            this.logger.log(`[createLoanApplication] Loan Product ID: ${this.loanProductId}`);
+            this.logger.log(`[createLoanApplication] Product Name: ${product.name}`);
+            this.logger.log(`[createLoanApplication] Product Settings from Fineract:`);
+            this.logger.log(`  - interestRatePerPeriod: ${product.interestRatePerPeriod}%`);
+            this.logger.log(`  - interestType: ${product.interestType?.id} (${product.interestType?.value})`);
+            this.logger.log(`  - amortizationType: ${product.amortizationType?.id} (${product.amortizationType?.value})`);
+            this.logger.log(`  - interestCalculationPeriodType: ${product.interestCalculationPeriodType?.id} (${product.interestCalculationPeriodType?.value})`);
+            this.logger.log(`====================================================`);
+
             // Parse disbursement date
             const disbDate = new Date(loanData.disbursementDate);
             const submittedDate = [disbDate.getFullYear(), disbDate.getMonth() + 1, disbDate.getDate()];
@@ -344,9 +355,9 @@ export class FineractService {
                 repaymentFrequencyType: 2, // 2 = Months
                 // Use rate from product - this is key!
                 interestRatePerPeriod: product.interestRatePerPeriod,
-                amortizationType: product.amortizationType?.id || 1,
-                interestType: product.interestType?.id || 0,
-                interestCalculationPeriodType: product.interestCalculationPeriodType?.id || 1,
+                amortizationType: product.amortizationType?.id,
+                interestType: product.interestType?.id,
+                interestCalculationPeriodType: product.interestCalculationPeriodType?.id,
                 transactionProcessingStrategyCode: 'mifos-standard-strategy',
                 dateFormat: 'yyyy-MM-dd',
                 locale: 'en',
@@ -356,14 +367,15 @@ export class FineractService {
                 externalId: loanData.contractId,
             };
 
-            this.logger.log(`Creating Fineract loan: product=${this.loanProductId}, rate=${product.interestRatePerPeriod}%`);
+            this.logger.log(`[createLoanApplication] Payload interestType: ${payload.interestType}`);
+            this.logger.log(`[createLoanApplication] Payload amortizationType: ${payload.amortizationType}`);
 
             const url = `${this.baseUrl}/fineract-provider/api/v1/loans`;
             const response = await firstValueFrom(
                 this.httpService.post(url, payload, { headers }),
             );
 
-            this.logger.log(`Fineract loan created: ${response.data.loanId}`);
+            this.logger.log(`[createLoanApplication] ✅ Loan created: ${response.data.loanId}`);
 
             return {
                 fineractLoanId: response.data.loanId,

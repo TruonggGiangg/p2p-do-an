@@ -94,13 +94,13 @@ export class LoanService {
 
     /**
      * Check loan rate (preview before creation)
-     * Uses dynamic credit-based calculator with assumed credit score (500)
+     * Uses Fineract Loan Product configuration (respects interestType: FLAT or Declining Balance)
      */
     async checkRate(dto: CheckRateDto): Promise<RateCheckResponse> {
         const { capital, periodMonth, disbursementDate } = dto;
 
-        // Use dynamic calculator with assumed credit score (500 = average)
-        const calculation = this.rateCalculator.calculatePayments(capital, periodMonth, 500);
+        // Use Fineract to get rate & calculation based on Loan Product settings
+        const schedule = await this.fineractService.calculateLoanSchedule(capital, periodMonth);
 
         // Calculate dates if disbursementDate provided
         let disbursementDateStr: string | undefined;
@@ -115,18 +115,18 @@ export class LoanService {
         }
 
         return {
-            rate: calculation.monthlyBorrowerRate,
-            annualRate: calculation.annualBorrowerRate,
-            monthlyPrincipalPay: calculation.monthlyPrincipalPay,
-            monthlyInterestPay: calculation.monthlyInterestPay,
-            monthlyPay: calculation.monthlyPay,
-            entirelyPay: calculation.totalPayment,
+            rate: schedule.rate,
+            annualRate: schedule.annualRate,
+            monthlyPrincipalPay: schedule.monthlyPrincipalPay,
+            monthlyInterestPay: schedule.monthlyInterestPay,
+            monthlyPay: schedule.monthlyPay,
+            entirelyPay: schedule.entirelyPay,
             capital,
             periodMonth,
             disbursementDate: disbursementDateStr,
             maturityDate: maturityDateStr,
-            interestType: 'FLAT',
-            rateSource: 'Credit-Based Calculator (Estimated)',
+            interestType: schedule.interestType, // Now from Fineract!
+            rateSource: 'Fineract Loan Product',
         };
     }
 
@@ -636,6 +636,9 @@ export class LoanService {
      * Get loan by ID
      */
     async getLoanById(loanId: string, userId?: string): Promise<LoanContract> {
+        this.logger.log(`========== GET LOAN BY ID DEBUG ==========`);
+        this.logger.log(`[getLoanById] Input: loanId=${loanId}, userId=${userId}`);
+
         const query: any = {};
 
         // Try to find by contractId or MongoDB _id
@@ -644,20 +647,35 @@ export class LoanService {
                 { _id: new Types.ObjectId(loanId) },
                 { contractId: loanId },
             ];
+            this.logger.log(`[getLoanById] Valid ObjectId, searching by _id OR contractId`);
         } else {
             query.contractId = loanId;
+            this.logger.log(`[getLoanById] Not ObjectId, searching by contractId only`);
         }
 
         // If userId provided, verify ownership
         if (userId) {
             query.borrower = new Types.ObjectId(userId);
+            this.logger.log(`[getLoanById] Adding borrower filter: ${userId}`);
         }
+
+        this.logger.log(`[getLoanById] Final query: ${JSON.stringify(query)}`);
 
         const loan = await this.loanContractModel.findOne(query).exec();
 
         if (!loan) {
+            this.logger.warn(`[getLoanById] ❌ Loan NOT FOUND`);
             throw new NotFoundException('Không tìm thấy khoản vay');
         }
+
+        this.logger.log(`[getLoanById] ✅ Found loan:`);
+        this.logger.log(`  - contractId: ${loan.contractId}`);
+        this.logger.log(`  - borrower: ${loan.borrower}`);
+        this.logger.log(`  - status: ${loan.status}`);
+        this.logger.log(`  - fineractLoanId: ${loan.fineractLoanId}`);
+        this.logger.log(`  - info.rate: ${loan.info?.rate}%`);
+        this.logger.log(`  - info.capital: ${loan.info?.capital}`);
+        this.logger.log(`==========================================`);
 
         return loan;
     }
@@ -734,17 +752,31 @@ export class LoanService {
      * Get full loan details from Fineract (including schedule and transactions)
      */
     async getFineractLoanDetails(loanIdOrContractId: string): Promise<any> {
+        this.logger.log(`========== GET FINERACT LOAN DETAILS DEBUG ==========`);
+        this.logger.log(`[getFineractLoanDetails] Input: loanIdOrContractId=${loanIdOrContractId}`);
+
         const fineractLoanId = await this.resolveFineractLoanId(loanIdOrContractId);
+        this.logger.log(`[getFineractLoanDetails] Resolved fineractLoanId: ${fineractLoanId}`);
 
         if (!fineractLoanId) {
-            this.logger.warn(`[getFineractDetails] Could not resolve Fineract Loan ID for: ${loanIdOrContractId}`);
+            this.logger.warn(`[getFineractLoanDetails] ❌ Could not resolve Fineract Loan ID`);
             return null;
         }
 
         try {
             const fineractDetails = await this.fineractService.getLoanDetails(fineractLoanId);
-            return this.fineractService.extractLoanInfo(fineractDetails);
+            const extracted = this.fineractService.extractLoanInfo(fineractDetails);
+
+            this.logger.log(`[getFineractLoanDetails] ✅ Got Fineract details:`);
+            this.logger.log(`  - fineractLoanId: ${extracted.fineractLoanId}`);
+            this.logger.log(`  - status: ${extracted.fineractStatus}`);
+            this.logger.log(`  - principal: ${extracted.principal}`);
+            this.logger.log(`  - interestRate: ${JSON.stringify(extracted.interestRate)}`);
+            this.logger.log(`=======================================================`);
+
+            return extracted;
         } catch (error) {
+            this.logger.error(`[getFineractLoanDetails] ❌ Error: ${error.message}`);
             if (error.response && error.response.status === 404) {
                 return null;
             }
@@ -756,16 +788,31 @@ export class LoanService {
      * Get repayment schedule for a loan
      */
     async getRepaymentSchedule(loanId: string): Promise<any> {
+        this.logger.log(`========== GET REPAYMENT SCHEDULE DEBUG ==========`);
+        this.logger.log(`[getRepaymentSchedule] Input: loanId=${loanId}`);
+
         const fineractLoanId = await this.resolveFineractLoanId(loanId);
+        this.logger.log(`[getRepaymentSchedule] Resolved fineractLoanId: ${fineractLoanId}`);
 
         if (!fineractLoanId) {
-            this.logger.warn(`[getRepaymentSchedule] Could not resolve Fineract Loan ID for: ${loanId}`);
+            this.logger.warn(`[getRepaymentSchedule] ❌ Could not resolve Fineract Loan ID`);
             return null;
         }
 
         try {
-            return await this.fineractService.getRepaymentSchedule(fineractLoanId);
+            const schedule = await this.fineractService.getRepaymentSchedule(fineractLoanId);
+
+            this.logger.log(`[getRepaymentSchedule] ✅ Got schedule with ${schedule?.length || 0} periods:`);
+            if (schedule && schedule.length > 0) {
+                schedule.forEach((period: any, idx: number) => {
+                    this.logger.log(`  - Kỳ ${period.period || idx}: dueDate=${JSON.stringify(period.dueDate)}, principal=${period.principalDue}, interest=${period.interestDue}, total=${period.totalDueForPeriod}, complete=${period.complete}`);
+                });
+            }
+            this.logger.log(`===================================================`);
+
+            return schedule;
         } catch (error) {
+            this.logger.error(`[getRepaymentSchedule] ❌ Error: ${error.message}`);
             if (error.response && error.response.status === 404) return null;
             throw error;
         }
