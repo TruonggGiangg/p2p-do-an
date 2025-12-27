@@ -80,17 +80,9 @@ httpClient.interceptors.response.use(
             } catch (refreshError: any) {
                 console.error('[HTTP] Keycloak token refresh failed:', refreshError.message);
 
-                // ✅ NEW: Show user-friendly notification
-                Alert.alert(
-                    'Không thể làm mới phiên',
-                    'Phiên đăng nhập đã hết hạn và không thể làm mới. Vui lòng đăng nhập lại.',
-                    [{ text: 'OK' }],
-                    { cancelable: false }
-                );
-
                 // Clear tokens and emit session expired event
+                // NOTE: Alert is shown by AuthContext, not here (to avoid duplicates)
                 await storageService.clearAll();
-                // Notify AuthContext to reset user state and redirect to login
                 authEvents.emit('SESSION_EXPIRED');
             }
         }

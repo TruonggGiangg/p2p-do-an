@@ -94,17 +94,34 @@ export class FixedDepositService {
 
         try {
             // Tạo FD account trên Fineract
-            // ✅ FIX: Simplified payload matching p2p project format
-            // Interest rate is taken from FD Product's Interest Chart automatically
+            // ✅ Pass charts explicitly to bypass Product Interest Chart validation issues
+            const validFromDate = moment.utc().format('D MMMM YYYY');
+
             const fdPayload = {
                 clientId: lenderFineractClientId,
-                productId: Number(fdProductId),  // ✅ Ensure number type
-                submittedOnDate: moment().format('DD MMMM YYYY'),
+                productId: Number(fdProductId),
+                submittedOnDate: validFromDate,
                 depositAmount: capitalAmount,
                 depositPeriod: periodMonth,
                 depositPeriodFrequencyId: 2, // Months
                 locale: 'en',
-                dateFormat: 'dd MMMM yyyy',  // ✅ FIX: lowercase format for Fineract
+                dateFormat: 'dd MMMM yyyy',
+                // ✅ Add inline chart with explicit interest rate
+                charts: [
+                    {
+                        fromDate: validFromDate,
+                        dateFormat: 'dd MMMM yyyy',
+                        locale: 'en',
+                        chartSlabs: [
+                            {
+                                periodType: 2, // Months
+                                fromPeriod: 1,
+                                toPeriod: 60,
+                                annualInterestRate: lenderRate, // Dynamic rate based on credit score
+                            }
+                        ]
+                    }
+                ]
             };
 
             this.logger.debug(`[createFixedDepositForLender] FD Payload:`, JSON.stringify(fdPayload, null, 2));
@@ -112,7 +129,7 @@ export class FixedDepositService {
             // Create FD account
             const headers = await this.getHeaders();
             const fdResponseData = await this.httpService.post(
-                `${this.baseUrl}/fixeddepositaccounts`,
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts`,
                 fdPayload,
                 { headers }
             ).toPromise();
@@ -143,6 +160,10 @@ export class FixedDepositService {
 
         } catch (error) {
             this.logger.error(`[createFixedDepositForLender] Failed to create FD:`, error.message);
+            // ✅ Log Fineract error response details
+            if (error.response?.data) {
+                this.logger.error(`[createFixedDepositForLender] Fineract Error Details:`, JSON.stringify(error.response.data, null, 2));
+            }
             this.logger.error(`[createFixedDepositForLender] Stack:`, error.stack);
             throw error;
         }
@@ -155,11 +176,11 @@ export class FixedDepositService {
         try {
             const headers = await this.getHeaders();
             await this.httpService.post(
-                `${this.baseUrl}/fixeddepositaccounts/${fdAccountId}?command=approve`,
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${fdAccountId}?command=approve`,
                 {
-                    approvedOnDate: moment().format('DD MMMM YYYY'),
+                    approvedOnDate: moment.utc().format('D MMMM YYYY'),
                     locale: 'en',
-                    dateFormat: 'DD MMMM YYYY'
+                    dateFormat: 'dd MMMM yyyy'
                 },
                 { headers }
             ).toPromise();
@@ -177,11 +198,11 @@ export class FixedDepositService {
         try {
             const headers = await this.getHeaders();
             await this.httpService.post(
-                `${this.baseUrl}/fixeddepositaccounts/${fdAccountId}?command=activate`,
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${fdAccountId}?command=activate`,
                 {
-                    activatedOnDate: moment().format('DD MMMM YYYY'),
+                    activatedOnDate: moment.utc().format('D MMMM YYYY'),
                     locale: 'en',
-                    dateFormat: 'DD MMMM YYYY'
+                    dateFormat: 'dd MMMM yyyy'
                 },
                 { headers }
             ).toPromise();
@@ -202,13 +223,13 @@ export class FixedDepositService {
         try {
             const headers = await this.getHeaders();
             await this.httpService.post(
-                `${this.baseUrl}/fixeddepositaccounts/${fdAccountId}/transactions?command=deposit`,
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${fdAccountId}/transactions?command=deposit`,
                 {
-                    transactionDate: moment().format('DD MMMM YYYY'),
+                    transactionDate: moment.utc().format('D MMMM YYYY'),
                     transactionAmount: amount,
                     paymentTypeId: 1, // Cash
                     locale: 'en',
-                    dateFormat: 'DD MMMM YYYY'
+                    dateFormat: 'dd MMMM yyyy'
                 },
                 { headers }
             ).toPromise();
@@ -232,11 +253,11 @@ export class FixedDepositService {
 
             const headers = await this.getHeaders();
             await this.httpService.post(
-                `${this.baseUrl}/fixeddepositaccounts/${fdAccountId}?command=prematureClose`,
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${fdAccountId}?command=prematureClose`,
                 {
-                    closedOnDate: moment(closeDate).format('DD MMMM YYYY'),
+                    closedOnDate: moment.utc(closeDate).format('D MMMM YYYY'),
                     locale: 'en',
-                    dateFormat: 'DD MMMM YYYY'
+                    dateFormat: 'dd MMMM yyyy'
                 },
                 { headers }
             ).toPromise();
@@ -259,7 +280,7 @@ export class FixedDepositService {
         try {
             const headers = await this.getHeaders();
             await this.httpService.post(
-                `${this.baseUrl}/accounttransfers`,
+                `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`,
                 {
                     fromOfficeId: 1,
                     fromClientId: null,
@@ -269,11 +290,11 @@ export class FixedDepositService {
                     toClientId: null,
                     toAccountType: 1, // Savings
                     toAccountId: toAccountId,
-                    transferDate: moment().format('DD MMMM YYYY'),
+                    transferDate: moment.utc().format('D MMMM YYYY'),
                     transferAmount: amount,
                     transferDescription: `Transfer from FD ${fdAccountId} to main account`,
                     locale: 'en',
-                    dateFormat: 'DD MMMM YYYY'
+                    dateFormat: 'dd MMMM yyyy'
                 },
                 { headers }
             ).toPromise();

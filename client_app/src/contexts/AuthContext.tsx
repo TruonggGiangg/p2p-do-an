@@ -33,16 +33,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     // Listen for session expired events from httpClient
+    // Using a ref to debounce multiple SESSION_EXPIRED events
     useEffect(() => {
+        let isHandling = false;
+
         const unsubscribe = authEvents.on('SESSION_EXPIRED', () => {
+            // Debounce: Only handle once every 3 seconds
+            if (isHandling) {
+                return;
+            }
+            isHandling = true;
+
             console.log('[AuthContext] Session expired, resetting user state');
             setUser(null);
             setIsLoading(false);
 
-            // ✅ NEW: Show user-friendly notification
+            // Show user-friendly notification (only once)
             Alert.alert(
                 'Phiên đăng nhập hết hạn',
-                'Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.',
+                'Vui lòng đăng nhập lại để tiếp tục.',
                 [
                     {
                         text: 'OK',
@@ -51,6 +60,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 ],
                 { cancelable: false }
             );
+
+            // Reset debounce after 3 seconds
+            setTimeout(() => {
+                isHandling = false;
+            }, 3000);
         });
 
         return () => {
