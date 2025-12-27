@@ -119,6 +119,33 @@ export const LoanDetailScreen: React.FC = () => {
                     console.log('Could not fetch outstanding balance:', e);
                 }
             }
+
+            // Debug logs
+            if (loan && fineractDetails) {
+                console.log('=== LOAN DETAIL BORROWER DEBUG ===');
+                console.log('Loan MongoDB:', {
+                    contractId: loan.contractId,
+                    borrowerRate: loan.borrowerInterestRate,
+                    lenderRate: loan.lenderInterestRate,
+                    adminSpread: loan.adminSpread,
+                    capital: loan.info?.capital,
+                    periodMonth: loan.info?.periodMonth,
+                });
+                console.log('Fineract:', {
+                    loanId: fineractDetails.loanId,
+                    principal: fineractDetails.principal,
+                    interestRate: fineractDetails.interestRate,
+                });
+                if (fineractDetails.repaymentSchedule?.periods) {
+                    const periods = fineractDetails.repaymentSchedule.periods.filter(p => p.period > 0);
+                    console.log('Schedule Sample:', periods[0]);
+                    const totalP = periods.reduce((sum, p) => sum + (p.principalDue || 0), 0);
+                    const totalI = periods.reduce((sum, p) => sum + (p.interestDue || 0), 0);
+                    console.log('Totals:', { principal: Math.round(totalP), interest: Math.round(totalI), total: Math.round(totalP + totalI) });
+                }
+                console.log('Outstanding:', outstanding);
+                console.log('===================================');
+            }
         } catch (err: any) {
             console.error(err);
         } finally {

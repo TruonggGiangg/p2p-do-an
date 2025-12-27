@@ -14,6 +14,7 @@ const INVEST_ENDPOINTS = {
 
 /**
  * Investment Info interface
+ * ✅ Updated to match backend enrichment response
  */
 export interface InvestmentInfo {
     capital: number;
@@ -25,10 +26,25 @@ export interface InvestmentInfo {
     monthlyProfit?: number;
     entirelyProfit?: number;
     createdDate?: string;
+    // ✅ NEW: From backend enrichment (Phase 5)
+    accruedInterest?: number;       // Real-time interest từ FD account
+    currentBalance?: number;         // Current FD balance
+}
+
+/**
+ * Fixed Deposit metadata (from backend enrichment)
+ */
+export interface FixedDepositDetails {
+    accountNo: string;
+    accountId: number;
+    nominalAnnualInterestRate: number;
+    maturityDate: string | number[];
+    status: string;
 }
 
 /**
  * Investment interface
+ * ✅ Updated to match backend enriched response
  */
 export interface Investment {
     id: string;
@@ -48,6 +64,9 @@ export interface Investment {
     fixedDepositStatus?: 'pending' | 'active' | 'matured' | 'closed';
     fixedDepositBalance?: number;
     fixedDepositInterestEarned?: number;
+    fineractFixedDepositAccountId?: number;  // ✅ NEW: FD account ID trên Fineract
+    // ✅ NEW: FD metadata from enrichment (Phase 5)
+    fdDetails?: FixedDepositDetails;
     // Escrow tracking
     escrowId?: string;
     escrowStatus?: 'pending' | 'escrowed' | 'disbursed' | 'failed';

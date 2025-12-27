@@ -8,6 +8,7 @@
  */
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { Alert } from 'react-native';
 import { apiConfig } from '../config/api.config';
 import { storageService } from '../storage/storage.service';
 import { authEvents } from '../auth/authEvents';
@@ -78,6 +79,15 @@ httpClient.interceptors.response.use(
                 }
             } catch (refreshError: any) {
                 console.error('[HTTP] Keycloak token refresh failed:', refreshError.message);
+
+                // ✅ NEW: Show user-friendly notification
+                Alert.alert(
+                    'Không thể làm mới phiên',
+                    'Phiên đăng nhập đã hết hạn và không thể làm mới. Vui lòng đăng nhập lại.',
+                    [{ text: 'OK' }],
+                    { cancelable: false }
+                );
+
                 // Clear tokens and emit session expired event
                 await storageService.clearAll();
                 // Notify AuthContext to reset user state and redirect to login
@@ -85,7 +95,29 @@ httpClient.interceptors.response.use(
             }
         }
 
-        console.error('[HTTP] Response error:', error.response?.data || error.message);
+        // ✅ NEW: Handle network errors
+        if (!error.response && error.request) {
+            // Network error (no response)
+            console.error('[HTTP] Network error:', error.message);
+            Alert.alert(
+                'Lỗi kết nối',
+                'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.',
+                [{ text: 'OK' }]
+            );
+        } else if (error.response) {
+            // Server responded with error
+            console.error('[HTTP] Response error:', error.response?.data || error.message);
+
+            // Show alert for critical errors (500, etc.)
+            if (error.response.status >= 500) {
+                Alert.alert(
+                    'Lỗi máy chủ',
+                    'Đã xảy ra lỗi từ máy chủ. Vui lòng thử lại sau.',
+                    [{ text: 'OK' }]
+                );
+            }
+        }
+
         return Promise.reject(error);
     }
 );

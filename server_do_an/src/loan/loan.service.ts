@@ -251,6 +251,10 @@ export class LoanService {
                 monthlyPay: rateCalculation.monthlyPay,
                 entirelyPay: rateCalculation.totalPayment,
                 annualRate: rateCalculation.annualBorrowerRate,
+                // Lender rates (for investment display)
+                lenderRate: rateCalculation.monthlyLenderRate,  // Monthly lender rate
+                annualLenderRate: rateCalculation.annualLenderRate,  // Annual lender rate
+                spread: rateCalculation.annualSpread,  // Admin spread (3%)
                 interestType: 'FLAT', // Our calculation uses FLAT rate
             },
             totalNotes: Math.ceil(capital / 500000),

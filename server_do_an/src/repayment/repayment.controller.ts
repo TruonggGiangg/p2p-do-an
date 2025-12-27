@@ -172,12 +172,18 @@ export class RepaymentController {
                 return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Loan is not active' });
             }
 
-            // Calculate prepay amount (principal outstanding + accrued interest)
-            const principalOutstanding = loanDetails.summary?.principalOutstanding || 0;
-            const interestOutstanding = loanDetails.summary?.interestOutstanding || 0;
-            const totalPrepayAmount = principalOutstanding + interestOutstanding;
+            // ✅ FIX: Get prepayment amount from Fineract prepayment template (accurate interest)
+            // This gives us the ACTUAL interest portion, not an estimate
+            const prepayInfo = await this.fineractService.getPrepaymentAmount(loan.fineractLoanId);
 
-            this.logger.log(`Prepayment calculation: Principal=${principalOutstanding}, Interest=${interestOutstanding}, Total=${totalPrepayAmount}`);
+            const principalOutstanding = prepayInfo.principalPortion || loanDetails.summary?.principalOutstanding || 0;
+            const interestPortion = prepayInfo.interestPortion || 0; // EXACT interest from Fineract
+            const totalPrepayAmount = prepayInfo.amount || (principalOutstanding + interestPortion);
+
+            this.logger.log(`[Prepayment] Using Fineract prepayment template:`);
+            this.logger.log(`  - Principal: ${principalOutstanding}`);
+            this.logger.log(`  - Interest (EXACT): ${interestPortion}`);
+            this.logger.log(`  - Total: ${totalPrepayAmount}`);
 
             // 4. Validate borrower balance
             const wallet = await this.walletModel.findOne({ p2pUserId: userId });
@@ -212,14 +218,40 @@ export class RepaymentController {
                 `Prepayment escrow for ${loanId}`
             );
 
-            // 7. Distribute to Lenders with isFinalPayment = true
-            // This will trigger premature FD closure
+            // 7. ✅ Fetch investments and prepare for FD distribution
+            const investments = await this.repaymentService['investModel'].find({
+                loanContract: loan._id,
+                status: 'success'
+            }).populate('lender');
+
+            if (!investments || investments.length === 0) {
+                throw new Error('No investments found for this loan');
+            }
+
+            // Enrich investments with FD data (same as processRepayment logic)
+            const enrichedInvestments = await Promise.all(
+                investments.map(async (inv) => {
+                    const lenderId = inv.lender['_id'] ? inv.lender['_id'].toString() : inv.lender.toString();
+                    return {
+                        _id: inv._id,
+                        lenderId,
+                        amount: inv.info.capital,
+                        fineractFixedDepositAccountId: inv.fineractFixedDepositAccountId,
+                        fixedDepositInterestRate: inv.fixedDepositInterestRate || loan.lenderInterestRate
+                    };
+                })
+            );
+
+            this.logger.log(`[Prepayment] Distributing to ${enrichedInvestments.length} lenders with exact interest: ${interestPortion}`);
+
+            // Pass the exact interest portion from Fineract for accurate distribution
             const distributionResult = await this.repaymentService['distributeRepaymentToLendersWithFD'](
                 loanId,
                 totalPrepayAmount,
-                [], // Will be fetched inside the method
+                enrichedInvestments,  // ✅ Now passing actual investments data
                 true, // isFinalPayment
-                loan
+                loan,
+                interestPortion  // ✅ Pass the exact interest portion from Fineract
             );
 
             // 8. Update Loan status to closed
@@ -247,7 +279,7 @@ export class RepaymentController {
                 loanId,
                 prepaymentAmount: totalPrepayAmount,
                 principalOutstanding,
-                interestOutstanding,
+                interestPortion, // Changed from interestOutstanding
                 distribution: distributionResult,
                 loanStatus: 'closed'
             });

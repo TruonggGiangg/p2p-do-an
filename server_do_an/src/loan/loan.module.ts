@@ -10,6 +10,7 @@ import { LoanService } from './loan.service';
 import { LoanContract, LoanContractSchema } from './schemas';
 import { BlockchainService, FineractService } from './services';
 import { FineractFixedDepositService } from './services/fineract-fixed-deposit.service';
+import { FixedDepositService } from './services/fixed-deposit.service';
 import { CreditScoringService } from './services/credit-scoring.service';
 import { InterestRateCalculatorService } from './services/interest-rate-calculator.service';
 import {
@@ -40,6 +41,7 @@ import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/
         BlockchainService,
         FineractService,
         FineractFixedDepositService,
+        FixedDepositService,
         CreditScoringService,
         InterestRateCalculatorService,
         // Guards
@@ -48,6 +50,6 @@ import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/
         BorrowerOrLenderGuard,
         AdminGuard,
     ],
-    exports: [LoanService, BlockchainService, FineractService, FineractFixedDepositService, CreditScoringService, InterestRateCalculatorService],
+    exports: [LoanService, BlockchainService, FineractService, FineractFixedDepositService, FixedDepositService, CreditScoringService, InterestRateCalculatorService],
 })
 export class LoanModule { }

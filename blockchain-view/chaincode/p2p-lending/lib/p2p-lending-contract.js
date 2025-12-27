@@ -638,4 +638,3 @@ class P2PLendingContract extends Contract {
 }
 
 module.exports.P2PLendingContract = P2PLendingContract;
-module.exports.contracts = [P2PLendingContract];

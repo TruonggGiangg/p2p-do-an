@@ -44,6 +44,15 @@ export class LoanInfo {
 
     @Prop()
     annualRate?: number;
+
+    @Prop()
+    lenderRate?: number;  // Monthly lender interest rate
+
+    @Prop()
+    annualLenderRate?: number;  // Annual lender interest rate
+
+    @Prop()
+    spread?: number;  // Admin spread percentage (typically 3%)
 }
 
 /**

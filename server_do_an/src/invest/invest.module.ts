@@ -9,6 +9,7 @@ import { InvestmentContract, InvestmentContractSchema } from './schemas';
 import { LoanContract, LoanContractSchema } from '../loan/schemas';
 import { FineractService } from '../loan/services/fineract.service';
 import { EscrowModule } from '../escrow/escrow.module';
+import { LoanModule } from '../loan/loan.module'; // Import for FixedDepositService
 
 @Module({
     imports: [
@@ -22,6 +23,7 @@ import { EscrowModule } from '../escrow/escrow.module';
             { name: LoanContract.name, schema: LoanContractSchema },
         ]),
         EscrowModule, // Import for FineractEscrowService
+        LoanModule, // Import for FixedDepositService
     ],
     controllers: [InvestController],
     providers: [InvestService, FineractService],

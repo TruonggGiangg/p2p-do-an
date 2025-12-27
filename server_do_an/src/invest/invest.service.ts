@@ -14,6 +14,7 @@ import { CreateInvestmentDto } from './dto';
 import { LoanContract } from '../loan/schemas';
 import { FineractService } from '../loan/services/fineract.service';
 import { FineractEscrowService } from '../escrow/services/fineract-escrow.service';
+import { FixedDepositService } from '../loan/services/fixed-deposit.service';
 
 /**
  * User interface from authentication
@@ -53,6 +54,7 @@ export class InvestService {
         private readonly fineractService: FineractService,
         private readonly escrowService: FineractEscrowService,
         private readonly configService: ConfigService,
+        private readonly fixedDepositService: FixedDepositService, // NEW: Inject FD service
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
     }
@@ -395,11 +397,8 @@ export class InvestService {
 
                     this.logger.log(`[Disbursement] Total released to borrower: ${totalAmount.toLocaleString('vi-VN')} VND (1 transaction)`);
 
-                    // ✅ NEW: Create Fixed Deposit accounts for each investment
+                    // ✅ NEW: Create Fixed Deposit accounts for each investment using FixedDepositService
                     this.logger.log(`[FD Creation] Creating Fixed Deposit accounts for ${escrows.length} investments...`);
-
-                    // Get FD product ID from config (or use default)
-                    const fdProductId = parseInt(this.configService.get('FINERACT_FD_PRODUCT_ID') || '2', 10);
 
                     for (const escrow of escrows) {
                         try {
@@ -411,34 +410,28 @@ export class InvestService {
                                 continue;
                             }
 
-                            // Create FD Account
-                            const FineractFixedDepositService = require('../loan/services/fineract-fixed-deposit.service').FineractFixedDepositService;
-                            const fdService = new FineractFixedDepositService(this.fineractService);
-
-                            const fdAccount = await fdService.createFixedDepositAccount(
-                                investment.lenderFineractClientId,
-                                fdProductId,
-                                investment.info.capital,
-                                loanContract.lenderInterestRate || 10.0, // FD rate (lower than borrower rate)
-                                loanContract.info.periodMonth,
-                                `FD_INV_${investment.contractId}` // External ID for tracking
-                            );
+                            // Use new FixedDepositService
+                            const fdResult = await this.fixedDepositService.createFixedDepositForLender({
+                                investmentContract: investment,
+                                loanContract: loanContract,
+                                capitalAmount: investment.info.capital,
+                                lenderFineractClientId: investment.lenderFineractClientId,
+                            });
 
                             // Update investment with FD info
                             await this.investmentModel.updateOne(
                                 { _id: investment._id },
                                 {
                                     $set: {
-                                        fineractFixedDepositAccountId: fdAccount.accountId,
-                                        fixedDepositAccountNo: fdAccount.accountNo,
+                                        fineractFixedDepositAccountId: fdResult.fdAccountId,
+                                        fixedDepositInterestRate: fdResult.fdRate,
                                         fixedDepositStatus: 'active',
-                                        fixedDepositMaturityDate: loanContract.info.maturityDate,
-                                        fixedDepositInterestRate: loanContract.lenderInterestRate || 10.0
+                                        fixedDepositMaturityDate: fdResult.maturityDate,
                                     }
                                 }
                             );
 
-                            this.logger.log(`[FD Creation] ✓ Created FD ${fdAccount.accountId} for investment ${investment.contractId}`);
+                            this.logger.log(`[FD Creation] ✓ Created FD ${fdResult.fdAccountId} for investment ${investment.contractId} with rate ${fdResult.fdRate}%`);
                         } catch (fdError: any) {
                             this.logger.error(`[FD Creation] Failed to create FD for escrow ${escrow.escrowId}: ${fdError.message}`);
                             // Continue without throwing - FD is enhancement, not critical for disbursement
@@ -502,8 +495,13 @@ export class InvestService {
 
         const total = await this.investmentModel.countDocuments(query);
 
+        // ✅ NEW: Enrich each investment with real-time FD data
+        const enrichedInvestments = await Promise.all(
+            investments.map(inv => this.enrichInvestmentWithFD(inv))
+        );
+
         return {
-            data: investments,
+            data: enrichedInvestments, // Return enriched data
             pagination: {
                 page,
                 limit,
@@ -566,7 +564,60 @@ export class InvestService {
             throw new NotFoundException(`Investment ${investmentId} not found`);
         }
 
-        return investment;
+        // ✅ NEW: Enrich with real-time FD data before returning
+        return await this.enrichInvestmentWithFD(investment.toObject());
+    }
+
+    /**
+     * Enrich investment with real-time Fixed Deposit data
+     * ✅ FIX: Fetch actual profit from Fineract FD account
+     */
+    private async enrichInvestmentWithFD(investment: any): Promise<any> {
+        // If no FD account, return as-is
+        if (!investment.fineractFixedDepositAccountId) {
+            return investment;
+        }
+
+        try {
+            // Get real-time FD account details from Fineract
+            const fdDetails = await this.fixedDepositService.getFDAccountDetails(
+                investment.fineractFixedDepositAccountId
+            );
+
+            // Calculate real-time profit from FD
+            const accruedInterest = fdDetails.totalInterestEarned || 0;
+            const currentBalance = fdDetails.accountBalance || investment.info.capital;
+
+            // Enrich investment info with FD data
+            const enriched = {
+                ...investment,
+                info: {
+                    ...investment.info,
+                    // ✅ Update with real-time values
+                    entirelyProfit: Math.round(accruedInterest),
+                    monthlyProfit: Math.round(accruedInterest), // Total accrued so far
+                    accruedInterest: accruedInterest,
+                    currentBalance: currentBalance,
+                },
+                // Add FD metadata
+                fdDetails: {
+                    accountNo: fdDetails.accountNo,
+                    accountId: fdDetails.id,
+                    nominalAnnualInterestRate: fdDetails.nominalAnnualInterestRate,
+                    maturityDate: fdDetails.maturityDate,
+                    status: fdDetails.status,
+                }
+            };
+
+            this.logger.log(`[FD Enrichment] Investment ${investment.contractId}: profit=${accruedInterest.toLocaleString()} VND (from FD ${fdDetails.accountNo})`);
+
+            return enriched;
+
+        } catch (error: any) {
+            this.logger.error(`[FD Enrichment] Failed to fetch FD data for investment ${investment.contractId}: ${error.message}`);
+            // Return original investment if enrichment fails
+            return investment;
+        }
     }
 
     /**

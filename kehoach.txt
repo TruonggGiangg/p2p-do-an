@@ -1,50 +1,54 @@
-🔥 ƯU TIÊN CAO - Cần làm sớm
-1. Test & Fix Luồng Chính
- Test lại luồng batch disbursement (vừa sửa xong)
- Test luồng trả nợ (Repayment) đầy đủ
- Verify số dư ví sau mỗi giao dịch
- Test edge cases: hủy khoản vay, hoàn tiền escrow
- Trả tiền lại lender khi hết hạn khoản vay
+# KẾ HOẠCH BỔ SUNG TÍNH NĂNG ĐỐI SOÁT P2P (RECONCILIATION)
 
- 
-2. UI/UX Improvements
- Dashboard màn hình chính - Hiện tại chỉ có list, chưa có tổng quan (tổng amount, stats)
- Thông báo/Notification - Push notification khi có người invest, khi được giải ngân
- Loading states - Skeleton screens, better loading indicators
- Error handling UI - Toast messages thống nhất
+## 1. Phân tích hiện trạng
+Sau khi so sánh source code giữa `p2p` (Reference) và `p2p-do-an` (Target), phát hiện dự án hiện tại (`p2p-do-an`) đang thiếu toàn bộ module đối soát và tự động đồng bộ trạng thái Fineract.
 
-📋 ƯU TIÊN TRUNG BÌNH
-3. Nghiệp Vụ Mới
-Feature	Mô tả
-E-KYC	Xác thực danh tính (CMND/CCCD, selfie)
-Credit Scoring	Tính điểm tín dụng borrower
-Late Payment Fee	Phí phạt trả chậm
-Auto Reminder	Nhắc nhở đến hạn trả nợ
-Investment Portfolio	Phân bổ đầu tư tự động cho lender
-4. Màn Hình Thiếu
- History Screen - Lịch sử giao dịch chi tiết
- Settings Screen - Cài đặt app, đổi mật khẩu
- Help/FAQ Screen - Hướng dẫn sử dụng
- Lender Dashboard - Tổng quan cho nhà đầu tư
-5. Blockchain Explorer
- Fix UI hiển thị blocks/transactions (đã có issue)
- Thêm search/filter cho explorer
-📝 ƯU TIÊN THẤP - Nice to have
-6. Documentation
- Viết doc cho INVEST_MODULE
- Viết doc cho WALLET_MODULE
- API documentation (Swagger)
-7. Performance & Code Quality
- Optimize API calls (caching, debounce)
- Unit tests cho services
- Refactor duplicate code
-8. Security
- Rate limiting
- Input validation cho tất cả DTOs
- Audit logging
-🎯 Gợi ý: Bắt đầu từ đâu?
-Dựa trên trạng thái hiện tại, tôi đề xuất theo thứ tự:
+### Bên dự án cũ (`p2p`):
+1.  **Service:** `server/interators/connectors/FineractFDReconciliationService.js`
+    *   Chức năng: Lấy danh sách Fixed Deposit (FD) từ Fineract, so khớp với InvestmentContract trong MongoDB.
+    *   Mục tiêu: Đảm bảo số tiền đầu tư trong DB khớp với số dư FD thực tế trên Core Banking.
+2.  **Scheduled Job:** `server/jobs/ReconciliationJob.js`
+    *   Chức năng: Chạy định kỳ (hàng ngày) hoặc khi khởi động.
+    *   Nhiệm vụ: Quét các khoản vay đang xử lý, check trạng thái trên Fineract và update ngược lại vào MongoDB (Status Sync).
+3.  **Data Model:** Có `TransactionLog` (Audit trail) và `UserTransaction` (History log) để lưu vết chi tiết từng bước.
 
-Test luồng batch disbursement (vừa sửa) ✅
-Cải thiện UI Wallet Screen - Thêm phân loại giao dịch rõ ràng hơn
-Thêm Dashboard/Home Screen - Tổng quan cho user
+### Bên dự án mới (`p2p-do-an`):
+*   **Thiếu:** Chưa có `ReconciliationService`, chưa có Cron Job đồng bộ Fineract Status, thiếu Transaction Log chi tiết.
+*   **Hậu quả:** Không thể hiển thị tab "Đối soát P2P" như ảnh mẫu, rủi ro lệch số liệu giữa App P2P và Core Fineract.
+
+## 2. Các điểm khác biệt cần xử lý (Action Items)
+
+Để có tính năng "Đối soát P2P" như ảnh, cần thực hiện các bước sau vào ngày mai:
+
+### Bước 1: Tạo Data Model Audit (Database)
+*   **Task:** Tạo `TransactionLog` (hoặc `AuditLog`) Schema trong NestJS.
+*   **Fields cần có:**
+    *   `transactionType` (INVEST, DISBURSE, REPAY, FD_TRANSFER...)
+    *   `fineractTransactionId` (ID giao dịch bên Fineract - *quan trọng để hiển thị như ảnh*)
+    *   `amount`, `status`, `p2pContext` (Hoàn vốn FD, Gửi vào FD,...)
+    *   `timestamp`
+
+### Bước 2: Port logic `FineractFDReconciliationService`
+*   **Task:** Tạo `src/reconciliation/reconciliation.service.ts`.
+*   **Logic cần port:**
+    *   `getFixedDepositsByLoan(loanId)`: Call API Fineract lấy chi tiết FD.
+    *   `reconcileLoan(loanId)`: So sánh `sum(InvestmentContract.capital)` vs `sum(Fineract.FD.balance)`.
+    *   Nếu lệch -> Báo Red flag (Mismatched).
+
+### Bước 3: Port logic `ReconciliationJob` (Cron Job)
+*   **Dependencies:** Cần cài đặt `@nestjs/schedule` cho dự án NestJS (hiện tại chưa có trong `package.json`).
+    *   Command: `npm install --save @nestjs/schedule`
+*   **Task:** Tạo `src/reconciliation/reconciliation.cron.ts`.
+*   **Logic:**
+    *   Sử dụng `@Cron('0 0 * * *')` để chạy daily.
+    *   Tìm các Loan có status `SUBMITTED` hoặc `APPROVED`.
+    *   Call Fineract check status -> Nếu Fineract đã `ACTIVE` mà DB chưa -> Update DB -> Trigger Disbursement info.
+
+### Bước 4: UI Integration (Hiển thị như ảnh)
+*   Để hiển thị bảng "Đối soát P2P" trên Fineract (hoặc App Admin), cần:
+    *   **Option A (Fineract Datatable):** Khi thực hiện giao dịch (Invest/Repay), code backend phải call API Fineract để ghi log vào Datatable `p2p_audit`.
+    *   **Option B (Custom UI):** API Backend trả về data từ `TransactionLog` và frontend tự render.
+    *   *Khuyến nghị:* Vì ảnh chụp giao diện Fineract, khả năng cao dự án cũ đang dùng **Option A** hoặc **Notes**. Cần check kỹ hơn cách ghi "Ngữ cảnh P2P".
+
+## 3. Kết luận
+Ngày mai sẽ bắt đầu bằng việc tạo Module `Reconciliation` trong NestJS và implement `reconcileLoan` function trước tiên.

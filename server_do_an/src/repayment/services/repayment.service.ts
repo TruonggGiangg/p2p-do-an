@@ -250,7 +250,8 @@ export class RepaymentService {
         repaymentAmount: number,
         investments: any[],
         isFinalPayment: boolean,
-        loan: any
+        loan: any,
+        interestPortion?: number  // ✅ NEW: Exact interest from Fineract prepayment template
     ): Promise<any[]> {
         this.logger.log(`[FD Distribution] Amount: ${repaymentAmount}, lenders: ${investments.length}, final: ${isFinalPayment}`);
 
@@ -258,9 +259,21 @@ export class RepaymentService {
         const totalCapital = investments.reduce((sum, inv) => sum + inv.amount, 0);
         const borrowerRate = loan.borrowerInterestRate || 12.0;
 
-        // Calculate principal and interest from repayment
-        const monthlyPrincipal = repaymentAmount / (1 + (borrowerRate / 100 / 12));
-        const monthlyInterest = repaymentAmount - monthlyPrincipal;
+        // ✅ FIX: Use explicit interestPortion for prepayment, formula for regular repayment
+        let monthlyPrincipal: number;
+        let monthlyInterest: number;
+
+        if (isFinalPayment && interestPortion != null) {
+            // PREPAYMENT: Use exact interest from Fineract prepayment template
+            monthlyInterest = interestPortion;
+            monthlyPrincipal = repaymentAmount - interestPortion;
+            this.logger.log(`[FD Distribution] ✅ Using EXACT interest from Fineract: ${interestPortion}`);
+        } else {
+            // Regular repayment: Calculate using formula
+            monthlyPrincipal = repaymentAmount / (1 + (borrowerRate / 100 / 12));
+            monthlyInterest = repaymentAmount - monthlyPrincipal;
+            this.logger.log(`[FD Distribution] Using formula calculation`);
+        }
 
         this.logger.log(`[FD Distribution] Breakdown: Principal=${monthlyPrincipal}, Interest=${monthlyInterest}`);
 

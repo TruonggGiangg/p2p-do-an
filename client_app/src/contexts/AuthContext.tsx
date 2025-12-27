@@ -7,6 +7,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Alert } from 'react-native';
 import { User } from '../types';
 import { authApi, keycloakApi, storageService } from '../services';
 import { authEvents } from '../services/auth/authEvents';
@@ -37,6 +38,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.log('[AuthContext] Session expired, resetting user state');
             setUser(null);
             setIsLoading(false);
+
+            // ✅ NEW: Show user-friendly notification
+            Alert.alert(
+                'Phiên đăng nhập hết hạn',
+                'Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => console.log('[AuthContext] User acknowledged session expiry'),
+                    }
+                ],
+                { cancelable: false }
+            );
         });
 
         return () => {
