@@ -7,22 +7,24 @@ sidebar_label: "Đầu tư"
 
 Hướng dẫn chi tiết quy trình đầu tư vào khoản vay trên hệ thống P2P Lending.
 
-## 📋 Yêu cầu
+## Yêu cầu
 
 - Tài khoản nhà đầu tư (Lender) đã đăng ký
 - Wallet có đủ số dư trên Fineract Savings Account
 - Khoản vay đang ở trạng thái `waiting`
 
-## 🔄 Luồng nghiệp vụ
+---
+
+## Luồng nghiệp vụ
 
 ```mermaid
 sequenceDiagram
-    participant Lender as 💰 Nhà đầu tư
-    participant App as 📱 Mobile App
-    participant API as 🖥️ Backend
-    participant Escrow as 🏦 Escrow
-    participant Fineract as 💰 Fineract
-    participant FD as 📈 Fixed Deposit
+    participant Lender as Nhà đầu tư
+    participant App as Mobile App
+    participant API as Backend
+    participant Escrow as Escrow
+    participant Fineract as Fineract
+    participant FD as Fixed Deposit
 
     Lender->>App: Chọn khoản vay & số notes
     App->>API: POST /invest/create
@@ -41,7 +43,9 @@ sequenceDiagram
     App-->>Lender: Hiển thị kết quả
 ```
 
-## 💵 Note System
+---
+
+## Note System
 
 Mỗi khoản vay được chia thành các **Notes** để nhiều nhà đầu tư có thể tham gia:
 
@@ -55,7 +59,9 @@ Nhà đầu tư A: Mua 5 notes = 2,500,000 VND (25%)
 Nhà đầu tư B: Mua 15 notes = 7,500,000 VND (75%)
 ```
 
-## 📈 Lợi nhuận dự kiến
+---
+
+## Lợi nhuận dự kiến
 
 | Số Notes | Vốn đầu tư | Lãi suất/năm | Lợi nhuận/12 tháng |
 |----------|------------|--------------|-------------------|
@@ -64,21 +70,23 @@ Nhà đầu tư B: Mua 15 notes = 7,500,000 VND (75%)
 | 10 | 5,000,000 | 12.129% | ~618,751 VND |
 | 20 | 10,000,000 | 12.129% | ~1,237,499 VND |
 
-## 🧪 API Endpoint
+---
+
+## API Endpoint
 
 ### POST /invest/create
 
+**Request:**
 ```json
-// Request
 {
   "loanContractId": "LOAN_1766810197512",
-  "capital": 10000000,  // Số tiền đầu tư
-  "numNotes": 20        // Số notes
+  "capital": 10000000,
+  "numNotes": 20
 }
 ```
 
+**Response:**
 ```json
-// Response
 {
   "success": true,
   "data": {
@@ -87,26 +95,30 @@ Nhà đầu tư B: Mua 15 notes = 7,500,000 VND (75%)
     "capital": 10000000,
     "lenderRate": 12.129,
     "escrowId": "ESCROW_1766810239510",
-    "fixedDepositAccountId": 45,  // Nếu loan đã full fund
+    "fixedDepositAccountId": 45,
     "expectedProfit": 1237499
   }
 }
 ```
 
-## 🏦 Fixed Deposit
+---
+
+## Fixed Deposit
 
 Sau khi khoản vay được đầu tư 100%, hệ thống tự động:
 
-1. ✅ Approve Loan trên Fineract
-2. ✅ Disburse tiền từ Escrow → Borrower
-3. ✅ Tạo Fixed Deposit Account cho Lender
+1. Approve Loan trên Fineract
+2. Disburse tiền từ Escrow → Borrower
+3. Tạo Fixed Deposit Account cho Lender
 
 Fixed Deposit lưu trữ:
 - Vốn gốc của nhà đầu tư
 - Lãi suất guaranteed (lenderRate)
 - Kỳ hạn = Khoản vay kỳ hạn
 
-## ⚠️ Lưu ý
+---
+
+## Lưu ý
 
 :::warning Đầu tư tối thiểu
 - Minimum: 1 Note (500,000 VND)
@@ -114,8 +126,5 @@ Fixed Deposit lưu trữ:
 :::
 
 :::info Auto-Disbursement
-Khi khoản vay đạt 100% vốn, hệ thống tự động:
-- Approve Loan trên Fineract
-- Giải ngân cho người vay
-- Tạo Fixed Deposit cho nhà đầu tư
+Khi khoản vay đạt 100% vốn, hệ thống tự động approve, giải ngân và tạo Fixed Deposit.
 :::

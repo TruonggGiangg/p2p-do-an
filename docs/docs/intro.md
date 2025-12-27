@@ -1,12 +1,13 @@
 ---
 sidebar_position: 1
+sidebar_label: "Tổng quan"
 ---
 
 # Giới thiệu P2P Lending Platform
 
 Chào mừng bạn đến với **P2P Lending Platform** - Nền tảng cho vay ngang hàng tích hợp **Blockchain Hyperledger Fabric** và **Apache Fineract**.
 
-## 🎯 Tổng quan
+## Tổng quan
 
 P2P Lending Platform là một ứng dụng cho vay ngang hàng hoàn chỉnh, kết nối trực tiếp người vay với các nhà đầu tư mà không cần thông qua ngân hàng truyền thống.
 
@@ -21,31 +22,49 @@ P2P Lending Platform là một ứng dụng cho vay ngang hàng hoàn chỉnh, k
 | **Blockchain Audit** | Ghi nhận giao dịch lên Hyperledger Fabric |
 | **Fineract Integration** | Core banking với Apache Fineract |
 
-## 🏗️ Kiến trúc hệ thống
+---
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Mobile App (React Native)                    │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-┌───────────────────────────┴─────────────────────────────────────┐
-│                    Backend API (NestJS)                          │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌──────────────┐        │
-│  │ Loan    │  │ Invest  │  │Repayment│  │Reconciliation│        │
-│  │ Module  │  │ Module  │  │ Module  │  │    Module    │        │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └──────┬───────┘        │
-└───────┼────────────┼────────────┼──────────────┼────────────────┘
-        │            │            │              │
-┌───────┴────────────┴────────────┴──────────────┴────────────────┐
-│                        External Services                         │
-│  ┌────────────┐  ┌────────────────┐  ┌─────────────────┐        │
-│  │  MongoDB   │  │ Apache Fineract │  │ Hyperledger    │        │
-│  │  Atlas     │  │  (Core Banking) │  │ Fabric         │        │
-│  └────────────┘  └────────────────┘  └─────────────────┘        │
-└──────────────────────────────────────────────────────────────────┘
+## Kiến trúc hệ thống
+
+```mermaid
+flowchart TB
+    subgraph Client["Mobile App"]
+        RN[React Native / Expo]
+    end
+
+    subgraph Backend["NestJS Backend"]
+        Auth[Auth Module]
+        Loan[Loan Module]
+        Invest[Invest Module]
+        Repay[Repayment Module]
+        Recon[Reconciliation Module]
+    end
+
+    subgraph External["External Services"]
+        Keycloak[(Keycloak IAM)]
+        Fineract[(Apache Fineract)]
+        Fabric[(Hyperledger Fabric)]
+        MongoDB[(MongoDB Atlas)]
+    end
+
+    RN --> Auth
+    RN --> Loan
+    RN --> Invest
+    RN --> Repay
+    
+    Auth --> Keycloak
+    Loan --> Fineract
+    Loan --> Fabric
+    Loan --> MongoDB
+    Invest --> Fineract
+    Invest --> MongoDB
+    Repay --> Fineract
+    Recon --> MongoDB
 ```
 
-## 🚀 Bắt đầu nhanh
+---
+
+## Bắt đầu nhanh
 
 ### Yêu cầu hệ thống
 
@@ -71,15 +90,16 @@ cd server_do_an && npm install && npm run start:dev
 cd client_app && npm install && npx expo start
 ```
 
-## 📖 Mục lục Documentation
+---
+
+## Mục lục Documentation
 
 - [**Kiến trúc**](/docs/architecture/overview) - Tổng quan kiến trúc hệ thống
 - [**Luồng nghiệp vụ**](/docs/features/loan-creation) - Quy trình tạo khoản vay, đầu tư, trả nợ
 - [**API Reference**](/docs/category/api-reference) - Tài liệu API endpoints
-- [**Fineract Integration**](/docs/integrations/fineract) - Tích hợp Apache Fineract
-- [**Blockchain**](/docs/integrations/blockchain) - Hyperledger Fabric integration
 
-## 📞 Liên hệ
+---
+
+## Liên hệ
 
 - **GitHub**: [TruonggGiangg/p2p-iuh-vlu](https://github.com/TruonggGiangg/p2p-iuh-vlu)
-- **Email**: truonggiang@example.com

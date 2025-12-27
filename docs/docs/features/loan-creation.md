@@ -7,21 +7,23 @@ sidebar_label: "Tạo khoản vay"
 
 Hướng dẫn chi tiết quy trình tạo khoản vay trên hệ thống P2P Lending.
 
-## 📋 Yêu cầu
+## Yêu cầu
 
 - Tài khoản người vay đã đăng ký và xác thực
 - Wallet đã liên kết với Fineract Client
 - Thông tin cá nhân đầy đủ (để tính Credit Score)
 
-## 🔄 Luồng nghiệp vụ
+---
+
+## Luồng nghiệp vụ
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 Người vay
-    participant App as 📱 Mobile App
-    participant API as 🖥️ Backend
-    participant Fineract as 💰 Fineract
-    participant Blockchain as ⛓️ Blockchain
+    participant User as Người vay
+    participant App as Mobile App
+    participant API as Backend
+    participant Fineract as Fineract
+    participant Blockchain as Blockchain
 
     User->>App: Nhập thông tin vay
     App->>API: POST /loan/create-auto
@@ -35,7 +37,9 @@ sequenceDiagram
     App-->>User: Hiển thị kết quả
 ```
 
-## 📊 Credit Score & Lãi suất
+---
+
+## Credit Score & Lãi suất
 
 ### Tính Credit Score (FICO 300-850)
 
@@ -61,22 +65,24 @@ lenderRate = borrowerRate - ADMIN_SPREAD (3%)
 // lenderRate = 15.129% - 3% = 12.129%
 ```
 
-## 🧪 API Endpoint
+---
+
+## API Endpoint
 
 ### POST /loan/create-auto
 
+**Request:**
 ```json
-// Request
 {
-  "capital": 10000000,      // Số tiền vay (VND)
-  "periodMonth": 12,        // Kỳ hạn (tháng)
-  "willing": "Tiêu dùng cá nhân",  // Mục đích vay
-  "disbursementDate": "2025-12-28"  // Ngày giải ngân dự kiến
+  "capital": 10000000,
+  "periodMonth": 12,
+  "willing": "Tiêu dùng cá nhân",
+  "disbursementDate": "2025-12-28"
 }
 ```
 
+**Response:**
 ```json
-// Response
 {
   "success": true,
   "data": {
@@ -92,16 +98,14 @@ lenderRate = borrowerRate - ADMIN_SPREAD (3%)
       "borrowerAnnualRate": 15.129,
       "lenderAnnualRate": 12.129,
       "adminSpread": 3
-    },
-    "repaymentSchedule": {
-      "monthlyPayment": 958408,
-      "totalPayment": 11500896
     }
   }
 }
 ```
 
-## ⚠️ Lưu ý
+---
+
+## Lưu ý
 
 :::warning Giới hạn khoản vay
 - **Tối thiểu**: 1,000,000 VND

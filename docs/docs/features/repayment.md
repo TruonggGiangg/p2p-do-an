@@ -7,16 +7,16 @@ sidebar_label: "Trả nợ & Tất toán"
 
 Hướng dẫn chi tiết quy trình trả nợ định kỳ và tất toán sớm trên hệ thống P2P Lending.
 
-## 🔄 Luồng trả nợ định kỳ
+## Luồng trả nợ định kỳ
 
 ```mermaid
 sequenceDiagram
-    participant Borrower as 👤 Người vay
-    participant App as 📱 Mobile App
-    participant API as 🖥️ Backend
-    participant Escrow as 🏦 Escrow
-    participant Fineract as 💰 Fineract
-    participant Lender as 💰 Lenders
+    participant Borrower as Người vay
+    participant App as Mobile App
+    participant API as Backend
+    participant Escrow as Escrow
+    participant Fineract as Fineract
+    participant Lender as Lenders
 
     Borrower->>App: Thanh toán kỳ hạn
     App->>API: POST /repayment/repay
@@ -33,7 +33,9 @@ sequenceDiagram
     App-->>Borrower: Xác nhận thanh toán
 ```
 
-## 💰 Phân phối tiền trả nợ
+---
+
+## Phân phối tiền trả nợ
 
 Mỗi kỳ trả nợ bao gồm:
 - **Gốc (Principal)**: Phân phối theo tỷ lệ đầu tư
@@ -50,7 +52,6 @@ lenderPrincipal = monthlyPrincipal * lenderShare
 
 // Lãi lender nhận (sau khi trừ spread)
 totalInterest = borrowerPays × (lenderRate / borrowerRate)
-// = borrowerPays × 83.33% (nếu lenderRate=15%, borrowerRate=18%)
 lenderInterest = totalInterest * lenderShare
 
 // Admin spread
@@ -68,50 +69,52 @@ adminSpread = monthlyInterest - lenderInterest
 
 ---
 
-## 🚀 Luồng tất toán sớm (Prepayment)
+## Luồng tất toán sớm (Prepayment)
 
 ```mermaid
 sequenceDiagram
-    participant Borrower as 👤 Người vay
-    participant App as 📱 Mobile App
-    participant API as 🖥️ Backend
-    participant Fineract as 💰 Fineract
-    participant FD as 📈 Fixed Deposit
+    participant Borrower as Người vay
+    participant App as Mobile App
+    participant API as Backend
+    participant Fineract as Fineract
+    participant FD as Fixed Deposit
 
     Borrower->>App: Yêu cầu tất toán
     App->>API: GET /loan/:id/prepay-amount
     API->>Fineract: Get Prepayment Template
-    Fineract-->>API: {principal, interest}
+    Fineract-->>API: principal + interest
     API-->>App: Hiển thị số tiền cần trả
 
     Borrower->>App: Xác nhận tất toán
     App->>API: POST /repayment/prepay
     API->>Fineract: Transfer Borrower → Escrow
-    API->>Fineract: Make Prepayment (Full)
+    API->>Fineract: Make Prepayment Full
     
     loop For Each Lender FD
         API->>FD: Premature Close FD
         API->>Fineract: Transfer → Lender Savings
     end
     
-    API->>API: Update Loan Status = 'closed'
+    API->>API: Update Loan Status = closed
     API-->>App: Prepayment Success
 ```
 
-## 🧪 API Endpoints
+---
+
+## API Endpoints
 
 ### POST /repayment/repay
 
+**Request:**
 ```json
-// Request
 {
   "loanId": "LOAN_1766810197512",
-  "amount": 958408  // Số tiền kỳ hạn
+  "amount": 958408
 }
 ```
 
+**Response:**
 ```json
-// Response
 {
   "success": true,
   "loanId": "LOAN_1766810197512",
@@ -126,8 +129,8 @@ sequenceDiagram
 
 ### GET /loan/:id/prepay-amount
 
+**Response:**
 ```json
-// Response
 {
   "totalAmount": 10500000,
   "principalOutstanding": 10000000,
@@ -138,32 +141,30 @@ sequenceDiagram
 
 ### POST /repayment/prepay
 
+**Request:**
 ```json
-// Request
 {
   "loanId": "LOAN_1766810197512"
 }
 ```
 
+**Response:**
 ```json
-// Response
 {
   "success": true,
   "loanId": "LOAN_1766810197512",
   "prepaymentAmount": 10500000,
   "distribution": {
     "lendersCount": 2,
-    "totalDistributed": 10500000,
-    "distributions": [
-      { "lenderId": "lender_a", "amount": 2625000 },
-      { "lenderId": "lender_b", "amount": 7875000 }
-    ]
+    "totalDistributed": 10500000
   },
   "loanStatus": "closed"
 }
 ```
 
-## ⚠️ Lưu ý
+---
+
+## Lưu ý
 
 :::warning Fixed Deposit Closure
 Khi tất toán sớm, Fixed Deposit của các lenders sẽ bị đóng **premature** (trước hạn). Tiền sẽ được chuyển về Savings Account của lender.

@@ -7,15 +7,15 @@ sidebar_label: "Tổng quan"
 
 Hệ thống P2P Lending bao gồm các thành phần chính sau:
 
-## 🏗️ Sơ đồ kiến trúc
+## Sơ đồ kiến trúc
 
 ```mermaid
 flowchart TB
-    subgraph Client["📱 Mobile App"]
+    subgraph Client["Mobile App"]
         RN[React Native / Expo]
     end
 
-    subgraph Backend["🖥️ NestJS Backend"]
+    subgraph Backend["NestJS Backend"]
         Auth[Auth Module]
         Loan[Loan Module]
         Invest[Invest Module]
@@ -23,10 +23,10 @@ flowchart TB
         Recon[Reconciliation Module]
     end
 
-    subgraph External["🔗 External Services"]
-        Keycloak[Keycloak IAM]
-        Fineract[Apache Fineract]
-        Fabric[Hyperledger Fabric]
+    subgraph External["External Services"]
+        Keycloak[(Keycloak IAM)]
+        Fineract[(Apache Fineract)]
+        Fabric[(Hyperledger Fabric)]
         MongoDB[(MongoDB Atlas)]
     end
 
@@ -45,7 +45,9 @@ flowchart TB
     Recon --> MongoDB
 ```
 
-## 📦 Thành phần
+---
+
+## Thành phần
 
 ### Mobile App (React Native)
 - **Framework**: React Native + Expo
@@ -72,7 +74,9 @@ flowchart TB
 | **Keycloak** | Identity & Access Management |
 | **MongoDB Atlas** | NoSQL Database |
 
-## 🔄 Luồng dữ liệu
+---
+
+## Luồng dữ liệu
 
 1. **User Authentication**: Mobile → Keycloak → JWT Token
 2. **Loan Creation**: Mobile → Backend → MongoDB + Fineract + Blockchain
