@@ -32,7 +32,7 @@ export class TransactionLogService {
                 transactionType: 'INVEST',
                 amount: params.amount,
                 status: params.status || 'SUCCESS',
-                p2pContext: `Lender đầu tư ${params.amount.toLocaleString('vi-VN')} VND vào Loan ${params.loanId}`,
+                p2pContext: 'Ký quỹ đầu tư',
                 loanId: params.loanId,
                 investmentId: params.investmentId,
                 lenderId: params.lenderId,
@@ -69,7 +69,7 @@ export class TransactionLogService {
                 transactionType: 'DISBURSE',
                 amount: params.amount,
                 status: params.status || 'SUCCESS',
-                p2pContext: `Giải ngân ${params.amount.toLocaleString('vi-VN')} VND cho Borrower (Loan ${params.loanId})`,
+                p2pContext: 'Giải ngân',
                 loanId: params.loanId,
                 borrowerId: params.borrowerId,
                 fineractLoanId: params.fineractLoanId,
@@ -250,6 +250,45 @@ export class TransactionLogService {
             return log;
         } catch (error) {
             this.logger.error(`[TransactionLog] Failed to log escrow transfer: ${error.message}`);
+        }
+    }
+
+    /**
+     * Ghi log Loan Creation (Tạo khoản vay mới)
+     * Quan trọng cho đối soát: Tracking khoản vay từ khi tạo
+     */
+    async logLoanCreation(params: {
+        loanId: string;
+        borrowerId: string;
+        capital: number;
+        periodMonth?: number;
+        rate?: number;
+        fineractLoanId?: number;
+        status?: string;
+    }) {
+        try {
+            const log = new this.transactionLogModel({
+                transactionId: `TXN_LOAN_${Date.now()}`,
+                transactionType: 'LOAN_CREATION',
+                amount: params.capital,
+                status: params.status || 'PENDING',
+                p2pContext: `Tạo khoản vay [${params.loanId}]`,
+                loanId: params.loanId,
+                borrowerId: params.borrowerId,
+                fineractLoanId: params.fineractLoanId,
+                metadata: {
+                    action: 'loan_creation',
+                    periodMonth: params.periodMonth,
+                    rate: params.rate,
+                    timestamp: new Date(),
+                },
+            });
+
+            await log.save();
+            this.logger.log(`[TransactionLog] LOAN_CREATION logged: ${log.transactionId}`);
+            return log;
+        } catch (error) {
+            this.logger.error(`[TransactionLog] Failed to log loan creation: ${error.message}`);
         }
     }
 }

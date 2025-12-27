@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { LoanModule } from '../loan/loan.module'; // Import LoanModule to use its services
@@ -18,7 +18,7 @@ import { TransactionLogService } from './services/transaction-log.service';
             { name: TransactionLog.name, schema: TransactionLogSchema },
         ]),
         ConfigModule,
-        LoanModule, // For FineractService
+        forwardRef(() => LoanModule), // Circular dependency resolution
     ],
     controllers: [ReconciliationController],
     providers: [

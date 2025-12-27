@@ -97,6 +97,12 @@ export class FixedDepositService {
             // ✅ Pass charts explicitly to bypass Product Interest Chart validation issues
             const validFromDate = moment.utc().format('D MMMM YYYY');
 
+            // ✅ RECONCILIATION: Generate External ID to match Reference Project pattern
+            // Format: FD_LOAN_{fineractLoanId}_INV_{contractId}
+            const fineractLoanId = loanContract.fineractLoanId || loanContract.contractId;
+            const externalId = `FD_LOAN_${fineractLoanId}_INV_${investmentContract.contractId}`;
+            this.logger.log(`[createFixedDepositForLender] Generated External ID: ${externalId}`);
+
             const fdPayload = {
                 clientId: lenderFineractClientId,
                 productId: Number(fdProductId),
@@ -107,6 +113,7 @@ export class FixedDepositService {
                 locale: 'en',
                 dateFormat: 'dd MMMM yyyy',
                 linkAccountId: investmentSavingsAccountId, // Auto-debit from Linked Savings
+                externalId: externalId, // ✅ Saving Reconciliation Data
                 // ✅ Add inline chart with explicit interest rate
                 charts: [
                     {

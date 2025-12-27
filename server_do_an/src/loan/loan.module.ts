@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
@@ -22,6 +22,8 @@ import {
 
 // Import Investment schema for credit scoring
 import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
+// Import ReconciliationModule for TransactionLogService (use forwardRef to resolve circular dependency)
+import { ReconciliationModule } from '../reconciliation/reconciliation.module';
 
 @Module({
     imports: [
@@ -34,6 +36,7 @@ import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/
             { name: LoanContract.name, schema: LoanContractSchema },
             { name: InvestmentContract.name, schema: InvestmentContractSchema }, // For credit scoring
         ]),
+        forwardRef(() => ReconciliationModule), // Circular dependency resolution
     ],
     controllers: [LoanController, BlockchainController],
     providers: [

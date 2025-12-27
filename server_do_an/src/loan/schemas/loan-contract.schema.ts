@@ -165,6 +165,34 @@ export class PaymentRecord {
 }
 
 /**
+ * Disbursement Info subdocument for idempotency
+ * Tracks disbursement status to prevent duplicate processing
+ */
+@Schema({ _id: false })
+export class DisbursementInfo {
+    @Prop({
+        enum: ['pending', 'processing', 'completed', 'failed'],
+        default: 'pending'
+    })
+    status: string;
+
+    @Prop()
+    startedAt?: Date;
+
+    @Prop()
+    completedAt?: Date;
+
+    @Prop()
+    fineractDisbursementId?: number;
+
+    @Prop()
+    transferId?: string;
+
+    @Prop()
+    error?: string;
+}
+
+/**
  * LoanContract Schema
  * Main schema for loan contracts
  */
@@ -241,6 +269,10 @@ export class LoanContract extends Document {
 
     @Prop({ type: [PaymentRecord], default: [] })
     payments: PaymentRecord[];
+
+    // === DISBURSEMENT INFO (Idempotency) ===
+    @Prop({ type: DisbursementInfo })
+    disbursementInfo?: DisbursementInfo;
 
     // === FINERACT INTEGRATION ===
     @Prop({ index: true })

@@ -259,11 +259,13 @@ export class FineractFixedDepositService {
      * Close Fixed Deposit Account (maturity or premature)
      * @param accountId
      * @param transferToAccountId - Transfer remaining balance to this savings account
+     * @param loanId - Optional loan ID for P2P context note
      * @returns Closure result with amount and transaction ID
      */
     async closeFixedDepositAccount(
         accountId: number,
         transferToAccountId: number,
+        loanId?: string,
     ): Promise<ClosureResult> {
         this.logger.log(
             `Closing Fixed Deposit ${accountId}, transfer to savings ${transferToAccountId}`,
@@ -273,6 +275,9 @@ export class FineractFixedDepositService {
             // Get current balance before closing
             const details = await this.getFixedDepositDetails(accountId);
             const closureAmount = details.balance + details.interestAccrued;
+
+            // Build P2P context note with LOAN_ID for grouping
+            const p2pNote = loanId ? `Hoàn vốn FD [${loanId}]` : 'Hoàn vốn FD';
 
             // Close FD with correct parameters
             // onAccountClosureId enum: 100 = Reinvest, 200 = Transfer to Savings, 300 = Withdraw
@@ -286,7 +291,7 @@ export class FineractFixedDepositService {
                     paymentTypeId: 1,
                     locale: 'en',
                     dateFormat: 'dd MMMM yyyy',
-                    note: 'Hoàn vốn FD',
+                    note: p2pNote,
                 },
                 { headers }
             ).toPromise();

@@ -15,7 +15,7 @@ export class TransactionLog extends Document {
 
     @Prop({
         required: true,
-        enum: ['INVEST', 'DISBURSE', 'REPAY', 'FD_TRANSFER', 'FD_CLOSE', 'FD_CREATE', 'LOAN_APPROVE', 'LOAN_ACTIVATE', 'DISTRIBUTION', 'ESCROW_TRANSFER'],
+        enum: ['INVEST', 'DISBURSE', 'REPAY', 'FD_TRANSFER', 'FD_CLOSE', 'FD_CREATE', 'LOAN_CREATION', 'LOAN_APPROVE', 'LOAN_ACTIVATE', 'DISTRIBUTION', 'ESCROW_TRANSFER'],
         index: true,
     })
     transactionType: string;

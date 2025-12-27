@@ -114,7 +114,7 @@ export class FineractEscrowService {
                 lenderAccountId,
                 this.escrowAccountId,
                 escrow.amount,
-                'Ký quỹ đầu tư'
+                `Ký quỹ đầu tư [${escrow.loanContractId}]` // P2P Context with LOAN_ID for grouping
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;

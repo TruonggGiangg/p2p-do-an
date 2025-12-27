@@ -129,7 +129,7 @@ export class WalletService {
 
         // Find active savings account (simplified to match getWalletBalance logic)
         const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
-            acc.status?.active === true
+            acc.status?.active === true && acc.depositType?.id === 100 // Savings
         );
 
         if (!savingsAccount) {
@@ -157,20 +157,53 @@ export class WalletService {
                     type = txn.submittedByUsername ? 'transfer_in' : 'transfer_out';
                 }
 
+                // Enhance description mapping
+                // Priority: note > paymentType name > default
+                let description = 'Giao dịch ví';
+                if (txn.note) {
+                    description = txn.note;
+                } else if (txn.transfer?.note) {
+                    description = txn.transfer.note;
+                } else if (txn.transfer?.description) {
+                    description = txn.transfer.description;
+                } else if (txn.paymentDetailData?.paymentType?.name) {
+                    description = txn.paymentDetailData.paymentType.name;
+                }
+
+                // Grouping Logic: Identify P2P Context
+                // 1. If note contains "Giải ngân", group by Loan ID
+                // 2. If note contains "Ký quỹ", group by Investment ID
+                // For now, return raw but with standardized description
                 return {
                     id: String(txn.id),
                     type: type,
                     amount: txn.amount || 0,
                     date: txn.date ? new Date(txn.date[0], txn.date[1] - 1, txn.date[2]).toISOString() : new Date().toISOString(),
-                    description: txn.paymentDetailData?.paymentType?.name || 'Giao dịch ví',
+                    description: description,
                     balance: txn.runningBalance || 0,
+                    context: description // Alias for grouping in Frontend if needed
                 };
             });
 
-        this.logger.log(`[getWalletTransactions] Returning ${transactions.length} transactions`);
+        // ✅ Group transactions by Context if they happen on same day
+        // ✅ Group transactions by Context if they happen on same day
+        const groupedTransactions: any[] = [];
+        let skippedIndices = new Set();
+
+        for (let i = 0; i < transactions.length; i++) {
+            if (skippedIndices.has(i)) continue;
+
+            const current = transactions[i];
+
+            // P2P Logic: Just return the transaction with refined description
+            // The Fineract 'note' is already the best source of truth.
+            groupedTransactions.push(current);
+        }
+
+        this.logger.log(`[getWalletTransactions] Returning ${groupedTransactions.length} transactions`);
 
         return {
-            transactions,
+            transactions: groupedTransactions,
             total: fineractTxns.length,
         };
     }

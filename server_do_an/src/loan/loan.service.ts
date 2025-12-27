@@ -17,6 +17,7 @@ import { FineractService } from './services/fineract.service';
 import { CreditScoringService } from './services/credit-scoring.service';
 import { InterestRateCalculatorService } from './services/interest-rate-calculator.service';
 import { calculateRates as calculateDynamicRates } from '../utils/interest-rate-calculator';
+import { TransactionLogService } from '../reconciliation/services/transaction-log.service';
 
 /**
  * User interface from authentication
@@ -94,6 +95,7 @@ export class LoanService {
         private readonly creditScoringService: CreditScoringService,
         private readonly rateCalculator: InterestRateCalculatorService,
         private readonly fixedDepositService: FixedDepositService,
+        private readonly transactionLogService: TransactionLogService,
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
     }
@@ -417,6 +419,17 @@ export class LoanService {
         }
 
         this.logger.log(`Loan process completed: ${loanContract.contractId}`);
+
+        // === LOG LOAN CREATION FOR RECONCILIATION ===
+        await this.transactionLogService.logLoanCreation({
+            loanId: loanContract.contractId,
+            borrowerId: user._id,
+            capital: loanContract.info.capital,
+            periodMonth: loanContract.info.periodMonth,
+            rate: loanContract.info.rate,
+            fineractLoanId: fineractLoanId || undefined,
+            status: 'PENDING', // Loan is pending until fully matched and disbursed
+        });
 
         return {
             contractId: loanContract.contractId,

@@ -392,7 +392,7 @@ export class RepaymentService {
             escrowAccountId,
             lenderSavingsAccountId,
             amount,
-            `Phân phối gốc & lãi cho nhà đầu tư`
+            `Phân phối gốc & lãi cho nhà đầu tư [${loanId}]` // P2P Context with LOAN_ID
         );
 
         return result?.resourceId || 0;
