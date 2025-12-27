@@ -7,6 +7,13 @@
 **Purpose**: Connects Borrowers and Lenders for peer-to-peer loans, backed by Hyperledger Fabric blockchain for transparency and Fineract (Core Banking) for financial processing.
 **Root Directory**: `c:\P2P\p2p-test-4\p2p-do-an`
 
+## 📚 Documentation Hub
+*   [**🇦🇺 Protocol (Vai trò & Quy trình)**](.agent/workflows/fullstack-development.md) - **ĐỌC KỸ TRƯỚC KHI LÀM**.
+*   [**🚀 Setup (Cài đặt & Chạy)**](.agent/workflows/project-setup.md) - Hướng dẫn khởi động.
+*   [**🛠️ Extensions (Công cụ)**](.agent/workflows/recommended-extensions.md) - Các "vũ khí" VS Code.
+*   [**🗺️ Roadmap (Kế hoạch)**](doc/ROADMAP.md) - Trạng thái dự án hiện tại.
+*   [**💰 Logic Nghiệp Vụ**](doc/investment_repayment_logic.md) - Chi tiết công thức tính tiền.
+
 ## 2. Technical Stack
 
 ### client_app (Mobile)

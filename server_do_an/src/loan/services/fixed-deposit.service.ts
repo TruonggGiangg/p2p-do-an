@@ -94,25 +94,17 @@ export class FixedDepositService {
 
         try {
             // Tạo FD account trên Fineract
+            // ✅ FIX: Simplified payload matching p2p project format
+            // Interest rate is taken from FD Product's Interest Chart automatically
             const fdPayload = {
                 clientId: lenderFineractClientId,
-                productId: fdProductId,
+                productId: Number(fdProductId),  // ✅ Ensure number type
                 submittedOnDate: moment().format('DD MMMM YYYY'),
                 depositAmount: capitalAmount,
                 depositPeriod: periodMonth,
                 depositPeriodFrequencyId: 2, // Months
-                interestCompoundingPeriodType: 1, // Daily
-                interestPostingPeriodType: 4, // Monthly
-                interestCalculationType: 1, // Daily Balance
-                interestCalculationDaysInYearType: 365, // 365 days
-                nominalAnnualInterestRate: lenderRate, // Lãi suất lender
                 locale: 'en',
-                dateFormat: 'DD MMMM YYYY',
-                expectedFirstDepositOnDate: moment().format('DD MMMM YYYY'),
-                transferInterestToSavings: investmentSavingsAccountId ? true : false,
-                ...(investmentSavingsAccountId && {
-                    linkAccountId: investmentSavingsAccountId
-                })
+                dateFormat: 'dd MMMM yyyy',  // ✅ FIX: lowercase format for Fineract
             };
 
             this.logger.debug(`[createFixedDepositForLender] FD Payload:`, JSON.stringify(fdPayload, null, 2));

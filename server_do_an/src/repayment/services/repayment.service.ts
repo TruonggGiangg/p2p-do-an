@@ -7,6 +7,7 @@ import { FineractFixedDepositService } from '../../loan/services/fineract-fixed-
 import { FineractEscrowService } from '../../escrow/services/fineract-escrow.service';
 import { LoanContract, LoanContractSchema } from '../../loan/schemas/loan-contract.schema';
 import { InvestmentContract, InvestmentContractSchema } from '../../invest/schemas/investment-contract.schema';
+import { TransactionLogService } from '../../reconciliation/services/transaction-log.service';
 
 @Injectable()
 export class RepaymentService {
@@ -19,6 +20,7 @@ export class RepaymentService {
         private readonly fineractEscrowService: FineractEscrowService,
         private readonly fineractService: FineractService,
         private readonly fdService: FineractFixedDepositService,
+        private readonly transactionLogService: TransactionLogService, // Inject Transaction Log service
     ) { }
 
     /**
@@ -225,6 +227,18 @@ export class RepaymentService {
         // (Removed old distribution logic - now handled by FD method or legacy path)
 
         const totalDistributed = distributions.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+        // ✅ LOG REPAYMENT TO TRANSACTION LOG
+        await this.transactionLogService.logRepayment({
+            loanId: loan.contractId,
+            borrowerId: loan.borrower.toString(),
+            amount: repaymentAmount,
+            principalPortion: repaymentAmount - (distributions.reduce((sum, d) => sum + (d.interest || 0), 0)),
+            interestPortion: distributions.reduce((sum, d) => sum + (d.interest || 0), 0),
+            status: 'SUCCESS',
+        }).catch(err => {
+            this.logger.error(`Failed to log repayment: ${err.message}`);
+        });
 
         return {
             success: true,

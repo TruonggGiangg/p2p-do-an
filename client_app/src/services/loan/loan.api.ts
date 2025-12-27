@@ -47,8 +47,8 @@ const ENDPOINTS = {
     transactions: (id: string) => `/loan/${id}/transactions`,
     outstanding: (id: string) => `/loan/${id}/outstanding`,
     prepayAmount: (id: string) => `/loan/${id}/prepay-amount`,
-    repay: '/loan/repay',
-    prepay: '/loan/prepay',
+    repay: '/repayment/repay',      // ✅ Fixed: Use RepaymentController
+    prepay: '/repayment/prepay',    // ✅ Fixed: Use RepaymentController with lender distribution
     blockchainStatus: '/loan/blockchain/status',
     disburse: (id: string) => `/loan/${id}/disburse`,
     // Wallet endpoints

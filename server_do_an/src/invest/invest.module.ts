@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
@@ -10,6 +10,7 @@ import { LoanContract, LoanContractSchema } from '../loan/schemas';
 import { FineractService } from '../loan/services/fineract.service';
 import { EscrowModule } from '../escrow/escrow.module';
 import { LoanModule } from '../loan/loan.module'; // Import for FixedDepositService
+import { ReconciliationModule } from '../reconciliation/reconciliation.module'; // Import for TransactionLogService
 
 @Module({
     imports: [
@@ -24,6 +25,7 @@ import { LoanModule } from '../loan/loan.module'; // Import for FixedDepositServ
         ]),
         EscrowModule, // Import for FineractEscrowService
         LoanModule, // Import for FixedDepositService
+        forwardRef(() => ReconciliationModule), // Import for TransactionLogService (avoid circular dependency)
     ],
     controllers: [InvestController],
     providers: [InvestService, FineractService],

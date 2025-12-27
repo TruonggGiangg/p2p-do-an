@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
@@ -13,6 +13,7 @@ import { FineractEscrowService } from '../escrow/services/fineract-escrow.servic
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
 import { Wallet, WalletSchema } from '../invest/schemas/wallet.schema';
+import { ReconciliationModule } from '../reconciliation/reconciliation.module';
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { Wallet, WalletSchema } from '../invest/schemas/wallet.schema';
         ]),
         ConfigModule,
         HttpModule,
+        forwardRef(() => ReconciliationModule), // Import for TransactionLogService
     ],
     controllers: [RepaymentController],
     providers: [

@@ -15,6 +15,7 @@ import { LoanContract } from '../loan/schemas';
 import { FineractService } from '../loan/services/fineract.service';
 import { FineractEscrowService } from '../escrow/services/fineract-escrow.service';
 import { FixedDepositService } from '../loan/services/fixed-deposit.service';
+import { TransactionLogService } from '../reconciliation/services/transaction-log.service';
 
 /**
  * User interface from authentication
@@ -55,6 +56,7 @@ export class InvestService {
         private readonly escrowService: FineractEscrowService,
         private readonly configService: ConfigService,
         private readonly fixedDepositService: FixedDepositService, // NEW: Inject FD service
+        private readonly transactionLogService: TransactionLogService, // NEW: Inject Transaction Log service
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
     }
@@ -306,6 +308,20 @@ export class InvestService {
         }
 
         this.logger.log(`Investment created: ${contractId}`);
+
+        // ✅ LOG INVESTMENT TO TRANSACTION LOG
+        await this.transactionLogService.logInvestment({
+            investmentId: investment.contractId,
+            loanId: loanContract.contractId,
+            lenderId: user._id,
+            amount: investmentCapital,
+            fineractTransferId: escrowTransferId ? parseInt(escrowTransferId) : undefined,
+            status: 'SUCCESS',
+        }).catch(err => {
+            this.logger.error(`Failed to log investment: ${err.message}`);
+            // Don't throw - logging failure shouldn't break the flow
+        });
+
         return investment;
     }
 
