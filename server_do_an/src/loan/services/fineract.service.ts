@@ -1284,4 +1284,45 @@ export class FineractService {
             return [];
         }
     }
+
+
+    // ==========================================
+    // RECONCILIATION METHODS
+    // ==========================================
+
+    /**
+     * Get Fixed Deposit Account Details
+     */
+    async getFixedDepositDetails(fdAccountId: number): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${fdAccountId}`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers })
+            );
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`Failed to get FD details ${fdAccountId}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get Savings Account Transactions
+     */
+    async getAccountTransactions(savingsAccountId: number): Promise<any[]> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}/transactions`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers })
+            );
+            return response.data.transactions || [];
+        } catch (error: any) {
+            this.logger.error(`Failed to get transactions for ${savingsAccountId}: ${error.message}`);
+            return [];
+        }
+    }
 }

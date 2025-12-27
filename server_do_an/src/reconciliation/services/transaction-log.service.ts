@@ -106,7 +106,7 @@ export class TransactionLogService {
                 transactionType: 'REPAY',
                 amount: params.amount,
                 status: params.status || 'SUCCESS',
-                p2pContext: `Borrower trả ${params.amount.toLocaleString('vi-VN')} VND cho Loan ${params.loanId}`,
+                p2pContext: 'Người vay trả nợ',
                 loanId: params.loanId,
                 borrowerId: params.borrowerId,
                 fineractTransactionId: params.fineractTransactionId,
@@ -135,6 +135,7 @@ export class TransactionLogService {
         lenderId: string;
         amount: number;
         action: 'FD_CREATE' | 'FD_TRANSFER' | 'FD_CLOSE';
+        fineractTransactionId?: number; // Added
         status?: string;
     }) {
         try {
@@ -143,10 +144,13 @@ export class TransactionLogService {
                 transactionType: params.action,
                 amount: params.amount,
                 status: params.status || 'SUCCESS',
-                p2pContext: `${params.action} cho Fixed Deposit ${params.fdAccountId} (Investment ${params.investmentId})`,
+                p2pContext: params.action === 'FD_CLOSE'
+                    ? 'Hoàn vốn FD'
+                    : 'Gửi vào FD',
                 investmentId: params.investmentId,
                 lenderId: params.lenderId,
                 fineractFixedDepositAccountId: params.fdAccountId,
+                fineractTransactionId: params.fineractTransactionId, // Saved
                 metadata: {
                     action: params.action.toLowerCase(),
                     timestamp: new Date(),
@@ -179,5 +183,73 @@ export class TransactionLogService {
             .find({ lenderId })
             .sort({ createdAt: -1 })
             .exec();
+    }
+    /**
+     * Ghi log Distribution (Phân phối tiền cho Lender từ Escrow)
+     */
+    async logDistribution(params: {
+        loanId: string;
+        lenderId: string;
+        amount: number;
+        type: 'PRINCIPAL' | 'INTEREST' | 'BOTH';
+        fineractTransactionId?: number; // Added
+        status?: string;
+    }) {
+        try {
+            const log = new this.transactionLogModel({
+                transactionId: `TXN_DIST_${Date.now()}`,
+                transactionType: 'DISTRIBUTION',
+                amount: params.amount,
+                status: params.status || 'SUCCESS',
+                p2pContext: 'Phân phối gốc & lãi cho nhà đầu tư',
+                loanId: params.loanId,
+                lenderId: params.lenderId,
+                fineractTransactionId: params.fineractTransactionId, // Saved
+                metadata: {
+                    action: 'distribution',
+                    type: params.type,
+                    timestamp: new Date(),
+                },
+            });
+
+            await log.save();
+            this.logger.log(`[TransactionLog] DISTRIBUTION logged: ${log.transactionId}`);
+            return log;
+        } catch (error) {
+            this.logger.error(`[TransactionLog] Failed to log distribution: ${error.message}`);
+        }
+    }
+
+    /**
+     * Ghi log Ký quỹ (Lender -> Escrow)
+     */
+    async logEscrowTransfer(params: {
+        loanId: string;
+        lenderId: string;
+        amount: number;
+        fineractTransactionId?: number;
+    }) {
+        try {
+            const log = new this.transactionLogModel({
+                transactionId: `TXN_ESCROW_${Date.now()}`,
+                transactionType: 'ESCROW_TRANSFER',
+                amount: params.amount,
+                status: 'SUCCESS',
+                p2pContext: 'Ký quỹ đầu tư',
+                loanId: params.loanId,
+                lenderId: params.lenderId,
+                fineractTransactionId: params.fineractTransactionId,
+                metadata: {
+                    action: 'escrow_funding',
+                    timestamp: new Date(),
+                },
+            });
+
+            await log.save();
+            this.logger.log(`[TransactionLog] ESCROW_TRANSFER logged: ${log.transactionId}`);
+            return log;
+        } catch (error) {
+            this.logger.error(`[TransactionLog] Failed to log escrow transfer: ${error.message}`);
+        }
     }
 }

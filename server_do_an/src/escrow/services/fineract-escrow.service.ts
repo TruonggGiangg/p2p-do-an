@@ -114,7 +114,7 @@ export class FineractEscrowService {
                 lenderAccountId,
                 this.escrowAccountId,
                 escrow.amount,
-                `Escrow fund: ${escrowId}`
+                'Ký quỹ đầu tư'
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;
@@ -268,7 +268,7 @@ export class FineractEscrowService {
                 this.escrowAccountId,
                 borrowerAccountId,
                 totalAmount,
-                `Loan disbursement: ${escrowIds.length} escrows (${escrowIds[0]}...)`
+                'Giải ngân'
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;

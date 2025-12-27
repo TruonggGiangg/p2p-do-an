@@ -96,6 +96,7 @@ export default function RepaymentScreen() {
                 // For prepay, still use loanApi
                 const dateStr = transactionDate.toISOString().split('T')[0];
                 await loanApi.prepayLoan({
+                    loanId: loanDetails.contractId || String(loanDetails.fineractLoanId), // ✅ Add loanId for server
                     fineractLoanId: loanDetails.fineractLoanId,
                     transactionAmount: numAmount,
                     transactionDate: dateStr,

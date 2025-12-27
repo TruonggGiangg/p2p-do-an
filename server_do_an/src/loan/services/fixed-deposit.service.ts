@@ -106,6 +106,7 @@ export class FixedDepositService {
                 depositPeriodFrequencyId: 2, // Months
                 locale: 'en',
                 dateFormat: 'dd MMMM yyyy',
+                linkAccountId: investmentSavingsAccountId, // Auto-debit from Linked Savings
                 // ✅ Add inline chart with explicit interest rate
                 charts: [
                     {
@@ -342,8 +343,43 @@ export class FixedDepositService {
     /**
      * Kiểm tra xem có bật Fixed Deposit flow không
      */
-    isFixedDepositFlowEnabled(): boolean {
-        return this.configService.get<boolean>('ENABLE_FIXED_DEPOSIT_FLOW') === true ||
-            this.configService.get<string>('ENABLE_FIXED_DEPOSIT_FLOW') === 'true';
+    /**
+     * Rút tiền từ FD về Escrow (khi giải ngân)
+     */
+    async withdrawToEscrow(fdAccountId: number, amount: number) {
+        try {
+            const escrowAccountId = this.fineractService.getEscrowAccountId();
+            const adminClientId = this.fineractService.getAdminClientId();
+
+            this.logger.log(`[withdrawToEscrow] Transferring ${amount} from FD ${fdAccountId} to Escrow ${escrowAccountId}`);
+
+            const headers = await this.getHeaders();
+            const response = await this.httpService.post(
+                `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`,
+                {
+                    fromOfficeId: 1,
+                    fromClientId: null, // FD owner (System/Lender?) - Try null for admin initiated
+                    fromAccountType: 3, // Fixed Deposit
+                    fromAccountId: fdAccountId,
+                    toOfficeId: 1,
+                    toClientId: adminClientId,
+                    toAccountType: 1, // Savings
+                    toAccountId: escrowAccountId,
+                    transferDate: moment.utc().format('D MMMM YYYY'),
+                    transferAmount: amount,
+                    transferDescription: `Disbursement transfer from FD ${fdAccountId}`,
+                    locale: 'en',
+                    dateFormat: 'dd MMMM yyyy'
+                },
+                { headers }
+            ).toPromise();
+
+            this.logger.log(`[withdrawToEscrow] Success: ${response?.data?.resourceId}`);
+            return response?.data;
+        } catch (error) {
+            this.logger.error(`[withdrawToEscrow] Failed: ${error.message}`);
+            // Log detail logic if needed
+            throw error;
+        }
     }
 }

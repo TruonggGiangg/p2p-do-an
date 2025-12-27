@@ -40,6 +40,21 @@ export class FineractFixedDepositService {
 
     constructor(private readonly fineractService: FineractService) { }
 
+    // Helper to get httpService from FineractService
+    private get httpService() {
+        return this.fineractService['httpService'];
+    }
+
+    // Helper to get baseUrl from FineractService
+    private get baseUrl() {
+        return this.fineractService['baseUrl'];
+    }
+
+    // Helper to get headers from FineractService
+    private async getHeaders() {
+        return await this.fineractService['getHeaders']();
+    }
+
     /**
      * Create Fixed Deposit Account for lender
      * @param clientId - Lender's Fineract client ID
@@ -57,6 +72,7 @@ export class FineractFixedDepositService {
         interestRate: number,
         periodMonths: number,
         externalId?: string,
+        linkAccountId?: number, // Optional, for auto-debit
     ): Promise<FixedDepositAccount> {
         this.logger.log(
             `Creating Fixed Deposit for client ${clientId}, amount: ${depositAmount}, target rate: ${interestRate}%`,
@@ -75,6 +91,7 @@ export class FineractFixedDepositService {
                 depositPeriodFrequencyId: 2, // Months
                 locale: 'en',
                 dateFormat: 'dd MMMM yyyy',
+                linkAccountId: linkAccountId, // Auto-debit from this account
             };
 
             // Add externalId if provided (for reconciliation)
@@ -82,10 +99,16 @@ export class FineractFixedDepositService {
                 payload.externalId = externalId;
             }
 
-            const response = await this.fineractService['adminApi'].post(
-                '/fixeddepositaccounts',
+            const headers = await this.getHeaders();
+            const response = await this.httpService.post(
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts`,
                 payload,
-            );
+                { headers }
+            ).toPromise();
+
+            if (!response || !response.data) {
+                throw new Error('Failed to create Fixed Deposit: No response from Fineract');
+            }
 
             this.logger.log(`✓ Fixed Deposit created: ID ${response.data.savingsId}`);
 
@@ -200,11 +223,17 @@ export class FineractFixedDepositService {
      */
     async getFixedDepositDetails(accountId: number): Promise<FixedDepositDetails> {
         try {
-            const response = await this.fineractService['adminApi'].get(
-                `/fixeddepositaccounts/${accountId}`,
-            );
+            const headers = await this.getHeaders();
+            const response = await this.httpService.get(
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${accountId}`,
+                { headers }
+            ).toPromise();
 
-            const data = response.data;
+            const data = response?.data;
+
+            if (!data) {
+                throw new Error('Failed to get FD details: No data received');
+            }
 
             return {
                 accountId: data.id,
@@ -247,8 +276,9 @@ export class FineractFixedDepositService {
 
             // Close FD with correct parameters
             // onAccountClosureId enum: 100 = Reinvest, 200 = Transfer to Savings, 300 = Withdraw
-            const response = await this.fineractService['adminApi'].post(
-                `/fixeddepositaccounts/${accountId}?command=prematureClose`,
+            const headers = await this.getHeaders();
+            const response = await this.httpService.post(
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${accountId}?command=prematureClose`,
                 {
                     closedOnDate: this.getFormattedDate(new Date()),
                     onAccountClosureId: 200, // 200 = Transfer to Savings Account
@@ -256,8 +286,14 @@ export class FineractFixedDepositService {
                     paymentTypeId: 1,
                     locale: 'en',
                     dateFormat: 'dd MMMM yyyy',
+                    note: 'Hoàn vốn FD',
                 },
-            );
+                { headers }
+            ).toPromise();
+
+            if (!response || !response.data) {
+                throw new Error('Failed to close FD: No response from Fineract');
+            }
 
             this.logger.log(
                 `✓ Fixed Deposit ${accountId} closed (premature), amount: ${closureAmount}`,
@@ -273,6 +309,49 @@ export class FineractFixedDepositService {
                 `✗ Error closing FD: ${error.response?.data ? JSON.stringify(error.response.data) : error.message}`,
             );
             throw error;
+        }
+    }
+
+    /**
+     * Withdraw from Fixed Deposit (Partial Liquidation)
+     * Used for Partial Principal Repayment sync
+     */
+    async withdrawFixedDeposit(
+        accountId: number,
+        amount: number,
+        note: string = 'Partial withdrawal'
+    ): Promise<boolean> {
+        if (amount <= 0) return true;
+
+        this.logger.log(`Withdrawing ${amount} from FD ${accountId} (Partial Liquidation)`);
+
+        try {
+            const headers = await this.getHeaders();
+            // Try standard withdrawal command (works if FD is configured as Savings-like)
+            // Or specific FD command if available. 
+            // Using 'withdrawal' command which is standard for savings-family accounts.
+            const response = await this.httpService.post(
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${accountId}/transactions?command=withdrawal`,
+                {
+                    locale: 'en',
+                    dateFormat: 'dd MMMM yyyy',
+                    transactionDate: this.getFormattedDate(new Date()),
+                    transactionAmount: amount,
+                    note: note
+                },
+                { headers }
+            ).toPromise();
+
+            if (response && response.data && response.data.resourceId) {
+                this.logger.log(`✓ Withdrew ${amount} from FD ${accountId}. Txn: ${response.data.resourceId}`);
+                return true;
+            }
+            return false;
+        } catch (error: any) {
+            this.logger.warn(
+                `Could not withdraw from FD ${accountId} (Product might not support Partial Liquidation). Manual adjustment needed. Error: ${error.message}`
+            );
+            return false; // Soft fail - allow flow to continue but warn admin
         }
     }
 

@@ -119,11 +119,15 @@ export class RepaymentController {
             });
 
             return res.status(HttpStatus.OK).json({
-                success: true,
-                loanId,
-                amount,
-                fineractRepayment: fineractRepaymentResult,
-                distribution: distributionResult
+                statusCode: HttpStatus.OK,
+                message: 'Repayment processed successfully',
+                data: {
+                    success: true,
+                    loanId,
+                    amount,
+                    fineractRepayment: fineractRepaymentResult,
+                    distribution: distributionResult
+                }
             });
 
         } catch (error) {
@@ -145,19 +149,50 @@ export class RepaymentController {
 
             this.logger.log(`Prepayment request: loanId=${loanId}, user=${userId}`);
 
-            // 1. Find Loan
+            // ✅ Validate loanId
+            if (!loanId) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'loanId is required' });
+            }
+
+            // 1. Find Loan - support multiple ID formats
             let loan = await this.loanModel.findOne({ contractId: loanId });
-            if (!loan && loanId.startsWith('LOAN_')) {
+
+            // Try by LOAN_xxx format
+            if (!loan && typeof loanId === 'string' && loanId.startsWith('LOAN_')) {
                 const fineractId = parseInt(loanId.replace('LOAN_', ''), 10);
                 loan = await this.loanModel.findOne({ fineractLoanId: fineractId });
+            }
+
+            // ✅ Try by fineractLoanId if loanId is numeric
+            if (!loan) {
+                const numericId = parseInt(String(loanId), 10);
+                if (!isNaN(numericId)) {
+                    loan = await this.loanModel.findOne({ fineractLoanId: numericId });
+                }
             }
 
             if (!loan) {
                 return res.status(HttpStatus.NOT_FOUND).json({ message: 'Loan not found' });
             }
 
-            // 2. Check ownership
-            if (loan.borrower.toString() !== userId) {
+            // 2. Check ownership - support multiple ID formats
+            const loanData = loan as any; // Cast to access dynamic properties
+            const borrowerId = loanData.borrower?.toString();
+            const borrowerKeycloakId = loanData.borrowerKeycloakId || loanData.borrowerKeycloakUserId;
+            const userKeycloakId = user.keycloakUserId || user.sub || user.id;
+            const userUsername = user.username || user.preferred_username; // ✅ Phone number
+
+            this.logger.debug(`[Prepay] Checking ownership: borrowerId=${borrowerId}, userUsername=${userUsername}, userId=${userId}`);
+
+            // ✅ Compare with username (phone number) as well
+            const isOwner = borrowerId === userId ||
+                borrowerId === userUsername ||  // ✅ Phone number match
+                borrowerKeycloakId === userKeycloakId ||
+                borrowerKeycloakId === userId ||
+                borrowerId === userKeycloakId;
+
+            if (!isOwner) {
+                this.logger.warn(`[Prepay] Authorization failed for loan ${loan.contractId}`);
                 return res.status(HttpStatus.FORBIDDEN).json({ message: 'Not authorized to prepay this loan' });
             }
 
@@ -185,13 +220,33 @@ export class RepaymentController {
             this.logger.log(`  - Interest (EXACT): ${interestPortion}`);
             this.logger.log(`  - Total: ${totalPrepayAmount}`);
 
-            // 4. Validate borrower balance
-            const wallet = await this.walletModel.findOne({ p2pUserId: userId });
-            if (!wallet || !wallet.fineractClientId) {
-                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Wallet not linked' });
+            // 4. Validate borrower - use loan's borrowerFineractClientId or resolve from wallet
+            let borrowerFineractClientId = loanData.borrowerFineractClientId;
+
+            if (!borrowerFineractClientId) {
+                // Try finding wallet by multiple ID formats
+                let wallet = await this.walletModel.findOne({ p2pUserId: userId });
+                if (!wallet) {
+                    wallet = await this.walletModel.findOne({ p2pUserId: userUsername }); // phone number
+                }
+
+                if (wallet?.fineractClientId) {
+                    borrowerFineractClientId = wallet.fineractClientId;
+                } else {
+                    // ✅ Try to resolve via Fineract service
+                    try {
+                        borrowerFineractClientId = await this.fineractService.resolveClientId(userUsername || userId);
+                    } catch (e) {
+                        this.logger.warn(`[Prepay] Could not resolve Fineract client: ${e}`);
+                    }
+                }
             }
 
-            const clientDetails = await this.fineractService.getClientDetails(Number(wallet.fineractClientId));
+            if (!borrowerFineractClientId) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Wallet not linked to Fineract' });
+            }
+
+            const clientDetails = await this.fineractService.getClientDetails(Number(borrowerFineractClientId));
             const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
 
             if (!savingsAccount || savingsAccount.accountBalance < totalPrepayAmount) {
@@ -205,17 +260,17 @@ export class RepaymentController {
                 loan.fineractLoanId,
                 totalPrepayAmount,
                 new Date().toISOString().split('T')[0],
-                `P2P Prepayment (Full Settlement) for ${loanId}`
+                'Người vay trả nợ'
             );
 
             // 6. Transfer Borrower → Escrow
             const transferRes = await this.fineractService.transferFunds(
-                Number(wallet.fineractClientId),
+                Number(borrowerFineractClientId),
                 this.escrowService['adminClientId'],
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 totalPrepayAmount,
-                `Prepayment escrow for ${loanId}`
+                'Người vay trả nợ'
             );
 
             // 7. ✅ Fetch investments and prepare for FD distribution
@@ -234,8 +289,10 @@ export class RepaymentController {
                     const lenderId = inv.lender['_id'] ? inv.lender['_id'].toString() : inv.lender.toString();
                     return {
                         _id: inv._id,
+                        contractId: inv.contractId, // ✅ Pass contractId for logging
                         lenderId,
                         amount: inv.info.capital,
+                        lenderFineractClientId: inv.lenderFineractClientId, // ✅ Pass existing client ID
                         fineractFixedDepositAccountId: inv.fineractFixedDepositAccountId,
                         fixedDepositInterestRate: inv.fixedDepositInterestRate || loan.lenderInterestRate
                     };
@@ -275,13 +332,17 @@ export class RepaymentController {
             this.logger.log(`✓ Loan ${loanId} prepaid and closed successfully`);
 
             return res.status(HttpStatus.OK).json({
-                success: true,
-                loanId,
-                prepaymentAmount: totalPrepayAmount,
-                principalOutstanding,
-                interestPortion, // Changed from interestOutstanding
-                distribution: distributionResult,
-                loanStatus: 'closed'
+                statusCode: HttpStatus.OK,
+                message: 'Prepayment processed successfully',
+                data: {
+                    success: true,
+                    loanId,
+                    prepaymentAmount: totalPrepayAmount,
+                    principalOutstanding,
+                    interestPortion, // Changed from interestOutstanding
+                    distribution: distributionResult,
+                    loanStatus: 'closed'
+                }
             });
 
         } catch (error: any) {
@@ -320,9 +381,13 @@ export class RepaymentController {
             }
 
             return res.status(HttpStatus.OK).json({
-                loanId,
-                schedule: schedule || { periods: [] },
-                source: schedule ? 'fineract' : 'mongodb'
+                statusCode: HttpStatus.OK,
+                message: 'Repayment schedule retrieved successfully',
+                data: {
+                    loanId,
+                    schedule: schedule || { periods: [] },
+                    source: schedule ? 'fineract' : 'mongodb'
+                }
             });
 
         } catch (error: any) {

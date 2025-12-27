@@ -75,6 +75,9 @@ export interface RateCheckResponse {
     rateSource: string;
 }
 
+import { FixedDepositService } from './services/fixed-deposit.service';
+import { InvestmentContract } from '../invest/schemas/investment-contract.schema';
+
 @Injectable()
 export class LoanService {
     private readonly logger = new Logger(LoanService.name);
@@ -83,11 +86,14 @@ export class LoanService {
     constructor(
         @InjectModel(LoanContract.name)
         private readonly loanContractModel: Model<LoanContract>,
+        @InjectModel(InvestmentContract.name)
+        private readonly investmentContractModel: Model<InvestmentContract>,
         private readonly configService: ConfigService,
         private readonly blockchainService: BlockchainService,
         private readonly fineractService: FineractService,
         private readonly creditScoringService: CreditScoringService,
         private readonly rateCalculator: InterestRateCalculatorService,
+        private readonly fixedDepositService: FixedDepositService,
     ) {
         this.timezone = this.configService.get<string>('TIMEZONE') || 'Asia/Ho_Chi_Minh';
     }
@@ -1037,7 +1043,29 @@ export class LoanService {
             throw new Error(`Không thể giải ngân khoản vay trên Fineract: ${error.message}`);
         }
 
-        // 3. Transfer funds from Escrow → Borrower Savings Account
+        // 3. [NEW] Transfer Funds: FD -> Escrow (Activate Funds)
+        try {
+            const investments = await this.investmentContractModel.find({ loanContract: loan._id });
+            this.logger.log(`[disburseLoan] Found ${investments.length} investments. Processing FD withdrawals...`);
+
+            for (const investment of investments) {
+                if (investment.fineractFixedDepositAccountId) {
+                    try {
+                        await this.fixedDepositService.withdrawToEscrow(
+                            investment.fineractFixedDepositAccountId,
+                            investment.info.capital
+                        );
+                    } catch (fdError) {
+                        this.logger.error(`Failed to withdraw FD ${investment.fineractFixedDepositAccountId}: ${fdError.message}`);
+                        // Continue to ensure loan disbursement happens (reconciliation will fix later)
+                    }
+                }
+            }
+        } catch (error) {
+            this.logger.warn(`Error processing FD withdrawals: ${error.message}`);
+        }
+
+        // 4. Transfer funds from Escrow → Borrower Savings Account
         let transferResult: any = null;
         try {
             this.logger.log(`Transferring ${loan.info.capital} VND from Escrow to Borrower...`);

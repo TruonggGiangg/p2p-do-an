@@ -148,6 +148,7 @@ export class InvestService {
         // 2.5. Create escrow and transfer funds: Lender → Escrow
         let escrowId: string | null = null;
         let escrowTransferId: string | null = null;
+        let lenderSavingsAccountId: number | undefined;
 
         // Resolve lender's Fineract client ID
         let lenderFineractClientId = await this.fineractService.resolveClientId(user.username);
@@ -196,6 +197,14 @@ export class InvestService {
                     lenderSavingsAccount.id
                 );
                 this.logger.log(`[Escrow] Funded escrow ${escrowId}, txn: ${escrowTransferId}`);
+
+                // ✅ LOG ESCROW TRANSFER (Ký quỹ)
+                await this.transactionLogService.logEscrowTransfer({
+                    loanId: loanContract.contractId,
+                    lenderId: String(user._id),
+                    amount: investmentCapital,
+                    fineractTransactionId: Number(escrowTransferId)
+                });
 
             } catch (transferError: any) {
                 this.logger.error(`[Escrow] Failed to fund escrow: ${transferError.message}`);
@@ -260,8 +269,49 @@ export class InvestService {
             fixedDepositBalance: investmentCapital,
         });
 
+        // ✅ DEBUG: Verify lenderFineractClientId is being saved
+        this.logger.debug(`[Investment] Creating investment ${contractId} with lenderFineractClientId: ${investment.lenderFineractClientId}`);
 
         await investment.save();
+
+        // 7. [ENABLED] Create Fixed Deposit Account on Fineract (Primary Funding Source)
+        if (investment.lenderFineractClientId && this.fineractService.isFineractEnabled()) {
+            try {
+                this.logger.log(`[Investment] Creating Fixed Deposit for ${contractId}...`);
+                const fdResult = await this.fixedDepositService.createFixedDepositForLender({
+                    investmentContract: investment,
+                    loanContract: loanContract,
+                    capitalAmount: investmentCapital,
+                    lenderFineractClientId: investment.lenderFineractClientId,
+                    investmentSavingsAccountId: lenderSavingsAccountId // Pass Linked Account for Auto-Debit
+                });
+
+                // Update investment with FD details
+                investment.fineractFixedDepositAccountId = fdResult.fdAccountId;
+                investment.fixedDepositInterestRate = fdResult.fdRate;
+                investment.fixedDepositMaturityDate = fdResult.maturityDate;
+                investment.fixedDepositStatus = 'active';
+
+                await investment.save();
+
+                this.logger.log(`[Investment] ✅ Fixed Deposit created: ${fdResult.fdAccountId}`);
+
+                // Log FD Creation
+                await this.transactionLogService.logFDTransfer({
+                    fdAccountId: fdResult.fdAccountId,
+                    investmentId: investment.contractId,
+                    lenderId: String(user._id),
+                    amount: investmentCapital,
+                    action: 'FD_CREATE',
+                    status: 'SUCCESS',
+                    fineractTransactionId: 0 // FD Creation is the transaction
+                });
+
+            } catch (error) {
+                this.logger.error(`[Investment] ❌ Failed to create Fixed Deposit: ${error.message}`);
+                // Don't rollback investment, but maybe mark as 'fd_failed' or rely on reconciliation to fix
+            }
+        }
 
         // 6. Update loan contract
         await this.loanContractModel.updateOne(
@@ -412,6 +462,16 @@ export class InvestService {
                     }
 
                     this.logger.log(`[Disbursement] Total released to borrower: ${totalAmount.toLocaleString('vi-VN')} VND (1 transaction)`);
+
+                    // ✅ NEW: Log Disbursement
+                    await this.transactionLogService.logDisbursement({
+                        loanId: loanContract.contractId,
+                        borrowerId: loanContract.borrowerId,
+                        amount: totalAmount,
+                        fineractLoanId: loanContract.fineractLoanId,
+                        fineractDisbursementId: Number(releaseTransactionId),
+                        status: 'SUCCESS'
+                    });
 
                     // ✅ NEW: Create Fixed Deposit accounts for each investment using FixedDepositService
                     this.logger.log(`[FD Creation] Creating Fixed Deposit accounts for ${escrows.length} investments...`);
