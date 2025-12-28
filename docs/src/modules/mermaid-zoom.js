@@ -30,12 +30,60 @@ if (ExecutionEnvironment.canUseDOM) {
     borderRadius: '8px',
     backgroundColor: '#1b1b1d', // Dark background as requested (using Docusaurus dark surface tone or just black)
     padding: '20px',
+    paddingTop: '50px', // Space for close button
     boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    border: '1px solid #444', 
+    display: 'block', 
+    textAlign: 'center', 
+    border: '1px solid #444',
+    cursor: 'grab', // Indicate draggable
   });
+
+  // Drag to Scroll Logic
+  let pos = { top: 0, left: 0, x: 0, y: 0 };
+  let isDragging = false;
+
+  const mouseDownHandler = (e) => {
+    // Ignore clicks on buttons/toolbar/closeBtn
+    if (e.target.tagName === 'BUTTON') return;
+    
+    isDragging = true;
+    contentContainer.style.cursor = 'grabbing';
+    contentContainer.style.userSelect = 'none';
+
+    pos = {
+      left: contentContainer.scrollLeft,
+      top: contentContainer.scrollTop,
+      // Get the current mouse position
+      x: e.clientX,
+      y: e.clientY,
+    };
+
+    document.addEventListener('mousemove', mouseMoveHandler);
+    document.addEventListener('mouseup', mouseUpHandler);
+  };
+
+  const mouseMoveHandler = (e) => {
+    if (!isDragging) return;
+    e.preventDefault(); 
+    // How far the mouse has been moved
+    const dx = e.clientX - pos.x;
+    const dy = e.clientY - pos.y;
+
+    // Scroll the element
+    contentContainer.scrollTop = pos.top - dy;
+    contentContainer.scrollLeft = pos.left - dx;
+  };
+
+  const mouseUpHandler = () => {
+    isDragging = false;
+    contentContainer.style.cursor = 'grab';
+    contentContainer.style.userSelect = 'auto';
+
+    document.removeEventListener('mousemove', mouseMoveHandler);
+    document.removeEventListener('mouseup', mouseUpHandler);
+  };
+
+  contentContainer.addEventListener('mousedown', mouseDownHandler);
   
   // Close Button
   const closeBtn = document.createElement('button');
@@ -131,8 +179,19 @@ if (ExecutionEnvironment.canUseDOM) {
 
   toolbar.appendChild(btnOut);
   toolbar.appendChild(btnReset);
-  toolbar.appendChild(btnIn);
-  
+  // Mouse Wheel Zoom
+  contentContainer.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey || true) { // Always zoom on wheel in lightbox
+        if (e.deltaY < 0) {
+            currentScale = Math.min(500, currentScale + 10);
+        } else {
+            currentScale = Math.max(50, currentScale - 10);
+        }
+        updateZoom();
+    }
+  }, { passive: false });
+
   // Append toolbar to lightbox (fixed position relative to screen)
   lightbox.appendChild(toolbar);
 
@@ -196,7 +255,8 @@ if (ExecutionEnvironment.canUseDOM) {
           maxHeight: 'none',
           cursor: 'grab',
           transform: 'none',
-          margin: 'auto', // Center it
+          display: 'block',
+          margin: '0 auto', // Center horizontally
         });
         
         clonedSvg.removeAttribute('height');

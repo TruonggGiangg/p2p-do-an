@@ -26,74 +26,98 @@ _(Nhấn vào hình để xem chi tiết)_
 sequenceDiagram
     autonumber
     
-    %% Config
-    participant User as 👤 Người dùng
-    participant App as 📱 Client App
-    participant KC as �️ Keycloak (IAM)
-    participant Server as ⚡ Server P2P
-    participant Store as 🔐 Secure Storage
+    %% Participants
+    actor User as 👤 User
+    participant App as 📱 React Native App
+    participant KC as 🔑 Keycloak Server
+    participant Server as 🖥️ NestJS Server
+    participant JWKS as 📜 Keycloak JWKS
+    participant Store as � SecureStore
     
-    %% PHASE 1
+    %% ========== PHASE 1: User nhập thông tin ==========
     rect rgb(30, 35, 45)
-        Note over User, App: 🟢 GIAI ĐOẠN 1: NHẬP LIỆU (USER INPUT)
-        User->>App: Mở App & Nhập SĐT/Mật khẩu
+        Note over User, App: PHASE 1: User Input
+        User->>App: Mở app, vào màn Login
+        User->>App: Nhập username: 0987654321
+        User->>App: Nhập password: TestClient123@
         User->>App: Nhấn nút "Đăng nhập"
-        activate App
-        App->>App: Validate định dạng SĐT
     end
     
-    %% PHASE 2
+    %% ========== PHASE 2: Xác thực với Keycloak ==========
     rect rgb(45, 40, 25)
-        Note over App, KC: 🟡 GIAI ĐOẠN 2: XÁC THỰC (AUTHENTICATION)
-        App->>KC: POST /token (User Credentials)
-        activate KC
+        Note over App, KC: PHASE 2: Keycloak Authentication
+        App->>KC: POST /realms/fineract/protocol/openid-connect/token
+        Note right of App: Body (form-urlencoded):<br/>grant_type=password<br/>client_id=community-app<br/>username=0987654321<br/>password=TestClient123@
         
-        Note right of App: Gửi thông tin đã mã hóa<br/>qua kênh HTTPS an toàn
+        KC->>KC: Kiểm tra username tồn tại?
+        KC->>KC: Kiểm tra password đúng?
         
-        KC->>KC: Kiểm tra tồn tại User?
-        KC->>KC: Verify Hash Mật khẩu
-        
-        alt 🔴 Sai thông tin
-            KC-->>App: 401 Unauthorized
-            App-->>User: Báo lỗi "Sai tài khoản/mật khẩu"
-        else 🟢 Hợp lệ
-            KC->>KC: Ký (Sign) JWT Token (RS256)
-            KC-->>App: 200 OK (Access + Refresh Token)
+        alt ❌ Sai thông tin
+            KC-->>App: 401 { error: "invalid_grant" }
+            App-->>User: Hiển thị "Sai tên đăng nhập hoặc mật khẩu"
+        else ✅ Đúng thông tin
+            KC->>KC: Tạo JWT Token
+            Note right of KC: 1. Header: { alg: RS256, kid: "abc123" }<br/>2. Payload: { sub, username, email, roles }<br/>3. Signature: SIGN(header.payload, PRIVATE_KEY)
+            KC-->>App: 200 OK
+            Note right of KC: {<br/>  access_token: "eyJhbG...",<br/>  refresh_token: "eyJhbG...",<br/>  expires_in: 300,<br/>  token_type: "Bearer"<br/>}
         end
-        deactivate KC
     end
     
-    %% PHASE 3
+    %% ========== PHASE 3: Sync với Server ==========
     rect rgb(25, 45, 30)
-        Note over App, Server: 🔵 GIAI ĐOẠN 3: ĐỒNG BỘ & KIỂM TRA (SYNC)
-        App->>Server: Gửi Token lên Server
-        activate Server
+        Note over App, Server: PHASE 3: Server Sync (Optional)
+        App->>Server: POST /auth/login
+        Note right of App: Headers:<br/>Authorization: Bearer eyJhbG...
         
-        Server->>Server: Decode JWT Header
-        Server->>Server: Verify Chữ ký điện tử (Signature)
-        note right of Server: Đảm bảo Token do đúng<br/>Keycloak cấp phát
+        Server->>Server: Đọc token từ header
+        Server->>Server: Decode JWT header
+        Note right of Server: header = { alg: "RS256", kid: "abc123" }
         
-        alt 🔴 Token Giả/Hết hạn
-            Server-->>App: 401 Invalid Token
-            App->>App: Logout & Xóa Session
-        else 🟢 Token Chuẩn
-            Server->>Server: Lấy thông tin User (Role, ID)
-            Server-->>App: Trả về Profile & Số dư
+        Server->>Server: Kiểm tra có kid?
+        alt ❌ Không có kid
+            Server-->>App: 401 "Token missing key id (kid)"
         end
-        deactivate Server
+        
+        %% Verify với Public Key
+        Server->>JWKS: GET /realms/fineract/protocol/openid-connect/certs
+        JWKS-->>Server: Public Keys (JWKS)
+        Note right of JWKS: { keys: [<br/>  { kid: "abc123", n: "...", e: "AQAB" },<br/>  { kid: "xyz789", n: "...", e: "AQAB" }<br/>]}
+        
+        Server->>Server: Tìm key có kid="abc123"
+        alt ❌ Không tìm thấy key
+            Server-->>App: 401 "Public key not found"
+        end
+        
+        Server->>Server: Chuyển JWK → PEM format
+        Server->>Server: jwt.verify(token, publicKey)
+        Note right of Server: 🔐 VERIFY SIGNATURE<br/>1. Decrypt signature bằng Public Key<br/>2. So sánh với header.payload<br/>3. Khớp → Token THẬT<br/>4. Không khớp → Token GIẢ
+        
+        alt ❌ Signature không khớp hoặc hết hạn
+            Server-->>App: 401 "Token không hợp lệ"
+        else ✅ Token hợp lệ
+            Server->>Server: Extract user từ payload
+            Server-->>App: 200 OK
+            Note right of Server: {<br/>  data: { _id, username, email, roles },<br/>  message: "Đăng nhập thành công"<br/>}
+        end
     end
     
-    %% PHASE 4
+    %% ========== PHASE 4: Lưu Token an toàn ==========
     rect rgb(40, 25, 45)
-        Note over App, Store: 🟣 GIAI ĐOẠN 4: LƯU TRỮ AN TOÀN (SECURE)
-        App->>Store: Lưu Access Token (ngắn hạn)
-        App->>Store: Lưu Refresh Token (dài hạn)
-        note right of Store: Mã hóa cứng bằng<br/>Keychain (iOS) / Keystore (Android)
+        Note over App, Store: PHASE 4: Secure Storage
+        App->>Store: SecureStore.setItemAsync('access_token', token)
+        Note right of Store: ⚡ Mã hóa bằng iOS Keychain<br/>⚡ Mã hóa bằng Android Keystore
+        App->>Store: SecureStore.setItemAsync('refresh_token', refreshToken)
+        App->>Store: AsyncStorage.setItem('user', JSON.stringify(user))
+        Note right of Store: User data (không nhạy cảm)
     end
     
-    %% DONE
-    App-->>User: Chuyển hướng vào Màn hình chính
-    deactivate App
+    %% ========== PHASE 5: Complete ==========
+    rect rgb(25, 45, 30)
+        Note over App, User: PHASE 5: Success
+        App->>App: setUser(user)
+        App->>App: Navigate to HomeScreen
+        App-->>User: ✅ "Đăng nhập thành công!"
+    end
 ```
 
 ### Giải thích quy trình
