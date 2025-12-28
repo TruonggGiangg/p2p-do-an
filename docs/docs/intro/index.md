@@ -1,40 +1,40 @@
 ---
 slug: /intro
 sidebar_position: 1
-title: Introduction
+title: Giới thiệu
 ---
 
-# P2P Lending Platform Documentation
+# P2P Lending Platform
 
-Welcome to the **P2P Lending Platform** developer hub. This documentation provides everything you need to understand, integrate, and operate our Peer-to-Peer lending system.
+Chào mừng đến với trang tài liệu kỹ thuật của **Hệ thống Cho vay Ngang hàng (P2P Lending Platform)**. Tài liệu này cung cấp toàn bộ thông tin cần thiết để hiểu, tích hợp và vận hành hệ thống.
 
-## What is P2P Lending?
+## P2P Lending là gì?
 
-Our platform connects **Investors** (Lenders) directly with **Borrowers**, eliminating traditional banking intermediaries. We leverage blockchain technology for transparency and a core banking engine (Fineract) for financial precision.
+Nền tảng của chúng tôi kết nối trực tiếp **Nhà đầu tư** (Lenders) với **Người vay** (Borrowers), loại bỏ các trung gian ngân hàng truyền thống để tối ưu hóa lợi nhuận. Hệ thống kết hợp sức mạnh của **Blockchain** (minh bạch) và **Core Banking** (chính xác).
 
-:::tip Key Value Proposition
-*   **Transparency**: Every loan entry is audited on Hyperledger Fabric.
-*   **Automation**: Smart matching and auto-disbursement.
-*   **Trust**: Funds are held in escrow until fully matched.
+:::tip Giá Trị Cốt Lõi
+*   **Minh Bạch Tuyệt Đối**: Mọi hợp đồng vay đều được ghi nhận (audit) trên Blockchain Hyperledger Fabric.
+*   **Tự Động Hóa**: Cơ chế khớp lệnh (Matching Engine) và giải ngân tự động.
+*   **An Toàn Vốn**: Mô hình Escrow đảm bảo dòng tiền được kiểm soát chặt chẽ cho đến khi khoản vay thành công.
 :::
 
-## Documentation Structure
+## Cấu trúc Tài liệu
 
-We have organized our documentation to help you find exactly what you need:
+Tài liệu được chia thành các phần chính để bạn dễ dàng tra cứu:
 
 <div className="row">
   <div className="col col--4">
     <div className="card">
       <div className="card__header">
-        <h3>💡 Concepts</h3>
+        <h3>🏗️ Kiến trúc Hệ thống</h3>
       </div>
       <div className="card__body">
         <p>
-          Understand the theory behind the platform, including the <strong>Money Flow</strong> and <strong>Escrow Model</strong>.
+          Hiểu sâu về các thành phần kỹ thuật: <strong>Microservices</strong>, <strong>Keycloak</strong>, <strong>Blockchain</strong> và <strong>NestJS</strong>.
         </p>
       </div>
       <div className="card__footer">
-        <a href="/docs/concepts/money-flow" className="button button--secondary button--block">Learn Concepts</a>
+        <a href="/docs/architecture/overview" className="button button--primary button--block">Xem Kiến Trúc</a>
       </div>
     </div>
   </div>
@@ -42,15 +42,15 @@ We have organized our documentation to help you find exactly what you need:
   <div className="col col--4">
     <div className="card">
       <div className="card__header">
-        <h3>📘 Guides</h3>
+        <h3>💡 Nghiệp vụ Cốt lõi</h3>
       </div>
       <div className="card__body">
         <p>
-          Step-by-step instructions for <strong>Investing</strong>, <strong>Borrowing</strong>, and performing <strong>Reconciliation</strong>.
+          Nắm vững logic vận hành: <strong>Dòng tiền (Money Flow)</strong>, <strong>Cơ chế Khớp lệnh</strong> và vai trò của <strong>Fineract</strong>.
         </p>
       </div>
       <div className="card__footer">
-        <a href="/docs/guides/lending/invest" className="button button--secondary button--block">Read Guides</a>
+        <a href="/docs/concepts/business-flow" className="button button--secondary button--block">Tìm hiểu Nghiệp vụ</a>
       </div>
     </div>
   </div>
@@ -58,15 +58,15 @@ We have organized our documentation to help you find exactly what you need:
   <div className="col col--4">
     <div className="card">
       <div className="card__header">
-        <h3>⚙️ Integration</h3>
+        <h3>📘 Hướng dẫn Vận hành</h3>
       </div>
       <div className="card__body">
         <p>
-          Deep dive into the <strong>Fineract Core</strong> and <strong>Blockchain</strong> integration details.
+          Hướng dẫn từng bước cho các tác vụ: <strong>Đầu tư</strong>, <strong>Vay vốn</strong>, và thực hiện <strong>Đối soát (Reconciliation)</strong>.
         </p>
       </div>
       <div className="card__footer">
-        <button className="button button--secondary button--block" disabled>Coming Soon</button>
+        <a href="/docs/guides/lending/invest" className="button button--secondary button--block">Xem Hướng dẫn</a>
       </div>
     </div>
   </div>
@@ -74,18 +74,12 @@ We have organized our documentation to help you find exactly what you need:
 
 <br/>
 
-## Technology Stack
+## Bắt đầu từ đâu?
 
-The platform is built on a modern, robust stack designed for financial security. For a deep dive, see **[Technology Stack](/docs/intro/tech-stack)**.
+Nếu bạn là **Developer** mới tham gia dự án:
+1.  Xem **[Công nghệ sử dụng](/docs/intro/tech-stack)** để cài đặt môi trường.
+2.  Đọc **[Tổng quan Kiến trúc](/docs/architecture/overview)** để hình dung bức tranh toàn cảnh.
 
-| Component | Technology | Role |
-|-----------|------------|------|
-| **Core Banking** | Apache Fineract | Account management, Ledger, Interest calculation. |
-| **Blockchain** | Hyperledger Fabric | Audit trail, Immutable record of Loan Contracts. |
-| **Backend** | NestJS (Node.js) | Orchestrator, Business Logic, API Gateway. |
-| **Database** | MongoDB | Fast path data storage, Transaction Logging. |
-| **Frontend** | React Native (Expo) | Cross-platform mobile application. |
-
-## Getting Started
-
-Ready to build? Check out the **[Money Flow](/docs/concepts/money-flow)** to understand the lifecycle of a loan, or jump straight into the **[Reconciliation Guide](/docs/guides/operations/reconciliation)** to see how we track funds.
+Nếu bạn là **Product Owner / Business Analyst**:
+1.  Đọc **[Luồng Nghiệp vụ](/docs/concepts/business-flow)** để hiểu quy trình vay/trả.
+2.  Xem **[Sơ đồ Dòng tiền](/docs/concepts/money-flow)** để nắm cách tiền di chuyển.

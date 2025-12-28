@@ -10,43 +10,47 @@ const sidebars = {
     },
     {
       type: 'category',
-      label: '💡 Concepts',
+      label: '🏗️ Kiến trúc Hệ thống',
       collapsible: true,
       items: [
-        'concepts/overview',
-        'concepts/money-flow',
+        'architecture/overview',
+        'architecture/auth-keycloak',
+        'architecture/blockchain-ledger', // Đã thêm
       ],
     },
     {
       type: 'category',
-      label: '📘 Product Guides',
+      label: '💡 Nghiệp vụ Cốt lõi',
+      collapsible: true,
+      items: [
+        'concepts/overview',
+        'concepts/fineract-core',
+        'concepts/money-flow',
+        'concepts/business-flow',
+      ],
+    },
+    {
+      type: 'category',
+      label: '📘 Hướng dẫn Sử dụng',
       collapsible: true,
       items: [
         {
           type: 'category',
-          label: 'Lending',
-          items: ['guides/lending/invest'],
-        },
-        {
-          type: 'category',
-          label: 'Borrowing',
+          label: 'Vay vốn (Borrowing)',
           items: ['guides/borrowing/apply', 'guides/borrowing/repay'],
         },
         {
           type: 'category',
-          label: 'Operations',
+          label: 'Đầu tư (Lending)',
+          items: ['guides/lending/invest'],
+        },
+        {
+          type: 'category',
+          label: 'Vận hành (Operations)',
           items: ['guides/operations/reconciliation'],
         },
       ],
     },
-    // {
-    //   type: 'category',
-    //   label: '📚 API Reference',
-    //   items: [
-    //      // 'api/loan-api',
-    //      // 'api/reconciliation-api',
-    //   ]
-    // },
   ],
 };
 
