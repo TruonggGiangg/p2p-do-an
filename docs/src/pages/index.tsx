@@ -23,13 +23,6 @@ function HomepageHeader() {
             <i className="fas fa-book" style={{ marginRight: '8px' }}></i>
             Bắt đầu tìm hiểu
           </Link>
-          <Link
-            className="button button--outline button--lg"
-            to="/docs/category/api-reference"
-            style={{ marginLeft: '12px' }}>
-            <i className="fas fa-code" style={{ marginRight: '8px' }}></i>
-            API Reference
-          </Link>
         </div>
       </div>
     </header>

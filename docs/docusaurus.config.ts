@@ -71,12 +71,12 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          sidebarId: 'docs',
           position: 'left',
           label: 'Documentation',
         },
         {
-          to: '/docs/category/api-reference',
+          to: '/docs/api/loan-api',
           label: 'API',
           position: 'left',
         },
@@ -100,28 +100,28 @@ const config: Config = {
             },
             {
               label: 'Kiến trúc',
-              to: '/docs/architecture/overview',
+              to: '/docs/concepts/overview',
             },
             {
-              label: 'API Reference',
-              to: '/docs/category/api-reference',
+              label: 'Money Flow',
+              to: '/docs/concepts/money-flow',
             },
           ],
         },
         {
-          title: 'Tính năng',
+          title: 'Guides',
           items: [
             {
               label: 'Tạo khoản vay',
-              to: '/docs/features/loan-creation',
+              to: '/docs/guides/borrowing/apply',
             },
             {
               label: 'Đầu tư',
-              to: '/docs/features/investment',
+              to: '/docs/guides/lending/invest',
             },
             {
-              label: 'Trả nợ',
-              to: '/docs/features/repayment',
+              label: 'Reconciliation',
+              to: '/docs/guides/operations/reconciliation',
             },
           ],
         },

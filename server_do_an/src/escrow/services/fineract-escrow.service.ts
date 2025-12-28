@@ -105,6 +105,10 @@ export class FineractEscrowService {
         }
 
         try {
+            // Lookup Fineract Loan ID for transaction note (for Fineract UI reconciliation)
+            const fineractLoanId = await this.lookupFineractLoanId(escrow.loanContractId);
+            const loanIdSuffix = fineractLoanId ? ` [Fineract:${fineractLoanId}]` : '';
+
             // Transfer: Lender → Escrow
             this.logger.log(`[fundEscrow] Transferring ${escrow.amount} from lender ${lenderClientId}:${lenderAccountId} → escrow ${this.adminClientId}:${this.escrowAccountId}`);
 
@@ -114,7 +118,7 @@ export class FineractEscrowService {
                 lenderAccountId,
                 this.escrowAccountId,
                 escrow.amount,
-                `Escrow for loan ${escrow.loanContractId}` // Match reference P2P pattern
+                `Escrow for loan ${escrow.loanContractId}${loanIdSuffix}` // Match p2p reference pattern
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;
@@ -127,6 +131,7 @@ export class FineractEscrowService {
                 ...escrow.metadata,
                 fundedAt: new Date(),
                 fineractLenderClientId: lenderClientId,
+                fineractLoanId: fineractLoanId,
             };
             await escrow.save();
 
@@ -153,6 +158,37 @@ export class FineractEscrowService {
             throw error;
         }
     }
+
+    /**
+     * Lookup Fineract Loan ID from MongoDB loan contract ID
+     */
+    private async lookupFineractLoanId(loanContractId: string): Promise<number | null> {
+        try {
+            // Query MongoDB for the loan contract
+            const LoanContractModel = this.escrowModel.db.model('LoanContract');
+            const loan = await LoanContractModel.findOne({ contractId: loanContractId });
+
+            if (loan && loan.fineractLoanId) {
+                return loan.fineractLoanId;
+            }
+
+            // Fallback: try to extract from contractId if format is LOAN_xxx where xxx might be fineractId
+            if (loanContractId.startsWith('LOAN_')) {
+                const idPart = loanContractId.replace('LOAN_', '');
+                // Only use if it's a reasonable number (not timestamp)
+                const numericId = parseInt(idPart, 10);
+                if (!isNaN(numericId) && numericId < 100000) {
+                    return numericId;
+                }
+            }
+
+            return null;
+        } catch (error) {
+            this.logger.warn(`[lookupFineractLoanId] Failed to lookup for ${loanContractId}: ${error.message}`);
+            return null;
+        }
+    }
+
 
     /**
      * Release escrow: Transfer from escrow to borrower account

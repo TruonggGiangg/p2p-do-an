@@ -87,7 +87,7 @@ export class RepaymentController {
                     loan.fineractLoanId,
                     amount,
                     new Date().toISOString().split('T')[0],
-                    `P2P Repayment for ${loanId}`
+                    `Repayment for loan ${loanId} [Fineract:${loan.fineractLoanId}]`
                 );
             }
 
@@ -98,7 +98,7 @@ export class RepaymentController {
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 amount,
-                `Repayment escrow for ${loanId}`
+                `Repayment for loan ${loanId} [Fineract:${loan.fineractLoanId}]`
             );
 
             // 8. Distribute to Lenders
@@ -262,7 +262,7 @@ export class RepaymentController {
                 loan.fineractLoanId,
                 totalPrepayAmount,
                 new Date().toISOString().split('T')[0],
-                `Repayment for loan ${loan.contractId}` // Match reference P2P pattern
+                `Prepayment (full) for loan ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
             );
 
             // 6. Transfer Borrower → Escrow
@@ -272,7 +272,7 @@ export class RepaymentController {
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 totalPrepayAmount,
-                `Prepayment escrow for ${loan.fineractLoanId}` // Match reference P2P pattern
+                `Prepayment (full) for loan ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
             );
 
             // 7. ✅ Fetch investments and prepare for FD distribution

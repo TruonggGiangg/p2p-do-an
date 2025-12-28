@@ -216,22 +216,52 @@ export class FDReconciliationService {
         try {
             // Get admin's savings account
             const adminSavingsAccount = await this.fineractService.getClientSavingsAccount(adminClientId);
-            if (!adminSavingsAccount) {
-                throw new Error('Admin savings account not found');
+            const adminSavingsId = adminSavingsAccount?.id;
+
+            const escrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
+
+            // Get transactions from BOTH Admin Main and Escrow Account
+            const transactionPromises: Promise<any[]>[] = [];
+
+            if (adminSavingsId) {
+                transactionPromises.push(this.fineractService.getAccountTransactions(adminSavingsId));
             }
 
-            // Get transactions
-            const transactions = await this.fineractService.getAccountTransactions(adminSavingsAccount.id);
+            if (escrowAccountId && escrowAccountId !== adminSavingsId) {
+                this.logger.log(`[getAdminTransactions] Also fetching from Escrow Account ${escrowAccountId}`);
+                transactionPromises.push(this.fineractService.getAccountTransactions(escrowAccountId));
+            }
+
+            const results = await Promise.all(transactionPromises);
+            // Flatten (and deduplicate by ID if needed, though rare to have same ID across accounts)
+            const flatTransactions = results.flat();
+
+            // Deduplicate by ID
+            const transactions: any[] = Array.from(new Map(flatTransactions.map((t: any) => [t.id, t])).values());
+
             if (!transactions || transactions.length === 0) return [];
 
             // ✅ ENRICH WITH P2P CONTEXT
-            // extract IDs
-            const txnIds = transactions.map(t => t.id);
+            // extract IDs (Both Transaction ID and Transfer ID)
+            const txnIds = transactions.map((t: any) => t.id);
+            const transferIds = transactions.filter((t: any) => t.transfer && t.transfer.id).map((t: any) => t.transfer.id);
+
+            const allIds = [...new Set([...txnIds, ...transferIds])];
+
+            // DEBUG: Log IDs found
+            this.logger.log(`[getAdminTransactions] Found ${transactions.length} transactions`);
+            this.logger.log(`[getAdminTransactions] IDs: ${JSON.stringify(txnIds.slice(0, 5))}...`);
+            this.logger.log(`[getAdminTransactions] Transfer IDs: ${JSON.stringify(transferIds.slice(0, 5))}...`);
 
             // find logs
             const logs = await this.transactionLogModel.find({
-                fineractTransactionId: { $in: txnIds }
+                fineractTransactionId: { $in: allIds }
             }).select('fineractTransactionId p2pContext transactionType loanId');
+
+            this.logger.log(`[getAdminTransactions] Found ${logs.length} matching logs in DB`);
+            if (logs.length > 0) {
+                this.logger.log(`[getAdminTransactions] Sample Log IDs: ${logs.map(l => l.fineractTransactionId).slice(0, 5)}`);
+            }
 
             // Map logs by Fineract ID
             const logMap = new Map();
@@ -239,9 +269,69 @@ export class FDReconciliationService {
                 logMap.set(log.fineractTransactionId, log);
             });
 
+            // ✅ FUZZY MATCHING FALLBACK
+            // Fetch recent DISTRIBUTION and FD_RETURN logs to catch those where IDs don't match (TransferID vs TxnID)
+            const recentLogs = await this.transactionLogModel.find({
+                transactionType: { $in: ['DISTRIBUTION', 'FD_RETURN'] },
+                status: 'SUCCESS'
+            }).sort({ createdAt: -1 }).limit(50).exec();
+
+            const unmatchedLogs = [...recentLogs]; // Copy to track usage
+
             // Merge
             return transactions.map(t => {
-                const log = logMap.get(t.id);
+                // 1. Try matching by Transaction ID first
+                let log = logMap.get(t.id);
+
+                // 2. If not found, try matching by Transfer ID
+                if (!log && t.transfer && t.transfer.id) {
+                    log = logMap.get(t.transfer.id);
+                }
+
+                // 3. Fallback: Fuzzy Match by Amount + Date + Type
+                if (!log) {
+                    // Identify Direction -> Type
+                    // Disbursement/Distribution = Withdrawal
+                    // Repayment/FD Return = Deposit
+                    const isWithdrawal = t.transactionType?.value === 'Withdrawal';
+                    const isDeposit = t.transactionType?.value === 'Deposit';
+
+                    const matchIndex = unmatchedLogs.findIndex(l => {
+                        // Amount match (allow small float variance just in case, though usually exact integer)
+                        if (Math.abs((l.amount || 0) - (t.amount || 0)) > 1) return false;
+
+                        // Type match
+                        if (l.transactionType === 'DISTRIBUTION' && !isWithdrawal) return false;
+                        if (l.transactionType === 'FD_RETURN' && !isDeposit) return false;
+
+                        // Date match (within 1 day)
+                        if (!l.createdAt) return false;
+                        const logDate = new Date(l.createdAt);
+
+                        let txnDate: Date;
+                        if (Array.isArray(t.date)) {
+                            // Fineract Array: [Year, Month, Day]
+                            txnDate = new Date(t.date[0], t.date[1] - 1, t.date[2]);
+                        } else {
+                            // Fallback for string/Date
+                            txnDate = new Date(t.date);
+                        }
+
+                        // Simple check: Same Day
+                        const isSameDay = logDate.getDate() === txnDate.getDate() &&
+                            logDate.getMonth() === txnDate.getMonth() &&
+                            logDate.getFullYear() === txnDate.getFullYear();
+
+                        return isSameDay;
+                    });
+
+                    if (matchIndex !== -1) {
+                        log = unmatchedLogs[matchIndex];
+                        this.logger.log(`[getAdminTransactions] Fuzzy matched Txn ${t.id} (${t.amount}) with Log ${log.transactionType} (${log.fineractTransactionId})`);
+                        unmatchedLogs.splice(matchIndex, 1); // Remove to prevent double usage
+                    }
+                }
+
                 return {
                     ...t,
                     p2pContext: log ? log.p2pContext : 'Giao dịch hệ thống',
@@ -289,12 +379,13 @@ export class FDReconciliationService {
         }).sort({ createdAt: -1 });
 
         // 3. Generate Vietnamese P2P labels for each transaction
+        // Keys must match TransactionLogService.transactionType values exactly!
         const P2P_LABELS = {
             'LOAN_CREATION': 'Tạo khoản vay',
             'INVEST': 'Đầu tư vào khoản vay',
-            'ESCROW_FUND': 'Ký quỹ đầu tư',
+            'ESCROW_TRANSFER': 'Ký quỹ đầu tư',  // Fixed: was ESCROW_FUND
             'DISBURSE': 'Giải ngân',
-            'REPAYMENT': 'Người vay trả nợ',
+            'REPAY': 'Người vay trả nợ',        // Fixed: was REPAYMENT
             'FD_CREATE': 'Gửi vào FD',
             'FD_CLOSE': 'Hoàn vốn FD',
             'DISTRIBUTION': 'Phân phối gốc & lãi cho nhà đầu tư',
@@ -315,17 +406,29 @@ export class FDReconciliationService {
         // 4. Get FD accounts for this loan
         const fdAccounts = await this.getFixedDepositsByLoan(loan.contractId);
 
-        // 5. Calculate summary
+        // 5. Calculate summary - Fixed filters to use correct transactionType values
+        const investLogs = txnLogs.filter(l => l.transactionType === 'INVEST' || l.transactionType === 'ESCROW_TRANSFER');
+        const repayLogs = txnLogs.filter(l => l.transactionType === 'REPAY');
+        const distributionLogs = txnLogs.filter(l => l.transactionType === 'DISTRIBUTION');
+
         const summary = {
-            đầuTư: fdAccounts.reduce((sum, fd) => sum + fd.principalVND, 0),
-            giảiNgân: loan.info?.capital || 0,
-            tràNợ: txnLogs.filter(l => l.transactionType === 'REPAYMENT').reduce((sum, l) => sum + (l.amount || 0), 0),
-            phânPhối: txnLogs.filter(l => l.transactionType === 'DISTRIBUTION').reduce((sum, l) => sum + (l.amount || 0), 0),
+            đầuTư: investLogs.reduce((sum, l) => sum + (l.amount || 0), 0),
+            giảiNgân: txnLogs.filter(l => l.transactionType === 'DISBURSE').reduce((sum, l) => sum + (l.amount || 0), 0) || loan.info?.capital || 0,
+            tràNợ: repayLogs.reduce((sum, l) => sum + (l.amount || 0), 0),
+            phânPhối: distributionLogs.reduce((sum, l) => sum + (l.amount || 0), 0),
             hoànVốn: 0,
             hoànVốnFD: fdAccounts.filter(fd => fd.fdStatus === 'Premature Closed' || fd.fdStatus === 'Closed').reduce((sum, fd) => sum + fd.principalVND, 0),
             lợiNhuận: 0, // Will be calculated
         };
-        summary.lợiNhuận = summary.phânPhối > 0 ? (summary.phânPhối - summary.đầuTư) : 0;
+        // Lợi nhuận Admin = Tiền Borrower trả - Tiền đã phân phối cho NĐT - Hoàn vốn FD - Giải ngân gốc
+        // = Số tiền Admin còn giữ lại (spread/commission)
+        // Công thức: Trả nợ - Phân phối - Hoàn vốn FD - Giải ngân
+        // Nếu Giải ngân = Đầu tư = Hoàn vốn FD thì: Lợi nhuận = Trả nợ - Phân phối - Đầu tư
+        summary.lợiNhuận = summary.tràNợ - summary.phânPhối - summary.hoànVốnFD - summary.giảiNgân;
+
+        // Nếu lợi nhuận < 0 (chưa thanh toán đủ), set = 0
+        if (summary.lợiNhuận < 0) summary.lợiNhuận = 0;
+
 
         return {
             loan: {
@@ -350,29 +453,30 @@ export class FDReconciliationService {
     private getFromClientLabel(txnType: string): string {
         switch (txnType) {
             case 'INVEST':
-            case 'ESCROW_FUND':
+            case 'ESCROW_TRANSFER':  // Fixed: was ESCROW_FUND
             case 'FD_CREATE':
                 return 'Test Lender';
             case 'DISBURSE':
             case 'DISTRIBUTION':
                 return 'P2P Admin';
-            case 'REPAYMENT':
-            case 'FD_CLOSE':
+            case 'REPAY':            // Fixed: was REPAYMENT
                 return 'Test Borrower';
+            case 'FD_CLOSE':
+                return 'TK Fixed Deposit';
             default:
                 return 'Unknown';
         }
     }
 
+
     private getToClientLabel(txnType: string): string {
         switch (txnType) {
             case 'INVEST':
-            case 'ESCROW_FUND':
+            case 'ESCROW_TRANSFER':  // Fixed: was ESCROW_FUND
+            case 'REPAY':            // Fixed: was REPAYMENT
                 return 'P2P Admin';
             case 'DISBURSE':
                 return 'Test Borrower';
-            case 'REPAYMENT':
-                return 'P2P Admin';
             case 'FD_CREATE':
                 return 'TK Fixed Deposit';
             case 'FD_CLOSE':
@@ -383,3 +487,4 @@ export class FDReconciliationService {
         }
     }
 }
+

@@ -276,31 +276,54 @@ export class RepaymentService {
                 } else {
                     // REGULAR: Direct transfer ONLY (No postInterest to avoid double counting)
 
+                    const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
+                    const lenderMainSavingsId = savingsAccount?.id;
+                    if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
+
                     // PARTIAL PRINCIPAL SYNC: Withdraw from FD if principal is repaid
                     if (principalShare > 0) {
                         try {
+                            // Note: This might transfer funds from FD to Lender Main (depending on Fineract config)
+                            // If it DOES move funds, then the transfer below effectively pays Principal AGAIN from Escrow?
+                            // Assuming withdrawFixedDeposit just updates FD state or moves to Savings,
+                            // AND assuming Borrower Repayment is sitting in Escrow.
+                            // We should transfer from Escrow to Lender.
+
                             await this.fdService.withdrawFixedDeposit(fdAccountId, principalShare, 'Partial Principal Repayment');
                         } catch (e: any) {
                             this.logger.warn(`Failed to sync partial principal withdrawal for FD ${fdAccountId}: ${e.message}`);
                         }
                     }
 
-                    const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
-                    const lenderMainSavingsId = savingsAccount?.id;
-                    if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
+                    // TRANSFER TOTAL SHARE (Principal + Interest) from Escrow to Lender
+                    const totalDistribute = principalShare + interestShare;
 
-                    const distTxnId = await this.transferFromEscrowToLender(String(lenderFineractClientId), lenderMainSavingsId, principalShare, loanId);
+                    if (totalDistribute > 0) {
+                        const distTxnId = await this.transferFromEscrowToLender(
+                            String(lenderFineractClientId),
+                            lenderMainSavingsId,
+                            totalDistribute,
+                            loanId
+                        );
 
-                    // ✅ LOG PRINCIPAL DISTRIBUTION
-                    await this.transactionLogService.logDistribution({
-                        loanId,
-                        lenderId: investment.lenderId,
-                        amount: principalShare,
-                        type: 'PRINCIPAL',
-                        fineractTransactionId: distTxnId
-                    });
+                        // ✅ LOG DISTRIBUTION
+                        let distType: 'PRINCIPAL' | 'INTEREST' | 'BOTH' = 'INTEREST';
+                        if (principalShare > 0 && interestShare > 0) distType = 'BOTH';
+                        else if (principalShare > 0) distType = 'PRINCIPAL';
 
-                    withdrawalResult = { transactionId: null, remainingBalance: null, note: 'Direct transfer' };
+                        await this.transactionLogService.logDistribution({
+                            loanId,
+                            lenderId: investment.lenderId,
+                            amount: totalDistribute,
+                            type: distType,
+                            fineractTransactionId: distTxnId
+                        });
+
+                        this.logger.log(`[Distribution] Distributed ${totalDistribute} (Principal: ${principalShare}, Interest: ${interestShare}) to lender ${investment.lenderId}`);
+                    }
+
+                    withdrawalResult = { transactionId: null, remainingBalance: null, note: 'Direct transfer: ' + totalDistribute };
+
                 }
 
                 // Update Local Record
@@ -372,10 +395,11 @@ export class RepaymentService {
         lenderFineractClientId: string, // Changed param name to reflect reality
         lenderSavingsAccountId: number,
         amount: number,
-        loanId: string
+        loanId: string,
+        fineractLoanId?: number // NEW: Optional Fineract ID for better note
     ): Promise<number> {
-        const adminClientId = this.fineractService['adminClientId'] || 1;
-        const escrowAccountId = this.fineractService['escrowAccountId'] || 2;
+        const adminClientId = parseInt(process.env.FINERACT_ADMIN_CLIENT_ID || '1');
+        const escrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
 
         let lenderClientId = parseInt(lenderFineractClientId);
         if (isNaN(lenderClientId)) {
@@ -386,15 +410,24 @@ export class RepaymentService {
 
         if (!lenderClientId) throw new Error(`Cannot resolve client ID ${lenderFineractClientId}`);
 
+        // Lookup Fineract ID if not provided
+        let fLoanId = fineractLoanId;
+        if (!fLoanId) {
+            const loan = await this.loanModel.findOne({ contractId: loanId });
+            fLoanId = loan?.fineractLoanId;
+        }
+        const loanIdSuffix = fLoanId ? ` [Fineract:${fLoanId}]` : '';
+
         const result = await this.fineractService.transferFunds(
             adminClientId,
             lenderClientId,
             escrowAccountId,
             lenderSavingsAccountId,
             amount,
-            `Distribution for loan ${loanId}` // Match reference P2P pattern
+            `Repayment distribution for loan ${loanId}${loanIdSuffix}` // Match p2p reference pattern
         );
 
         return result?.resourceId || 0;
     }
 }
+

@@ -10,6 +10,9 @@ import { Document, Types } from 'mongoose';
     collection: 'transaction_logs',
 })
 export class TransactionLog extends Document {
+    createdAt?: Date;
+    updatedAt?: Date;
+
     @Prop({ required: true, unique: true, index: true })
     transactionId: string;
 

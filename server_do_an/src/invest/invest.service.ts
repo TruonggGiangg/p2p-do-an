@@ -203,23 +203,78 @@ export class InvestService {
                 escrowId = escrowRecord.escrowId;
                 this.logger.log(`[Escrow] Created escrow ${escrowId} for loan ${loanContract.contractId}`);
 
+                // ===== P2P REFERENCE 2-STEP INVESTMENT FLOW =====
+                // Step 1: Lender Main → Lender Main (internal transfer) = "Đầu tư vào khoản vay"
+                // Step 2: Lender Main → Admin Escrow = "Ký quỹ đầu tư"
+                // This creates BOTH labels visible in Fineract UI
 
-                // Step 2: Fund escrow (Lender → Escrow transfer on Fineract)
-                // This creates the "Ký quỹ đầu tư" transaction visible in Fineract UI
-                escrowTransferId = await this.escrowService.fundEscrow(
-                    escrowId,
-                    lenderFineractClientId,
-                    lenderSavingsAccount.id
+                const adminClientId = parseInt(process.env.FINERACT_ADMIN_CLIENT_ID || '1');
+                const adminEscrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
+
+                // ===== TRANSFER 1: "Đầu tư vào khoản vay" =====
+                // Internal transfer: Lender → Lender (same client, same account)
+                // This creates a visible transaction with "Investment funding for loan" note
+                const transfer1Result = await this.fineractService.transferFunds(
+                    lenderFineractClientId,    // fromClientId: Lender
+                    lenderFineractClientId,    // toClientId: Same Lender (internal)
+                    lenderSavingsAccount.id,   // fromAccountId: Lender Main
+                    lenderSavingsAccount.id,   // toAccountId: Same account (symbolic)
+                    investmentCapital,
+                    `Investment funding for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`
                 );
-                this.logger.log(`[Escrow] Funded escrow ${escrowId}, txn: ${escrowTransferId}`);
+
+                const transfer1TxnId = transfer1Result?.savingsId || transfer1Result?.resourceId;
+                this.logger.log(`[Investment] Transfer 1 (Đầu tư vào khoản vay): ${transfer1TxnId}`);
+
+                // ✅ LOG INVEST TRANSFER (Đầu tư vào khoản vay)
+                await this.transactionLogService.logInvestment({
+                    investmentId: `INV_${Date.now()}`,
+                    loanId: loanContract.contractId,
+                    lenderId: user._id,
+                    amount: investmentCapital,
+                    fineractTransferId: Number(transfer1TxnId),
+                    status: 'SUCCESS',
+                });
+
+                // ===== TRANSFER 2: "Ký quỹ đầu tư" =====
+                // Actual transfer: Lender Main → Admin Escrow
+                const transfer2Result = await this.fineractService.transferFunds(
+                    lenderFineractClientId,    // fromClientId: Lender
+                    adminClientId,             // toClientId: Admin
+                    lenderSavingsAccount.id,   // fromAccountId: Lender Main
+                    adminEscrowAccountId,      // toAccountId: Admin Escrow
+                    investmentCapital,
+                    `Escrow for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`
+                );
+
+                const transfer2TxnId = transfer2Result?.savingsId || transfer2Result?.resourceId;
+                this.logger.log(`[Escrow] Transfer 2 (Ký quỹ đầu tư): ${transfer2TxnId}`);
+
+                // Store escrow transfer ID for later use
+                escrowTransferId = String(transfer2TxnId);
+
+                // Update escrow record
+                await this.escrowService['escrowModel'].updateOne(
+                    { escrowId },
+                    {
+                        status: 'funded',
+                        fundTransactionId: String(transfer2TxnId),
+                        'metadata.fundedAt': new Date(),
+                        'metadata.fineractLenderClientId': lenderFineractClientId,
+                        'metadata.transfer1TxnId': transfer1TxnId,
+                        'metadata.transfer2TxnId': transfer2TxnId,
+                    }
+                );
 
                 // ✅ LOG ESCROW TRANSFER (Ký quỹ đầu tư)
                 await this.transactionLogService.logEscrowTransfer({
                     loanId: loanContract.contractId,
                     lenderId: String(user._id),
                     amount: investmentCapital,
-                    fineractTransactionId: Number(escrowTransferId)
+                    fineractTransactionId: Number(transfer2TxnId)
                 });
+
+
 
             } catch (transferError: any) {
                 this.logger.error(`[Escrow] Failed to fund escrow: ${transferError.message}`);
@@ -381,18 +436,8 @@ export class InvestService {
         this.logger.log(`[MONEY_FLOW] ✅ Investment saved: ${contractId}`);
         this.logger.log(`========== [MONEY_FLOW] INVESTMENT CREATION END ==========\n`);
 
-        // ✅ LOG INVESTMENT TO TRANSACTION LOG
-        await this.transactionLogService.logInvestment({
-            investmentId: investment.contractId,
-            loanId: loanContract.contractId,
-            lenderId: user._id,
-            amount: investmentCapital,
-            fineractTransferId: escrowTransferId ? parseInt(escrowTransferId) : undefined,
-            status: 'SUCCESS',
-        }).catch(err => {
-            this.logger.error(`Failed to log investment: ${err.message}`);
-            // Don't throw - logging failure shouldn't break the flow
-        });
+        // Note: logInvestment is now called earlier during investment funding transfer (line 228)
+        // to ensure it's logged with the correct Fineract transaction ID
 
         return investment;
     }

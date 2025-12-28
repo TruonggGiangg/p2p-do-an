@@ -1,337 +1,96 @@
 /**
- * P2P Lending Platform - Professional Fintech Design
- * Modern, clean, and premium financial technology aesthetics
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
  */
 
-/* ============================================
-   Font Awesome Icons Import
-   ============================================ */
-@import '@fortawesome/fontawesome-free/css/all.min.css';
+/* Professional Table Styles - Stripe / Fintech Inspired */
+.markdown table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 2rem 0;
 
-/* ============================================
-   Color Palette - Fintech Professional
-   ============================================ */
-:root {
-  /* Primary Brand Colors - Deep Blue Fintech */
-  --ifm-color-primary: #0066FF;
-  --ifm-color-primary-dark: #0052cc;
-  --ifm-color-primary-darker: #0047b3;
-  --ifm-color-primary-darkest: #003d99;
-  --ifm-color-primary-light: #1a75ff;
-  --ifm-color-primary-lighter: #3385ff;
-  --ifm-color-primary-lightest: #4d94ff;
-  
-  /* Accent Colors */
-  --fintech-success: #00C48C;
-  --fintech-warning: #FFB800;
-  --fintech-danger: #FF4757;
-  --fintech-info: #00B4D8;
-  
-  /* Gradients */
-  --fintech-gradient-primary: linear-gradient(135deg, #0066FF 0%, #00C48C 100%);
-  --fintech-gradient-dark: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  --fintech-gradient-card: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
-  
-  /* Typography */
-  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --ifm-heading-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --ifm-font-weight-bold: 600;
-  --ifm-code-font-size: 90%;
-  
-  /* Spacing & Borders */
-  --ifm-global-radius: 12px;
-  --ifm-card-border-radius: 16px;
-  --ifm-button-border-radius: 8px;
-  
-  /* Shadows */
-  --fintech-shadow-sm: 0 2px 8px rgba(0, 102, 255, 0.08);
-  --fintech-shadow-md: 0 4px 16px rgba(0, 102, 255, 0.12);
-  --fintech-shadow-lg: 0 8px 32px rgba(0, 102, 255, 0.16);
-  
-  /* Code highlighting */
-  --docusaurus-highlighted-code-line-bg: rgba(0, 102, 255, 0.1);
-}
-
-/* Dark Mode - Premium Dark Fintech */
-[data-theme='dark'] {
-  --ifm-color-primary: #00C48C;
-  --ifm-color-primary-dark: #00a677;
-  --ifm-color-primary-darker: #009968;
-  --ifm-color-primary-darkest: #007a53;
-  --ifm-color-primary-light: #00dea0;
-  --ifm-color-primary-lighter: #1aebaf;
-  --ifm-color-primary-lightest: #4df0c2;
-  
-  --ifm-background-color: #0d1117;
-  --ifm-background-surface-color: #161b22;
-  --ifm-navbar-background-color: rgba(13, 17, 23, 0.95);
-  
-  --fintech-shadow-sm: 0 2px 8px rgba(0, 196, 140, 0.08);
-  --fintech-shadow-md: 0 4px 16px rgba(0, 196, 140, 0.12);
-  --fintech-shadow-lg: 0 8px 32px rgba(0, 196, 140, 0.16);
-  
-  --docusaurus-highlighted-code-line-bg: rgba(0, 196, 140, 0.15);
-}
-
-/* ============================================
-   Global Typography
-   ============================================ */
-html {
-  scroll-behavior: smooth;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-h1 {
-  font-size: 2.5rem;
-  background: var(--fintech-gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ============================================
-   Navbar - Premium Glassmorphism
-   ============================================ */
-.navbar {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: var(--fintech-shadow-sm);
-}
-
-.navbar__title {
-  font-weight: 700;
-  font-size: 1.25rem;
-  background: var(--fintech-gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.navbar__link {
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.navbar__link:hover {
-  color: var(--ifm-color-primary);
-}
-
-.navbar__link--active {
-  font-weight: 600;
-}
-
-/* ============================================
-   Sidebar - Clean & Modern
-   ============================================ */
-.menu__link {
-  border-radius: 8px;
-  padding: 8px 12px;
-  transition: all 0.2s ease;
-}
-
-.menu__link:hover {
-  background: rgba(0, 102, 255, 0.08);
-}
-
-.menu__link--active {
-  background: var(--fintech-gradient-primary);
-  color: white !important;
-  font-weight: 600;
-}
-
-[data-theme='dark'] .menu__link--active {
-  background: var(--fintech-gradient-primary);
-}
-
-/* ============================================
-   Cards & Containers
-   ============================================ */
-.card {
-  border-radius: var(--ifm-card-border-radius);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: var(--fintech-gradient-card);
-  box-shadow: var(--fintech-shadow-md);
-  transition: all 0.3s ease;
-}
-
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--fintech-shadow-lg);
-}
-
-/* ============================================
-   Buttons - Fintech Style
-   ============================================ */
-.button--primary {
-  background: var(--fintech-gradient-primary);
-  border: none;
-  font-weight: 600;
-  padding: 12px 24px;
-  border-radius: var(--ifm-button-border-radius);
-  transition: all 0.3s ease;
-}
-
-.button--primary:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--fintech-shadow-md);
-}
-
-/* ============================================
-   Code Blocks - Modern Styling
-   ============================================ */
-.prism-code {
-  border-radius: 12px;
-  font-size: 0.9rem;
-}
-
-pre {
-  border-radius: 12px !important;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-code {
-  border-radius: 6px;
-  padding: 2px 6px;
-  font-weight: 500;
-}
-
-/* ============================================
-   Tables - Professional Data Display
-   ============================================ */
-table {
-  border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--ifm-color-emphasis-200);
 }
 
-th {
-  background: var(--fintech-gradient-primary);
-  color: white;
-  font-weight: 600;
+.markdown table thead tr {
+  background-color: var(--ifm-color-primary-lightest);
+  border-bottom: 2px solid var(--ifm-color-primary);
+}
+
+.markdown table th {
+  padding: 16px;
+  text-align: left;
+  font-weight: 700;
   text-transform: uppercase;
   font-size: 0.85rem;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.5px;
+  color: var(--ifm-color-primary-dark);
 }
 
-tr:nth-child(even) {
-  background: rgba(0, 102, 255, 0.03);
+.markdown table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  font-size: 0.95rem;
+  vertical-align: middle;
 }
 
-[data-theme='dark'] tr:nth-child(even) {
-  background: rgba(0, 196, 140, 0.05);
+.markdown table tbody tr:last-child td {
+  border-bottom: none;
 }
 
-/* ============================================
-   Admonitions - Modern Alerts
-   ============================================ */
+.markdown table tbody tr:nth-child(even) {
+  background-color: var(--ifm-background-color);
+}
+
+.markdown table tbody tr:hover {
+  background-color: var(--ifm-color-emphasis-100);
+  transition: background-color 0.2s ease;
+}
+
+/* Dark Mode Table overrides */
+[data-theme='dark'] .markdown table {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border-color: var(--ifm-color-emphasis-100);
+}
+
+[data-theme='dark'] .markdown table thead tr {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Mermaid Diagram Styles */
+.docusaurus-mermaid-container {
+  display: flex;
+  justify-content: center;
+  margin: 2.5rem 0;
+  padding: 2rem;
+  background: var(--ifm-background-surface-color);
+  border-radius: 16px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] .docusaurus-mermaid-container {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Quote/Tip Styles Upgrade */
 .alert {
   border-radius: 12px;
-  border-left-width: 4px;
-  backdrop-filter: blur(10px);
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.alert--warning {
-  background: rgba(255, 184, 0, 0.1);
-  border-left-color: var(--fintech-warning);
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
-.alert--info {
-  background: rgba(0, 180, 216, 0.1);
-  border-left-color: var(--fintech-info);
-}
-
-.alert--success {
-  background: rgba(0, 196, 140, 0.1);
-  border-left-color: var(--fintech-success);
-}
-
-.alert--danger {
-  background: rgba(255, 71, 87, 0.1);
-  border-left-color: var(--fintech-danger);
-}
-
-/* ============================================
-   Mermaid Diagrams - Clean Style
-   ============================================ */
-.mermaid {
-  background: transparent !important;
-}
-
-[data-theme='dark'] .mermaid {
-  filter: invert(1) hue-rotate(180deg);
-}
-
-/* ============================================
-   Footer - Premium Style
-   ============================================ */
-.footer {
-  background: var(--fintech-gradient-dark);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.footer__title {
-  font-weight: 600;
-  color: var(--ifm-color-primary);
-}
-
-/* ============================================
-   Hero Section - Landing Page
-   ============================================ */
-.hero {
-  background: var(--fintech-gradient-dark);
-  padding: 4rem 0;
-}
-
-.hero__title {
-  font-size: 3.5rem;
-  font-weight: 700;
-  background: var(--fintech-gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero__subtitle {
-  font-size: 1.5rem;
-  opacity: 0.9;
-}
-
-/* ============================================
-   Custom Icon Classes (Font Awesome)
-   ============================================ */
-.icon-wallet::before { content: '\f555'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-.icon-chart::before { content: '\f080'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-.icon-money::before { content: '\f0d6'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-.icon-shield::before { content: '\f3ed'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-.icon-lock::before { content: '\f023'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-.icon-server::before { content: '\f233'; font-family: 'Font Awesome 6 Free'; font-weight: 900; }
-
-/* ============================================
-   Animations
-   ============================================ */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.markdown > * {
-  animation: fadeIn 0.3s ease-out;
-}
-
-/* ============================================
-   Responsive Adjustments
-   ============================================ */
-@media (max-width: 996px) {
-  h1 {
-    font-size: 2rem;
-  }
-  
-  .hero__title {
-    font-size: 2.5rem;
-  }
+[data-theme='dark'] {
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
