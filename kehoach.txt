@@ -1,2 +1,201 @@
-- chưa group đc loan trong đối soát
-- chưa chuẩn luồng chuyển tiền
+```
+================================================================================
+KẾ HOẠCH LÀM VIỆC - P2P ĐỐI SOÁT (RECONCILIATION UI)
+Ngày: 28/12/2025
+================================================================================
+
+## HÔM NAY ĐÃ HOÀN THÀNH ✅
+
+1. ✅ Match Reference P2P Transfer Notes
+   - Updated all transfer descriptions to English patterns:
+     * Disbursement for loan xxx [Fineract:xxx]
+     * Escrow for loan xxx
+     * Repayment for loan xxx
+     * Prepayment escrow for xxx
+     * FD closure for loan xxx
+     * Distribution for loan xxx
+
+2. ✅ Built P2P Reconciliation API
+   - Created endpoint: GET /reconciliation/loan/:loanId/p2p-view
+   - Generates Vietnamese P2P labels server-side:
+     * Hoàn vốn FD
+     * Giải ngân
+     * Ký quỹ đầu tư
+     * Phân phối gốc & lãi cho nhà đầu tư
+     * Đầu tư vào khoản vay
+     * Gửi vào FD
+     * Người vay trả nợ
+   - Returns: loan info, transactions, FD accounts, summary panel
+
+3. ✅ Money Flow Analysis
+   - Compared reference P2P vs p2p_do_an
+   - Documented all fund flows
+   - Created comparison reports
+
+4. ⚠️ PHÁT HIỆN QUAN TRỌNG:
+   - Reference P2P KHÔNG có custom Fineract UI trong repo
+   - Vietnamese labels trong Fineract UI screenshot là do:
+     + Custom Fineract deployment riêng (không public)
+     + HOẶC Fineract plugin đã được cài đặt
+   - Fineract KHÔNG lưu transferDescription vào transactions
+   - Logs xác nhận: note=N/A, transfer={}
+
+================================================================================
+NGÀY MAI CẦN LÀM
+================================================================================
+
+## OPTION 1: CUSTOM FINERACT WEB UI (RECOMMENDED) 🎯
+
+### Phase 1: Research Fineract Web App (2-3 giờ)
+□ Clone Fineract Web App repository
+  + Repo: https://github.com/apache/fineract-web-app
+  + Version: Check compatibility với Fineract version đang dùng
+
+□ Study Fineract Web App architecture
+  + Angular-based
+  + Component structure
+  + How to add custom modules
+
+□ Find transaction display components
+  + Search for: transaction list, savings account view
+  + Identify where to inject P2P labels
+
+### Phase 2: Create P2P Context Plugin (3-4 giờ)
+□ Create new Angular service: P2PContextService
+  + Method: enrichTransactionWithP2PLabel(transaction)
+  + Logic: Parse transaction type → return Vietnamese label
+  + Use same logic as fd-reconciliation.service.ts
+
+□ Create custom component: P2PLoanReconciliationComponent
+  + Display loan header (LOAN_xxx)
+  + Group transactions by loan
+  + Show FD accounts card
+  + Show summary panel (Đầu tư, Giải ngân, Trả nợ, Phân phối)
+
+□ Integrate with existing Fineract UI
+  + Add route: /loans/:loanId/p2p-reconciliation
+  + Link from loan detail page
+
+### Phase 3: Deploy & Test (1-2 giờ)
+□ Build Fineract Web App with custom module
+□ Deploy to Fineract server
+□ Test với LOAN_145 và LOAN_115
+□ Compare với reference P2P screenshots
+
+================================================================================
+
+## OPTION 2: STANDALONE RECONCILIATION PAGE (FASTER) ⚡
+
+### Phase 1: Create React/Next.js Reconciliation App (2-3 giờ)
+□ Setup new Next.js project
+  + npx create-next-app@latest p2p-reconciliation-ui
+  + Install: axios, tailwindcss, chart.js
+
+□ Create API client
+  + Connect to: http://localhost:3001/reconciliation/loan/:loanId/p2p-view
+  + Handle auth (Keycloak token)
+
+□ Build Reconciliation Page Components
+  + LoanHeader: Show LOAN_xxx, borrower, capital
+  + TransactionTable: Display transactions with Vietnamese labels
+  + FDAccountsCard: Show FD list with status
+  + SummaryPanel: Đầu tư, Giải ngân, Trả nợ, Phân phối, Hoàn vốn FD
+
+### Phase 2: Styling (1 giờ)
+□ Match reference P2P UI design
+  + Use same color scheme
+  + Same layout (left panel + right table)
+  + Same badges (Hoàn vốn FD, Giải ngân, etc.)
+
+### Phase 3: Integration (1 giờ)
+□ Add link from existing app
+□ Test với real data
+□ Deploy (Vercel/Netlify)
+
+================================================================================
+
+## KẾ HOẠCH DỰ PHÒNG: NẾU OPTION 1 & 2 QUÁ LÂU
+
+### Quick Fix: Enhance Mobile App Wallet History
+□ Update wallet.service.ts
+  + Call reconciliation API to get P2P labels
+  + Merge with Fineract transactions
+  + Display Vietnamese labels in mobile
+
+□ Update client_app transaction history screen
+  + Group by loan ID
+  + Show P2P context labels
+  + Add loan summary
+
+================================================================================
+
+## GHI CHÚ QUAN TRỌNG 📝
+
+1. **API đã sẵn sàng:**
+   GET /reconciliation/loan/:loanId/p2p-view
+   - Returns everything needed for UI
+   - No additional backend work required
+
+2. **Vietnamese Labels Mapping:**
+   LOAN_CREATION    → Tạo khoản vay
+   INVEST           → Đầu tư vào khoản vay
+   ESCROW_FUND      → Ký quỹ đầu tư
+   DISBURSE         → Giải ngân
+   REPAYMENT        → Người vay trả nợ
+   FD_CREATE        → Gửi vào FD
+   FD_CLOSE         → Hoàn vốn FD
+   DISTRIBUTION     → Phân phối gốc & lãi cho nhà đầu tư
+
+3. **Test Data:**
+   - LOAN_145: Simple loan (1 lender)
+   - LOAN_115: Complex loan (2 lenders, multiple FDs)
+
+4. **Reference Screenshots:**
+   - Located in: .gemini/antigravity/brain/.../uploaded_image_*.png
+   - Use these as design reference
+
+================================================================================
+
+## ƯU TIÊN KHUYẾN NGHỊ
+
+1ST CHOICE: Option 2 - Standalone Reconciliation Page
+   ✅ Faster (4-5 hours total)
+   ✅ Independent from Fineract
+   ✅ Easier to maintain
+   ✅ Can deploy immediately
+
+2ND CHOICE: Option 1 - Custom Fineract UI
+   ⚠️ Longer (6-9 hours)
+   ✅ Integrated vào Fineract
+   ⚠️ Requires Fineract Web App knowledge
+
+3RD CHOICE: Enhance Mobile App
+   ✅ Quickest (2-3 hours)
+   ⚠️ Only for mobile users
+   ⚠️ Không có Fineract UI
+
+================================================================================
+
+## LINKS & RESOURCES
+
+API Documentation:
+- GET /reconciliation/loan/:loanId/p2p-view
+- GET /reconciliation/admin-transactions
+
+Code References:
+- fd-reconciliation.service.ts (line 259-386)
+- reconciliation.controller.ts (line 123-148)
+
+Screenshots:
+- uploaded_image_0_1766871539006.png (Reference P2P - LOAN_145)
+- uploaded_image_1_1766871539006.png (Reference P2P - LOAN_115)
+- uploaded_image_0_1766872557525.png (Reference P2P - Details)
+
+Fineract Web App:
+- https://github.com/apache/fineract-web-app
+- Documentation: https://fineract.apache.org/
+
+================================================================================
+END OF PLAN
+================================================================================
+```

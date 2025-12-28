@@ -496,7 +496,7 @@ export class InvestService {
                         adminAccountId,
                         borrowerSavingsAccount.id,
                         loanCapital,
-                        `Giải ngân [${loanContract.contractId}]` // P2P Context with LOAN_ID for grouping
+                        `Disbursement for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]` // Match reference P2P pattern
                     );
 
                     const releaseTransactionId = disbursementResult.savingsId || disbursementResult.resourceId;

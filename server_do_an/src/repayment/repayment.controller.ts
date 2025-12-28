@@ -219,7 +219,7 @@ export class RepaymentController {
             this.logger.log(`  - Principal: ${principalOutstanding}`);
             this.logger.log(`  - Interest (EXACT): ${interestPortion}`);
             this.logger.log(`  - Total: ${totalPrepayAmount}`);
- 
+
             // 4. Validate borrower - use loan's borrowerFineractClientId or resolve from wallet
             let borrowerFineractClientId = loanData.borrowerFineractClientId;
 
@@ -260,7 +260,7 @@ export class RepaymentController {
                 loan.fineractLoanId,
                 totalPrepayAmount,
                 new Date().toISOString().split('T')[0],
-                `Người vay trả nợ [${loan.contractId}]` // P2P Context with LOAN_ID
+                `Repayment for loan ${loan.contractId}` // Match reference P2P pattern
             );
 
             // 6. Transfer Borrower → Escrow
@@ -270,7 +270,7 @@ export class RepaymentController {
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 totalPrepayAmount,
-                `Người vay trả nợ [${loan.contractId}]` // P2P Context with LOAN_ID
+                `Prepayment escrow for ${loan.fineractLoanId}` // Match reference P2P pattern
             );
 
             // 7. ✅ Fetch investments and prepare for FD distribution

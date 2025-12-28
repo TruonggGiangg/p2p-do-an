@@ -120,4 +120,29 @@ export class ReconciliationController {
             };
         }
     }
+
+    /**
+     * GET /reconciliation/loan/:loanId/p2p-view
+     * Get loan transactions with Vietnamese P2P context labels (matches reference Fineract UI)
+     */
+    @Get('loan/:loanId/p2p-view')
+    @UseGuards(DualAuthGuard)
+    async getLoanP2PView(@Param('loanId') loanId: string) {
+        this.logger.log(`[getLoanP2PView] Request for loan: ${loanId}`);
+
+        try {
+            const data = await this.fdReconciliationService.getLoanTransactionsWithP2PLabels(loanId);
+
+            return {
+                success: true,
+                data,
+            };
+        } catch (error: any) {
+            this.logger.error(`[getLoanP2PView] Error: ${error.message}`);
+            return {
+                success: false,
+                message: error.message,
+            };
+        }
+    }
 }

@@ -277,7 +277,7 @@ export class FineractFixedDepositService {
             const closureAmount = details.balance + details.interestAccrued;
 
             // Build P2P context note with LOAN_ID for grouping
-            const p2pNote = loanId ? `Hoàn vốn FD [${loanId}]` : 'Hoàn vốn FD';
+            const p2pNote = loanId ? `FD closure for loan ${loanId}` : 'FD closure';
 
             // Close FD with correct parameters
             // onAccountClosureId enum: 100 = Reinvest, 200 = Transfer to Savings, 300 = Withdraw

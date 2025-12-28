@@ -1261,11 +1261,10 @@ export class FineractService {
     async getSavingsAccountTransactions(savingsAccountId: number): Promise<any[]> {
         try {
             const headers = await this.getHeaders();
-            // Use account details with associations to get transactions
-            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=transactions`;
+            // Use associations=all to include transfer details with notes
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=all`;
 
-            this.logger.log(`[getSavingsTransactions] Fetching account details with transactions for savings account ${savingsAccountId}`);
-            this.logger.log(`[getSavingsTransactions] URL: ${url}`);
+            this.logger.log(`[getSavingsTransactions] Fetching account with all associations for savings account ${savingsAccountId}`);
 
             const response = await firstValueFrom(
                 this.httpService.get(url, { headers }),
@@ -1274,6 +1273,12 @@ export class FineractService {
             // Extract transactions from account details response
             const txns = response.data.transactions || [];
             this.logger.log(`[getSavingsTransactions] Found ${txns.length} transactions for account ${savingsAccountId}`);
+
+            // Log first transaction for debugging (to check if notes are included)
+            if (txns.length > 0) {
+                const firstTxn = txns[0];
+                this.logger.debug(`[getSavingsTransactions] Sample transaction: id=${firstTxn.id}, type=${JSON.stringify(firstTxn.transactionType)}, note=${firstTxn.note || 'N/A'}, transfer=${firstTxn.transfer ? JSON.stringify({ note: firstTxn.transfer.note }) : 'N/A'}`);
+            }
 
             return txns;
         } catch (error: any) {

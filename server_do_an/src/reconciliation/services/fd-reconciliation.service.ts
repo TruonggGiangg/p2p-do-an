@@ -255,4 +255,131 @@ export class FDReconciliationService {
             return [];
         }
     }
+
+    /**
+     * Get all transactions for a loan with Vietnamese P2P context labels
+     * This replicates the reference P2P Fineract UI reconciliation view
+     */
+    async getLoanTransactionsWithP2PLabels(loanId: string): Promise<{
+        loan: any;
+        transactions: any[];
+        fdAccounts: any[];
+        summary: any;
+    }> {
+        this.logger.log(`[getLoanTransactionsWithP2PLabels] Getting transactions for loan: ${loanId}`);
+
+        // 1. Get loan details
+        let loan = await this.loanModel.findOne({ contractId: loanId });
+        if (!loan && loanId.startsWith('LOAN_')) {
+            loan = await this.loanModel.findOne({ fineractLoanId: parseInt(loanId.replace('LOAN_', ''), 10) });
+        }
+        if (!loan) {
+            const numericId = parseInt(loanId, 10);
+            if (!isNaN(numericId)) {
+                loan = await this.loanModel.findOne({ fineractLoanId: numericId });
+            }
+        }
+        if (!loan) {
+            throw new Error(`Loan ${loanId} not found`);
+        }
+
+        // 2. Get all transaction logs for this loan
+        const txnLogs = await this.transactionLogModel.find({
+            loanId: loan.contractId
+        }).sort({ createdAt: -1 });
+
+        // 3. Generate Vietnamese P2P labels for each transaction
+        const P2P_LABELS = {
+            'LOAN_CREATION': 'Tạo khoản vay',
+            'INVEST': 'Đầu tư vào khoản vay',
+            'ESCROW_FUND': 'Ký quỹ đầu tư',
+            'DISBURSE': 'Giải ngân',
+            'REPAYMENT': 'Người vay trả nợ',
+            'FD_CREATE': 'Gửi vào FD',
+            'FD_CLOSE': 'Hoàn vốn FD',
+            'DISTRIBUTION': 'Phân phối gốc & lãi cho nhà đầu tư',
+        };
+
+        const transactions = txnLogs.map(log => ({
+            id: log.fineractTransactionId || 0,
+            date: (log as any).createdAt || new Date(),
+            transactionType: log.transactionType,
+            p2pContext: P2P_LABELS[log.transactionType] || log.p2pContext || 'Giao dịch',
+            amount: log.amount || 0,
+            fromClient: this.getFromClientLabel(log.transactionType),
+            toClient: this.getToClientLabel(log.transactionType),
+            status: log.status,
+            fineractTransactionId: log.fineractTransactionId,
+        }));
+
+        // 4. Get FD accounts for this loan
+        const fdAccounts = await this.getFixedDepositsByLoan(loan.contractId);
+
+        // 5. Calculate summary
+        const summary = {
+            đầuTư: fdAccounts.reduce((sum, fd) => sum + fd.principalVND, 0),
+            giảiNgân: loan.info?.capital || 0,
+            tràNợ: txnLogs.filter(l => l.transactionType === 'REPAYMENT').reduce((sum, l) => sum + (l.amount || 0), 0),
+            phânPhối: txnLogs.filter(l => l.transactionType === 'DISTRIBUTION').reduce((sum, l) => sum + (l.amount || 0), 0),
+            hoànVốn: 0,
+            hoànVốnFD: fdAccounts.filter(fd => fd.fdStatus === 'Premature Closed' || fd.fdStatus === 'Closed').reduce((sum, fd) => sum + fd.principalVND, 0),
+            lợiNhuận: 0, // Will be calculated
+        };
+        summary.lợiNhuận = summary.phânPhối > 0 ? (summary.phânPhối - summary.đầuTư) : 0;
+
+        return {
+            loan: {
+                loanId: loan.contractId,
+                fineractLoanId: loan.fineractLoanId,
+                borrower: loan.borrower,
+                borrowerId: loan.borrower,
+                capital: loan.info?.capital,
+                status: loan.status,
+            },
+            transactions,
+            fdAccounts: fdAccounts.map(fd => ({
+                fdAccountNo: fd.fdAccountNo,
+                fdAccountId: fd.fdAccountId,
+                balance: fd.fdBalance,
+                status: fd.fdStatus,
+            })),
+            summary,
+        };
+    }
+
+    private getFromClientLabel(txnType: string): string {
+        switch (txnType) {
+            case 'INVEST':
+            case 'ESCROW_FUND':
+            case 'FD_CREATE':
+                return 'Test Lender';
+            case 'DISBURSE':
+            case 'DISTRIBUTION':
+                return 'P2P Admin';
+            case 'REPAYMENT':
+            case 'FD_CLOSE':
+                return 'Test Borrower';
+            default:
+                return 'Unknown';
+        }
+    }
+
+    private getToClientLabel(txnType: string): string {
+        switch (txnType) {
+            case 'INVEST':
+            case 'ESCROW_FUND':
+                return 'P2P Admin';
+            case 'DISBURSE':
+                return 'Test Borrower';
+            case 'REPAYMENT':
+                return 'P2P Admin';
+            case 'FD_CREATE':
+                return 'TK Fixed Deposit';
+            case 'FD_CLOSE':
+            case 'DISTRIBUTION':
+                return 'Test Lender';
+            default:
+                return 'Unknown';
+        }
+    }
 }
