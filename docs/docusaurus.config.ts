@@ -106,27 +106,6 @@ const config: Config = {
               label: 'Kiến trúc',
               to: '/docs/concepts/overview',
             },
-            {
-              label: 'Money Flow',
-              to: '/docs/concepts/money-flow',
-            },
-          ],
-        },
-        {
-          title: 'Guides',
-          items: [
-            {
-              label: 'Tạo khoản vay',
-              to: '/docs/guides/borrowing/apply',
-            },
-            {
-              label: 'Đầu tư',
-              to: '/docs/guides/lending/invest',
-            },
-            {
-              label: 'Reconciliation',
-              to: '/docs/guides/operations/reconciliation',
-            },
           ],
         },
         {
