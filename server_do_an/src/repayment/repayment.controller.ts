@@ -9,6 +9,7 @@ import { Model } from 'mongoose';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import { Wallet, WalletDocument } from '../invest/schemas/wallet.schema';
 import { EscrowService } from './services/escrow.service';
+import { TransactionLogService } from '../reconciliation/services/transaction-log.service';
 
 @Controller('repayment')
 @UseGuards(DualAuthGuard)
@@ -19,6 +20,7 @@ export class RepaymentController {
         private readonly repaymentService: RepaymentService,
         private readonly fineractService: FineractService,
         private readonly escrowService: EscrowService,
+        private readonly transactionLogService: TransactionLogService,
         @InjectModel(LoanContract.name) private loanModel: Model<LoanContract>,
         @InjectModel(Wallet.name) private walletModel: Model<WalletDocument>,
     ) { }
@@ -310,6 +312,19 @@ export class RepaymentController {
                 loan,
                 interestPortion  // ✅ Pass the exact interest portion from Fineract
             );
+
+            // ✅ LOG REPAYMENT (PREPAYMENT) TO TRANSACTION LOG
+            await this.transactionLogService.logRepayment({
+                loanId: loan.contractId,
+                borrowerId: borrowerId || userId,
+                amount: totalPrepayAmount,
+                principalPortion: principalOutstanding,
+                interestPortion: interestPortion,
+                fineractTransactionId: fineractPrepayment?.transactionId || transferRes.resourceId,
+                status: 'SUCCESS',
+            }).catch(err => {
+                this.logger.error(`Failed to log prepayment: ${err.message}`);
+            });
 
             // 8. Update Loan status to closed
             await this.loanModel.findByIdAndUpdate(loan._id, {

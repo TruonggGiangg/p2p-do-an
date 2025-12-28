@@ -456,59 +456,9 @@ export class LoanController {
         };
     }
 
-    // ==================== REPAYMENT ENDPOINTS ====================
 
-    /**
-     * POST /loan/repay
-     * Make a repayment on a loan (Borrower only)
-     */
-    @Post('repay')
-    @UseGuards(DualAuthGuard, BorrowerGuard)
-    @ApiBearerAuth()
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Trả nợ thường' })
-    async makeRepayment(
-        @Body() body: { fineractLoanId: number; transactionAmount: number; transactionDate?: string; note?: string },
-        @User() user: AuthUser,
-    ) {
-        const result = await this.loanService.makeRepayment(
-            body.fineractLoanId,
-            body.transactionAmount,
-            body.transactionDate,
-            body.note,
-        );
-        return {
-            statusCode: HttpStatus.OK,
-            message: 'Trả nợ thành công',
-            data: result,
-        };
-    }
-
-    /**
-     * POST /loan/prepay
-     * Early repayment / prepay loan (Borrower only)
-     */
-    @Post('prepay')
-    @UseGuards(DualAuthGuard, BorrowerGuard)
-    @ApiBearerAuth()
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Tất toán sớm' })
-    async prepayLoan(
-        @Body() body: { fineractLoanId: number; transactionAmount?: number; transactionDate?: string; note?: string },
-        @User() user: AuthUser,
-    ) {
-        const result = await this.loanService.prepayLoan(
-            body.fineractLoanId,
-            body.transactionAmount,
-            body.transactionDate,
-            body.note,
-        );
-        return {
-            statusCode: HttpStatus.OK,
-            message: 'Tất toán sớm thành công',
-            data: result,
-        };
-    }
+    // ==================== DISBURSE ENDPOINT ====================
+    // Note: Repayment endpoints moved to /repayment/* for proper distribution and logging
 
     /**
      * POST /loan/:id/disburse

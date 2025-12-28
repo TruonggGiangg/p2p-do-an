@@ -203,8 +203,9 @@ export class InvestService {
                 escrowId = escrowRecord.escrowId;
                 this.logger.log(`[Escrow] Created escrow ${escrowId} for loan ${loanContract.contractId}`);
 
-                // Step 2: [DISABLED] Fund escrow (Duplicate - using FD Auto-Debit)
-                /*
+
+                // Step 2: Fund escrow (Lender → Escrow transfer on Fineract)
+                // This creates the "Ký quỹ đầu tư" transaction visible in Fineract UI
                 escrowTransferId = await this.escrowService.fundEscrow(
                     escrowId,
                     lenderFineractClientId,
@@ -212,14 +213,13 @@ export class InvestService {
                 );
                 this.logger.log(`[Escrow] Funded escrow ${escrowId}, txn: ${escrowTransferId}`);
 
-                // ✅ LOG ESCROW TRANSFER (Ký quỹ)
+                // ✅ LOG ESCROW TRANSFER (Ký quỹ đầu tư)
                 await this.transactionLogService.logEscrowTransfer({
                     loanId: loanContract.contractId,
                     lenderId: String(user._id),
                     amount: investmentCapital,
                     fineractTransactionId: Number(escrowTransferId)
                 });
-                */
 
             } catch (transferError: any) {
                 this.logger.error(`[Escrow] Failed to fund escrow: ${transferError.message}`);
