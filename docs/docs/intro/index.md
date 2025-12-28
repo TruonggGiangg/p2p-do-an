@@ -23,7 +23,7 @@ Nền tảng của chúng tôi kết nối trực tiếp **Nhà đầu tư** (Le
 Tài liệu được chia thành các phần chính để bạn dễ dàng tra cứu:
 
 <div className="row">
-  <div className="col col--4">
+  <div className="col col--6">
     <div className="card">
       <div className="card__header">
         <h3>🏗️ Kiến trúc Hệ thống</h3>
@@ -39,34 +39,18 @@ Tài liệu được chia thành các phần chính để bạn dễ dàng tra c
     </div>
   </div>
 
-  <div className="col col--4">
+  <div className="col col--6">
     <div className="card">
       <div className="card__header">
         <h3>💡 Nghiệp vụ Cốt lõi</h3>
       </div>
       <div className="card__body">
         <p>
-          Nắm vững logic vận hành: <strong>Dòng tiền (Money Flow)</strong>, <strong>Cơ chế Khớp lệnh</strong> và vai trò của <strong>Fineract</strong>.
+          Nắm vững logic vận hành: <strong>Cơ chế Khớp lệnh</strong>, <strong>Vòng đời khoản vay</strong> và vai trò của <strong>Fineract</strong>.
         </p>
       </div>
       <div className="card__footer">
         <a href="/docs/concepts/business-flow" className="button button--secondary button--block">Tìm hiểu Nghiệp vụ</a>
-      </div>
-    </div>
-  </div>
-
-  <div className="col col--4">
-    <div className="card">
-      <div className="card__header">
-        <h3>📘 Hướng dẫn Vận hành</h3>
-      </div>
-      <div className="card__body">
-        <p>
-          Hướng dẫn từng bước cho các tác vụ: <strong>Đầu tư</strong>, <strong>Vay vốn</strong>, và thực hiện <strong>Đối soát (Reconciliation)</strong>.
-        </p>
-      </div>
-      <div className="card__footer">
-        <a href="/docs/guides/lending/invest" className="button button--secondary button--block">Xem Hướng dẫn</a>
       </div>
     </div>
   </div>
@@ -81,5 +65,4 @@ Nếu bạn là **Developer** mới tham gia dự án:
 2.  Đọc **[Tổng quan Kiến trúc](/docs/architecture/overview)** để hình dung bức tranh toàn cảnh.
 
 Nếu bạn là **Product Owner / Business Analyst**:
-1.  Đọc **[Luồng Nghiệp vụ](/docs/concepts/business-flow)** để hiểu quy trình vay/trả.
-2.  Xem **[Sơ đồ Dòng tiền](/docs/concepts/money-flow)** để nắm cách tiền di chuyển.
+- Đọc **[Luồng Nghiệp vụ](/docs/concepts/business-flow)** để hiểu quy trình vay, trả và cơ chế khớp lệnh của sàn.

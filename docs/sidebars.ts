@@ -15,7 +15,7 @@ const sidebars = {
       items: [
         'architecture/overview',
         'architecture/auth-keycloak',
-        'architecture/blockchain-ledger', // Đã thêm
+        'architecture/blockchain-ledger',
       ],
     },
     {
@@ -23,34 +23,13 @@ const sidebars = {
       label: '💡 Nghiệp vụ Cốt lõi',
       collapsible: true,
       items: [
-        'concepts/overview',
+        // 'concepts/overview', // Nếu bạn muốn giữ lại cái cũ
         'concepts/fineract-core',
-        'concepts/money-flow',
+        // 'concepts/money-flow', // Đã xóa theo yêu cầu
         'concepts/business-flow',
       ],
     },
-    {
-      type: 'category',
-      label: '📘 Hướng dẫn Sử dụng',
-      collapsible: true,
-      items: [
-        {
-          type: 'category',
-          label: 'Vay vốn (Borrowing)',
-          items: ['guides/borrowing/apply', 'guides/borrowing/repay'],
-        },
-        {
-          type: 'category',
-          label: 'Đầu tư (Lending)',
-          items: ['guides/lending/invest'],
-        },
-        {
-          type: 'category',
-          label: 'Vận hành (Operations)',
-          items: ['guides/operations/reconciliation'],
-        },
-      ],
-    },
+    // Đã xóa phần 'Hướng dẫn Sử dụng' theo yêu cầu
   ],
 };
 

@@ -11,6 +11,10 @@ const config: Config = {
     v4: true,
   },
 
+  clientModules: [
+    require.resolve('./src/modules/mermaid-zoom.js'),
+  ],
+
   // ✅ Enable Mermaid diagrams
   markdown: {
     mermaid: true,
