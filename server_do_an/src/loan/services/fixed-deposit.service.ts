@@ -112,7 +112,9 @@ export class FixedDepositService {
                 depositPeriodFrequencyId: 2, // Months
                 locale: 'en',
                 dateFormat: 'dd MMMM yyyy',
-                linkAccountId: investmentSavingsAccountId, // Auto-debit from Linked Savings
+                // NOTE: Do NOT use linkAccountId - it causes Fineract to auto-deduct from Lender
+                // when FD activates. Money is already transferred to Escrow separately.
+                // P2P reference does NOT use linkAccountId (see FineractFixedDepositService.js line 32-45)
                 externalId: externalId, // ✅ Saving Reconciliation Data
                 // ✅ Add inline chart with explicit interest rate
                 charts: [

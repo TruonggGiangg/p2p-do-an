@@ -587,11 +587,20 @@ export class FineractService {
         fromAccountId: number,
         toAccountId: number,
         amount: number,
-        note: string = 'Transfer via P2P'
+        note: string = 'Transfer via P2P',
+        deductFeeFromAmount: boolean = true,
+        skipFee: boolean = false
     ): Promise<any> {
         try {
             const headers = await this.getHeaders();
             const date = new Date().toISOString().split('T')[0];
+
+            // DEBUG: Log all transfer parameters
+            this.logger.log(`[transferFunds] EXECUTING: ${amount} VND`);
+            this.logger.log(`  From: Client ${fromClientId}, Account ${fromAccountId}`);
+            this.logger.log(`  To: Client ${toClientId}, Account ${toAccountId}`);
+            this.logger.log(`  Note: ${note}`);
+            this.logger.log(`  skipFee: ${skipFee}`);
 
             const payload = {
                 fromOfficeId: 1,
@@ -609,12 +618,16 @@ export class FineractService {
                 transferDescription: note,
             };
 
+            if (skipFee) {
+                this.logger.log(`[Transfer] Skipping fee (escrow transfer): ${amount}`);
+            }
+
             const url = `${this.baseUrl}/fineract-provider/api/v1/accounttransfers`;
             const response = await firstValueFrom(
                 this.httpService.post(url, payload, { headers }),
             );
 
-            this.logger.log(`Transferred ${amount} from ${fromAccountId} to ${toAccountId}`);
+            this.logger.log(`✓ Transfer SUCCESS: resourceId=${response.data.resourceId}, ${amount} from Account ${fromAccountId} → Account ${toAccountId}`);
             return {
                 success: true,
                 resourceId: response.data.resourceId,
@@ -622,7 +635,9 @@ export class FineractService {
                 response: response.data
             };
         } catch (error) {
-            this.logger.error(`Failed to transfer funds: ${error}`);
+            this.logger.error(`✗ Transfer FAILED: ${error.message}`);
+            this.logger.error(`  From: Client ${fromClientId}, Account ${fromAccountId}`);
+            this.logger.error(`  To: Client ${toClientId}, Account ${toAccountId}`);
             throw error;
         }
     }
@@ -1217,13 +1232,21 @@ export class FineractService {
             );
 
             const savingsAccounts = response.data?.savingsAccounts || [];
-            // Find active savings account
-            const activeAccount = savingsAccounts.find((acc: any) => acc.status?.active === true);
+            // Find active MAIN wallet savings account
+            // Port from P2P reference line 927-931: MUST filter by externalId WALLET_ to get correct account!
+            const activeAccount = savingsAccounts.find((acc: any) =>
+                acc.depositType?.id === 100 && // Savings Account (NOT FD depositType=200)
+                acc.externalId?.startsWith('WALLET_') && // Main wallet account (NOT FD-linked)
+                acc.status?.active === true
+            );
 
             if (!activeAccount) {
                 this.logger.warn(`No active savings account found for client ${clientId}`);
                 return null;
             }
+
+            // DEBUG: Log which account was selected
+            this.logger.log(`[getClientSavingsAccount] Client ${clientId}: Found account ${activeAccount.id} (${activeAccount.accountNo}), externalId=${activeAccount.externalId}, depositType=${activeAccount.depositType?.id}`);
 
             // Get account details for balance
             const accountDetailsUrl = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${activeAccount.id}`;
@@ -1256,36 +1279,71 @@ export class FineractService {
     /**
      * Get Savings Account Transactions
      * Fetches transaction history for a savings account
-     * Note: Uses account details API with associations since /transactions endpoint returns 405
+     * MATCH P2P REFERENCE: Use /transactions endpoint with pagination (line 264-272 of InvestmentManagementService.js)
      */
-    async getSavingsAccountTransactions(savingsAccountId: number): Promise<any[]> {
+    async getSavingsAccountTransactions(savingsAccountId: number, limit: number = 200, offset: number = 0): Promise<any[]> {
         try {
             const headers = await this.getHeaders();
-            // Use associations=all to include transfer details with notes
-            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=all`;
 
-            this.logger.log(`[getSavingsTransactions] Fetching account with all associations for savings account ${savingsAccountId}`);
+            // P2P Reference: GET /savingsaccounts/{id}/transactions with pagination
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}/transactions`;
+
+            this.logger.log(`[getSavingsTransactions] Fetching transactions for savings account ${savingsAccountId} (limit=${limit}, offset=${offset})`);
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, {
+                    headers,
+                    params: {
+                        limit: Math.min(limit, 200),
+                        offset: offset
+                    }
+                }),
+            );
+
+            // Fineract returns transactions in pageItems, already sorted by Fineract
+            const txns = response.data?.pageItems || [];
+            this.logger.log(`[getSavingsTransactions] Found ${txns.length} transactions (total: ${response.data?.totalFilteredRecords || txns.length})`);
+
+            // Log first transaction for debugging
+            if (txns.length > 0) {
+                const firstTxn = txns[0];
+                this.logger.debug(`[getSavingsTransactions] First transaction: id=${firstTxn.id}, amount=${firstTxn.amount}, type=${firstTxn.transactionType?.value}`);
+            }
+
+            return txns;
+        } catch (error: any) {
+            // Fallback to associations=all if /transactions returns 405
+            if (error.response?.status === 405) {
+                this.logger.warn(`[getSavingsTransactions] /transactions endpoint returned 405, falling back to associations=all`);
+                return this.getSavingsAccountTransactionsFallback(savingsAccountId);
+            }
+
+            this.logger.error(`Failed to get savings transactions for ${savingsAccountId}: ${error.message}`);
+            if (error.response) {
+                this.logger.error(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`);
+            }
+            return [];
+        }
+    }
+
+    /**
+     * Fallback: Get transactions via associations=all
+     */
+    private async getSavingsAccountTransactionsFallback(savingsAccountId: number): Promise<any[]> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=all`;
 
             const response = await firstValueFrom(
                 this.httpService.get(url, { headers }),
             );
 
-            // Extract transactions from account details response
             const txns = response.data.transactions || [];
-            this.logger.log(`[getSavingsTransactions] Found ${txns.length} transactions for account ${savingsAccountId}`);
-
-            // Log first transaction for debugging (to check if notes are included)
-            if (txns.length > 0) {
-                const firstTxn = txns[0];
-                this.logger.debug(`[getSavingsTransactions] Sample transaction: id=${firstTxn.id}, type=${JSON.stringify(firstTxn.transactionType)}, note=${firstTxn.note || 'N/A'}, transfer=${firstTxn.transfer ? JSON.stringify({ note: firstTxn.transfer.note }) : 'N/A'}`);
-            }
+            this.logger.log(`[getSavingsTransactions-Fallback] Found ${txns.length} transactions`);
 
             return txns;
         } catch (error: any) {
-            this.logger.error(`Failed to get savings transactions for ${savingsAccountId}: ${error.message}`);
-            if (error.response) {
-                this.logger.error(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`);
-            }
+            this.logger.error(`Fallback also failed for ${savingsAccountId}: ${error.message}`);
             return [];
         }
     }

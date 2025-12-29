@@ -206,21 +206,23 @@ export class InvestService {
                 // ===== P2P REFERENCE 2-STEP INVESTMENT FLOW =====
                 // Step 1: Lender Main → Lender Main (internal transfer) = "Đầu tư vào khoản vay"
                 // Step 2: Lender Main → Admin Escrow = "Ký quỹ đầu tư"
-                // This creates BOTH labels visible in Fineract UI
+                // This creates BOTH labels visible in Fineract UI for reconciliation
 
                 const adminClientId = parseInt(process.env.FINERACT_ADMIN_CLIENT_ID || '1');
                 const adminEscrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
 
-                // ===== TRANSFER 1: "Đầu tư vào khoản vay" =====
+                // ===== TRANSFER 1: "Đầu tư vào khoản vay" (for reconciliation) =====
                 // Internal transfer: Lender → Lender (same client, same account)
-                // This creates a visible transaction with "Investment funding for loan" note
+                // NOTE: This is for reconciliation tracking only - net balance change is 0
                 const transfer1Result = await this.fineractService.transferFunds(
                     lenderFineractClientId,    // fromClientId: Lender
                     lenderFineractClientId,    // toClientId: Same Lender (internal)
                     lenderSavingsAccount.id,   // fromAccountId: Lender Main
                     lenderSavingsAccount.id,   // toAccountId: Same account (symbolic)
                     investmentCapital,
-                    `Investment funding for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`
+                    `Investment funding for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`,
+                    true, // deductFeeFromAmount
+                    true  // skipFee - internal transfer
                 );
 
                 const transfer1TxnId = transfer1Result?.savingsId || transfer1Result?.resourceId;
@@ -244,7 +246,9 @@ export class InvestService {
                     lenderSavingsAccount.id,   // fromAccountId: Lender Main
                     adminEscrowAccountId,      // toAccountId: Admin Escrow
                     investmentCapital,
-                    `Escrow for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`
+                    `Escrow for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`,
+                    true, // deductFeeFromAmount
+                    true  // skipFee - TO escrow
                 );
 
                 const transfer2TxnId = transfer2Result?.savingsId || transfer2Result?.resourceId;
@@ -541,7 +545,9 @@ export class InvestService {
                         adminAccountId,
                         borrowerSavingsAccount.id,
                         loanCapital,
-                        `Disbursement for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]` // Match reference P2P pattern
+                        `Disbursement for loan ${loanContract.contractId} [Fineract:${loanContract.fineractLoanId}]`, // Match reference P2P pattern
+                        true, // deductFeeFromAmount
+                        true  // skipFee - FROM escrow (p2p ref line 622)
                     );
 
                     const releaseTransactionId = disbursementResult.savingsId || disbursementResult.resourceId;

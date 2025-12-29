@@ -67,8 +67,12 @@ export class RepaymentController {
             }
 
             const clientDetails = await this.fineractService.getClientDetails(Number(wallet.fineractClientId));
-            // Find active savings account
-            const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
+            // CRITICAL: Must filter by depositType=100 AND externalId WALLET_ (p2p ref line 927-931)
+            const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
+                acc.depositType?.id === 100 && // Savings (NOT FD=200)
+                acc.externalId?.startsWith('WALLET_') && // Main wallet
+                acc.status?.active === true
+            );
 
             if (!savingsAccount) {
                 return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Borrower has no active savings account' });
@@ -249,7 +253,12 @@ export class RepaymentController {
             }
 
             const clientDetails = await this.fineractService.getClientDetails(Number(borrowerFineractClientId));
-            const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
+            // CRITICAL: Must filter by depositType=100 AND externalId WALLET_ (p2p ref line 927-931)
+            const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
+                acc.depositType?.id === 100 && // Savings (NOT FD=200) 
+                acc.externalId?.startsWith('WALLET_') && // Main wallet
+                acc.status?.active === true
+            );
 
             if (!savingsAccount || savingsAccount.accountBalance < totalPrepayAmount) {
                 return res.status(HttpStatus.BAD_REQUEST).json({

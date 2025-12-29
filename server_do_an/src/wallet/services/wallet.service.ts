@@ -140,12 +140,13 @@ export class WalletService {
         this.logger.log(`[getWalletTransactions] Found savings account ID: ${savingsAccount.id}`);
 
         // 2. Fetch Transactions from Fineract
-        const fineractTxns = await this.fineractService.getSavingsAccountTransactions(savingsAccount.id);
+        // MATCH P2P REFERENCE: Use pagination params - Fineract /transactions endpoint returns already sorted by date descending
+        const fineractTxns = await this.fineractService.getSavingsAccountTransactions(savingsAccount.id, limit, offset);
         this.logger.log(`[getWalletTransactions] Fetched ${fineractTxns.length} transactions from Fineract`);
 
         // 3. Transform to our format
+        // P2P Reference (InvestmentManagementService.js line 274-282) transforms directly, no additional sorting needed
         const transactions = fineractTxns
-            .slice(offset, offset + limit)
             .map((txn: any) => {
                 // Determine transaction type based on Fineract transaction type
                 let type = 'transfer_in';
@@ -158,14 +159,15 @@ export class WalletService {
                 }
 
                 // Enhance description mapping
-                // Priority: note > paymentType name > default
+                // Priority: transfer description > note > paymentType name > default
+                // Fineract uses 'transferDescription' not 'description'
                 let description = 'Giao dịch ví';
-                if (txn.note) {
+                if (txn.transfer?.transferDescription) {
+                    description = txn.transfer.transferDescription;
+                } else if (txn.note) {
                     description = txn.note;
                 } else if (txn.transfer?.note) {
                     description = txn.transfer.note;
-                } else if (txn.transfer?.description) {
-                    description = txn.transfer.description;
                 } else if (txn.paymentDetailData?.paymentType?.name) {
                     description = txn.paymentDetailData.paymentType.name;
                 }

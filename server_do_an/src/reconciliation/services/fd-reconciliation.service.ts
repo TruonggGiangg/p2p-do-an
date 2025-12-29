@@ -418,15 +418,17 @@ export class FDReconciliationService {
             phânPhối: distributionLogs.reduce((sum, l) => sum + (l.amount || 0), 0),
             hoànVốn: 0,
             hoànVốnFD: fdAccounts.filter(fd => fd.fdStatus === 'Premature Closed' || fd.fdStatus === 'Closed').reduce((sum, fd) => sum + fd.principalVND, 0),
-            lợiNhuận: 0, // Will be calculated
+            lợiNhuận: 0, // Will be calculated below
         };
-        // Lợi nhuận Admin = Tiền Borrower trả - Tiền đã phân phối cho NĐT - Hoàn vốn FD - Giải ngân gốc
-        // = Số tiền Admin còn giữ lại (spread/commission)
-        // Công thức: Trả nợ - Phân phối - Hoàn vốn FD - Giải ngân
-        // Nếu Giải ngân = Đầu tư = Hoàn vốn FD thì: Lợi nhuận = Trả nợ - Phân phối - Đầu tư
-        summary.lợiNhuận = summary.tràNợ - summary.phânPhối - summary.hoànVốnFD - summary.giảiNgân;
 
-        // Nếu lợi nhuận < 0 (chưa thanh toán đủ), set = 0
+        // ✅ Lợi nhuận Admin = Interest từ Borrower - Interest đã phân phối cho Lender
+        // = Admin Spread (3% trong config)
+        // Note: P2P reference keeps this in Escrow, no separate transfer needed
+        const totalInterestFromBorrower = summary.tràNợ - loan.info.capital; // Total interest borrower paid
+        const totalInterestToLender = summary.phânPhối; // Total interest distributed to lenders
+        summary.lợiNhuận = totalInterestFromBorrower - totalInterestToLender; // Admin spread (should be ~3%)
+
+        // If profit < 0 (not fully paid yet), set = 0
         if (summary.lợiNhuận < 0) summary.lợiNhuận = 0;
 
 
@@ -485,6 +487,89 @@ export class FDReconciliationService {
             default:
                 return 'Unknown';
         }
+    }
+
+    /**
+     * Sync missing DISTRIBUTION logs from Fineract to MongoDB
+     * For loans processed before DISTRIBUTION logging was added
+     */
+    async syncDistributionLogsFromFineract(loanId: string): Promise<{ created: number; skipped: number }> {
+        this.logger.log(`[syncDistributionLogs] Starting sync for loan: ${loanId}`);
+
+        // 1. Get loan details
+        let loan = await this.loanModel.findOne({ contractId: loanId });
+        if (!loan && loanId.startsWith('LOAN_')) {
+            loan = await this.loanModel.findOne({ fineractLoanId: parseInt(loanId.replace('LOAN_', ''), 10) });
+        }
+        if (!loan) {
+            throw new Error(`Loan ${loanId} not found`);
+        }
+
+        // 2. Get admin/escrow transactions from Fineract
+        const escrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
+        const escrowTxns = await this.fineractService.getSavingsAccountTransactions(escrowAccountId, 500, 0);
+
+        // 3. Filter for distribution transactions for this loan
+        const distributionTxns = escrowTxns.filter((txn: any) => {
+            const note = txn.transfer?.transferDescription || txn.note || '';
+            const matchesLoan = note.toLowerCase().includes(loanId.toLowerCase())
+                || note.includes(loan.fineractLoanId?.toString() || '');
+            const isDistribution = note.toLowerCase().includes('repayment distribution')
+                || note.toLowerCase().includes('interest distribution');
+            return matchesLoan && isDistribution && txn.transactionType?.withdrawal;
+        });
+
+        this.logger.log(`[syncDistributionLogs] Found ${distributionTxns.length} distribution transactions for ${loanId}`);
+
+        let created = 0;
+        let skipped = 0;
+
+        for (const txn of distributionTxns) {
+            // Check if log already exists
+            const existingLog = await this.transactionLogModel.findOne({
+                fineractTransactionId: txn.id,
+                transactionType: 'DISTRIBUTION'
+            });
+
+            if (existingLog) {
+                this.logger.log(`  ⏭️ Log already exists for txn ${txn.id}`);
+                skipped++;
+                continue;
+            }
+
+            // Get lender info from investments
+            let lenderId = 'unknown';
+            const investments = await this.investModel.find({ loanId: loan.contractId });
+            if (investments.length > 0) {
+                lenderId = investments[0].lender?.toString() || 'unknown';
+            }
+
+            // Create distribution log
+            const note = txn.transfer?.transferDescription || txn.note || '';
+            const newLog = new this.transactionLogModel({
+                transactionId: `TXN_DIST_SYNC_${Date.now()}_${txn.id}`,
+                transactionType: 'DISTRIBUTION',
+                amount: txn.amount,
+                status: 'SUCCESS',
+                p2pContext: 'Phân phối gốc & lãi cho nhà đầu tư',
+                loanId: loan.contractId,
+                lenderId: lenderId,
+                fineractTransactionId: txn.id,
+                metadata: {
+                    action: 'distribution',
+                    type: note.toLowerCase().includes('interest') ? 'INTEREST' : 'BOTH',
+                    syncedAt: new Date(),
+                    originalNote: note
+                }
+            });
+
+            await newLog.save();
+            this.logger.log(`  ✅ Created log for txn ${txn.id}: ${txn.amount} VND`);
+            created++;
+        }
+
+        this.logger.log(`[syncDistributionLogs] Completed: ${created} created, ${skipped} skipped`);
+        return { created, skipped };
     }
 }
 

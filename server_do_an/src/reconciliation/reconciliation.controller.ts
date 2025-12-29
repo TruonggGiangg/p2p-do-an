@@ -145,4 +145,31 @@ export class ReconciliationController {
             };
         }
     }
+
+    /**
+     * GET /reconciliation/sync-distribution-logs/:loanId
+     * Sync missing DISTRIBUTION logs from Fineract to MongoDB
+     * Use this for loans processed before DISTRIBUTION logging was added
+     */
+    @Get('sync-distribution-logs/:loanId')
+    @UseGuards(DualAuthGuard)
+    async syncDistributionLogs(@Param('loanId') loanId: string) {
+        this.logger.log(`[syncDistributionLogs] Syncing for loan: ${loanId}`);
+
+        try {
+            const result = await this.fdReconciliationService.syncDistributionLogsFromFineract(loanId);
+
+            return {
+                success: true,
+                message: 'Distribution logs synced',
+                data: result,
+            };
+        } catch (error: any) {
+            this.logger.error(`[syncDistributionLogs] Error: ${error.message}`);
+            return {
+                success: false,
+                message: error.message,
+            };
+        }
+    }
 }

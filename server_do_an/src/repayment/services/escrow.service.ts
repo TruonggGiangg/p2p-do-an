@@ -122,7 +122,12 @@ export class EscrowService {
         try {
             // Get Borrower Savings Account
             const borrowerDetails = await this.fineractService.getClientDetails(borrowerClientId);
-            const borrowerSavings = borrowerDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
+            // CRITICAL: Must filter by depositType=100 AND externalId WALLET_ (p2p ref line 927-931)
+            const borrowerSavings = borrowerDetails.savingsAccounts?.find((acc: any) =>
+                acc.depositType?.id === 100 && // Savings (NOT FD=200)
+                acc.externalId?.startsWith('WALLET_') && // Main wallet
+                acc.status?.active === true
+            );
 
             if (!borrowerSavings) {
                 throw new Error('Borrower active savings account not found');
@@ -177,7 +182,12 @@ export class EscrowService {
 
                 // Get Lender Savings Account
                 const lenderDetails = await this.fineractService.getClientDetails(lenderClientId);
-                const lenderSavings = lenderDetails.savingsAccounts?.find((acc: any) => acc.status?.active === true);
+                // CRITICAL: Must filter by depositType=100 AND externalId WALLET_ (p2p ref line 927-931)
+                const lenderSavings = lenderDetails.savingsAccounts?.find((acc: any) =>
+                    acc.depositType?.id === 100 && // Savings (NOT FD=200)
+                    acc.externalId?.startsWith('WALLET_') && // Main wallet
+                    acc.status?.active === true
+                );
 
                 if (!lenderSavings) {
                     this.logger.warn(`Lender ${lenderId} savings account not found, skipping`);

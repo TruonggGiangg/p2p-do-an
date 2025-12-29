@@ -205,7 +205,12 @@ export class RepaymentService {
             const ratio = investment.amount / totalCapital;
             const fdRate = investment.fixedDepositInterestRate || 10.0;
             const principalShare = Math.floor(monthlyPrincipal * ratio);
-            const interestShare = Math.floor(monthlyInterest * (fdRate / borrowerRate) * ratio);
+
+            // 🔧 CRITICAL: Round DOWN to nearest 1000 VND (Fineract VND requirement: inMultiplesOf 1000)
+            // P2P reference transfers 40,000 VND (not 40,066) - this makes transfers visible in UI
+            const rawInterest = monthlyInterest * (fdRate / borrowerRate) * ratio;
+            const interestShare = Math.floor(rawInterest / 1000) * 1000;
+
             const totalShare = principalShare + interestShare;
 
             try {
@@ -222,12 +227,20 @@ export class RepaymentService {
                 if (!lenderFineractClientId) {
                     this.logger.warn(`Investment ${investment._id} missing lenderFineractClientId, trying fallback...`);
                     try {
-                        let usernameToResolve = String(investment.lenderId);
-                        if (investment.lender && typeof investment.lender === 'object' && investment.lender.username) {
-                            usernameToResolve = investment.lender.username;
+                        // p2p-do-an schema: 'lender' is Keycloak UUID string (NOT ObjectId like P2P reference)
+                        // Use 'lender' field directly as username for resolveClientId
+                        let usernameToResolve = String(investment.lender || '');
+
+                        // Handle case where lender might be populated as object (future-proofing)
+                        if (investment.lender && typeof investment.lender === 'object') {
+                            usernameToResolve = (investment.lender as any).username || (investment.lender as any)._id?.toString() || '';
                         }
 
-                        this.logger.log(`[Fallback] Resolving client ID for username: ${usernameToResolve}`);
+                        if (!usernameToResolve || usernameToResolve === 'undefined') {
+                            throw new Error('Lender field is empty or undefined');
+                        }
+
+                        this.logger.log(`[Fallback] Resolving client ID for lender: ${usernameToResolve}`);
                         lenderFineractClientId = await this.fineractService.resolveClientId(usernameToResolve);
                         this.logger.log(`[Fallback] Resolved: ${lenderFineractClientId}`);
                     } catch (e: any) {
@@ -241,88 +254,115 @@ export class RepaymentService {
                 }
 
                 if (isFinalPayment) {
-                    // PREPAYMENT: Close FD
+                    // PREPAYMENT: Post interest to FD, close FD, then transfer interest from Escrow
                     const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
                     const lenderMainSavingsId = savingsAccount?.id;
                     if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
 
-                    const closureResult = await this.fdService.closeFixedDepositAccount(fdAccountId, lenderMainSavingsId);
-                    this.logger.log(`✓ Closed FD ${fdAccountId}, amount: ${closureResult.closureAmount}`);
+                    // 1. Post final interest to FD (accumulate before closure)
+                    if (interestShare > 0) {
+                        await this.fdService.postInterestToFD(fdAccountId, interestShare);
+                        this.logger.log(`✓ Posted interest ${interestShare} to FD ${fdAccountId}`);
+                    }
 
-                    // ✅ LOG FD CLOSURE
+                    // 2. Close FD → Transfers principal from FD to Lender Main Savings
+                    const closureResult = await this.fdService.closeFixedDepositAccount(fdAccountId, lenderMainSavingsId, loanId);
+                    this.logger.log(`✓ Closed FD ${fdAccountId}, FD closure amount: ${closureResult.closureAmount}`);
+
+                    // 3. ✅ LOG FD CLOSURE (principal transfer from FD)
                     await this.transactionLogService.logFDTransfer({
                         fdAccountId: fdAccountId,
                         investmentId: investment.contractId || String(investment._id),
-                        lenderId: investment.lenderId,
+                        lenderId: investment.lender,
                         amount: closureResult.closureAmount,
                         action: 'FD_CLOSE',
                         fineractTransactionId: closureResult.transactionId
                     });
 
+                    // 4. 🆕 Transfer interest from Escrow → Lender Main Savings (P2P Reference line 882-904)
                     if (interestShare > 0) {
-                        const distTxnId = await this.transferFromEscrowToLender(String(lenderFineractClientId), lenderMainSavingsId, interestShare, loanId);
+                        this.logger.log(`[Interest Transfer] Transferring ${interestShare} from Escrow to Lender ${investment.lender}`);
 
-                        // ✅ LOG INTEREST DISTRIBUTION
+                        const interestTransferId = await this.transferFromEscrowToLender(
+                            String(lenderFineractClientId),
+                            lenderMainSavingsId,
+                            interestShare,
+                            loan.contractId || loanId // Use contractId format like P2P reference
+                        );
+
+                        this.logger.log(`✓ Interest transferred from Escrow: ${interestShare}, txId: ${interestTransferId}`);
+
+                        // 5. ✅ LOG INTEREST DISTRIBUTION
                         await this.transactionLogService.logDistribution({
                             loanId,
-                            lenderId: investment.lenderId,
+                            lenderId: investment.lender,
                             amount: interestShare,
                             type: 'INTEREST',
-                            fineractTransactionId: distTxnId
+                            fineractTransactionId: interestTransferId
                         });
                     }
 
-                    withdrawalResult = { transactionId: closureResult.transactionId, remainingBalance: 0, note: 'FD closed' };
+                    // Total amount lender receives = FD closure + interest from Escrow
+                    const totalReceivedByLender = closureResult.closureAmount + interestShare;
+                    this.logger.log(`[Final Payment] Lender receives total: ${totalReceivedByLender} (FD: ${closureResult.closureAmount} + Interest: ${interestShare})`);
+
+                    withdrawalResult = {
+                        transactionId: closureResult.transactionId,
+                        remainingBalance: 0,
+                        note: `FD closed: ${closureResult.closureAmount}, Interest from Escrow: ${interestShare}`
+                    };
                 } else {
-                    // REGULAR: Direct transfer ONLY (No postInterest to avoid double counting)
+                    // REGULAR REPAYMENT: Bypass FD, direct transfer from Escrow → Lender (P2P Reference lines 910-956)
+                    // Reason: Fineract FD does NOT support partial withdrawal
 
                     const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
                     const lenderMainSavingsId = savingsAccount?.id;
                     if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
 
-                    // PARTIAL PRINCIPAL SYNC: Withdraw from FD if principal is repaid
-                    if (principalShare > 0) {
-                        try {
-                            // Note: This might transfer funds from FD to Lender Main (depending on Fineract config)
-                            // If it DOES move funds, then the transfer below effectively pays Principal AGAIN from Escrow?
-                            // Assuming withdrawFixedDeposit just updates FD state or moves to Savings,
-                            // AND assuming Borrower Repayment is sitting in Escrow.
-                            // We should transfer from Escrow to Lender.
-
-                            await this.fdService.withdrawFixedDeposit(fdAccountId, principalShare, 'Partial Principal Repayment');
-                        } catch (e: any) {
-                            this.logger.warn(`Failed to sync partial principal withdrawal for FD ${fdAccountId}: ${e.message}`);
-                        }
-                    }
-
-                    // TRANSFER TOTAL SHARE (Principal + Interest) from Escrow to Lender
+                    // Calculate total share (principal + interest)
                     const totalDistribute = principalShare + interestShare;
 
                     if (totalDistribute > 0) {
+                        this.logger.log(`[Regular Repayment] Bypassing FD, direct transfer ${totalDistribute} (P: ${principalShare}, I: ${interestShare}) from Escrow to Lender ${investment.lender}`);
+
                         const distTxnId = await this.transferFromEscrowToLender(
                             String(lenderFineractClientId),
                             lenderMainSavingsId,
                             totalDistribute,
-                            loanId
+                            loan.contractId || loanId // Use contractId format like P2P reference
                         );
 
-                        // ✅ LOG DISTRIBUTION
+                        this.logger.log(`✓ Direct transfer completed: ${totalDistribute}, txId: ${distTxnId}`);
+
+                        // ✅ LOG DISTRIBUTION (principal + interest combined)
                         let distType: 'PRINCIPAL' | 'INTEREST' | 'BOTH' = 'INTEREST';
                         if (principalShare > 0 && interestShare > 0) distType = 'BOTH';
                         else if (principalShare > 0) distType = 'PRINCIPAL';
 
                         await this.transactionLogService.logDistribution({
                             loanId,
-                            lenderId: investment.lenderId,
+                            lenderId: investment.lender,
                             amount: totalDistribute,
                             type: distType,
                             fineractTransactionId: distTxnId
                         });
-
-                        this.logger.log(`[Distribution] Distributed ${totalDistribute} (Principal: ${principalShare}, Interest: ${interestShare}) to lender ${investment.lenderId}`);
                     }
 
-                    withdrawalResult = { transactionId: null, remainingBalance: null, note: 'Direct transfer: ' + totalDistribute };
+                    // 2. Update FD principal balance if principal is repaid
+                    if (principalShare > 0) {
+                        try {
+                            await this.fdService.withdrawFixedDeposit(fdAccountId, principalShare, 'Partial Principal Repayment');
+                            this.logger.log(`✓ Withdrew principal ${principalShare} from FD ${fdAccountId}`);
+                        } catch (e: any) {
+                            this.logger.warn(`Failed to sync partial principal withdrawal for FD ${fdAccountId}: ${e.message}`);
+                        }
+                    }
+
+                    // ✅ NO TRANSFER, NO DISTRIBUTION LOG for regular repayment
+                    // Interest accumulates in FD, will be paid out when FD closes
+
+                    this.logger.log(`[Regular Repayment] Interest ${interestShare} accumulated in FD ${fdAccountId} (Principal: ${principalShare})`);
+                    withdrawalResult = { transactionId: null, remainingBalance: null, note: `Interest accumulated in FD, Principal adjusted: ${principalShare}` };
 
                 }
 
@@ -351,7 +391,7 @@ export class RepaymentService {
                 );
 
                 results.push({
-                    lenderId: investment.lenderId,
+                    lenderId: investment.lender,
                     amount: totalShare,
                     principal: principalShare,
                     interest: interestShare,
@@ -360,8 +400,8 @@ export class RepaymentService {
                 });
 
             } catch (error: any) {
-                this.logger.error(`Error distributing to lender ${investment.lenderId}: ${error.message}`);
-                results.push({ lenderId: investment.lenderId, amount: 0, error: error.message });
+                this.logger.error(`Error distributing to lender ${investment.lender}: ${error.message}`);
+                results.push({ lenderId: investment.lender, amount: 0, error: error.message });
             }
         }
 
@@ -424,7 +464,9 @@ export class RepaymentService {
             escrowAccountId,
             lenderSavingsAccountId,
             amount,
-            `Repayment distribution for loan ${loanId}${loanIdSuffix}` // Match p2p reference pattern
+            `Repayment distribution for loan ${loanId}${loanIdSuffix}`, // Match p2p reference pattern
+            true, // deductFeeFromAmount
+            true  // skipFee - CRITICAL: Skip fee for escrow transfers (p2p ref line 898, 948)
         );
 
         return result?.resourceId || 0;

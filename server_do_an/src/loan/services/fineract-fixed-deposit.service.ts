@@ -189,16 +189,19 @@ export class FineractFixedDepositService {
 
         try {
             // Fineract auto-calculates interest, just trigger calculation
-            await this.fineractService['adminApi'].post(
-                `/fixeddepositaccounts/${accountId}?command=calculateInterest`,
+            // Interest will accrue internally and be paid out when FD closes
+            const headers = await this.getHeaders();
+            await this.httpService.post(
+                `${this.baseUrl}/fineract-provider/api/v1/fixeddepositaccounts/${accountId}?command=calculateInterest`,
                 {
                     transactionDate: this.getFormattedDate(new Date()),
                     locale: 'en',
                     dateFormat: 'dd MMMM yyyy',
                 },
-            );
+                { headers }
+            ).toPromise();
 
-            this.logger.log(`✓ Interest posted to FD ${accountId}`);
+            this.logger.log(`✓ Interest calculation triggered for FD ${accountId}`);
 
             // Get updated balance
             const details = await this.getFixedDepositDetails(accountId);
@@ -213,6 +216,18 @@ export class FineractFixedDepositService {
                 `✗ Error posting interest: ${error.response?.data ? JSON.stringify(error.response.data) : error.message}`,
             );
             return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Alias for postInterestToFixedDeposit (shorter name for convenience)
+     * @param accountId  - FD account ID
+     * @param amount - Interest amount to post
+     */
+    async postInterestToFD(accountId: number, amount: number): Promise<void> {
+        const result = await this.postInterestToFixedDeposit(accountId, amount);
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to post interest to FD');
         }
     }
 
@@ -274,7 +289,12 @@ export class FineractFixedDepositService {
         try {
             // Get current balance before closing
             const details = await this.getFixedDepositDetails(accountId);
+            // ✅ P2P REFERENCE: closureAmount = balance + interestAccrued (line 268)
             const closureAmount = details.balance + details.interestAccrued;
+
+            this.logger.log(
+                `[Close FD ${accountId}] Balance: ${details.balance}, Interest: ${details.interestAccrued}, Total: ${closureAmount}`,
+            );
 
             // Build P2P context note with LOAN_ID for grouping
             const p2pNote = loanId ? `FD closure for loan ${loanId}` : 'FD closure';
@@ -301,7 +321,7 @@ export class FineractFixedDepositService {
             }
 
             this.logger.log(
-                `✓ Fixed Deposit ${accountId} closed (premature), amount: ${closureAmount}`,
+                `✓ Fixed Deposit ${accountId} closed (premature), closure amount includes balance + accrued interest: ${closureAmount}`,
             );
 
             return {
