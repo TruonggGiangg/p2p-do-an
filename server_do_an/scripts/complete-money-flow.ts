@@ -172,23 +172,23 @@ async function main() {
     };
 
     // Compare both loans
-    const flow170 = await traceLoanFlow(170, headers);
+    const flow174 = await traceLoanFlow(174, headers);
     const flow115 = await traceLoanFlow(115, headers);
 
     console.log('\n\n' + '═'.repeat(60));
-    console.log('📊 COMPARISON: LOAN_170 vs LOAN_115');
+    console.log('📊 COMPARISON: LOAN_174 vs LOAN_115');
     console.log('═'.repeat(60));
-    console.log('\n         LOAN_170      LOAN_115      DIFF');
+    console.log('\n         LOAN_174      LOAN_115      DIFF');
     console.log('─'.repeat(60));
-    console.log(`Đầu tư:   ${flow170.đầuTư.toString().padEnd(12)} ${flow115.đầuTư.toString().padEnd(12)} ${flow170.đầuTư - flow115.đầuTư}`);
-    console.log(`Giải ngân: ${flow170.giảiNgân.toString().padEnd(12)} ${flow115.giảiNgân.toString().padEnd(12)} ${flow170.giảiNgân - flow115.giảiNgân}`);
-    console.log(`Trả nợ:    ${flow170.tràNợ.toString().padEnd(12)} ${flow115.tràNợ.toString().padEnd(12)} ${flow170.tràNợ - flow115.tràNợ}`);
-    console.log(`Phân phối: ${flow170.phânPhối.toString().padEnd(12)} ${flow115.phânPhối.toString().padEnd(12)} ${flow170.phânPhối - flow115.phânPhối}`);
-    console.log(`Hoàn vốn:  ${flow170.hoànVốnFD.toString().padEnd(12)} ${flow115.hoànVốnFD.toString().padEnd(12)} ${flow170.hoànVốnFD - flow115.hoànVốnFD}`);
+    console.log(`Đầu tư:   ${flow174.đầuTư.toString().padEnd(12)} ${flow115.đầuTư.toString().padEnd(12)} ${flow174.đầuTư - flow115.đầuTư}`);
+    console.log(`Giải ngân: ${flow174.giảiNgân.toString().padEnd(12)} ${flow115.giảiNgân.toString().padEnd(12)} ${flow174.giảiNgân - flow115.giảiNgân}`);
+    console.log(`Trả nợ:    ${flow174.tràNợ.toString().padEnd(12)} ${flow115.tràNợ.toString().padEnd(12)} ${flow174.tràNợ - flow115.tràNợ}`);
+    console.log(`Phân phối: ${flow174.phânPhối.toString().padEnd(12)} ${flow115.phânPhối.toString().padEnd(12)} ${flow174.phânPhối - flow115.phânPhối}`);
+    console.log(`Hoàn vốn:  ${flow174.hoànVốnFD.toString().padEnd(12)} ${flow115.hoànVốnFD.toString().padEnd(12)} ${flow174.hoànVốnFD - flow115.hoànVốnFD}`);
 
     console.log('\n\n📌 KEY INSIGHT:');
     console.log('Phân phối = Escrow withdrawals with "distribution" in note');
-    console.log('If LOAN_170 has 0 Phân phối but LOAN_115 has value → BUG in repayment flow');
+    console.log('If LOAN_174 has 0 Phân phối but LOAN_115 has value → BUG in repayment flow');
 
     await mongoose.disconnect();
     process.exit(0);

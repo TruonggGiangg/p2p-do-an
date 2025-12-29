@@ -4,51 +4,78 @@ sidebar_position: 1
 
 # 🏦 Ngân hàng Lõi (Fineract Core)
 
-Hệ thống P2P không tự mình quản lý sổ cái kế toán phức tạp mà ủy quyền cho **Apache Fineract** - một giải pháp Core Banking mã nguồn mở chuẩn mực. Điều này đảm bảo tính chính xác tuyệt đối trong tính toán lãi suất và tuân thủ các nguyên tắc kế toán (GAAP/IFRS).
+Hệ thống P2P ủy quyền cho **Apache Fineract** - giải pháp Core Banking mã nguồn mở chuẩn mực - để quản lý sổ cái kế toán và tính toán lãi suất.
 
 ## Vai Trò của Fineract
 
-Trong kiến trúc tổng thể, Fineract đóng vai trò như một **"Sổ cái Tài chính & Bộ máy Tính lãi"** (Financial Ledger & Interest Engine).
+Fineract đóng vai trò **"Sổ cái Tài chính & Bộ máy Tính lãi"** (Financial Ledger & Interest Engine):
 
-1.  **Quản lý Tài Khoản**: Lưu trữ số dư, lịch sử giao dịch của từng người dùng.
-2.  **Tính Toán Lãi Suất**: Tự động tính lãi vay (cho Borrower) và lãi tiết kiệm (cho Investor) theo công thức cấu hình sẵn.
-3.  **Lập Lịch Trả Nợ**: Tạo ra Payment Schedule (gốc + lãi) chính xác đến từng ngày.
-4.  **Bút Toán Kế Toán**: Ghi nhận các bút toán Nợ/Có (Debit/Credit) cho mọi giao dịch tiền tệ.
+1. **Quản lý Tài Khoản**: Lưu trữ số dư, lịch sử giao dịch
+2. **Tính Toán Lãi Suất**: Tự động tính lãi vay và lãi tiết kiệm
+3. **Lập Lịch Trả Nợ**: Tạo Payment Schedule (gốc + lãi) chính xác
+4. **Bút Toán Kế Toán**: Ghi nhận Debit/Credit cho mọi giao dịch
+
+---
 
 ## Các Loại Tài Khoản (Account Types)
 
-Để mô hình hóa nghiệp vụ P2P, chúng tôi ánh xạ các thực thể kinh doanh vào các loại tài khoản Fineract như sau:
-
-| Đối Tượng | Loại Tài Khoản Fineract | Mục Đích |
-| :--- | :--- | :--- |
-| **Borrower** | `Loan Account` | Quản lý khoản vay, dư nợ gốc, lãi phải trả. |
-| **Investor** | `Fixed Deposit (FD)` | Quản lý khoản đầu tư. P2P coi đầu tư như một khoản "Gửi tiết kiệm có kỳ hạn". |
-| **System** | `Savings Account` | Tài khoản trung gian (Escrow) để giữ tiền tạm thời. |
-
 ### 1. Loan Account (Tài khoản Vay)
-Đây là sản phẩm cốt lõi. Khi Borrower được duyệt vay, một `Loan Account` được mở.
-- **Product ID**: Cấu hình các tham số như lãi suất trần, phí phạt.
-- **Repayment Schedule**: Fineract tự động sinh lịch trả nợ (ví dụ: trả góp hàng tháng).
-- **Trạng thái**:
-    - `Submitted`: Chờ duyệt.
-    - `Approved`: Đã duyệt, chờ giải ngân.
-    - `Active`: Đã giải ngân, đang tính lãi.
-    - `Closed (Obligations Met)`: Đã trả hết nợ.
 
-### 2. Fixed Deposit Account (Tài khoản Đầu tư)
-Điểm sáng tạo của hệ thống là sử dụng FD để quản lý đầu tư.
-- **Tại sao?**: Đầu tư P2P có tính chất giống tiền gửi tiết kiệm: Gửi một cục (Principal) và nhận về gốc + lãi sau một kỳ hạn (Maturity).
-- **Lợi ích**: Fineract tự động tính lãi tích lũy (Accrued Interest) hàng ngày cho Investor mà không cần P2P Server can thiệp code.
-- **Quy trình**:
-    1. Investor chuyển tiền -> Tạo FD Account.
-    2. Đến ngày đáo hạn (hoặc khi Borrower trả nợ) -> Đóng FD Account -> Tiền gốc + lãi chuyển về ví Investor.
+Quản lý khoản vay của **Borrower** với đầy đủ vòng đời:
 
-### 3. Savings Account (Ví thanh toán)
-Mỗi User (Borrower/Investor) đều có một `Savings Account` mặc định đóng vai trò là "Ví Nhật Thanh".
-- Đây là nơi tiền nạp vào đầu tiên và là nơi tiền rút ra cuối cùng.
-- Luồng tiền luôn là: `Bank` -> `Savings` -> `Investment/Loan`.
+| Trạng thái | Mô tả |
+|------------|-------|
+| `Submitted` | Chờ duyệt |
+| `Approved` | Đã duyệt, chờ giải ngân |
+| `Active` | Đã giải ngân, đang tính lãi |
+| `Closed - Obligations Met` | Đã trả hết nợ |
+| `Closed - Written Off` | Xóa nợ xấu |
 
-## Mô Hình Tích Hợp
+**Thành phần chính:**
+- **Principal** - Số tiền gốc vay
+- **Interest** - Lãi suất (Flat hoặc Declining Balance)
+- **Repayment Schedule** - Lịch trả nợ tự động sinh
+- **Charges** - Phí (phí xử lý hồ sơ, phí phạt trễ hạn...)
+
+### 2. Savings Account (Tài khoản Tiết kiệm)
+
+Đóng vai trò **Ví thanh toán** cho cả Borrower và Lender:
+
+| Loại | Mục đích |
+|------|----------|
+| **User Wallet** | Ví cá nhân để nạp/rút tiền |
+| **Escrow Account** | Tài khoản trung gian của Admin giữ tiền tạm |
+
+**Đặc điểm:**
+- Nạp/Rút tiền tự do
+- Có thể đặt minimum balance
+- Interest có thể = 0% (ví thanh toán)
+
+### 3. Fixed Deposit Account (Tài khoản Tiền gửi Có kỳ hạn)
+
+Quản lý **đầu tư của Lender** - mô hình hóa như tiền gửi tiết kiệm có kỳ hạn:
+
+```mermaid
+sequenceDiagram
+    participant L as Lender
+    participant S as Savings (Ví)
+    participant FD as Fixed Deposit
+    
+    L->>S: Nạp tiền vào ví
+    S->>FD: Chuyển vào FD (Lock)
+    Note over FD: Tích lũy lãi hàng ngày
+    FD->>S: Đáo hạn → Gốc + Lãi về ví
+```
+
+**Thành phần chính:**
+- **Deposit Amount** - Số tiền gửi ban đầu
+- **Interest Rate** - Lãi suất FD (thường = Borrower Rate - Admin Spread)
+- **Maturity Date** - Ngày đáo hạn
+- **Charts/Slabs** - Biểu lãi suất theo kỳ hạn
+
+---
+
+## Mô Hình Tích Hợp P2P
 
 ```mermaid
 erDiagram
@@ -57,29 +84,39 @@ erDiagram
     Client ||--o{ FixedDeposit : "invests"
 
     LoanAccount }|--|| LoanProduct : "defined by"
-    FixedDeposit }|--|| FixedDepositProduct : "defined by"
+    FixedDeposit }|--|| FDProduct : "defined by"
+    SavingsAccount }|--|| SavingsProduct : "defined by"
 
     Client {
-        string ExternalID
-        string FullName
+        int id PK
+        string externalId
+        string fullName
+        string status
+    }
+
+    SavingsAccount {
+        string accountNo
+        decimal balance
     }
 
     LoanAccount {
-        decimal Principal
-        decimal InterestRate
-        date DisbursementDate
+        decimal principal
+        decimal interestRate
+        string status
     }
 
     FixedDeposit {
-        decimal DepositAmount
-        date MaturityDate
+        decimal depositAmount
+        date maturityDate
     }
 ```
 
+---
+
 ## Tại sao chọn Fineract?
 
-> **Độ Tin Cậy**: Thay vì viết hàng ngàn dòng code `if-else` để tính lãi suất (rất dễ sai sót làm trôi tiền), chúng tôi dùng Fineract đã được kiểm chứng bởi hàng trăm ngân hàng trên thế giới.
+> **Độ Tin Cậy**: Thay vì viết hàng ngàn dòng code tính lãi suất dễ sai sót, Fineract đã được kiểm chứng bởi hàng trăm ngân hàng trên thế giới.
 
-> **Khả Năng Mở Rộng**: Fineract hỗ trợ hàng triệu tài khoản và giao dịch mỗi ngày.
+> **Khả Năng Mở Rộng**: Hỗ trợ hàng triệu tài khoản và giao dịch mỗi ngày.
 
 > **Chuẩn Hóa API**: Giao tiếp hoàn toàn qua RESTful API, dễ dàng tích hợp với NestJS Backend.
