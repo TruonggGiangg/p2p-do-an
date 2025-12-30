@@ -99,7 +99,7 @@ export const UnifiedSpacing = {
     xs: 8,   // Elements inside a card
     sm: 12,  // Icon to text
     md: 16,  // Standard padding
-    lg: 20,  // Card padding
+    lg: 16,  // Card padding (reduced from 20)
     xl: 24,  // Section spacing
     xxl: 32, // Screen edges (sometimes)
 };

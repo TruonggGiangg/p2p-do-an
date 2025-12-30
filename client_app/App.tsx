@@ -103,7 +103,7 @@ function InvestStack() {
       <Stack.Screen
         name="InvestDetail"
         component={InvestDetailScreen}
-        options={{ title: 'Chi tiết đầu tư' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="MyInvestments"

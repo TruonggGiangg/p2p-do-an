@@ -196,7 +196,7 @@ export default function InvestDetailScreen() {
                     <MaterialCommunityIcons name="arrow-left" size={24} color={GlassTokens.colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Chi tiết đầu tư</Text>
-                <View style={styles.backButton} />
+                <View style={styles.backButtonBlank} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: UnifiedSpacing.lg,
-        paddingTop: 50,
+        paddingTop: UnifiedSpacing.md,
         paddingBottom: UnifiedSpacing.md,
         backgroundColor: 'transparent',
     },
@@ -392,6 +392,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
+    },
+
+    backButtonBlank: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.0)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.0)',
     },
     headerTitle: {
         fontSize: 18,
