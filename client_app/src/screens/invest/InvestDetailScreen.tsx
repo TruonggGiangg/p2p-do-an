@@ -58,6 +58,7 @@ export default function InvestDetailScreen() {
 
         // Extract currency rounding config from Fineract response
         const inMultiplesOf = fineractSchedule?.currency?.inMultiplesOf || 1;
+
         const roundToCurrency = (val: number) => {
             if (inMultiplesOf > 0) {
                 return Math.round(val / inMultiplesOf) * inMultiplesOf;
@@ -84,11 +85,23 @@ export default function InvestDetailScreen() {
             const investmentRatio = investmentAmount / totalLoan;
             const rateRatio = lenderAnnualRate / borrowerAnnualRate;
 
-            sPeriodsData = periods.map((period: any) => {
+            let accumulatedPrincipal = 0;
+            sPeriodsData = periods.map((period: any, index: number) => {
                 const borrowerPrincipal = period.principalDue || 0;
                 const borrowerInterest = period.interestDue || 0;
 
-                const lenderPrincipal = roundToCurrency(borrowerPrincipal * investmentRatio);
+                let lenderPrincipal = roundToCurrency(borrowerPrincipal * investmentRatio);
+
+                // Adjust last period to ensure total principal equals investment amount
+                if (index === periods.length - 1) {
+                    const adjustment = investmentAmount - accumulatedPrincipal;
+                    // Only adjust if difference is reasonable (prevent massive jumps if logic is wrong)
+                    // But here we trust the logic.
+                    lenderPrincipal = adjustment;
+                    if (lenderPrincipal < 0) lenderPrincipal = 0;
+                }
+                accumulatedPrincipal += lenderPrincipal;
+
                 const lenderInterest = roundToCurrency(borrowerInterest * rateRatio * investmentRatio);
 
                 return {

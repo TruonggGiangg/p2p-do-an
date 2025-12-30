@@ -937,18 +937,7 @@ export class InvestService {
         }
         this.logger.log(`[getInvestmentHistory] Initial balance at ${startDateStr}: ${lastBalance}`);
 
-        // SMART START DATE: If no data before startDate, shift to first investment date
-        // This prevents charts from being mostly flat at 0
-        if (sortedDataPoints.length > 0 && lastBalance === 0) {
-            const firstDataDate = sortedDataPoints[0][0];
-            if (firstDataDate > startDateStr) {
-                // Shift startDate to 1 day before first investment for context
-                const firstInvDate = new Date(firstDataDate);
-                firstInvDate.setDate(firstInvDate.getDate() - 1);
-                startDate = firstInvDate;
-                this.logger.log(`[getInvestmentHistory] Adjusted startDate to ${startDate.toISOString().split('T')[0]} (1 day before first investment)`);
-            }
-        }
+
 
         // Fixed number of data points for each range for smooth charts
         const targetPoints = {

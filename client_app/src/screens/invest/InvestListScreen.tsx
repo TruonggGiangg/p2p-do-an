@@ -7,16 +7,40 @@ import {
     StyleSheet,
     RefreshControl,
     ActivityIndicator,
-    Alert,
+    Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Avatar } from 'react-native-paper';
 import { LineChart } from "react-native-gifted-charts";
+import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { investApi, AvailableLoan, InvestmentStats } from '../../services/invest';
 import { useAuth } from '../../contexts/AuthContext';
-import { GradientBackground, GlassCard, GlassTokens, SectionTitle } from '../../components/glass';
+import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
 import { UnifiedSpacing, UnifiedRadius } from '../../theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Helper: Get Icon based on purpose
+const getPurposeConfig = (willing: string) => {
+    const map: Record<string, { icon: string, color: string, label: string }> = {
+        'business': { icon: 'briefcase-variant', color: '#60A5FA', label: 'Kinh doanh' },
+        'consumption': { icon: 'cart-outline', color: '#F472B6', label: 'Tiêu dùng' },
+        'education': { icon: 'school-outline', color: '#34D399', label: 'Giáo dục' },
+        'medical': { icon: 'medical-bag', color: '#F87171', label: 'Y tế' },
+        'real_estate': { icon: 'home-city-outline', color: '#A78BFA', label: 'Bất động sản' },
+    };
+    return map[willing] || { icon: 'cash-fast', color: GlassTokens.colors.primary, label: 'Vay khác' };
+};
+
+// Helper: Mock Credit Grade
+const getCreditGrade = (rate: number) => {
+    if (rate < 12) return { grade: 'A+', color: '#4ADE80' };
+    if (rate < 15) return { grade: 'A', color: '#34D399' };
+    if (rate < 18) return { grade: 'B', color: '#FACC15' };
+    if (rate < 20) return { grade: 'C', color: '#FB923C' };
+    return { grade: 'D', color: '#F87171' };
+};
 
 export default function InvestListScreen() {
     const navigation = useNavigation<any>();
@@ -31,12 +55,11 @@ export default function InvestListScreen() {
 
     // Chart interactivity state
     const [chartRange, setChartRange] = useState<'1W' | '1M' | '3M' | '1Y'>('1M');
-    const [chartType, setChartType] = useState<'line' | 'area' | 'bar'>('area');
     const [chartData, setChartData] = useState<Array<{ value: number; label: string }>>([]);
     const [chartLoading, setChartLoading] = useState(false);
     const [chartSummary, setChartSummary] = useState<{ totalProfit: number; totalBalance: number } | null>(null);
 
-    // Load chart data from API
+    // Load chart data
     const loadChartData = useCallback(async (range: string) => {
         try {
             setChartLoading(true);
@@ -51,8 +74,6 @@ export default function InvestListScreen() {
                 totalBalance: historyRes.summary?.totalBalance || 0,
             });
         } catch (error) {
-            console.error('Error loading chart data:', error);
-            // Fallback to mock data if API fails
             setChartData([
                 { value: 48000000, label: 'T1' },
                 { value: 52000000, label: 'T2' },
@@ -66,177 +87,103 @@ export default function InvestListScreen() {
         }
     }, [balance]);
 
-    // Load chart data when range changes
-    useEffect(() => {
-        loadChartData(chartRange);
-    }, [chartRange]);
+    useEffect(() => { loadChartData(chartRange); }, [chartRange]);
 
     const loadData = useCallback(async (isRefresh = false) => {
         try {
-            if (isRefresh) {
-                setRefreshing(true);
-                setPage(1);
-            }
-
+            if (isRefresh) { setRefreshing(true); setPage(1); }
             const [loansRes, statsRes, balanceRes] = await Promise.all([
                 investApi.getAvailableLoans(isRefresh ? 1 : page, 10),
                 investApi.getStats(),
                 investApi.getMyBalance(),
             ]);
-
             setLoans(isRefresh ? loansRes.data : [...loans, ...loansRes.data]);
             setStats(statsRes);
             setBalance(balanceRes);
             setHasMore(loansRes.pagination.page < loansRes.pagination.totalPages);
         } catch (error: any) {
             console.error('Error loading data:', error);
-            Alert.alert('Lỗi', error.message || 'Không thể tải dữ liệu');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     }, [page, loans]);
 
-    useEffect(() => {
-        loadData(true);
-    }, []);
-
+    useEffect(() => { loadData(true); }, []);
     const onRefresh = () => loadData(true);
+    const loadMore = () => { if (hasMore && !loading) setPage(prev => prev + 1); };
+    const formatCurrency = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 
-    const loadMore = () => {
-        if (hasMore && !loading) {
-            setPage(prev => prev + 1);
-        }
-    };
+    // --- RENDER LOAN ITEM (Keep the new design) ---
+    const renderLoanItem = ({ item }: { item: AvailableLoan }) => {
+        const purpose = getPurposeConfig(item.info.willing);
+        const credit = getCreditGrade(item.info.rate);
+        const rate = item.lenderInterestRate || item.info.rate;
 
-    useEffect(() => {
-        if (page > 1) loadData();
-    }, [page]);
-
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('vi-VN').format(value);
-    };
-
-    const renderLoanItem = ({ item }: { item: AvailableLoan }) => (
-        <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('InvestDetail', { loan: item })}
-        >
-            <GlassCard blur={GlassTokens.blur.light} style={styles.loanCard}>
-                {/* Header Row */}
-                <View style={styles.loanHeader}>
-                    <View style={styles.loanIdContainer}>
-                        <View style={styles.iconCircle}>
-                            <MaterialCommunityIcons name="cash-multiple" size={20} color={GlassTokens.colors.primary} />
-                        </View>
-                        <View>
-                            <Text style={styles.loanId}>{formatCurrency(item.info.capital)}₫</Text>
-                            <View style={styles.durationRow}>
-                                <MaterialCommunityIcons name="calendar-clock" size={12} color={GlassTokens.colors.textSecondary} />
-                                <Text style={styles.loanIdSub}>{item.info.periodMonth} tháng</Text>
+        return (
+            <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('InvestDetail', { loan: item })}>
+                <GlassCard blur={GlassTokens.blur.medium} style={styles.loanCard}>
+                    <View style={styles.cardHeader}>
+                        <View style={styles.headerLeft}>
+                            <View style={[styles.iconBox, { backgroundColor: `${purpose.color}20` }]}>
+                                <MaterialCommunityIcons name={purpose.icon} size={20} color={purpose.color} />
+                            </View>
+                            <View>
+                                <Text style={styles.loanCode}>LOAN #{item.contractId.slice(-4)}</Text>
+                                <Text style={styles.loanPurpose}>{purpose.label}</Text>
                             </View>
                         </View>
-                    </View>
-                    <View style={styles.fundedBadge}>
-                        <MaterialCommunityIcons name="chart-arc" size={14} color={GlassTokens.colors.success} />
-                        <Text style={styles.fundedText}>{item.fundedPercentage}%</Text>
-                    </View>
-                </View>
-
-                {/* Stats Row with Icons */}
-                <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
-                        <View style={styles.statIconContainer}>
-                            <MaterialCommunityIcons name="trending-up" size={16} color={GlassTokens.colors.success} />
-                        </View>
-                        <View style={styles.statContent}>
-                            <Text style={styles.statLabel}>Lãi suất</Text>
-                            <Text style={styles.statValue}>
-                                {item.lenderInterestRate
-                                    ? `${item.lenderInterestRate}%`
-                                    : `${item.info.rate}%`}
-                            </Text>
+                        <View style={[styles.gradeBadge, { borderColor: credit.color }]}>
+                            <Text style={[styles.gradeText, { color: credit.color }]}>{credit.grade}</Text>
                         </View>
                     </View>
-
-                    <View style={styles.statDivider} />
-
-                    <View style={styles.statItem}>
-                        <View style={styles.statIconContainer}>
-                            <MaterialCommunityIcons name="wallet-outline" size={16} color={GlassTokens.colors.primary} />
+                    <View style={styles.divider} />
+                    <View style={styles.statsContainer}>
+                        <View style={styles.statCol}>
+                            <Text style={styles.statLabel}>Lãi suất / năm</Text>
+                            <Text style={[styles.statValueBig, { color: GlassTokens.colors.success }]}>{rate}%</Text>
                         </View>
-                        <View style={styles.statContent}>
-                            <Text style={styles.statLabel}>Còn trống</Text>
-                            <Text style={[styles.statValue, { color: GlassTokens.colors.primary, fontWeight: '700' }]}>
-                                {formatCurrency(item.availableAmount)}
-                            </Text>
+                        <View style={[styles.statCol, { alignItems: 'center' }]}>
+                            <Text style={styles.statLabel}>Kỳ hạn</Text>
+                            <Text style={styles.statValue}>{item.info.periodMonth}T</Text>
                         </View>
-                    </View>
-
-                    <View style={styles.statDivider} />
-
-                    <View style={styles.statItem}>
-                        <View style={styles.statIconContainer}>
-                            <MaterialCommunityIcons name="file-document-multiple-outline" size={16} color={GlassTokens.colors.info} />
-                        </View>
-                        <View style={styles.statContent}>
-                            <Text style={styles.statLabel}>Slg Notes</Text>
-                            <Text style={styles.statValue}>{item.availableNotes}</Text>
+                        <View style={[styles.statCol, { alignItems: 'flex-end' }]}>
+                            <Text style={styles.statLabel}>Cần huy động</Text>
+                            <Text style={styles.statValue}>{formatCurrency(item.availableAmount)}₫</Text>
                         </View>
                     </View>
-                </View>
-
-                {/* Progress Bar */}
-                <View style={styles.progressContainer}>
-                    <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${item.fundedPercentage}%` }]} />
+                    <View style={styles.progressSection}>
+                        <View style={styles.progressRow}>
+                            <Text style={styles.progressText}>Đã gọi: {item.fundedPercentage}%</Text>
+                            <Text style={styles.progressText}>{item.availableNotes} notes còn lại</Text>
+                        </View>
+                        <View style={styles.progressBarBg}>
+                            <LinearGradient
+                                colors={[GlassTokens.colors.primary, GlassTokens.colors.info]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={[styles.progressBarFill, { width: `${item.fundedPercentage}%` }]}
+                            />
+                        </View>
                     </View>
-                </View>
-
-                {/* Action Row */}
-                <View style={styles.actionRow}>
-                    <View style={styles.actionLeft}>
-                        <MaterialCommunityIcons name="shield-check" size={16} color={GlassTokens.colors.success} />
-                        <Text style={styles.verifiedText}>Đã xác minh</Text>
-                    </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={GlassTokens.colors.primary} />
-                </View>
-            </GlassCard>
-        </TouchableOpacity>
-    );
+                </GlassCard>
+            </TouchableOpacity>
+        );
+    };
 
     const renderHeader = () => {
-        // Use real data from API or fallback
-        const displayData = chartData.length > 0 ? chartData : [
-            { value: 48000000, label: 'T1' },
-            { value: 52000000, label: 'T2' },
-            { value: 49500000, label: 'T3' },
-            { value: 62000000, label: 'T4' },
-            { value: 58000000, label: 'T5' },
-            { value: balance ? balance.availableBalance : 65000000, label: 'T6' },
-        ];
-
-        // Time range options
-        const timeRanges: Array<{ key: '1W' | '1M' | '3M' | '1Y'; label: string }> = [
-            { key: '1W', label: '1W' },
-            { key: '1M', label: '1M' },
-            { key: '3M', label: '3M' },
-            { key: '1Y', label: '1Y' },
-        ];
-
-        // Chart type options
-        const chartTypes: Array<{ key: 'line' | 'area' | 'bar'; icon: string }> = [
-            { key: 'line', icon: 'chart-line' },
-            { key: 'area', icon: 'chart-areaspline' },
-            { key: 'bar', icon: 'chart-bar' },
+        // Fallback with 2+ points for valid line chart
+        const displayData = chartData.length > 1 ? chartData : [
+            { value: 0, label: 'Start' },
+            { value: balance?.availableBalance || 0, label: 'Now' }
         ];
 
         return (
             <View style={styles.header}>
-                {/* Top Row */}
+                {/* Greeting & Balance */}
                 <View style={styles.headerTop}>
                     <View>
-                        <Text style={styles.welcomeLabel}>Portfolio Total</Text>
+                        <Text style={styles.welcomeLabel}>Tổng danh mục</Text>
                         <Text style={styles.balanceBig}>{balance ? formatCurrency(balance.availableBalance) : '---'}₫</Text>
                         <View style={styles.growthRow}>
                             <MaterialCommunityIcons name="trending-up" size={16} color={GlassTokens.colors.success} />
@@ -245,90 +192,64 @@ export default function InvestListScreen() {
                             </Text>
                         </View>
                     </View>
-                    <TouchableOpacity style={styles.avatarContainer}>
+                    <View style={styles.headerRight}>
+                        <TouchableOpacity
+                            style={styles.historyCircle}
+                            onPress={() => navigation.navigate('MyInvestments')}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons name="history" size={22} color="white" />
+                        </TouchableOpacity>
                         <Avatar.Image size={44} source={{ uri: 'https://i.pravatar.cc/150' }} />
-                    </TouchableOpacity>
+                    </View>
                 </View>
 
-                {/* Fintech Chart Card */}
+                {/* Styled Chart Card */}
                 <GlassCard variant="primary" blur={GlassTokens.blur.medium} style={styles.chartCard}>
-                    {/* Chart Header */}
-                    <View style={styles.chartHeader}>
-                        <Text style={styles.chartLabel}>Tổng vốn đầu tư</Text>
-                        <View style={styles.chartBadge}>
-                            <Text style={styles.chartBadgeText}>Live</Text>
-                        </View>
-                    </View>
-
-                    {/* Chart Controls Row */}
-                    <View style={styles.chartControlsRow}>
-                        {/* Time Range Selector */}
+                    <View style={styles.chartHeaderContainer}>
+                        <Text style={styles.chartLabel}>Hiệu quả đầu tư</Text>
                         <View style={styles.timeRangeContainer}>
-                            {timeRanges.map((range) => (
+                            {['1W', '1M', '3M', '1Y'].map((r) => (
                                 <TouchableOpacity
-                                    key={range.key}
-                                    style={[
-                                        styles.timeRangeChip,
-                                        chartRange === range.key && styles.timeRangeChipActive,
-                                    ]}
-                                    onPress={() => setChartRange(range.key)}
+                                    key={r}
+                                    style={[styles.rangeBtn, chartRange === r && styles.rangeBtnActive]}
+                                    onPress={() => setChartRange(r as any)}
                                 >
-                                    <Text style={[
-                                        styles.timeRangeText,
-                                        chartRange === range.key && styles.timeRangeTextActive,
-                                    ]}>
-                                        {range.label}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        {/* Chart Type Toggle */}
-                        <View style={styles.chartTypeContainer}>
-                            {chartTypes.map((type) => (
-                                <TouchableOpacity
-                                    key={type.key}
-                                    style={[
-                                        styles.chartTypeBtn,
-                                        chartType === type.key && styles.chartTypeBtnActive,
-                                    ]}
-                                    onPress={() => setChartType(type.key)}
-                                >
-                                    <MaterialCommunityIcons
-                                        name={type.icon as any}
-                                        size={16}
-                                        color={chartType === type.key ? GlassTokens.colors.primary : GlassTokens.colors.textSecondary}
-                                    />
+                                    <Text style={[styles.rangeText, chartRange === r && { color: 'white' }]}>{r}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
                     </View>
 
-                    {/* Chart */}
-                    <View style={{ marginLeft: -20, marginTop: 10, minHeight: 120 }}>
+                    {/* Chart with Style & Data */}
+                    <View style={{ marginLeft: -10, marginTop: 40 }}>
                         {chartLoading ? (
-                            <View style={{ height: 120, justifyContent: 'center', alignItems: 'center' }}>
+                            <View style={{ height: 160, justifyContent: 'center', alignItems: 'center' }}>
                                 <ActivityIndicator size="small" color={GlassTokens.colors.white} />
                             </View>
                         ) : (
                             <LineChart
                                 data={displayData}
-                                areaChart={chartType === 'area'}
-                                curved
-                                width={260}
-                                height={120}
-                                color={GlassTokens.colors.white}
-                                thickness={chartType === 'bar' ? 0 : 3}
-                                startFillColor={chartType === 'area' ? 'rgba(255,255,255,0.2)' : 'transparent'}
-                                endFillColor={chartType === 'area' ? 'rgba(255,255,255,0.0)' : 'transparent'}
-                                startOpacity={0.9}
+                                areaChart
+                                isAnimated
+                                animationDuration={1200}
+                                width={SCREEN_WIDTH - 110}
+                                adjustToWidth
+                                height={160}
+                                color={GlassTokens.colors.primary}
+                                startFillColor={GlassTokens.colors.primary}
+                                endFillColor="rgba(10, 132, 255, 0.0)"
+                                startOpacity={0.3}
                                 endOpacity={0.0}
-                                initialSpacing={5}
+                                thickness={3}
+                                initialSpacing={20}
+                                endSpacing={20}
                                 noOfSections={3}
                                 yAxisThickness={0}
                                 xAxisThickness={0}
-                                yAxisTextStyle={{ color: GlassTokens.colors.textSecondary, fontSize: 9 }}
-                                xAxisLabelTextStyle={{ color: GlassTokens.colors.textSecondary, fontSize: 9 }}
+                                rulesColor="rgba(255,255,255,0.1)"
+                                rulesType="solid"
+                                yAxisTextStyle={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}
                                 formatYLabel={(val) => {
                                     const num = Number(val);
                                     if (num >= 1000000) return `${(num / 1000000).toFixed(0)}M`;
@@ -336,41 +257,32 @@ export default function InvestListScreen() {
                                     return val;
                                 }}
                                 hideRules={false}
-                                rulesColor="rgba(255,255,255,0.1)"
                                 hideYAxisText={false}
-                                yAxisLabelWidth={55}
-                                hideAxesAndRules={false}
-                                hideDataPoints={chartType === 'area'}
-                                dataPointsColor={GlassTokens.colors.white}
-                                dataPointsRadius={4}
+                                yAxisLabelWidth={40}
+
+                                // Interactive Pointer Styling
                                 pointerConfig={{
-                                    pointerStripHeight: 120,
-                                    pointerStripColor: 'rgba(255,255,255,0.5)',
+                                    pointerStripHeight: 160,
+                                    pointerStripColor: 'rgba(255,255,255,0.3)',
                                     pointerStripWidth: 2,
-                                    pointerColor: GlassTokens.colors.white,
+                                    pointerColor: 'white', // Glowing white dot
                                     radius: 6,
                                     pointerLabelWidth: 120,
                                     pointerLabelHeight: 90,
                                     activatePointersOnLongPress: false,
-                                    autoAdjustPointerLabelPosition: false,
+                                    autoAdjustPointerLabelPosition: true,
+                                    pointerComponent: () => (
+                                        <View style={{
+                                            height: 12, width: 12, borderRadius: 6, backgroundColor: 'white',
+                                            shadowColor: 'white', shadowOpacity: 0.8, shadowRadius: 10, elevation: 5,
+                                            borderWidth: 2, borderColor: GlassTokens.colors.primary
+                                        }} />
+                                    ),
                                     pointerLabelComponent: (items: any) => {
                                         return (
-                                            <View
-                                                style={{
-                                                    height: 90,
-                                                    width: 120,
-                                                    justifyContent: 'center',
-                                                    marginTop: -30,
-                                                    marginLeft: -50,
-                                                }}>
-                                                <View style={{ padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.85)' }}>
-                                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, textAlign: 'center' }}>
-                                                        {items[0]?.label || ''}
-                                                    </Text>
-                                                    <Text style={{ color: 'white', fontSize: 14, fontWeight: '700', textAlign: 'center' }}>
-                                                        {formatCurrency(items[0]?.value || 0)}₫
-                                                    </Text>
-                                                </View>
+                                            <View style={styles.glassTooltip}>
+                                                <Text style={styles.tooltipLabel}>{items[0]?.label || 'Date'}</Text>
+                                                <Text style={styles.tooltipValue}>{formatCurrency(items[0]?.value || 0)}₫</Text>
                                             </View>
                                         );
                                     },
@@ -379,7 +291,7 @@ export default function InvestListScreen() {
                         )}
                     </View>
 
-                    {/* Quick Stats in Header */}
+                    {/* Quick Stats Footer */}
                     {stats && (
                         <View style={styles.quickStatsRow}>
                             <View>
@@ -397,7 +309,7 @@ export default function InvestListScreen() {
 
                 {/* Section Title */}
                 <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Cơ hội đầu tư</Text>
+                    <Text style={styles.sectionTitle}>Cơ hội đầu tư mới</Text>
                     <View style={styles.countBadge}>
                         <Text style={styles.countText}>{loans.length}</Text>
                     </View>
@@ -405,17 +317,6 @@ export default function InvestListScreen() {
             </View>
         );
     };
-
-    if (loading && loans.length === 0) {
-        return (
-            <GradientBackground>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
-                    <Text style={styles.loadingText}>Đang tải...</Text>
-                </View>
-            </GradientBackground>
-        );
-    }
 
     return (
         <GradientBackground>
@@ -426,410 +327,92 @@ export default function InvestListScreen() {
                 ListHeaderComponent={renderHeader}
                 contentContainerStyle={styles.listContent}
                 refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={GlassTokens.colors.primary}
-                        colors={[GlassTokens.colors.primary]}
-                    />
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GlassTokens.colors.primary} />
                 }
                 onEndReached={loadMore}
-                onEndReachedThreshold={0.5}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <View style={styles.emptyIcon}>
-                            <MaterialCommunityIcons name="briefcase-search-outline" size={48} color={GlassTokens.colors.textMuted} />
-                        </View>
-                        <Text style={styles.emptyTitle}>Chưa có khoản vay</Text>
-                        <Text style={styles.emptyText}>Không có khoản vay nào đang chờ đầu tư</Text>
-                    </View>
-                }
             />
         </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: 12,
-        color: GlassTokens.colors.textSecondary,
-        fontSize: 14,
-        fontFamily: 'Poppins_400Regular',
-    },
-    listContent: {
-        paddingBottom: 100,
-    },
-    // Header
-    header: {
-        paddingTop: 60,
-        paddingHorizontal: UnifiedSpacing.lg,
-    },
-    headerTop: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 24,
-    },
-    welcomeLabel: {
-        fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-        marginBottom: 4,
-    },
-    balanceBig: {
-        fontSize: 32,
-        fontWeight: '700',
-        color: GlassTokens.colors.textPrimary,
-        fontFamily: 'Poppins_700Bold',
-        letterSpacing: -1,
-    },
-    growthRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginTop: 4,
-    },
-    growthText: {
-        fontSize: 13,
-        color: GlassTokens.colors.success,
-        fontFamily: 'Poppins_500Medium',
-    },
-    avatarContainer: {
-        borderWidth: 2,
-        borderColor: GlassTokens.colors.primary,
-        borderRadius: 26,
-        padding: 2,
-    },
-    // Chart Card
-    chartCard: {
-        marginBottom: 32,
-        paddingBottom: 0,
-        overflow: 'hidden',
-    },
-    chartHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-        paddingHorizontal: 4,
-    },
-    chartLabel: {
-        fontSize: 14,
-        color: 'rgba(255,255,255,0.8)',
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    chartBadge: {
-        backgroundColor: 'rgba(48, 209, 88, 0.2)',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: 'rgba(48, 209, 88, 0.4)',
-    },
-    chartBadgeText: {
-        fontSize: 10,
-        color: GlassTokens.colors.success,
-        fontWeight: 'bold',
-    },
-    // Chart Controls
-    chartControlsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-        paddingHorizontal: 4,
-    },
-    timeRangeContainer: {
-        flexDirection: 'row',
-        gap: 6,
-    },
-    timeRangeChip: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-    },
-    timeRangeChipActive: {
-        backgroundColor: GlassTokens.colors.primary,
-    },
-    timeRangeText: {
-        fontSize: 11,
-        color: GlassTokens.colors.textSecondary,
-        fontWeight: '600',
-    },
-    timeRangeTextActive: {
-        color: GlassTokens.colors.white,
-    },
-    chartTypeContainer: {
-        flexDirection: 'row',
-        gap: 4,
-    },
-    chartTypeBtn: {
-        padding: 6,
-        borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-    },
-    chartTypeBtnActive: {
-        backgroundColor: 'rgba(10, 132, 255, 0.2)',
-    },
-    quickStatsRow: {
-        flexDirection: 'row',
-        marginTop: 10,
-        paddingTop: 16,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.1)',
-        marginBottom: 16,
-        paddingHorizontal: 4,
-    },
-    quickStatLabel: {
-        fontSize: 12,
-        color: GlassTokens.colors.textSecondary,
-        marginBottom: 2,
-    },
-    quickStatValue: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: GlassTokens.colors.white,
-    },
-    quickDivider: {
-        width: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        marginHorizontal: 20,
-    },
-    // Section Header
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    countBadge: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 10,
-    },
-    countText: {
-        fontSize: 12,
-        color: GlassTokens.colors.textPrimary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    loanCount: {
-        fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-    },
-    // Loan Card
-    loanCard: {
-        marginHorizontal: UnifiedSpacing.lg,
-        marginBottom: 12,
-    },
-    loanHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    loanIdContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    iconCircle: {
+    listContent: { paddingBottom: 100 },
+    header: { paddingTop: 60, paddingHorizontal: UnifiedSpacing.lg },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    historyCircle: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: `${GlassTokens.colors.primary}20`,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loanId: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    loanIdSub: {
-        fontSize: 12,
-        color: GlassTokens.colors.textSecondary,
-        marginTop: 2,
-        fontFamily: 'Poppins_400Regular',
-        marginLeft: 4,
-    },
-    durationRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 4,
-    },
-    fundedBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: UnifiedRadius.full,
-        backgroundColor: `${GlassTokens.colors.success}20`,
-        borderWidth: 1,
-        borderColor: `${GlassTokens.colors.success}40`,
-    },
-    fundedText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: GlassTokens.colors.success,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    // Stats Row (Loan Item)
-    statsRow: {
-        flexDirection: 'row',
-        marginBottom: 16,
-        gap: 8,
-    },
-    statItem: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    statIconContainer: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    statContent: {
-        flex: 1,
-    },
-    statLabel: {
-        fontSize: 10,
-        color: GlassTokens.colors.textSecondary,
-        marginBottom: 2,
-        fontFamily: 'Poppins_400Regular',
-    },
-    statValue: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    statDivider: {
-        width: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-    },
-    // Progress
-    progressContainer: {
-        marginBottom: 12,
-    },
-    progressBar: {
-        height: 6,
         backgroundColor: 'rgba(255,255,255,0.1)',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: '100%',
-        backgroundColor: GlassTokens.colors.success,
-        borderRadius: 3,
-    },
-    progressInfo: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    progressLabel: {
-        fontSize: 13,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-    },
-    progressValue: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: GlassTokens.colors.primary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    // Action Row
-    actionRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.08)',
-    },
-    actionLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    verifiedText: {
-        fontSize: 12,
-        color: GlassTokens.colors.success,
-        fontFamily: 'Poppins_500Medium',
-    },
-    notesText: {
-        fontSize: 13,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-    },
-    // Empty State
-    emptyContainer: {
-        padding: 40,
-        alignItems: 'center',
-    },
-    emptyIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: 'rgba(255,255,255,0.05)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
     },
-    emptyTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
-        marginBottom: 8,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    emptyText: {
-        fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
-        textAlign: 'center',
-        fontFamily: 'Poppins_400Regular',
-    },
-    // Tier Badge
-    tierRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-        gap: 8,
-    },
-    tierBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
+    welcomeLabel: { fontSize: 14, color: GlassTokens.colors.textSecondary, fontFamily: 'Poppins_400Regular' },
+    balanceBig: { fontSize: 32, fontWeight: '700', color: 'white', fontFamily: 'Poppins_700Bold' },
+    growthRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+    growthText: { fontSize: 13, color: GlassTokens.colors.success, fontFamily: 'Poppins_500Medium' },
+
+    // Chart Card
+    chartCard: { marginBottom: 32, paddingBottom: 0 },
+    chartHeaderContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    chartLabel: { fontSize: 14, color: 'white', fontWeight: '600' },
+    timeRangeContainer: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 2 },
+    rangeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+    rangeBtnActive: { backgroundColor: GlassTokens.colors.primary },
+    rangeText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
+
+    // Glass Tooltip Style
+    glassTooltip: {
+        width: 120,
+        padding: 10,
         borderRadius: 12,
+        backgroundColor: 'rgba(30, 30, 30, 0.85)', // Semi-transparent dark
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: -50,
+        marginTop: -40,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4.65,
+        elevation: 8,
     },
-    tierText: {
-        fontSize: 12,
-        fontWeight: '600',
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    tierDesc: {
-        fontSize: 12,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-    },
+    tooltipLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, marginBottom: 2 },
+    tooltipValue: { color: 'white', fontSize: 14, fontWeight: '700' },
+
+    quickStatsRow: { flexDirection: 'row', marginTop: 10, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', marginBottom: 16 },
+    quickStatLabel: { fontSize: 12, color: GlassTokens.colors.textSecondary, marginBottom: 2 },
+    quickStatValue: { fontSize: 15, fontWeight: '600', color: 'white' },
+    quickDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 20 },
+
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    sectionTitle: { fontSize: 18, fontWeight: '700', color: 'white' },
+    countBadge: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+    countText: { fontSize: 12, color: 'white', fontWeight: '700' },
+
+    // Loan Card
+    loanCard: { marginBottom: 12, padding: 0 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+    headerLeft: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    iconBox: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    loanCode: { fontSize: 12, color: GlassTokens.colors.textSecondary },
+    loanPurpose: { fontSize: 15, fontWeight: '600', color: 'white' },
+    gradeBadge: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+    gradeText: { fontSize: 12, fontWeight: '700' },
+    divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 16 },
+    statsContainer: { flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
+    statCol: { flex: 1 },
+    statLabel: { fontSize: 11, color: GlassTokens.colors.textSecondary, marginBottom: 4 },
+    statValue: { fontSize: 14, fontWeight: '600', color: 'white' },
+    statValueBig: { fontSize: 20, fontWeight: '700' },
+    progressSection: { paddingHorizontal: 16, paddingBottom: 16 },
+    progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+    progressText: { fontSize: 11, color: GlassTokens.colors.textSecondary },
+    progressBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' },
+    progressBarFill: { height: '100%', borderRadius: 3 },
 });

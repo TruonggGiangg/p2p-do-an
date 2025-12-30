@@ -769,11 +769,7 @@ export class LoanService {
      * Get full loan details from Fineract (including schedule and transactions)
      */
     async getFineractLoanDetails(loanIdOrContractId: string): Promise<any> {
-        this.logger.log(`========== GET FINERACT LOAN DETAILS DEBUG ==========`);
-        this.logger.log(`[getFineractLoanDetails] Input: loanIdOrContractId=${loanIdOrContractId}`);
-
         const fineractLoanId = await this.resolveFineractLoanId(loanIdOrContractId);
-        this.logger.log(`[getFineractLoanDetails] Resolved fineractLoanId: ${fineractLoanId}`);
 
         if (!fineractLoanId) {
             this.logger.warn(`[getFineractLoanDetails] ❌ Could not resolve Fineract Loan ID`);
@@ -784,12 +780,7 @@ export class LoanService {
             const fineractDetails = await this.fineractService.getLoanDetails(fineractLoanId);
             const extracted = this.fineractService.extractLoanInfo(fineractDetails);
 
-            this.logger.log(`[getFineractLoanDetails] ✅ Got Fineract details:`);
-            this.logger.log(`  - fineractLoanId: ${extracted.fineractLoanId}`);
-            this.logger.log(`  - status: ${extracted.fineractStatus}`);
-            this.logger.log(`  - principal: ${extracted.principal}`);
-            this.logger.log(`  - interestRate: ${JSON.stringify(extracted.interestRate)}`);
-            this.logger.log(`=======================================================`);
+
 
             return extracted;
         } catch (error) {
@@ -805,11 +796,7 @@ export class LoanService {
      * Get repayment schedule for a loan
      */
     async getRepaymentSchedule(loanId: string): Promise<any> {
-        this.logger.log(`========== GET REPAYMENT SCHEDULE DEBUG ==========`);
-        this.logger.log(`[getRepaymentSchedule] Input: loanId=${loanId}`);
-
         const fineractLoanId = await this.resolveFineractLoanId(loanId);
-        this.logger.log(`[getRepaymentSchedule] Resolved fineractLoanId: ${fineractLoanId}`);
 
         if (!fineractLoanId) {
             this.logger.warn(`[getRepaymentSchedule] ❌ Could not resolve Fineract Loan ID`);
@@ -819,13 +806,7 @@ export class LoanService {
         try {
             const schedule = await this.fineractService.getRepaymentSchedule(fineractLoanId);
 
-            this.logger.log(`[getRepaymentSchedule] ✅ Got schedule with ${schedule?.length || 0} periods:`);
-            if (schedule && schedule.length > 0) {
-                schedule.forEach((period: any, idx: number) => {
-                    this.logger.log(`  - Kỳ ${period.period || idx}: dueDate=${JSON.stringify(period.dueDate)}, principal=${period.principalDue}, interest=${period.interestDue}, total=${period.totalDueForPeriod}, complete=${period.complete}`);
-                });
-            }
-            this.logger.log(`===================================================`);
+
 
             return schedule;
         } catch (error) {

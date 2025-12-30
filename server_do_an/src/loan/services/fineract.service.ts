@@ -844,6 +844,9 @@ export class FineractService {
                 annual: fineractLoan.annualInterestRate,
             },
 
+            currency: fineractLoan.currency,
+
+
             status: {
                 code: fineractLoan.status?.code,
                 value: fineractLoan.status?.value,
