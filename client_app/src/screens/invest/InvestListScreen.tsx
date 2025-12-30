@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
 
     // Chart Card
     chartCard: { marginBottom: 32, paddingBottom: 0 },
-    chartHeaderContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    chartHeaderContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, zIndex: 10 },
     chartLabel: { fontSize: 14, color: 'white', fontWeight: '600' },
     timeRangeContainer: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 2 },
     rangeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
