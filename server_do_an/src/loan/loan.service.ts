@@ -208,27 +208,24 @@ export class LoanService {
         this.logger.log(`Recommendations: ${creditAssessment.recommendations.join(', ')}`);
         this.logger.log(`==========================================\n`);
 
-        // 4. 💰 CALCULATE DYNAMIC INTEREST RATE (Based on Credit Score)
-        const rateCalculation = this.rateCalculator.calculatePayments(
-            capital,
-            periodMonth,
-            creditAssessment.score
-        );
-
-        this.logger.log(`\n========== DYNAMIC RATE CALCULATION ==========`);
-        this.logger.log(`[Borrower] Annual: ${rateCalculation.annualBorrowerRate}%, Monthly: ${rateCalculation.monthlyBorrowerRate}%`);
-        this.logger.log(`[Lender FD] Annual: ${rateCalculation.annualLenderRate}%, Monthly: ${rateCalculation.monthlyLenderRate}%`);
-        this.logger.log(`[Admin Spread] ${rateCalculation.annualSpread}% annual (${rateCalculation.spreadPercentage.toFixed(2)}% of borrower rate)`);
-        this.logger.log(`[Loan Tier] ${rateCalculation.tier} (${this.rateCalculator.getTierDescription(capital)})`);
-        this.logger.log(`[Monthly Payment] Principal: ${rateCalculation.monthlyPrincipalPay.toLocaleString()}, Interest: ${rateCalculation.monthlyInterestPay.toLocaleString()}, Total: ${rateCalculation.monthlyPay.toLocaleString()}`);
-        this.logger.log(`===============================================\n`);
-
-        // 5. Get Fineract schedule for validation (optional)
+        // 4. Rate Calculation (Standard Fineract Product)
+        // Get Fineract schedule which dictates the rate based on Loan Product configuration
         const schedule = await this.fineractService.calculateLoanSchedule(capital, periodMonth);
-        this.logger.log(`[Fineract Rate] ${schedule.rate}% (${schedule.interestType}) - Used for Fineract loan creation`);
+        this.logger.log(`\n========== LOAN PRODUCT RATE ==========`);
+        this.logger.log(`[Source] Fineract Loan Product`);
+        this.logger.log(`[Rate] ${schedule.rate}% (Annual: ${schedule.annualRate}%)`);
+        this.logger.log(`[Monthly Payment] ${schedule.monthlyPay.toLocaleString()}`);
+        this.logger.log(`=======================================\n`);
 
-        // Use our calculated rate for display, Fineract rate for actual loan creation
-        // This ensures borrower sees the credit-adjusted rate but Fineract uses its product rate
+        // Standard Logic for P2P: Lender gets (BorrowerRate - AdminSpread)
+        // Admin Spread is fixed at 3% usually, or configured
+        const adminSpread = 3;
+        const borrowerAnnualRate = schedule.annualRate;
+        const lenderAnnualRate = borrowerAnnualRate - adminSpread;
+
+        // Convert to monthly for display/storage consistency
+        const lenderMonthlyRate = Number((lenderAnnualRate / 12).toFixed(2));
+        const adminSpreadMonthly = Number((adminSpread / 12).toFixed(2));
 
         // 4. Generate contract ID
         const contractId = `LOAN_${Date.now()}`;
@@ -240,41 +237,38 @@ export class LoanService {
         // 6. Save to MongoDB FIRST (as Waiting)
         // Use username or keycloakUserId as borrower identifier (Keycloak users don't have MongoDB ObjectId)
 
-        // Use calculated rates from credit scoring
-        // Store both Fineract rate (for loan product) and dynamic rate (for FD spread)
-
         const loanContract = new this.loanContractModel({
             contractId: contractId,
             borrower: borrowerId, // Store as string for Keycloak compatibility
             info: {
                 capital,
-                rate: schedule.rate, // Fineract rate for loan product
+                rate: schedule.rate, // Fineract rate for loan product (Borrower Rate)
                 periodMonth,
                 willing,
                 disbursementDate: disbDate.toDate(),
                 maturityDate: maturityDate.toDate(),
                 createdDate: new Date(),
-                monthlyPrincipalPay: rateCalculation.monthlyPrincipalPay,
-                monthlyInterestPay: rateCalculation.monthlyInterestPay,
-                monthlyPay: rateCalculation.monthlyPay,
-                entirelyPay: rateCalculation.totalPayment,
-                annualRate: rateCalculation.annualBorrowerRate,
-                // Lender rates (for investment display)
-                lenderRate: rateCalculation.monthlyLenderRate,  // Monthly lender rate
-                annualLenderRate: rateCalculation.annualLenderRate,  // Annual lender rate
-                spread: rateCalculation.annualSpread,  // Admin spread (3%)
-                interestType: 'FLAT', // Our calculation uses FLAT rate
+                monthlyPrincipalPay: schedule.monthlyPrincipalPay,
+                monthlyInterestPay: schedule.monthlyInterestPay,
+                monthlyPay: schedule.monthlyPay,
+                entirelyPay: schedule.entirelyPay,
+                annualRate: schedule.annualRate,
+                // Lender rates (Calculated from Product Rate - Spread)
+                lenderRate: lenderMonthlyRate,
+                annualLenderRate: lenderAnnualRate,
+                spread: adminSpread,
+                interestType: schedule.interestType,
             },
             totalNotes: Math.ceil(capital / 500000),
             status: 'waiting',
-            // Credit-based Dynamic Rates
-            borrowerInterestRate: rateCalculation.annualBorrowerRate,
-            lenderInterestRate: rateCalculation.annualLenderRate,
-            adminSpread: rateCalculation.annualSpread,
-            adminSpreadPercentage: rateCalculation.spreadPercentage,
-            loanSizeTier: rateCalculation.tier,
-            spreadCalculationMethod: 'credit_score_based',
-            // Credit Assessment Data
+            // Standard Rates
+            borrowerInterestRate: schedule.annualRate,
+            lenderInterestRate: lenderAnnualRate,
+            adminSpread: adminSpread,
+            adminSpreadPercentage: 0, // Not percentage of rate anymore, fixed spread
+            loanSizeTier: 'STANDARD', // No tiering
+            spreadCalculationMethod: 'fixed_spread_3_percent',
+            // Credit Assessment Data (Still kept for reference/risk audit, but doesn't affect rate)
             creditScore: creditAssessment.score,
             creditGrade: creditAssessment.grade,
             riskLevel: creditAssessment.riskLevel,

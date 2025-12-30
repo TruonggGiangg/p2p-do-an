@@ -306,10 +306,10 @@ export class LoanContract extends Document {
     @Prop({ default: 0 })
     adminSpreadPercentage: number;
 
-    @Prop({ enum: ['auto', 'manual', 'credit_score_based'], default: 'auto' })
+    @Prop({ enum: ['auto', 'manual', 'credit_score_based', 'fixed_spread_3_percent'], default: 'auto' })
     spreadCalculationMethod: string;
 
-    @Prop({ enum: ['small', 'medium', 'large'], default: 'medium' })
+    @Prop({ enum: ['small', 'medium', 'large', 'STANDARD'], default: 'medium' })
     loanSizeTier: string;
 
     @Prop({ default: 0 })

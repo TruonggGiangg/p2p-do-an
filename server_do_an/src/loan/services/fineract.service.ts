@@ -11,6 +11,7 @@ interface LoanProductDetails {
     name: string;
     shortName: string;
     interestRatePerPeriod: number;           // Lãi suất mỗi kỳ (tháng)
+    annualInterestRate?: number;             // Add for type safety
     interestRateFrequencyType: {
         id: number;
         code: string;
@@ -47,6 +48,8 @@ interface LoanProductDetails {
         code: string;
         name: string;
         displaySymbol: string;
+        decimalPlaces?: number;
+        inMultiplesOf?: number;
     };
 }
 
@@ -215,7 +218,7 @@ export class FineractService {
 
         try {
             const headers = await this.getHeaders();
-            const url = `${this.baseUrl}/fineract-provider/api/v1/loanproducts/${this.loanProductId}`;
+            const url = `${this.baseUrl}/fineract-provider/api/v1/loanproducts/${this.loanProductId}?template=false`;
 
             const response = await firstValueFrom(
                 this.httpService.get(url, { headers }),
@@ -266,35 +269,96 @@ export class FineractService {
         entirelyPay: number;
         interestType: string;
     }> {
-        // Get rate from Fineract Loan Product
-        const rateInfo = await this.getInterestRateFromProduct();
-        const monthlyRate = rateInfo.rate;
-        const annualRate = monthlyRate * 12;
+        // Get full product details to access currency config
+        const product = await this.getLoanProductDetails();
 
-        // Calculate based on interest type from product
+        const monthlyRate = product.interestRatePerPeriod;
+        const annualRate = product.annualInterestRate || (monthlyRate * 12);
+        const interestType = product.interestType?.value || 'Flat';
+
+        // Get rounding config from Product Currency (default to 1 if missing)
+        const inMultiplesOf = product.currency?.inMultiplesOf || 1;
+
+        this.logger.log(`[calculateLoanSchedule] START: Capital=${capital}, Months=${periodMonth}`);
+        this.logger.log(`[calculateLoanSchedule] Product Config: Rate=${monthlyRate}%, InterestType=${interestType}`);
+        this.logger.log(`[calculateLoanSchedule] Rounding Rule: Multiples of ${inMultiplesOf}`);
+
+        // Helper: Dynamic Rounding based on Config with LOGGING
+        const roundToCurrency = (val: number, context: string) => {
+            let res = val;
+            if (inMultiplesOf > 0) {
+                res = Math.round(val / inMultiplesOf) * inMultiplesOf;
+            } else {
+                res = Math.round(val);
+            }
+            // Log detail (Verbose)
+            // this.logger.log(`[Rounding] ${context}: ${val.toFixed(2)} => ${res}`);
+            return res;
+        };
+
+        // Calculate based on interest type
         let monthlyPrincipalPay: number;
         let monthlyInterestPay: number;
         let monthlyPay: number;
         let entirelyPay: number;
 
-        if (rateInfo.interestType === 'Flat') {
-            // FLAT interest: Same interest every month
-            monthlyPrincipalPay = Math.round(capital / periodMonth);
-            monthlyInterestPay = Math.round(capital * monthlyRate / 100);
-            monthlyPay = monthlyPrincipalPay + monthlyInterestPay;
-            entirelyPay = monthlyPay * periodMonth;
-        } else {
-            // DECLINING BALANCE: Interest decreases as principal is paid
+        if (interestType === 'Declining Balance' || product.interestType?.code === 'interestType.declining.balance') {
+            // DECLINING BALANCE
             const r = monthlyRate / 100;
             if (r > 0) {
-                monthlyPay = Math.round(capital * r * Math.pow(1 + r, periodMonth) / (Math.pow(1 + r, periodMonth) - 1));
+                // Calculate EMI first: P * r * (1+r)^n / ((1+r)^n - 1)
+                const rawEmi = capital * r * Math.pow(1 + r, periodMonth) / (Math.pow(1 + r, periodMonth) - 1);
+                monthlyPay = roundToCurrency(rawEmi, 'Monthly EMI (Declining)');
             } else {
-                monthlyPay = Math.round(capital / periodMonth);
+                monthlyPay = roundToCurrency(capital / periodMonth, 'Monthly EMI (Zero Interest)');
             }
-            entirelyPay = monthlyPay * periodMonth;
-            monthlyPrincipalPay = Math.round(capital / periodMonth); // Average
+
+            // SIMULATE SCHEDULE TO GET EXACT TOTAL (MATCHING FINERACT)
+            this.logger.log(`[calculateLoanSchedule] Simulating schedule to match Fineract...`);
+            let outstanding = capital;
+            let totalPaid = 0;
+
+            for (let i = 1; i <= periodMonth; i++) {
+                // Interest for this period on outstanding balance
+                const interest = roundToCurrency(outstanding * r, `Interest P${i}`);
+                let principal = 0;
+                let payment = 0;
+
+                if (i < periodMonth) {
+                    // Standard month
+                    payment = monthlyPay;
+                    // Principal is whatever is left after interest
+                    principal = payment - interest;
+                } else {
+                    // Last month: Pay off remaining principal + interest
+                    principal = outstanding;
+                    payment = principal + interest;
+                    this.logger.log(`[calculateLoanSchedule] Last Payment Adjustment: Principal=${principal}, Interest=${interest}, Total=${payment}`);
+                }
+
+                outstanding -= principal;
+                totalPaid += payment;
+            }
+
+            entirelyPay = totalPaid; // Exact sum of all payments
+
+            // For simplified display: Use "Average Principal" approarch or first month?
+            // User UI usually expects a representative split.
+            monthlyPrincipalPay = roundToCurrency(capital / periodMonth, 'Avg Principal');
             monthlyInterestPay = monthlyPay - monthlyPrincipalPay;
+
+            this.logger.log(`[Rounding] Interest (Derived): ${monthlyPay} - ${monthlyPrincipalPay} = ${monthlyInterestPay}`);
+
+        } else {
+            // FLAT interest (Default)
+            monthlyPrincipalPay = roundToCurrency(capital / periodMonth, 'Principal (Flat)');
+            monthlyInterestPay = roundToCurrency(capital * monthlyRate / 100, 'Interest (Flat)');
+
+            monthlyPay = monthlyPrincipalPay + monthlyInterestPay;
+            entirelyPay = monthlyPay * periodMonth;
         }
+
+        this.logger.log(`[calculateLoanSchedule] RESULT: Monthly=${monthlyPay}, Total=${entirelyPay}`);
 
         return {
             rate: monthlyRate,
@@ -303,7 +367,7 @@ export class FineractService {
             monthlyInterestPay,
             monthlyPay,
             entirelyPay,
-            interestType: rateInfo.interestType,
+            interestType: interestType,
         };
     }
 

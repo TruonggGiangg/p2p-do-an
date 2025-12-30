@@ -11,14 +11,12 @@ import {
 import { Text, Avatar } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { loanApi } from '../../services';
 import { LoanContract, LoanStatus } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { UnifiedColors, UnifiedGradients, UnifiedSpacing, UnifiedRadius, UnifiedBlur } from '../../theme';
-import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
+import { GradientBackground, GlassCard, GlassTokens, SectionTitle } from '../../components/glass';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,19 +38,20 @@ const getStatusColor = (status: LoanStatus) => {
         case 'success':
         case 'done':
         case 'clean':
-            return '#4ADE80'; // Bright Green
+            return GlassTokens.colors.success; // Bright Green
         case 'waiting':
         case 'pending':
-            return '#FACC15'; // Bright Yellow
+            return GlassTokens.colors.warning; // Bright Yellow
         case 'active':
         case 'on_going':
-            return '#60A5FA'; // Bright Blue
+        case 'disbursed':
+            return GlassTokens.colors.primary; // Bright Blue
         case 'overdue':
         case 'fail':
         case 'rejected':
-            return '#F87171'; // Bright Red
+            return GlassTokens.colors.error; // Bright Red
         default:
-            return '#94A3B8'; // Grey
+            return GlassTokens.colors.textMuted; // Grey
     }
 };
 
@@ -64,6 +63,7 @@ const getStatusLabel = (status: LoanStatus) => {
         success: 'Đã giải ngân',
         active: 'Đang vay',
         on_going: 'Đang vay',
+        disbursed: 'Đã giải ngân',
         done: 'Hoàn thành',
         closed: 'Đã đóng',
         overdue: 'Quá hạn',
@@ -104,8 +104,6 @@ export default function LoanListScreen({ navigation }: Props) {
     useEffect(() => { fetchLoans(); }, [fetchLoans]);
     useFocusEffect(useCallback(() => { fetchLoans(); }, [fetchLoans]));
 
-    const handleRefresh = () => { setRefreshing(true); fetchLoans(); };
-
     const renderLoanItem = ({ item }: { item: LoanContract }) => {
         const statusColor = getStatusColor(item.status);
         const amount = formatAmount(item.info.capital);
@@ -115,26 +113,29 @@ export default function LoanListScreen({ navigation }: Props) {
             <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => navigation.navigate('LoanDetail', { loanId: item.contractId })}
-                style={styles.itemWrapper}
             >
-                {/* Icon Grid */}
-                <View style={[styles.iconContainer, { backgroundColor: `${statusColor}20` }]}>
-                    <MaterialCommunityIcons name="file-document-outline" size={24} color={statusColor} />
-                </View>
+                <GlassCard blur={GlassTokens.blur.light} style={styles.loanCard}>
+                    <View style={styles.itemWrapper}>
+                        {/* Icon Grid */}
+                        <View style={[styles.iconContainer, { backgroundColor: `${statusColor}20` }]}>
+                            <MaterialCommunityIcons name="file-document-outline" size={24} color={statusColor} />
+                        </View>
 
-                {/* Info */}
-                <View style={styles.itemContent}>
-                    <Text style={styles.itemTitle}>Khoản vay #{item.contractId.slice(-4)}</Text>
-                    <Text style={[styles.itemSubtitle, { color: statusColor }]}>
-                        {getStatusLabel(item.status)} • {item.info.periodMonth} tháng
-                    </Text>
-                </View>
+                        {/* Info */}
+                        <View style={styles.itemContent}>
+                            <Text style={styles.itemTitle}>Khoản vay #{item.contractId.slice(-4)}</Text>
+                            <Text style={[styles.itemSubtitle, { color: statusColor }]}>
+                                {getStatusLabel(item.status)} • {item.info.periodMonth} tháng
+                            </Text>
+                        </View>
 
-                {/* Amount */}
-                <View style={styles.itemRight}>
-                    <Text style={styles.itemAmount}>{amount}₫</Text>
-                    <Text style={styles.itemDate}>{date}</Text>
-                </View>
+                        {/* Amount */}
+                        <View style={styles.itemRight}>
+                            <Text style={styles.itemAmount}>{amount}₫</Text>
+                            <Text style={styles.itemDate}>{date}</Text>
+                        </View>
+                    </View>
+                </GlassCard>
             </TouchableOpacity>
         );
     };
@@ -148,10 +149,11 @@ export default function LoanListScreen({ navigation }: Props) {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={fetchLoans}
-                        tintColor={UnifiedColors.primary}
-                        colors={[UnifiedColors.primary]}
+                        tintColor={GlassTokens.colors.primary}
+                        colors={[GlassTokens.colors.primary]}
                     />
                 }
+                contentContainerStyle={{ paddingBottom: 100 }}
             >
                 {/* Header */}
                 <View style={styles.header}>
@@ -168,24 +170,26 @@ export default function LoanListScreen({ navigation }: Props) {
                     </View>
 
                     {/* Stats Row */}
-                    <BlurView intensity={40} tint="dark" style={styles.statsRow}>
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{stats.totalLoans}</Text>
-                            <Text style={styles.statLabel}>Tổng khoản vay</Text>
+                    <GlassCard blur={GlassTokens.blur.medium} style={styles.statsCard}>
+                        <View style={styles.statsRow}>
+                            <View style={styles.statItem}>
+                                <Text style={styles.statValue}>{stats.totalLoans}</Text>
+                                <Text style={styles.statLabel}>Tổng khoản vay</Text>
+                            </View>
+                            <View style={styles.statDivider} />
+                            <View style={styles.statItem}>
+                                <Text style={[styles.statValue, { color: GlassTokens.colors.primary }]}>{stats.totalActive}</Text>
+                                <Text style={styles.statLabel}>Đang hoạt động</Text>
+                            </View>
                         </View>
-                        <View style={styles.statDivider} />
-                        <View style={styles.statItem}>
-                            <Text style={[styles.statValue, { color: '#60A5FA' }]}>{stats.totalActive}</Text>
-                            <Text style={styles.statLabel}>Đang hoạt động</Text>
-                        </View>
-                    </BlurView>
+                    </GlassCard>
                 </View>
 
                 {/* Quick Actions (Circular) */}
                 <View style={styles.actionsContainer}>
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('LoanCreate')}>
                         <LinearGradient
-                            colors={[...UnifiedGradients.primary]}
+                            colors={GlassTokens.gradients.primary}
                             style={styles.actionCircle}
                         >
                             <MaterialCommunityIcons name="plus" size={28} color="white" />
@@ -195,7 +199,7 @@ export default function LoanListScreen({ navigation }: Props) {
 
                     <TouchableOpacity style={styles.actionBtn}>
                         <LinearGradient
-                            colors={[...UnifiedGradients.success]}
+                            colors={GlassTokens.gradients.success}
                             style={styles.actionCircle}
                         >
                             <MaterialCommunityIcons name="wallet" size={28} color="white" />
@@ -205,7 +209,7 @@ export default function LoanListScreen({ navigation }: Props) {
 
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('TransactionHistory')}>
                         <LinearGradient
-                            colors={[...UnifiedGradients.error]}
+                            colors={GlassTokens.gradients.error}
                             style={styles.actionCircle}
                         >
                             <MaterialCommunityIcons name="history" size={28} color="white" />
@@ -214,10 +218,10 @@ export default function LoanListScreen({ navigation }: Props) {
                     </TouchableOpacity>
                 </View>
 
-                {/* Glass Bottom Sheet for List */}
-                <BlurView intensity={30} tint="dark" style={styles.listContainer}>
+                {/* Recent Loans List */}
+                <View style={styles.listContainer}>
                     <View style={styles.listHeader}>
-                        <Text style={styles.listTitle}>Khoản vay gần đây</Text>
+                        <SectionTitle style={styles.sectionTitle}>Khoản vay gần đây</SectionTitle>
                         <TouchableOpacity onPress={() => navigation.navigate('LoanListAll')}>
                             <Text style={styles.seeAll}>Tất cả</Text>
                         </TouchableOpacity>
@@ -227,16 +231,16 @@ export default function LoanListScreen({ navigation }: Props) {
                         data={loans.slice(0, 5)}
                         renderItem={renderLoanItem}
                         keyExtractor={(item) => item.contractId}
-                        ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
                         ListEmptyComponent={
-                            <View style={styles.emptyContainer}>
+                            <GlassCard blur={GlassTokens.blur.light} style={styles.emptyCard}>
+                                <MaterialCommunityIcons name="file-document-outline" size={48} color={GlassTokens.colors.textMuted} />
                                 <Text style={styles.emptyText}>Chưa có khoản vay nào</Text>
-                            </View>
+                            </GlassCard>
                         }
                         scrollEnabled={false}
                         contentContainerStyle={styles.listContent}
                     />
-                </BlurView>
+                </View>
             </ScrollView>
         </GradientBackground>
     );
@@ -244,32 +248,30 @@ export default function LoanListScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
     header: {
-        paddingTop: 40,
-        paddingHorizontal: UnifiedSpacing.md,
-        paddingBottom: UnifiedSpacing.lg,
+        paddingTop: 60,
+        paddingHorizontal: GlassTokens.spacing.md,
+        paddingBottom: GlassTokens.spacing.lg,
     },
     greeting: {
         fontSize: 14,
-        color: UnifiedColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontFamily: 'Poppins_400Regular',
         letterSpacing: 0.1,
     },
     username: {
         fontSize: 28,
         fontWeight: '700',
-        color: UnifiedColors.textPrimary,
+        color: GlassTokens.colors.textPrimary,
         fontFamily: 'Poppins_700Bold',
         letterSpacing: -0.5,
     },
+    statsCard: {
+        marginTop: GlassTokens.spacing.lg,
+        padding: 0, 
+    },
     statsRow: {
         flexDirection: 'row',
-        marginTop: UnifiedSpacing.lg,
-        backgroundColor: UnifiedColors.glassDark,
-        borderRadius: UnifiedRadius.xl,
-        padding: UnifiedSpacing.lg,
-        borderWidth: 1.5,
-        borderColor: UnifiedColors.borderGlass,
-        overflow: 'hidden',
+        padding: GlassTokens.spacing.md,
     },
     statItem: {
         flex: 1,
@@ -278,20 +280,21 @@ const styles = StyleSheet.create({
     statValue: {
         fontSize: 20,
         fontWeight: '700',
-        color: UnifiedColors.textPrimary,
+        color: GlassTokens.colors.textPrimary,
         fontFamily: 'Poppins_700Bold',
         letterSpacing: -0.3,
     },
     statLabel: {
         fontSize: 12,
-        color: UnifiedColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         marginTop: 4,
         letterSpacing: 0.1,
+        fontFamily: 'Poppins_400Regular',
     },
     statDivider: {
         width: 1,
         height: '80%',
-        backgroundColor: UnifiedColors.borderGlass,
+        backgroundColor: GlassTokens.colors.borderGlass,
         alignSelf: 'center',
     },
 
@@ -299,12 +302,12 @@ const styles = StyleSheet.create({
     actionsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingHorizontal: UnifiedSpacing.md,
-        marginBottom: UnifiedSpacing.xl,
+        paddingHorizontal: GlassTokens.spacing.md,
+        marginBottom: GlassTokens.spacing.xl,
     },
     actionBtn: {
         alignItems: 'center',
-        gap: UnifiedSpacing.sm,
+        gap: GlassTokens.spacing.sm,
     },
     actionCircle: {
         width: 60,
@@ -312,68 +315,54 @@ const styles = StyleSheet.create({
         borderRadius: 30,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: UnifiedColors.primary,
+        shadowColor: GlassTokens.colors.primary,
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.25,
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1,
-        borderColor: UnifiedColors.borderGlass,
+        borderColor: GlassTokens.colors.borderGlass,
     },
     actionText: {
         fontSize: 13,
-        color: UnifiedColors.textPrimary,
+        color: GlassTokens.colors.textPrimary,
         fontWeight: '600',
         fontFamily: 'Poppins_600SemiBold',
         letterSpacing: 0.1,
     },
 
-    // List Container (Glass Sheet)
+    // List Container
     listContainer: {
-        marginTop: UnifiedSpacing.lg,
-        borderTopLeftRadius: UnifiedRadius.xxl,
-        borderTopRightRadius: UnifiedRadius.xxl,
-        overflow: 'hidden',
-        backgroundColor: UnifiedColors.glassDark,
-        minHeight: SCREEN_WIDTH * 1.2, // Ensure glass always extends to bottom
-        flex: 1,
-        marginBottom: 0,
+        paddingHorizontal: GlassTokens.spacing.md,
     },
     listHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: UnifiedSpacing.lg,
-        paddingTop: UnifiedSpacing.lg,
-        paddingBottom: UnifiedSpacing.md,
+        marginBottom: GlassTokens.spacing.md,
     },
-    listTitle: {
+    sectionTitle: {
+        marginBottom: 0,
         fontSize: 18,
-        fontWeight: '600',
-        color: UnifiedColors.textPrimary,
-        fontFamily: 'Poppins_600SemiBold',
-        letterSpacing: -0.3,
     },
     seeAll: {
         fontSize: 14,
-        color: UnifiedColors.primary,
+        color: GlassTokens.colors.primary,
         fontFamily: 'Poppins_500Medium',
     },
     listContent: {
-        paddingHorizontal: UnifiedSpacing.md,
-        paddingBottom: 0,
+        gap: 12,
     },
 
-    // Loan Item (Clean Row Style)
+    // Loan Card
+    loanCard: {
+        marginBottom: 12,
+        padding: 0,
+    },
     itemWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: UnifiedSpacing.md,
-    },
-    itemSeparator: {
-        height: 1,
-        backgroundColor: UnifiedColors.borderGlassSubtle,
-        marginLeft: 56,
+        padding: GlassTokens.spacing.md,
     },
     iconContainer: {
         width: 48,
@@ -381,7 +370,7 @@ const styles = StyleSheet.create({
         borderRadius: 24,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: UnifiedSpacing.md,
+        marginRight: GlassTokens.spacing.md,
     },
     itemContent: {
         flex: 1,
@@ -389,7 +378,7 @@ const styles = StyleSheet.create({
     itemTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: UnifiedColors.textPrimary,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 4,
         fontFamily: 'Poppins_600SemiBold',
         letterSpacing: -0.2,
@@ -404,22 +393,25 @@ const styles = StyleSheet.create({
     itemAmount: {
         fontSize: 16,
         fontWeight: '700',
-        color: UnifiedColors.textPrimary,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 4,
         fontFamily: 'Poppins_700Bold',
         letterSpacing: -0.2,
     },
     itemDate: {
         fontSize: 12,
-        color: UnifiedColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
+        fontFamily: 'Poppins_400Regular',
     },
 
-    emptyContainer: {
-        paddingTop: 40,
+    emptyCard: {
         alignItems: 'center',
+        padding: GlassTokens.spacing.xl,
     },
     emptyText: {
-        color: UnifiedColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        marginTop: GlassTokens.spacing.md,
+        fontFamily: 'Poppins_400Regular',
     },
 });

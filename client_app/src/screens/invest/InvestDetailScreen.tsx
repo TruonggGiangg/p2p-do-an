@@ -56,28 +56,40 @@ export default function InvestDetailScreen() {
     } = React.useMemo(() => {
         const investmentAmount = parseInt(numNotes || '0') * noteValue;
 
+        // Extract currency rounding config from Fineract response
+        const inMultiplesOf = fineractSchedule?.currency?.inMultiplesOf || 1;
+        const roundToCurrency = (val: number) => {
+            if (inMultiplesOf > 0) {
+                return Math.round(val / inMultiplesOf) * inMultiplesOf;
+            }
+            return Math.round(val);
+        };
+
         const borrowerAnnualRate = fineractSchedule?.interestRate?.annual || 16;
         const adminSpread = 3;
         const lenderAnnualRate = borrowerAnnualRate - adminSpread;
         const periodMonth = loan.info.periodMonth || 6;
 
-        let mPrincipal = investmentAmount / periodMonth;
-        let mLenderInterest = (investmentAmount * (lenderAnnualRate / 12)) / 100;
+        // Initial estimates (rounded)
+        let mPrincipal = roundToCurrency(investmentAmount / periodMonth);
+        let mLenderInterest = roundToCurrency((investmentAmount * (lenderAnnualRate / 12)) / 100);
         let mPayment = mPrincipal + mLenderInterest;
         let tProfit = mLenderInterest * periodMonth;
         let sPeriodsData: any[] = [];
 
         if (fineractSchedule?.repaymentSchedule?.periods) {
             const periods = fineractSchedule.repaymentSchedule.periods.filter((p: any) => p.period > 0);
-            const investmentRatio = investmentAmount / (loan.info?.capital || investmentAmount);
+            // Fix: handle division by zero or missing capital
+            const totalLoan = loan.info?.capital || investmentAmount || 1;
+            const investmentRatio = investmentAmount / totalLoan;
             const rateRatio = lenderAnnualRate / borrowerAnnualRate;
 
             sPeriodsData = periods.map((period: any) => {
                 const borrowerPrincipal = period.principalDue || 0;
                 const borrowerInterest = period.interestDue || 0;
 
-                const lenderPrincipal = Math.round(borrowerPrincipal * investmentRatio);
-                const lenderInterest = Math.round(borrowerInterest * rateRatio * investmentRatio);
+                const lenderPrincipal = roundToCurrency(borrowerPrincipal * investmentRatio);
+                const lenderInterest = roundToCurrency(borrowerInterest * rateRatio * investmentRatio);
 
                 return {
                     period: period.period,
@@ -88,11 +100,13 @@ export default function InvestDetailScreen() {
                 };
             });
 
+            // Re-calculate totals from rounded schedule
+            const totalPrincipal = sPeriodsData.reduce((sum, p) => sum + p.principal, 0);
             tProfit = sPeriodsData.reduce((sum, p) => sum + p.interest, 0);
 
             if (sPeriodsData.length > 0) {
-                mPrincipal = sPeriodsData.reduce((sum, p) => sum + p.principal, 0) / sPeriodsData.length;
-                mLenderInterest = tProfit / sPeriodsData.length;
+                mPrincipal = roundToCurrency(totalPrincipal / sPeriodsData.length);
+                mLenderInterest = roundToCurrency(tProfit / sPeriodsData.length);
                 mPayment = mPrincipal + mLenderInterest;
             }
         }
@@ -104,7 +118,7 @@ export default function InvestDetailScreen() {
             totalProfit: tProfit,
             schedulePeriodsData: sPeriodsData
         };
-    }, [numNotes, fineractSchedule, loan.contractId]);
+    }, [numNotes, fineractSchedule, loan.contractId, loan.info]);
 
     const investmentAmount = parseInt(numNotes || '0') * noteValue;
 

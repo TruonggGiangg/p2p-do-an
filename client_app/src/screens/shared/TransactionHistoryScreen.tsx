@@ -14,23 +14,21 @@ import {
     StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { walletApi } from '../../services';
 import type { WalletTransaction } from '../../services/wallet/wallet.api';
-import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
-import { GlowCard } from '../../components/glow';
+import { GradientBackground, GlassCard, GlassTokens, PageHeader } from '../../components/glass';
 
 // Transaction type configurations
 const TRANSACTION_TYPES: Record<string, { icon: string; color: string; label: string }> = {
-    deposit: { icon: 'arrow-down-bold', color: DarkColors.success, label: 'Nạp tiền' },
-    withdrawal: { icon: 'arrow-up-bold', color: DarkColors.error, label: 'Rút tiền' },
-    payment: { icon: 'cash-minus', color: DarkColors.warning, label: 'Thanh toán' },
-    receipt: { icon: 'cash-plus', color: DarkColors.success, label: 'Thu tiền' },
-    transfer_out: { icon: 'bank-transfer-out', color: DarkColors.error, label: 'Chuyển đi' },
-    transfer_in: { icon: 'bank-transfer-in', color: DarkColors.success, label: 'Nhận tiền' },
-    repayment: { icon: 'hand-coin', color: DarkColors.primary, label: 'Trả nợ' },
-    investment: { icon: 'chart-line', color: DarkColors.secondary, label: 'Đầu tư' },
+    deposit: { icon: 'arrow-down-bold', color: GlassTokens.colors.success, label: 'Nạp tiền' },
+    withdrawal: { icon: 'arrow-up-bold', color: GlassTokens.colors.error, label: 'Rút tiền' },
+    payment: { icon: 'cash-minus', color: GlassTokens.colors.warning, label: 'Thanh toán' },
+    receipt: { icon: 'cash-plus', color: GlassTokens.colors.success, label: 'Thu tiền' },
+    transfer_out: { icon: 'bank-transfer-out', color: GlassTokens.colors.error, label: 'Chuyển đi' },
+    transfer_in: { icon: 'bank-transfer-in', color: GlassTokens.colors.success, label: 'Nhận tiền' },
+    repayment: { icon: 'hand-coin', color: GlassTokens.colors.primary, label: 'Trả nợ' },
+    investment: { icon: 'chart-line', color: GlassTokens.colors.info, label: 'Đầu tư' },
 };
 
 // Format currency
@@ -129,30 +127,32 @@ export default function TransactionHistoryScreen() {
 
         return (
             <TouchableOpacity activeOpacity={0.7} onPress={() => { }}>
-                <GlowCard style={styles.transactionCard} variant="glass">
-                    <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
-                        <MaterialCommunityIcons name={config.icon} size={24} color={config.color} />
-                    </View>
+                <GlassCard style={styles.transactionCard} blur={GlassTokens.blur.light}>
+                    <View style={styles.transactionRow}>
+                        <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
+                            <MaterialCommunityIcons name={config.icon} size={24} color={config.color} />
+                        </View>
 
-                    <View style={styles.transactionInfo}>
-                        <Text style={styles.transactionType}>{config.label}</Text>
-                        <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
-                        {item.description && (
-                            <Text style={styles.transactionDesc} numberOfLines={1}>
-                                {item.description}
+                        <View style={styles.transactionInfo}>
+                            <Text style={styles.transactionType}>{config.label}</Text>
+                            <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
+                            {item.description && (
+                                <Text style={styles.transactionDesc} numberOfLines={1}>
+                                    {item.description}
+                                </Text>
+                            )}
+                        </View>
+
+                        <View style={styles.amountContainer}>
+                            <Text style={[styles.amount, { color: isCredit ? GlassTokens.colors.success : GlassTokens.colors.error }]}>
+                                {isCredit ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}₫
                             </Text>
-                        )}
+                            {item.balance !== undefined && (
+                                <Text style={styles.balance}>Số dư: {formatCurrency(item.balance)}₫</Text>
+                            )}
+                        </View>
                     </View>
-
-                    <View style={styles.amountContainer}>
-                        <Text style={[styles.amount, { color: isCredit ? DarkColors.success : DarkColors.error }]}>
-                            {isCredit ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}₫
-                        </Text>
-                        {item.balance !== undefined && (
-                            <Text style={styles.balance}>Số dư: {formatCurrency(item.balance)}₫</Text>
-                        )}
-                    </View>
-                </GlowCard>
+                </GlassCard>
             </TouchableOpacity>
         );
     };
@@ -162,7 +162,7 @@ export default function TransactionHistoryScreen() {
             <MaterialCommunityIcons
                 name={walletNotLinked ? "wallet-plus" : "history"}
                 size={64}
-                color={DarkColors.textMuted}
+                color={GlassTokens.colors.textMuted}
             />
             <Text style={styles.emptyText}>
                 {walletNotLinked ? 'Chưa liên kết ví' : 'Chưa có giao dịch'}
@@ -180,26 +180,25 @@ export default function TransactionHistoryScreen() {
         if (!loadingMore) return null;
         return (
             <View style={styles.footerLoader}>
-                <ActivityIndicator size="small" color={DarkColors.primary} />
+                <ActivityIndicator size="small" color={GlassTokens.colors.primary} />
             </View>
         );
     };
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={DarkColors.primary} />
-                <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
-            </View>
+            <GradientBackground>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
+                    <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
+                </View>
+            </GradientBackground>
         );
     }
 
     return (
-        <LinearGradient
-            colors={DarkGradients.background}
-            style={styles.container}
-        >
-            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
+        <GradientBackground>
+            <StatusBar barStyle="light-content" />
 
             {/* Header */}
             <View style={styles.header}>
@@ -207,7 +206,7 @@ export default function TransactionHistoryScreen() {
                     style={styles.backButton}
                     onPress={() => navigation.goBack()}
                 >
-                    <MaterialCommunityIcons name="arrow-left" size={24} color={DarkColors.text} />
+                    <MaterialCommunityIcons name="arrow-left" size={24} color={GlassTokens.colors.textPrimary} />
                 </TouchableOpacity>
 
                 <View style={styles.headerContent}>
@@ -218,7 +217,7 @@ export default function TransactionHistoryScreen() {
                 </View>
 
                 <TouchableOpacity style={styles.filterButton}>
-                    <MaterialCommunityIcons name="filter-variant" size={24} color={DarkColors.textSecondary} />
+                    <MaterialCommunityIcons name="filter-variant" size={24} color={GlassTokens.colors.textSecondary} />
                 </TouchableOpacity>
             </View>
 
@@ -234,14 +233,14 @@ export default function TransactionHistoryScreen() {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={handleRefresh}
-                        tintColor={DarkColors.primary}
-                        colors={[DarkColors.primary]}
+                        tintColor={GlassTokens.colors.primary}
+                        colors={[GlassTokens.colors.primary]}
                     />
                 }
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
             />
-        </LinearGradient>
+        </GradientBackground>
     );
 }
 
@@ -253,12 +252,12 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: DarkColors.background,
     },
     loadingText: {
         marginTop: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
     },
     // Header
     header: {
@@ -266,15 +265,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingTop: 60,
         paddingBottom: 20,
-        paddingHorizontal: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: DarkColors.border,
+        paddingHorizontal: GlassTokens.spacing.md,
     },
     backButton: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: DarkColors.surface,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
@@ -285,32 +282,37 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 2,
+        fontFamily: 'Poppins_700Bold',
     },
     headerSubtitle: {
         fontSize: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
+        fontFamily: 'Poppins_400Regular',
     },
     filterButton: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: DarkColors.surface,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     // List
     listContent: {
-        padding: 16,
+        paddingHorizontal: GlassTokens.spacing.md,
         paddingBottom: 100,
     },
     // Transaction Card
     transactionCard: {
+        marginBottom: 12,
+        padding: 0, // Reset padding as we use wrapper
+    },
+    transactionRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
-        padding: 16,
+        padding: GlassTokens.spacing.md,
     },
     iconContainer: {
         width: 48,
@@ -326,18 +328,21 @@ const styles = StyleSheet.create({
     transactionType: {
         fontSize: 15,
         fontWeight: '600',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 2,
+        fontFamily: 'Poppins_600SemiBold',
     },
     transactionDate: {
         fontSize: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         marginBottom: 2,
+        fontFamily: 'Poppins_400Regular',
     },
     transactionDesc: {
         fontSize: 11,
-        color: DarkColors.textMuted,
+        color: GlassTokens.colors.textMuted,
         fontStyle: 'italic',
+        fontFamily: 'Poppins_400Regular',
     },
     amountContainer: {
         alignItems: 'flex-end',
@@ -346,10 +351,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         marginBottom: 2,
+        fontFamily: 'Poppins_700Bold',
     },
     balance: {
         fontSize: 11,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
+        fontFamily: 'Poppins_400Regular',
     },
     // Empty State
     emptyContainer: {
@@ -360,14 +367,16 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: 18,
         fontWeight: '600',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginTop: 16,
         marginBottom: 8,
+        fontFamily: 'Poppins_600SemiBold',
     },
     emptySubtext: {
         fontSize: 14,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         textAlign: 'center',
+        fontFamily: 'Poppins_400Regular',
     },
     // Footer
     footerLoader: {

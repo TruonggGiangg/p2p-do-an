@@ -208,7 +208,7 @@ export default function LoanCreateScreen({ navigation }: any) {
                             <Text style={styles.creditTitle}>Thông tin tín dụng</Text>
                         </View>
                         <Text style={styles.noteText}>
-                            ✨ Lãi suất đã tính toán dựa trên điểm tín dụng
+                            ✨ Lãi suất được áp dụng theo quy định của Sản phẩm vay
                         </Text>
                     </GlassCard>
                 )}

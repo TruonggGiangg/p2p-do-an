@@ -6,15 +6,14 @@ import {
     TouchableOpacity,
     StyleSheet,
     Alert,
-    ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { walletApi } from '../../services/wallet/wallet.api';
-import { DarkColors, DarkGradients, DarkStyling } from '../../theme';
+import { GradientBackground, GlassCard, GlassButton, GlassTokens, PageHeader } from '../../components/glass';
+import { UnifiedSpacing, UnifiedRadius } from '../../theme';
 
 interface TransferScreenProps {
     navigation: any;
@@ -78,10 +77,7 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
     };
 
     return (
-        <LinearGradient
-            colors={DarkGradients.background as any}
-            style={styles.container}
-        >
+        <GradientBackground>
             <KeyboardAvoidingView
                 style={styles.keyboardView}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -90,33 +86,32 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                     {/* Header */}
                     <View style={styles.header}>
                         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                            <Ionicons name="arrow-back" size={24} color={DarkColors.text} />
+                            <Ionicons name="arrow-back" size={24} color={GlassTokens.colors.textPrimary} />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>CHUYỂN TIỀN</Text>
                         <View style={{ width: 40 }} />
                     </View>
 
                     {/* Balance Card */}
-                    <LinearGradient
-                        colors={['rgba(255, 0, 64, 0.15)', 'rgba(255, 0, 64, 0.05)'] as any}
-                        style={styles.balanceCard}
-                    >
+                    <GlassCard variant="primary" blur={GlassTokens.blur.medium} style={styles.balanceCard}>
                         <Text style={styles.balanceLabel}>SỐ DƯ KHẢ DỤNG</Text>
-                        <Text style={styles.balanceAmount}>{balance.toLocaleString('vi-VN')}</Text>
-                        <Text style={styles.balanceUnit}>VND</Text>
-                    </LinearGradient>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' }}>
+                            <Text style={styles.balanceAmount}>{balance.toLocaleString('vi-VN')}</Text>
+                            <Text style={styles.balanceUnit}>VND</Text>
+                        </View>
+                    </GlassCard>
 
                     {/* Form */}
-                    <View style={styles.form}>
+                    <GlassCard blur={GlassTokens.blur.light} style={styles.formCard}>
                         {/* Recipient */}
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>SỐ ĐIỆN THOẠI NGƯỜI NHẬN</Text>
                             <View style={styles.inputContainer}>
-                                <Ionicons name="person-outline" size={20} color={DarkColors.primary} style={styles.inputIcon} />
+                                <Ionicons name="person-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.input}
                                     placeholder="Nhập số điện thoại"
-                                    placeholderTextColor={DarkColors.textDim}
+                                    placeholderTextColor={GlassTokens.colors.textMuted}
                                     value={recipientPhone}
                                     onChangeText={setRecipientPhone}
                                     keyboardType="phone-pad"
@@ -129,11 +124,11 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>SỐ TIỀN</Text>
                             <View style={styles.inputContainer}>
-                                <Ionicons name="cash-outline" size={20} color={DarkColors.primary} style={styles.inputIcon} />
+                                <Ionicons name="cash-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.input}
                                     placeholder="Nhập số tiền"
-                                    placeholderTextColor={DarkColors.textDim}
+                                    placeholderTextColor={GlassTokens.colors.textMuted}
                                     value={amount}
                                     onChangeText={setAmount}
                                     keyboardType="numeric"
@@ -161,111 +156,95 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>GHI CHÚ (TÙY CHỌN)</Text>
                             <View style={styles.inputContainer}>
-                                <Ionicons name="create-outline" size={20} color={DarkColors.primary} style={styles.inputIcon} />
+                                <Ionicons name="create-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.input}
                                     placeholder="Nhập ghi chú"
-                                    placeholderTextColor={DarkColors.textDim}
+                                    placeholderTextColor={GlassTokens.colors.textMuted}
                                     value={note}
                                     onChangeText={setNote}
                                     multiline
                                 />
                             </View>
                         </View>
-                    </View>
+                    </GlassCard>
 
                     {/* Transfer Button */}
-                    <TouchableOpacity
-                        style={[styles.transferButton, loading && styles.transferButtonDisabled]}
+                    <GlassButton
+                        title="CHUYỂN TIỀN"
+                        icon="arrow-forward-circle"
                         onPress={handleTransfer}
-                        disabled={loading}
-                    >
-                        <LinearGradient
-                            colors={DarkGradients.primaryButton as any}
-                            style={styles.buttonGradient}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color={DarkColors.text} />
-                            ) : (
-                                <>
-                                    <Ionicons name="arrow-forward-circle" size={24} color={DarkColors.text} />
-                                    <Text style={styles.transferButtonText}>CHUYỂN TIỀN</Text>
-                                </>
-                            )}
-                        </LinearGradient>
-                    </TouchableOpacity>
+                        loading={loading}
+                        variant="primary"
+                        style={styles.transferButton}
+                    />
                 </ScrollView>
             </KeyboardAvoidingView>
-        </LinearGradient>
+        </GradientBackground>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
     keyboardView: {
         flex: 1,
     },
     scrollContent: {
         flexGrow: 1,
         paddingBottom: 20,
+        paddingHorizontal: UnifiedSpacing.md,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 16,
-        backgroundColor: DarkColors.surfaceGlass,
-        borderBottomWidth: 1,
-        borderBottomColor: DarkColors.borderGlow,
+        paddingVertical: UnifiedSpacing.lg,
+        paddingTop: 60, 
     },
     backButton: {
-        padding: 8,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
     },
     headerTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: DarkColors.text,
-        letterSpacing: 2,
+        color: GlassTokens.colors.textPrimary,
+        letterSpacing: 1,
+        fontFamily: 'Poppins_700Bold',
     },
     balanceCard: {
-        margin: 16,
-        padding: 24,
-        borderRadius: DarkStyling.borderRadius.lg,
+        marginBottom: UnifiedSpacing.lg,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: DarkColors.borderGlow,
-        ...DarkStyling.shadow.glow,
+        paddingVertical: UnifiedSpacing.xl,
     },
     balanceLabel: {
-        color: DarkColors.textSecondary,
+        color: 'rgba(255,255,255,0.7)',
         fontSize: 12,
         fontWeight: '600',
         letterSpacing: 2,
         marginBottom: 8,
+        fontFamily: 'Poppins_600SemiBold',
     },
     balanceAmount: {
-        color: DarkColors.primary,
+        color: GlassTokens.colors.textPrimary,
         fontSize: 36,
         fontWeight: '800',
-        textShadowColor: DarkColors.primaryGlow,
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 20,
+        fontFamily: 'Poppins_700Bold',
+        marginRight: 8,
     },
     balanceUnit: {
-        color: DarkColors.textMuted,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
         fontWeight: '600',
-        marginTop: 4,
+        fontFamily: 'Poppins_600SemiBold',
     },
-    form: {
-        backgroundColor: DarkColors.surfaceGlass,
-        borderColor: DarkColors.border,
-        borderWidth: 1,
-        margin: 16,
-        padding: 16,
-        borderRadius: DarkStyling.borderRadius.lg,
+    formCard: {
+        marginBottom: UnifiedSpacing.lg,
     },
     inputGroup: {
         marginBottom: 20,
@@ -273,74 +252,57 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 12,
         fontWeight: '700',
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         marginBottom: 8,
         letterSpacing: 1.5,
+        fontFamily: 'Poppins_700Bold',
     },
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: DarkColors.borderGlow,
-        borderRadius: DarkStyling.borderRadius.sm,
-        paddingHorizontal: 12,
-        backgroundColor: DarkColors.surfaceGlass,
+        borderBottomWidth: 1,
+        borderBottomColor: GlassTokens.colors.primary,
+        paddingBottom: 8,
     },
     inputIcon: {
-        marginRight: 8,
+        marginRight: 12,
     },
     input: {
         flex: 1,
-        padding: 12,
         fontSize: 16,
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         fontWeight: '600',
+        fontFamily: 'Poppins_600SemiBold',
+        paddingVertical: 4,
     },
     currency: {
         fontSize: 14,
-        color: DarkColors.textMuted,
+        color: GlassTokens.colors.textMuted,
         fontWeight: '700',
+        fontFamily: 'Poppins_700Bold',
     },
     quickAmountContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 20,
+        gap: 8,
     },
     quickAmountButton: {
         flex: 1,
-        paddingVertical: 12,
-        marginHorizontal: 4,
-        backgroundColor: DarkColors.surfaceGlass,
-        borderColor: DarkColors.borderGlow,
-        borderWidth: 1,
-        borderRadius: DarkStyling.borderRadius.sm,
+        paddingVertical: 10,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: UnifiedRadius.sm,
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     quickAmountText: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: DarkColors.primary,
+        fontSize: 13,
+        fontWeight: '600',
+        color: GlassTokens.colors.primary,
+        fontFamily: 'Poppins_600SemiBold',
     },
     transferButton: {
-        margin: 16,
-        borderRadius: DarkStyling.borderRadius.md,
-        overflow: 'hidden',
-        ...DarkStyling.shadow.glowStrong,
-    },
-    buttonGradient: {
-        flexDirection: 'row',
-        padding: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    transferButtonDisabled: {
-        opacity: 0.5,
-    },
-    transferButtonText: {
-        color: DarkColors.text,
-        fontSize: 16,
-        fontWeight: '800',
-        marginLeft: 8,
-        letterSpacing: 2,
+        marginTop: UnifiedSpacing.sm,
     },
 });
