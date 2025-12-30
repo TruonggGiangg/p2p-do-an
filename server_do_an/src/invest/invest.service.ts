@@ -67,6 +67,7 @@ export class InvestService {
     async getAvailableLoans(user: AuthUser, page = 1, limit = 10): Promise<any> {
         const skip = (page - 1) * limit;
 
+        // 1. Get potential loans from Mongo
         const loans = await this.loanContractModel
             .find({
                 status: 'waiting',
@@ -74,30 +75,69 @@ export class InvestService {
             })
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit)
+            .limit(limit) // Fetch slightly more to account for filtering? No, simple limit for now.
             .lean();
+
+        // 2. Validate against Fineract Status
+        const validLoans: any[] = [];
+        for (const loan of loans) {
+            try {
+                if (loan.fineractLoanId) {
+                    const fineractLoan = await this.fineractService.getLoanDetails(loan.fineractLoanId);
+
+                    // Filter: Only allow if Pending Approval (100) or Approved/Waiting Disbursal (200)
+                    // Reject if Active (300), Closed (600), Withdrawn, Rejected, etc.
+                    const status = fineractLoan.status;
+                    if (status.pendingApproval || status.waitingForDisbursal) {
+                        validLoans.push(loan);
+                    } else {
+                        this.logger.warn(`[getAvailableLoans] Skipping loan ${loan.contractId}: Fineract status is ${status.value} (ID: ${status.id})`);
+                    }
+                } else {
+                    // No Fineract ID yet (local only) - keep it
+                    validLoans.push(loan);
+                }
+            } catch (err) {
+                this.logger.error(`[getAvailableLoans] Failed to check Fineract for ${loan.contractId}: ${err.message}`);
+                // decide whether to keep or drop. Let's keep to avoid hiding data on network error, 
+                // but mark it? For safety in P2P, maybe drop or keep. 
+                // Let's keep it but log error.
+                validLoans.push(loan);
+            }
+        }
 
         const total = await this.loanContractModel.countDocuments({
             status: 'waiting',
             borrower: { $ne: user._id },
         });
 
-        // Calculate available notes for each loan
-        const loansWithAvailable = loans.map(loan => ({
-            ...loan,
-            availableNotes: (loan.totalNotes || 0) - (loan.investedNotes || 0),
-            availableAmount: ((loan.totalNotes || 0) - (loan.investedNotes || 0)) * this.noteValue,
-            fundedPercentage: loan.totalNotes
-                ? Math.round(((loan.investedNotes || 0) / loan.totalNotes) * 100)
-                : 0,
-        }));
+        // 3. Calculate available notes and include lender rates
+        const loansWithAvailable = validLoans.map(loan => {
+            // Calculate lender interest rate (borrower rate - admin spread)
+            const borrowerAnnualRate = loan.borrowerInterestRate || (loan.info?.rate * 12) || 18;
+            const adminSpread = 3; // 3% spread for admin
+            const lenderAnnualRate = borrowerAnnualRate - adminSpread;
+
+            return {
+                ...loan,
+                availableNotes: (loan.totalNotes || 0) - (loan.investedNotes || 0),
+                availableAmount: ((loan.totalNotes || 0) - (loan.investedNotes || 0)) * this.noteValue,
+                fundedPercentage: loan.totalNotes
+                    ? Math.round(((loan.investedNotes || 0) / loan.totalNotes) * 100)
+                    : 0,
+                // Include calculated rates for UI display
+                borrowerInterestRate: borrowerAnnualRate,
+                lenderInterestRate: lenderAnnualRate,
+                adminSpread: adminSpread,
+            };
+        });
 
         return {
             data: loansWithAvailable,
             pagination: {
                 page,
                 limit,
-                total,
+                total: validLoans.length, // Update total to reflect filtered count (approx)
                 totalPages: Math.ceil(total / limit),
             },
         };
@@ -797,6 +837,192 @@ export class InvestService {
 
         this.logger.warn(`Cannot resolve Fineract client ID for user ${user.username}`);
         return { balance: 0, availableBalance: 0 };
+    }
+
+    /**
+     * Get investment history time-series data for charts
+     * @param user - Authenticated user
+     * @param range - Time range: 1W, 1M, 3M, 1Y
+     */
+    async getInvestmentHistory(user: AuthUser, range: string = '1M'): Promise<any> {
+        this.logger.log(`[getInvestmentHistory] User: ${user.username}, Range: ${range}`);
+
+        // Calculate date range using native Date
+        const now = new Date();
+        let startDate: Date;
+        let daysToGenerate: number;
+
+        switch (range) {
+            case '1W':
+                startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                daysToGenerate = 7;
+                break;
+            case '3M':
+                startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                daysToGenerate = 90;
+                break;
+            case '1Y':
+                startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+                daysToGenerate = 12; // Monthly for 1Y
+                break;
+            case '1M':
+            default:
+                startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                daysToGenerate = 30;
+                break;
+        }
+
+        // Fetch ALL investments for this user
+        const investments = await this.investmentModel
+            .find({ lender: user._id })
+            .sort({ createdAt: 1 })
+            .lean();
+
+        this.logger.log(`[getInvestmentHistory] Found ${investments.length} total investments`);
+
+        // Get current balance from Fineract (real portfolio value)
+        let currentFineractBalance = 0;
+        try {
+            const balanceData = await this.getMyBalance(user);
+            currentFineractBalance = balanceData?.availableBalance || balanceData?.balance || 0;
+            this.logger.log(`[getInvestmentHistory] Fineract balance: ${currentFineractBalance}`);
+        } catch (err: any) {
+            this.logger.warn(`[getInvestmentHistory] Could not get Fineract balance: ${err.message}`);
+        }
+
+        // Calculate cumulative balance over time
+        let cumulativeBalance = 0;
+        let cumulativeProfit = 0;
+
+        // Build date-to-value map
+        const dateMap = new Map<string, { balance: number; profit: number }>();
+
+        for (const inv of investments) {
+            const invDate = new Date((inv as any).createdAt || Date.now());
+            const dateKey = invDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+            cumulativeBalance += inv.info?.capital || 0;
+            cumulativeProfit += inv.info?.entirelyProfit || 0;
+
+            dateMap.set(dateKey, {
+                balance: cumulativeBalance,
+                profit: cumulativeProfit,
+            });
+            // Detailed log for debugging (limit to first 5 and last 5 to avoid flooding)
+            if (investments.length < 20 || investments.indexOf(inv) < 5 || investments.indexOf(inv) > investments.length - 5) {
+                this.logger.log(`[getInvestmentHistory] Inv at ${dateKey}: +${inv.info?.capital}, Sum=${cumulativeBalance}`);
+            }
+        }
+
+        // Generate chart data points with FIXED number of points for smooth chart
+        const chartData: Array<{ label: string; value: number; profit: number; date: string }> = [];
+        let lastBalance = 0;
+        let lastProfit = 0;
+
+        // Convert map to sorted array data for reliable traversal and optimization
+        const sortedDataPoints = Array.from(dateMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        this.logger.log(`[getInvestmentHistory] Sorted data points: ${sortedDataPoints.length}`);
+
+        // Find initial balance before startDate
+        const startDateStr = startDate.toISOString().split('T')[0];
+
+        // Find best match for initial balance
+        for (const [dateKey, data] of sortedDataPoints) {
+            if (dateKey < startDateStr) {
+                lastBalance = data.balance;
+                lastProfit = data.profit;
+            } else {
+                break; // Since it is sorted, we can stop early
+            }
+        }
+        this.logger.log(`[getInvestmentHistory] Initial balance at ${startDateStr}: ${lastBalance}`);
+
+        // SMART START DATE: If no data before startDate, shift to first investment date
+        // This prevents charts from being mostly flat at 0
+        if (sortedDataPoints.length > 0 && lastBalance === 0) {
+            const firstDataDate = sortedDataPoints[0][0];
+            if (firstDataDate > startDateStr) {
+                // Shift startDate to 1 day before first investment for context
+                const firstInvDate = new Date(firstDataDate);
+                firstInvDate.setDate(firstInvDate.getDate() - 1);
+                startDate = firstInvDate;
+                this.logger.log(`[getInvestmentHistory] Adjusted startDate to ${startDate.toISOString().split('T')[0]} (1 day before first investment)`);
+            }
+        }
+
+        // Fixed number of data points for each range for smooth charts
+        const targetPoints = {
+            '1W': 7,
+            '1M': 15,
+            '3M': 18,
+            '1Y': 12,
+        };
+
+        const numPoints = targetPoints[range as keyof typeof targetPoints] || 15;
+        const totalMs = now.getTime() - startDate.getTime();
+        const intervalMs = totalMs / (numPoints - 1);
+
+        // Optimization: keep track of last scanned index
+        let lastScannedIndex = 0;
+
+        for (let i = 0; i < numPoints; i++) {
+            const pointDate = new Date(startDate.getTime() + i * intervalMs);
+            const dateKey = pointDate.toISOString().split('T')[0];
+
+            // Find the state for this specific date
+            let foundMatch = false;
+            for (let j = lastScannedIndex; j < sortedDataPoints.length; j++) {
+                const [dk, data] = sortedDataPoints[j];
+                if (dk <= dateKey) {
+                    lastBalance = data.balance;
+                    lastProfit = data.profit;
+                    lastScannedIndex = j;
+                    foundMatch = true;
+                } else {
+                    break;
+                }
+            }
+
+            // Debug log for each point
+            this.logger.log(`[getInvestmentHistory] Point ${i} (${dateKey}): Balance=${lastBalance}, Match=${foundMatch}`);
+
+            // Format label based on range
+            let label: string;
+            if (range === '1Y') {
+                const months = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+                label = months[pointDate.getMonth()];
+            } else if (range === '3M') {
+                label = `${pointDate.getDate()}/${pointDate.getMonth() + 1}`;
+            } else {
+                label = `${pointDate.getDate()}/${pointDate.getMonth() + 1}`;
+            }
+
+            chartData.push({
+                label,
+                value: lastBalance,
+                profit: lastProfit,
+                date: dateKey,
+            });
+        }
+
+        // Get current stats for summary
+        const stats = await this.getInvestmentStats(user);
+
+        this.logger.log(`[getInvestmentHistory] Returning ${chartData.length} data points`);
+
+        return {
+            range,
+            startDate: startDate.toISOString().split('T')[0],
+            endDate: now.toISOString().split('T')[0],
+            data: chartData,
+            summary: {
+                ...stats,
+                totalInvested: cumulativeBalance,
+                totalProfit: cumulativeProfit,
+                currentBalance: currentFineractBalance,
+                investmentCount: investments.length,
+            },
+        };
     }
 }
 

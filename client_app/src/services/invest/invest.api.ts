@@ -9,6 +9,7 @@ const INVEST_ENDPOINTS = {
     MY_INVESTMENTS: '/invest/my-investments',
     STATS: '/invest/stats',
     MY_BALANCE: '/invest/my-balance',
+    HISTORY: '/invest/history',
     DETAIL: (id: string) => `/invest/${id}`,
 };
 
@@ -174,6 +175,26 @@ export const investApi = {
             accountId?: number;
             accountNo?: string;
         }>(INVEST_ENDPOINTS.MY_BALANCE);
+        return response.data;
+    },
+
+    /**
+     * Get investment history for charts
+     */
+    async getInvestmentHistory(range: string = '1M') {
+        const response = await httpClient.get<{
+            range: string;
+            startDate: string;
+            endDate: string;
+            data: Array<{ label: string; value: number; profit: number; date: string }>;
+            summary: {
+                totalBalance: number;
+                totalProfit: number;
+                investmentCount: number;
+                totalInvested: number;
+                totalEarned: number;
+            };
+        }>(INVEST_ENDPOINTS.HISTORY, { params: { range } });
         return response.data;
     },
 

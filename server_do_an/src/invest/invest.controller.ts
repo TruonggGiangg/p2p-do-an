@@ -83,6 +83,20 @@ export class InvestController {
     }
 
     /**
+     * Get investment history for chart
+     */
+    @Get('history')
+    @ApiOperation({ summary: 'Get investment history time-series data for charts' })
+    @ApiQuery({ name: 'range', required: false, type: String, description: '1W, 1M, 3M, 1Y' })
+    async getInvestmentHistory(
+        @Request() req,
+        @Query('range') range?: string,
+    ) {
+        const user = req.user as AuthUser;
+        return this.investService.getInvestmentHistory(user, range || '1M');
+    }
+
+    /**
      * Get my wallet balance
      */
     @Get('my-balance')
