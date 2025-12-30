@@ -23,9 +23,9 @@ const sidebars = {
       label: '💡 Nghiệp vụ Cốt lõi',
       collapsible: true,
       items: [
-        // 'concepts/overview', // Nếu bạn muốn giữ lại cái cũ
         'concepts/fineract-core',
-        // 'concepts/money-flow', // Đã xóa theo yêu cầu
+        'concepts/fineract-products',
+        'concepts/fineract-accounting',
         'concepts/business-flow',
       ],
     },

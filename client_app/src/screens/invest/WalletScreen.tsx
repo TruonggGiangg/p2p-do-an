@@ -9,17 +9,12 @@ import {
     RefreshControl,
     ActivityIndicator,
     Alert,
-    StatusBar,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { walletApi } from '../../services';
-import { DarkColors, DarkStyling, DarkGradients } from '../../theme';
-import { GlowCard } from '../../components/glow';
+import { GradientBackground, GlassCard, GlassTokens, InfoRow, SectionTitle } from '../../components/glass';
+import { UnifiedSpacing, UnifiedRadius } from '../../theme';
 
-/**
- * WalletScreen - Shows lender's wallet balance and transactions (Dark Theme)
- */
 export default function WalletScreen() {
     const navigation = useNavigation<any>();
     const [balance, setBalance] = useState<{
@@ -55,46 +50,39 @@ export default function WalletScreen() {
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={DarkColors.primary} />
-                <Text style={styles.loadingText}>Đang tải...</Text>
-            </View>
+            <GradientBackground>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
+                    <Text style={styles.loadingText}>Đang tải...</Text>
+                </View>
+            </GradientBackground>
         );
     }
 
     return (
-        <LinearGradient
-            colors={DarkGradients.background}
-            style={styles.container}
-        >
-            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
+        <GradientBackground>
             <ScrollView
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={loadData}
-                        tintColor={DarkColors.primary}
-                        colors={[DarkColors.primary]}
+                        tintColor={GlassTokens.colors.primary}
+                        colors={[GlassTokens.colors.primary]}
                     />
                 }
                 contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
             >
                 {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.title}>Ví của tôi</Text>
                     <TouchableOpacity style={styles.refreshBtn} onPress={loadData}>
-                        <MaterialCommunityIcons name="refresh" size={24} color={DarkColors.textSecondary} />
+                        <MaterialCommunityIcons name="refresh" size={24} color={GlassTokens.colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
 
                 {/* Balance Card */}
-                <GlowCard variant="primary" style={styles.balanceCard}>
-                    <LinearGradient
-                        colors={['rgba(255, 0, 64, 0.15)', 'rgba(255, 0, 64, 0.05)']}
-                        style={StyleSheet.absoluteFillObject}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    />
+                <GlassCard variant="primary" blur={GlassTokens.blur.medium}>
                     <View style={styles.balanceHeader}>
                         <View>
                             <Text style={styles.balanceLabel}>Số dư khả dụng</Text>
@@ -103,7 +91,7 @@ export default function WalletScreen() {
                             </Text>
                         </View>
                         <View style={styles.walletIcon}>
-                            <MaterialCommunityIcons name="wallet" size={32} color={DarkColors.primary} />
+                            <MaterialCommunityIcons name="wallet" size={32} color={GlassTokens.colors.primary} />
                         </View>
                     </View>
 
@@ -120,20 +108,20 @@ export default function WalletScreen() {
                             </View>
                         )}
                     </View>
-                </GlowCard>
+                </GlassCard>
 
                 {/* Quick Actions */}
                 <View style={styles.actionsContainer}>
                     <TouchableOpacity style={styles.actionButton}>
-                        <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.success}20` }]}>
-                            <MaterialCommunityIcons name="arrow-down" size={24} color={DarkColors.success} />
+                        <View style={[styles.actionIcon, { backgroundColor: `${GlassTokens.colors.success}20` }]}>
+                            <MaterialCommunityIcons name="arrow-down" size={24} color={GlassTokens.colors.success} />
                         </View>
                         <Text style={styles.actionLabel}>Nạp tiền</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.actionButton}>
-                        <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.warning}20` }]}>
-                            <MaterialCommunityIcons name="arrow-up" size={24} color={DarkColors.warning} />
+                        <View style={[styles.actionIcon, { backgroundColor: `${GlassTokens.colors.warning}20` }]}>
+                            <MaterialCommunityIcons name="arrow-up" size={24} color={GlassTokens.colors.warning} />
                         </View>
                         <Text style={styles.actionLabel}>Rút tiền</Text>
                     </TouchableOpacity>
@@ -142,8 +130,8 @@ export default function WalletScreen() {
                         style={styles.actionButton}
                         onPress={() => navigation.navigate('Transfer', { balance: balance?.availableBalance || 0 })}
                     >
-                        <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.primary}20` }]}>
-                            <MaterialCommunityIcons name="swap-horizontal" size={24} color={DarkColors.primary} />
+                        <View style={[styles.actionIcon, { backgroundColor: `${GlassTokens.colors.primary}20` }]}>
+                            <MaterialCommunityIcons name="swap-horizontal" size={24} color={GlassTokens.colors.primary} />
                         </View>
                         <Text style={styles.actionLabel}>Chuyển tiền</Text>
                     </TouchableOpacity>
@@ -152,8 +140,8 @@ export default function WalletScreen() {
                         style={styles.actionButton}
                         onPress={() => navigation.navigate('TransactionHistory')}
                     >
-                        <View style={[styles.actionIcon, { backgroundColor: `${DarkColors.secondary}20` }]}>
-                            <MaterialCommunityIcons name="history" size={24} color={DarkColors.secondary} />
+                        <View style={[styles.actionIcon, { backgroundColor: `${GlassTokens.colors.info}20` }]}>
+                            <MaterialCommunityIcons name="history" size={24} color={GlassTokens.colors.info} />
                         </View>
                         <Text style={styles.actionLabel}>Lịch sử</Text>
                     </TouchableOpacity>
@@ -161,55 +149,38 @@ export default function WalletScreen() {
 
                 {/* Account Info */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Thông tin tài khoản</Text>
-                    <GlowCard>
+                    <SectionTitle>Thông tin tài khoản</SectionTitle>
+                    <GlassCard blur={GlassTokens.blur.light}>
                         <InfoRow label="ID Tài khoản" value={balance?.accountId?.toString() || '---'} />
                         <InfoRow label="Số tài khoản" value={balance?.accountNo || '---'} />
-                        <InfoRow label="Loại tài khoản" value="Savings Account" isLast />
-                    </GlowCard>
+                        <InfoRow label="Loại tài khoản" value="Savings Account" />
+                    </GlassCard>
                 </View>
 
                 {/* Investment Stats */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Tổng quan đầu tư</Text>
+                    <SectionTitle>Tổng quan đầu tư</SectionTitle>
                     <View style={styles.statsGrid}>
-                        <GlowCard style={styles.statCard} variant="glass">
-                            <MaterialCommunityIcons name="briefcase-outline" size={24} color={DarkColors.primary} />
+                        <GlassCard style={styles.statCard} blur={GlassTokens.blur.light}>
+                            <MaterialCommunityIcons name="briefcase-outline" size={24} color={GlassTokens.colors.primary} />
                             <Text style={styles.statValue}>---</Text>
                             <Text style={styles.statLabel}>Đang đầu tư</Text>
-                        </GlowCard>
-                        <GlowCard style={styles.statCard} variant="glass">
-                            <MaterialCommunityIcons name="trending-up" size={24} color={DarkColors.success} />
-                            <Text style={[styles.statValue, { color: DarkColors.success }]}>---</Text>
+                        </GlassCard>
+                        <GlassCard style={styles.statCard} blur={GlassTokens.blur.light}>
+                            <MaterialCommunityIcons name="trending-up" size={24} color={GlassTokens.colors.success} />
+                            <Text style={[styles.statValue, { color: GlassTokens.colors.success }]}>---</Text>
                             <Text style={styles.statLabel}>Lợi nhuận</Text>
-                        </GlowCard>
+                        </GlassCard>
                     </View>
                 </View>
+
+                <View style={{ height: 40 }} />
             </ScrollView>
-        </LinearGradient>
-    );
-}
-
-interface InfoRowProps {
-    label: string;
-    value: string;
-    isLast?: boolean;
-}
-
-function InfoRow({ label, value, isLast }: InfoRowProps) {
-    return (
-        <View style={[styles.infoRow, !isLast && styles.infoRowBorder]}>
-            <Text style={styles.infoLabel}>{label}</Text>
-            <Text style={styles.infoValue}>{value}</Text>
-        </View>
+        </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: DarkColors.background,
-    },
     scrollContent: {
         paddingBottom: 100,
     },
@@ -217,48 +188,44 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: DarkColors.background,
     },
     loadingText: {
         marginTop: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
     },
     // Header
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: UnifiedSpacing.lg,
         paddingTop: 60,
-        paddingBottom: 20,
+        paddingBottom: UnifiedSpacing.lg,
     },
     title: {
         fontSize: 28,
         fontWeight: '700',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
+        fontFamily: 'Poppins_700Bold',
     },
     refreshBtn: {
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: DarkColors.surface,
+        backgroundColor: 'rgba(255,255,255,0.05)',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: DarkColors.border,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     // Balance Card
-    balanceCard: {
-        marginHorizontal: 20,
-        height: 180,
-        justifyContent: 'space-between',
-        overflow: 'hidden',
-    },
     balanceHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
+        marginBottom: UnifiedSpacing.lg,
     },
     walletIcon: {
         width: 56,
@@ -272,12 +239,14 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.8)',
         fontSize: 14,
         marginBottom: 8,
+        fontFamily: 'Poppins_400Regular',
     },
     balanceValue: {
-        color: DarkColors.primary,
+        color: GlassTokens.colors.primary,
         fontSize: 36,
         fontWeight: '700',
-        textShadowColor: DarkColors.primaryGlow,
+        fontFamily: 'Poppins_700Bold',
+        textShadowColor: GlassTokens.colors.primaryGlow,
         textShadowOffset: { width: 0, height: 0 },
         textShadowRadius: 15,
     },
@@ -285,8 +254,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 20,
-        paddingTop: 20,
+        paddingTop: UnifiedSpacing.md,
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.2)',
     },
@@ -294,29 +262,32 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.7)',
         fontSize: 12,
         marginBottom: 4,
+        fontFamily: 'Poppins_400Regular',
     },
     totalValue: {
-        color: DarkColors.white,
+        color: GlassTokens.colors.white,
         fontSize: 16,
         fontWeight: '600',
+        fontFamily: 'Poppins_600SemiBold',
     },
     accountBadge: {
         backgroundColor: 'rgba(255,255,255,0.2)',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: DarkStyling.borderRadius.full,
+        borderRadius: UnifiedRadius.full,
     },
     accountNo: {
-        color: DarkColors.white,
+        color: GlassTokens.colors.white,
         fontSize: 12,
         fontWeight: '500',
+        fontFamily: 'Poppins_500Medium',
     },
     // Actions
     actionsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-around',
-        paddingVertical: 24,
-        paddingHorizontal: 16,
+        paddingVertical: UnifiedSpacing.xl,
+        paddingHorizontal: UnifiedSpacing.md,
     },
     actionButton: {
         alignItems: 'center',
@@ -328,44 +299,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8,
-        ...DarkStyling.shadow.glow,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     actionLabel: {
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 12,
         fontWeight: '500',
+        fontFamily: 'Poppins_500Medium',
     },
     // Section
     section: {
-        paddingHorizontal: 20,
-        marginBottom: 24,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: DarkColors.text,
-        marginBottom: 12,
-    },
-    // Info Card
-    // statCard style updated to check width if needed, but handled by flex
-    // Info Card
-    infoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 14,
-    },
-    infoRowBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: DarkColors.border,
-    },
-    infoLabel: {
-        color: DarkColors.textSecondary,
-        fontSize: 14,
-    },
-    infoValue: {
-        color: DarkColors.text,
-        fontSize: 14,
-        fontWeight: '500',
+        paddingHorizontal: UnifiedSpacing.lg,
+        marginBottom: UnifiedSpacing.xl,
     },
     // Stats Grid
     statsGrid: {
@@ -374,21 +320,19 @@ const styles = StyleSheet.create({
     },
     statCard: {
         flex: 1,
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.md,
         padding: 20,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: DarkColors.border,
     },
     statValue: {
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         fontSize: 24,
         fontWeight: '700',
         marginVertical: 8,
+        fontFamily: 'Poppins_700Bold',
     },
     statLabel: {
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
     },
 });

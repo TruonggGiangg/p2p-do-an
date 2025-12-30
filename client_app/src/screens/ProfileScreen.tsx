@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Text, Avatar, Divider, ActivityIndicator } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Text, ActivityIndicator } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services';
 import type { KeycloakUserDetails } from '../types';
-import { DarkColors, DarkStyling, DarkGradients } from '../theme';
-import { GlowCard, GlowBadge, GlowButton, StatusType } from '../components/glow';
+import { GradientBackground, GlassCard, GlassButton, GlassTokens, InfoRow, SectionTitle } from '../components/glass';
+import { UnifiedSpacing, UnifiedRadius } from '../theme';
 
 export default function ProfileScreen() {
     const { user, logout, isLoading } = useAuth();
@@ -38,193 +37,150 @@ export default function ProfileScreen() {
         }
     };
 
-
-    const getRoleStatus = (role: string): StatusType => {
+    const getRoleBadgeColor = (role: string) => {
         switch (role.toLowerCase()) {
-            case 'lender': return 'success';
-            case 'borrower': return 'warning';
-            case 'admin': return 'error';
-            default: return 'primary';
+            case 'lender': return GlassTokens.colors.success;
+            case 'borrower': return GlassTokens.colors.warning;
+            case 'admin': return GlassTokens.colors.error;
+            default: return GlassTokens.colors.primary;
         }
     };
 
     return (
-        <LinearGradient
-            colors={DarkGradients.background}
-            style={styles.container}
-        >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+        <GradientBackground>
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {/* Profile Header Card */}
-                <GlowCard style={styles.headerCard} variant="primary">
-                    <LinearGradient
-                        colors={DarkGradients.primaryButton}
-                        style={styles.avatarContainer}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    >
+                <GlassCard variant="primary" blur={GlassTokens.blur.medium}>
+                    <View style={styles.avatarContainer}>
                         <Text style={styles.avatarText}>
                             {user?.name?.charAt(0)?.toUpperCase() || 'U'}
                         </Text>
-                    </LinearGradient>
-                    <Text style={[styles.userName, styles.glowText]}>{user?.name || 'Unknown User'}</Text>
+                    </View>
+                    <Text style={styles.userName}>{user?.name || 'Unknown User'}</Text>
                     <Text style={styles.userEmail}>{user?.email}</Text>
 
                     {/* Role Badges */}
                     <View style={styles.rolesContainer}>
                         {user?.roles?.map((role, index) => (
-                            <GlowBadge
+                            <View
                                 key={index}
-                                label={role.charAt(0).toUpperCase() + role.slice(1)}
-                                status={getRoleStatus(role)}
-                            />
+                                style={[
+                                    styles.roleBadge,
+                                    {
+                                        backgroundColor: `${getRoleBadgeColor(role)}20`,
+                                        borderColor: `${getRoleBadgeColor(role)}40`
+                                    }
+                                ]}
+                            >
+                                <Text style={[styles.roleText, { color: getRoleBadgeColor(role) }]}>
+                                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                                </Text>
+                            </View>
                         ))}
                     </View>
-                </GlowCard>
+                </GlassCard>
 
                 {/* Account Info Card */}
-                <GlowCard style={styles.card}>
-                    <Text style={styles.sectionTitle}>Thông tin tài khoản</Text>
+                <GlassCard blur={GlassTokens.blur.medium}>
+                    <SectionTitle>Thông tin tài khoản</SectionTitle>
 
                     <InfoRow
-                        icon="account-key"
                         label="Keycloak ID"
                         value={user?.keycloakUserId || '-'}
                     />
-                    <Divider style={styles.divider} />
                     <InfoRow
-                        icon="phone"
                         label="Số điện thoại"
                         value={user?.username || '-'}
                     />
-                    <Divider style={styles.divider} />
                     <InfoRow
-                        icon="email"
                         label="Email"
                         value={user?.email || '-'}
                     />
-                </GlowCard>
+                </GlassCard>
 
                 {/* Keycloak Details Card */}
                 {keycloakDetails && (
-                    <GlowCard style={styles.card}>
-                        <Text style={styles.sectionTitle}>Chi tiết Keycloak</Text>
+                    <GlassCard blur={GlassTokens.blur.medium}>
+                        <SectionTitle>Chi tiết Keycloak</SectionTitle>
 
                         <InfoRow
-                            icon="account"
                             label="Họ"
                             value={keycloakDetails.firstName || '-'}
                         />
-                        <Divider style={styles.divider} />
                         <InfoRow
-                            icon="account"
                             label="Tên"
                             value={keycloakDetails.lastName || '-'}
                         />
-                        <Divider style={styles.divider} />
                         <InfoRow
-                            icon="check-circle"
                             label="Email xác thực"
                             value={keycloakDetails.emailVerified ? 'Đã xác thực' : 'Chưa xác thực'}
-                            valueColor={keycloakDetails.emailVerified ? DarkColors.success : DarkColors.warning}
                         />
-                        <Divider style={styles.divider} />
                         <InfoRow
-                            icon="account-check"
                             label="Trạng thái"
                             value={keycloakDetails.enabled ? 'Hoạt động' : 'Đã khóa'}
-                            valueColor={keycloakDetails.enabled ? DarkColors.success : DarkColors.error}
                         />
-                    </GlowCard>
+                    </GlassCard>
                 )}
 
                 {/* Action Buttons */}
-                {/* Action Buttons */}
-                <GlowButton
+                <GlassButton
                     title="Làm mới"
                     icon="refresh"
                     onPress={loadUserDetails}
                     loading={loadingDetails}
-                    variant="glass"
+                    variant="secondary"
                     style={{ marginBottom: 12 }}
                 />
 
-                <GlowButton
-                    title={isLoading ? 'Đang đăng xuất...' : 'Đăng Xuất'}
+                <GlassButton
+                    title={isLoading ? 'Đang đăng xuất...' : 'ĐĂNG XUẤT'}
                     icon="logout"
                     onPress={handleLogout}
                     loading={isLoading}
-                    variant="primary"
+                    variant="error"
                     style={{ marginBottom: 32 }}
-                    textStyle={{ color: DarkColors.white }}
-                    gradientColors={['#FF4757', '#FF6B81']}
                 />
             </ScrollView>
-        </LinearGradient>
-    );
-}
-
-interface InfoRowProps {
-    icon: string;
-    label: string;
-    value: string;
-    valueColor?: string;
-}
-
-function InfoRow({ icon, label, value, valueColor }: InfoRowProps) {
-    return (
-        <View style={styles.infoRow}>
-            <View style={styles.infoRowLeft}>
-                <View style={styles.iconContainer}>
-                    <MaterialCommunityIcons name={icon as any} size={20} color={DarkColors.textSecondary} />
-                </View>
-                <Text style={styles.infoLabel}>{label}</Text>
-            </View>
-            <Text
-                style={[styles.infoValue, valueColor ? { color: valueColor } : null]}
-                numberOfLines={1}
-            >
-                {value}
-            </Text>
-        </View>
+        </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
     scrollContent: {
-        padding: 16,
-    },
-    headerCard: {
-        alignItems: 'center',
-        marginBottom: 16,
-        padding: 24,
+        padding: UnifiedSpacing.lg,
+        paddingTop: 60,
     },
     avatarContainer: {
         width: 80,
         height: 80,
         borderRadius: 40,
+        backgroundColor: GlassTokens.colors.primary,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: UnifiedSpacing.md,
+        alignSelf: 'center',
     },
     avatarText: {
         fontSize: 32,
         fontFamily: 'Poppins_700Bold',
-        color: DarkColors.white,
+        color: GlassTokens.colors.white,
     },
     userName: {
         fontSize: 22,
         fontFamily: 'Poppins_700Bold',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 4,
+        textAlign: 'center',
+        textShadowColor: GlassTokens.colors.primaryGlow,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 10,
     },
     userEmail: {
         fontSize: 14,
         fontFamily: 'Poppins_400Regular',
-        color: DarkColors.textSecondary,
-        marginBottom: 16,
+        color: GlassTokens.colors.textSecondary,
+        marginBottom: UnifiedSpacing.md,
+        textAlign: 'center',
     },
     rolesContainer: {
         flexDirection: 'row',
@@ -232,57 +188,14 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 8,
     },
-    // roleBadge styles removed
-    // roleText styles removed
-    card: {
-        marginBottom: 16,
-        padding: 16,
+    roleBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: UnifiedRadius.sm,
+        borderWidth: 1,
     },
-    sectionTitle: {
-        fontSize: 16,
+    roleText: {
+        fontSize: 12,
         fontFamily: 'Poppins_600SemiBold',
-        color: DarkColors.text,
-        marginBottom: 16,
     },
-    infoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-    },
-    infoRowLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    iconContainer: {
-        width: 36,
-        height: 36,
-        borderRadius: DarkStyling.borderRadius.xs,
-        backgroundColor: DarkColors.surfaceLight,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    infoLabel: {
-        fontSize: 14,
-        fontFamily: 'Poppins_400Regular',
-        color: DarkColors.textSecondary,
-    },
-    infoValue: {
-        fontSize: 14,
-        fontFamily: 'Poppins_500Medium',
-        color: DarkColors.text,
-        maxWidth: '50%',
-        textAlign: 'right',
-    },
-    divider: {
-        backgroundColor: DarkColors.border,
-    },
-    glowText: {
-        textShadowColor: DarkColors.primaryGlow,
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 10,
-    },
-    // Button styles removed as GlowButton handles them
 });

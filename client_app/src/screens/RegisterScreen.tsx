@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity } from 'react-native';
-import { TextInput, Text, Snackbar } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Text, Snackbar } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { DarkColors, DarkStyling, DarkGradients } from '../theme';
+import { GradientBackground, GlassCard, GlassButton, GlassTokens } from '../components/glass';
+import { GlassInput } from '../components/common';
+import { UnifiedSpacing, UnifiedRadius } from '../theme';
 
 interface RegisterScreenProps {
     navigation: any;
@@ -20,7 +22,6 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     const [userType, setUserType] = useState<'borrower' | 'lender'>('borrower');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
 
     const handleRegister = async () => {
         if (!username || !password || !email || !firstName || !lastName) {
@@ -81,157 +82,107 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
             }
 
             setError(errorMessage);
-            // Stay on page - do not navigate
         }
     };
 
     return (
-        <LinearGradient
-            colors={[DarkColors.background, DarkColors.surface]}
-            style={styles.container}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-        >
+        <GradientBackground>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
             >
-                <ScrollView contentContainerStyle={styles.scrollContent}>
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                >
                     {/* Header */}
                     <View style={styles.header}>
+                        <View style={styles.logoContainer}>
+                            <View style={styles.logoIcon}>
+                                <MaterialCommunityIcons name="account-plus" size={28} color="#fff" />
+                            </View>
+                        </View>
                         <Text style={styles.title}>Đăng Ký</Text>
                         <Text style={styles.subtitle}>Tạo tài khoản mới để bắt đầu</Text>
                     </View>
 
-                    {/* Register Card */}
-                    <View style={styles.card}>
-                        {/* Phone Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Số điện thoại</Text>
-                            <TextInput
-                                value={username}
-                                onChangeText={setUsername}
-                                mode="flat"
-                                keyboardType="phone-pad"
-                                style={styles.input}
-                                contentStyle={styles.inputContent}
-                                underlineColor="transparent"
-                                activeUnderlineColor={DarkColors.primary}
-                                textColor={DarkColors.text}
-                                placeholder="Nhập số điện thoại"
-                                placeholderTextColor={DarkColors.textMuted}
-                                left={<TextInput.Icon icon="phone" color={DarkColors.textSecondary} />}
-                            />
-                        </View>
+                    {/* Register Form Card */}
+                    <GlassCard blur={GlassTokens.blur.medium}>
+                        <GlassInput
+                            label="Số điện thoại"
+                            value={username}
+                            onChangeText={setUsername}
+                            keyboardType="phone-pad"
+                            placeholder="0987 654 321"
+                            icon="phone-portrait"
+                        />
 
-                        {/* Email Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Email</Text>
-                            <TextInput
-                                value={email}
-                                onChangeText={setEmail}
-                                mode="flat"
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                style={styles.input}
-                                contentStyle={styles.inputContent}
-                                underlineColor="transparent"
-                                activeUnderlineColor={DarkColors.primary}
-                                textColor={DarkColors.text}
-                                placeholder="email@example.com"
-                                placeholderTextColor={DarkColors.textMuted}
-                                left={<TextInput.Icon icon="email" color={DarkColors.textSecondary} />}
-                            />
-                        </View>
+                        <GlassInput
+                            label="Email"
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            placeholder="email@example.com"
+                            icon="mail"
+                        />
 
                         {/* Name Row */}
                         <View style={styles.nameRow}>
-                            <View style={[styles.inputContainer, { flex: 1 }]}>
-                                <Text style={styles.inputLabel}>Họ</Text>
-                                <TextInput
+                            <View style={{ flex: 1 }}>
+                                <GlassInput
+                                    label="Họ"
                                     value={firstName}
                                     onChangeText={setFirstName}
-                                    mode="flat"
-                                    style={styles.input}
-                                    contentStyle={styles.inputContent}
-                                    underlineColor="transparent"
-                                    activeUnderlineColor={DarkColors.primary}
-                                    textColor={DarkColors.text}
                                     placeholder="Nguyễn"
-                                    placeholderTextColor={DarkColors.textMuted}
+                                    containerStyle={{ marginBottom: 0 }}
                                 />
                             </View>
                             <View style={{ width: 12 }} />
-                            <View style={[styles.inputContainer, { flex: 1 }]}>
-                                <Text style={styles.inputLabel}>Tên</Text>
-                                <TextInput
+                            <View style={{ flex: 1 }}>
+                                <GlassInput
+                                    label="Tên"
                                     value={lastName}
                                     onChangeText={setLastName}
-                                    mode="flat"
-                                    style={styles.input}
-                                    contentStyle={styles.inputContent}
-                                    underlineColor="transparent"
-                                    activeUnderlineColor={DarkColors.primary}
-                                    textColor={DarkColors.text}
                                     placeholder="Văn A"
-                                    placeholderTextColor={DarkColors.textMuted}
+                                    containerStyle={{ marginBottom: 0 }}
                                 />
                             </View>
                         </View>
 
-                        {/* Password Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Mật khẩu (tối thiểu 12 ký tự)</Text>
-                            <TextInput
-                                value={password}
-                                onChangeText={setPassword}
-                                mode="flat"
-                                secureTextEntry={!showPassword}
-                                style={styles.input}
-                                contentStyle={styles.inputContent}
-                                underlineColor="transparent"
-                                activeUnderlineColor={DarkColors.primary}
-                                textColor={DarkColors.text}
-                                placeholder="••••••••••••"
-                                placeholderTextColor={DarkColors.textMuted}
-                                left={<TextInput.Icon icon="lock" color={DarkColors.textSecondary} />}
-                                right={
-                                    <TextInput.Icon
-                                        icon={showPassword ? 'eye-off' : 'eye'}
-                                        onPress={() => setShowPassword(!showPassword)}
-                                        color={DarkColors.textSecondary}
-                                    />
-                                }
-                            />
-                        </View>
+                        <GlassInput
+                            label="Mật khẩu (tối thiểu 12 ký tự)"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry
+                            placeholder="••••••••••••"
+                            icon="lock-closed"
+                        />
 
-                        {/* Confirm Password */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Xác nhận mật khẩu</Text>
-                            <TextInput
-                                value={confirmPassword}
-                                onChangeText={setConfirmPassword}
-                                mode="flat"
-                                secureTextEntry={!showPassword}
-                                style={styles.input}
-                                contentStyle={styles.inputContent}
-                                underlineColor="transparent"
-                                activeUnderlineColor={DarkColors.primary}
-                                textColor={DarkColors.text}
-                                placeholder="••••••••••••"
-                                placeholderTextColor={DarkColors.textMuted}
-                                left={<TextInput.Icon icon="lock-check" color={DarkColors.textSecondary} />}
-                            />
-                        </View>
+                        <GlassInput
+                            label="Xác nhận mật khẩu"
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            secureTextEntry
+                            placeholder="••••••••••••"
+                            icon="lock-closed"
+                        />
 
                         {/* Role Selection */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Loại tài khoản</Text>
+                        <View style={styles.roleSection}>
+                            <Text style={styles.roleLabel}>Loại tài khoản</Text>
                             <View style={styles.roleContainer}>
                                 <TouchableOpacity
                                     style={[styles.roleButton, userType === 'borrower' && styles.roleButtonActive]}
                                     onPress={() => setUserType('borrower')}
+                                    activeOpacity={0.7}
                                 >
+                                    <MaterialCommunityIcons
+                                        name="account-cash"
+                                        size={24}
+                                        color={userType === 'borrower' ? GlassTokens.colors.primary : GlassTokens.colors.textSecondary}
+                                    />
                                     <Text style={[styles.roleText, userType === 'borrower' && styles.roleTextActive]}>
                                         Người vay
                                     </Text>
@@ -239,9 +190,15 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                                 <TouchableOpacity
                                     style={[styles.roleButton, userType === 'lender' && styles.roleButtonActive]}
                                     onPress={() => setUserType('lender')}
+                                    activeOpacity={0.7}
                                 >
+                                    <MaterialCommunityIcons
+                                        name="hand-coin"
+                                        size={24}
+                                        color={userType === 'lender' ? GlassTokens.colors.primary : GlassTokens.colors.textSecondary}
+                                    />
                                     <Text style={[styles.roleText, userType === 'lender' && styles.roleTextActive]}>
-                                        Người cho vay
+                                        Nhà đầu tư
                                     </Text>
                                 </TouchableOpacity>
                             </View>
@@ -249,28 +206,21 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 
                         {/* Error Message */}
                         {error ? (
-                            <View style={styles.errorBox}>
+                            <View style={styles.errorContainer}>
+                                <MaterialCommunityIcons name="alert-circle" size={16} color={GlassTokens.colors.error} />
                                 <Text style={styles.errorText}>{error}</Text>
                             </View>
                         ) : null}
 
                         {/* Register Button */}
-                        <TouchableOpacity
+                        <GlassButton
+                            title={isLoading ? 'Đang xử lý...' : 'ĐĂNG KÝ'}
                             onPress={handleRegister}
                             disabled={isLoading}
-                            activeOpacity={0.8}
-                        >
-                            <LinearGradient
-                                colors={isLoading ? [DarkColors.textMuted, DarkColors.textMuted] : DarkGradients.primaryButton}
-                                style={styles.registerButton}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                            >
-                                <Text style={styles.registerButtonText}>
-                                    {isLoading ? 'Đang xử lý...' : 'Đăng Ký'}
-                                </Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
+                            loading={isLoading}
+                            icon="account-plus"
+                            variant="primary"
+                        />
 
                         {/* Login Link */}
                         <TouchableOpacity
@@ -281,7 +231,9 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                                 Đã có tài khoản? <Text style={styles.loginHighlight}>Đăng nhập</Text>
                             </Text>
                         </TouchableOpacity>
-                    </View>
+                    </GlassCard>
+
+                    <View style={{ height: 40 }} />
                 </ScrollView>
 
                 <Snackbar
@@ -293,86 +245,101 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
                     {success}
                 </Snackbar>
             </KeyboardAvoidingView>
-        </LinearGradient>
+        </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
     scrollContent: {
         flexGrow: 1,
-        padding: 24,
-        justifyContent: 'center',
+        padding: UnifiedSpacing.lg,
+        paddingTop: 60,
     },
     header: {
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: UnifiedSpacing.xl,
+    },
+    logoContainer: {
+        marginBottom: UnifiedSpacing.md,
+    },
+    logoIcon: {
+        width: 64,
+        height: 64,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: GlassTokens.colors.primary,
     },
     title: {
         fontSize: 28,
         fontFamily: 'Poppins_700Bold',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 8,
+        textShadowColor: GlassTokens.colors.primaryGlow,
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 20,
     },
     subtitle: {
         fontSize: 15,
         fontFamily: 'Poppins_400Regular',
-        color: DarkColors.textSecondary,
-    },
-    card: {
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.xl,
-        padding: 24,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
-        ...DarkStyling.shadow.card,
-    },
-    inputContainer: {
-        marginBottom: 16,
-    },
-    inputLabel: {
-        fontSize: 13,
-        fontFamily: 'Poppins_500Medium',
-        color: DarkColors.textSecondary,
-        marginBottom: 6,
-    },
-    input: {
-        backgroundColor: DarkColors.surfaceLight,
-        borderRadius: DarkStyling.borderRadius.sm,
-        fontSize: 15,
-    },
-    inputContent: {
-        fontFamily: 'Poppins_400Regular',
-        paddingLeft: 8,
+        color: GlassTokens.colors.textSecondary,
     },
     nameRow: {
         flexDirection: 'row',
+        marginBottom: UnifiedSpacing.md,
     },
-    errorBox: {
-        backgroundColor: `${DarkColors.error}15`,
-        borderRadius: DarkStyling.borderRadius.sm,
+    roleSection: {
+        marginBottom: UnifiedSpacing.md,
+    },
+    roleLabel: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
+        color: GlassTokens.colors.textSecondary,
+        marginBottom: 8,
+    },
+    roleContainer: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    roleButton: {
+        flex: 1,
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        borderRadius: UnifiedRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        gap: 8,
+    },
+    roleButtonActive: {
+        borderColor: GlassTokens.colors.primaryBorder,
+        backgroundColor: `${GlassTokens.colors.primary}15`,
+    },
+    roleText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_500Medium',
+        color: GlassTokens.colors.textSecondary,
+    },
+    roleTextActive: {
+        color: GlassTokens.colors.primary,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    errorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: `${GlassTokens.colors.error}15`,
+        borderRadius: 10,
         padding: 12,
         marginBottom: 16,
+        gap: 8,
     },
     errorText: {
-        color: DarkColors.error,
-        textAlign: 'center',
+        color: GlassTokens.colors.error,
         fontFamily: 'Poppins_400Regular',
         fontSize: 13,
-    },
-    registerButton: {
-        borderRadius: DarkStyling.borderRadius.sm,
-        paddingVertical: 16,
-        alignItems: 'center',
-        marginTop: 8,
-
-    },
-    registerButtonText: {
-        color: DarkColors.white,
-        fontSize: 16,
-        fontFamily: 'Poppins_600SemiBold',
+        flex: 1,
     },
     loginLink: {
         alignItems: 'center',
@@ -381,42 +348,14 @@ const styles = StyleSheet.create({
     loginText: {
         fontSize: 14,
         fontFamily: 'Poppins_400Regular',
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
     },
     loginHighlight: {
-        color: DarkColors.primary,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    roleContainer: {
-        flexDirection: 'row',
-        gap: 12,
-        marginTop: 8,
-    },
-    roleButton: {
-        flex: 1,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        borderRadius: DarkStyling.borderRadius.sm,
-        borderWidth: 0,
-        borderColor: DarkColors.border,
-        backgroundColor: DarkColors.surfaceLight,
-        alignItems: 'center',
-    },
-    roleButtonActive: {
-        borderColor: DarkColors.primary,
-        backgroundColor: `${DarkColors.primary}15`,
-    },
-    roleText: {
-        fontSize: 14,
-        fontFamily: 'Poppins_500Medium',
-        color: DarkColors.textSecondary,
-    },
-    roleTextActive: {
-        color: DarkColors.primary,
+        color: GlassTokens.colors.primary,
         fontFamily: 'Poppins_600SemiBold',
     },
     snackbar: {
-        backgroundColor: DarkColors.success,
-        borderRadius: DarkStyling.borderRadius.sm,
+        backgroundColor: GlassTokens.colors.success,
+        borderRadius: UnifiedRadius.sm,
     },
 });

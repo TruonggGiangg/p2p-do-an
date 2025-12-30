@@ -8,17 +8,13 @@ import {
     RefreshControl,
     ActivityIndicator,
     Alert,
-    StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { investApi, Investment } from '../../services/invest';
-import { DarkColors, DarkStyling } from '../../theme';
+import { GradientBackground, GlassCard, GlassButton, GlassTokens } from '../../components/glass';
+import { UnifiedSpacing, UnifiedRadius } from '../../theme';
 
-/**
- * MyInvestmentsScreen - Shows user's investment portfolio (Dark Theme)
- */
 export default function MyInvestmentsScreen() {
     const navigation = useNavigation<any>();
     const [investments, setInvestments] = useState<Investment[]>([]);
@@ -51,18 +47,18 @@ export default function MyInvestmentsScreen() {
     const getStatusInfo = (status: string) => {
         switch (status) {
             case 'success':
-                return { color: DarkColors.success, bg: `${DarkColors.success}20`, label: 'Đang hoạt động', icon: 'play-circle' };
+                return { color: GlassTokens.colors.success, bg: `${GlassTokens.colors.success}20`, label: 'Đang hoạt động', icon: 'play-circle' };
             case 'waiting_other':
-                return { color: DarkColors.warning, bg: `${DarkColors.warning}20`, label: 'Chờ góp vốn', icon: 'clock-outline' };
+                return { color: GlassTokens.colors.warning, bg: `${GlassTokens.colors.warning}20`, label: 'Chờ góp vốn', icon: 'clock-outline' };
             case 'waiting_transfer':
-                return { color: DarkColors.warning, bg: `${DarkColors.warning}20`, label: 'Chờ chuyển tiền', icon: 'bank-transfer' };
+                return { color: GlassTokens.colors.warning, bg: `${GlassTokens.colors.warning}20`, label: 'Chờ chuyển tiền', icon: 'bank-transfer' };
             case 'clean':
-                return { color: DarkColors.info, bg: `${DarkColors.info}20`, label: 'Đã hoàn thành', icon: 'check-circle' };
+                return { color: GlassTokens.colors.info, bg: `${GlassTokens.colors.info}20`, label: 'Đã hoàn thành', icon: 'check-circle' };
             case 'fail':
             case 'fail_transfer':
-                return { color: DarkColors.error, bg: `${DarkColors.error}20`, label: 'Thất bại', icon: 'alert-circle' };
+                return { color: GlassTokens.colors.error, bg: `${GlassTokens.colors.error}20`, label: 'Thất bại', icon: 'alert-circle' };
             default:
-                return { color: DarkColors.textMuted, bg: `${DarkColors.textMuted}20`, label: status, icon: 'help-circle' };
+                return { color: GlassTokens.colors.textMuted, bg: `${GlassTokens.colors.textMuted}20`, label: status, icon: 'help-circle' };
         }
     };
 
@@ -78,73 +74,74 @@ export default function MyInvestmentsScreen() {
 
         return (
             <TouchableOpacity
-                style={styles.investmentCard}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate('InvestmentDetail', { investment: item })}
             >
-                {/* Header */}
-                <View style={styles.cardHeader}>
-                    <View style={styles.cardHeaderLeft}>
-                        <View style={[styles.iconCircle, { backgroundColor: status.bg }]}>
-                            <MaterialCommunityIcons name={status.icon as any} size={20} color={status.color} />
+                <GlassCard blur={GlassTokens.blur.light} style={styles.investmentCard}>
+                    {/* Header */}
+                    <View style={styles.cardHeader}>
+                        <View style={styles.cardHeaderLeft}>
+                            <View style={[styles.iconCircle, { backgroundColor: status.bg }]}>
+                                <MaterialCommunityIcons name={status.icon as any} size={20} color={status.color} />
+                            </View>
+                            <View>
+                                <Text style={styles.contractId}>Đầu tư #{item.info.numNotes} notes</Text>
+                                <Text style={styles.loanRef}>{item.loanContractId}</Text>
+                            </View>
                         </View>
-                        <View>
-                            <Text style={styles.contractId}>Đầu tư #{item.info.numNotes} notes</Text>
-                            <Text style={styles.loanRef}>{item.loanContractId}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: status.bg, borderColor: `${status.color}40` }]}>
+                            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                         </View>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-                        <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-                    </View>
-                </View>
 
-                {/* Body */}
-                <View style={styles.cardBody}>
-                    <View style={styles.infoRow}>
-                        <Text style={styles.label}>Vốn đầu tư</Text>
-                        <Text style={styles.value}>{formatCurrency(item.info.capital)}₫</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                        <Text style={styles.label}>Thu nhập/tháng</Text>
-                        <Text style={[styles.value, { color: DarkColors.success }]}>
-                            +{formatCurrency(item.info.monthlyIncome || 0)}₫
-                        </Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                        <Text style={styles.label}>Tổng lợi nhuận</Text>
-                        <Text style={[styles.value, { color: DarkColors.primary }]}>
-                            {formatCurrency(item.info.entirelyProfit || 0)}₫
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Received Section */}
-                {(item.totalReceived || 0) > 0 && (
-                    <View style={styles.receivedSection}>
-                        <View style={styles.receivedRow}>
-                            <MaterialCommunityIcons name="wallet-plus" size={18} color={DarkColors.success} />
-                            <Text style={styles.receivedLabel}>Đã nhận</Text>
+                    {/* Body */}
+                    <View style={styles.cardBody}>
+                        <View style={styles.infoRow}>
+                            <Text style={styles.label}>Vốn đầu tư</Text>
+                            <Text style={styles.value}>{formatCurrency(item.info.capital)}₫</Text>
                         </View>
-                        <Text style={styles.receivedValue}>{formatCurrency(item.totalReceived || 0)}₫</Text>
+                        <View style={styles.infoRow}>
+                            <Text style={styles.label}>Thu nhập/tháng</Text>
+                            <Text style={[styles.value, { color: GlassTokens.colors.success }]}>
+                                +{formatCurrency(item.info.monthlyIncome || 0)}₫
+                            </Text>
+                        </View>
+                        <View style={styles.infoRow}>
+                            <Text style={styles.label}>Tổng lợi nhuận</Text>
+                            <Text style={[styles.value, { color: GlassTokens.colors.primary }]}>
+                                {formatCurrency(item.info.entirelyProfit || 0)}₫
+                            </Text>
+                        </View>
                     </View>
-                )}
+
+                    {/* Received Section */}
+                    {(item.totalReceived || 0) > 0 && (
+                        <View style={styles.receivedSection}>
+                            <View style={styles.receivedRow}>
+                                <MaterialCommunityIcons name="wallet-plus" size={18} color={GlassTokens.colors.success} />
+                                <Text style={styles.receivedLabel}>Đã nhận</Text>
+                            </View>
+                            <Text style={styles.receivedValue}>{formatCurrency(item.totalReceived || 0)}₫</Text>
+                        </View>
+                    )}
+                </GlassCard>
             </TouchableOpacity>
         );
     };
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={DarkColors.primary} />
-                <Text style={styles.loadingText}>Đang tải...</Text>
-            </View>
+            <GradientBackground>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
+                    <Text style={styles.loadingText}>Đang tải...</Text>
+                </View>
+            </GradientBackground>
         );
     }
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={DarkColors.background} />
-
+        <GradientBackground>
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.title}>Portfolio của tôi</Text>
@@ -175,110 +172,99 @@ export default function MyInvestmentsScreen() {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={loadData}
-                        tintColor={DarkColors.primary}
-                        colors={[DarkColors.primary]}
+                        tintColor={GlassTokens.colors.primary}
+                        colors={[GlassTokens.colors.primary]}
                     />
                 }
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <View style={styles.emptyIcon}>
-                            <MaterialCommunityIcons name="briefcase-outline" size={48} color={DarkColors.textMuted} />
+                            <MaterialCommunityIcons name="briefcase-outline" size={48} color={GlassTokens.colors.textMuted} />
                         </View>
                         <Text style={styles.emptyTitle}>Chưa có đầu tư</Text>
                         <Text style={styles.emptyText}>Bạn chưa có khoản đầu tư nào</Text>
-                        <TouchableOpacity
-                            style={styles.investButton}
+                        <GlassButton
+                            title="ĐẦU TƯ NGAY"
                             onPress={() => navigation.navigate('InvestList')}
-                        >
-                            <LinearGradient
-                                colors={['#4347FF', '#6366F1'] as const}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.investButtonGradient}
-                            >
-                                <Text style={styles.investButtonText}>Đầu tư ngay</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
+                            variant="primary"
+                            icon="briefcase-plus"
+                            style={styles.investButton}
+                        />
                     </View>
                 }
             />
-        </View>
+        </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: DarkColors.background,
-    },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: DarkColors.background,
     },
     loadingText: {
         marginTop: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
     },
     // Header
     header: {
-        paddingHorizontal: 20,
+        paddingHorizontal: UnifiedSpacing.lg,
         paddingTop: 60,
-        paddingBottom: 16,
+        paddingBottom: UnifiedSpacing.md,
     },
     title: {
         fontSize: 28,
         fontWeight: '700',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
+        fontFamily: 'Poppins_700Bold',
     },
     subtitle: {
         fontSize: 14,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         marginTop: 4,
+        fontFamily: 'Poppins_400Regular',
     },
     // Tabs
     tabContainer: {
         flexDirection: 'row',
-        paddingHorizontal: 20,
-        marginBottom: 16,
+        paddingHorizontal: UnifiedSpacing.lg,
+        marginBottom: UnifiedSpacing.md,
         gap: 8,
     },
     tab: {
         paddingVertical: 8,
         paddingHorizontal: 14,
-        borderRadius: DarkStyling.borderRadius.full,
-        backgroundColor: DarkColors.surface,
+        borderRadius: UnifiedRadius.full,
+        backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderColor: DarkColors.border,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     activeTab: {
-        backgroundColor: DarkColors.primary,
-        borderColor: DarkColors.primary,
+        backgroundColor: GlassTokens.colors.primary,
+        borderColor: GlassTokens.colors.primary,
     },
     tabText: {
         fontSize: 13,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontWeight: '500',
+        fontFamily: 'Poppins_500Medium',
     },
     activeTabText: {
-        color: DarkColors.white,
+        color: GlassTokens.colors.white,
+        fontFamily: 'Poppins_600SemiBold',
     },
     // List
     listContent: {
-        paddingHorizontal: 20,
+        paddingHorizontal: UnifiedSpacing.lg,
         paddingBottom: 100,
     },
     // Card
     investmentCard: {
-        backgroundColor: DarkColors.surface,
-        borderRadius: DarkStyling.borderRadius.lg,
-        padding: 16,
         marginBottom: 12,
-        borderWidth: 1,
-        borderColor: DarkColors.border,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -290,6 +276,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
+        flex: 1,
     },
     iconCircle: {
         width: 40,
@@ -301,21 +288,25 @@ const styles = StyleSheet.create({
     contractId: {
         fontSize: 15,
         fontWeight: '600',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
+        fontFamily: 'Poppins_600SemiBold',
     },
     loanRef: {
         fontSize: 12,
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         marginTop: 2,
+        fontFamily: 'Poppins_400Regular',
     },
     statusBadge: {
         paddingHorizontal: 10,
         paddingVertical: 5,
-        borderRadius: DarkStyling.borderRadius.full,
+        borderRadius: UnifiedRadius.full,
+        borderWidth: 1,
     },
     statusText: {
         fontSize: 11,
         fontWeight: '600',
+        fontFamily: 'Poppins_600SemiBold',
     },
     // Card Body
     cardBody: {
@@ -326,13 +317,15 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     label: {
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
     },
     value: {
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         fontSize: 14,
         fontWeight: '600',
+        fontFamily: 'Poppins_600SemiBold',
     },
     // Received Section
     receivedSection: {
@@ -340,7 +333,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         borderTopWidth: 1,
-        borderTopColor: DarkColors.border,
+        borderTopColor: 'rgba(255,255,255,0.08)',
         paddingTop: 12,
         marginTop: 12,
     },
@@ -350,13 +343,15 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     receivedLabel: {
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
     },
     receivedValue: {
-        color: DarkColors.success,
+        color: GlassTokens.colors.success,
         fontSize: 16,
         fontWeight: '700',
+        fontFamily: 'Poppins_700Bold',
     },
     // Empty State
     emptyContainer: {
@@ -367,7 +362,7 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: DarkColors.surfaceLight,
+        backgroundColor: 'rgba(255,255,255,0.05)',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 16,
@@ -375,25 +370,17 @@ const styles = StyleSheet.create({
     emptyTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: DarkColors.text,
+        color: GlassTokens.colors.textPrimary,
         marginBottom: 8,
+        fontFamily: 'Poppins_600SemiBold',
     },
     emptyText: {
-        color: DarkColors.textSecondary,
+        color: GlassTokens.colors.textSecondary,
         fontSize: 14,
         marginBottom: 24,
+        fontFamily: 'Poppins_400Regular',
     },
     investButton: {
-        borderRadius: DarkStyling.borderRadius.sm,
-        overflow: 'hidden',
-    },
-    investButtonGradient: {
-        paddingVertical: 14,
-        paddingHorizontal: 32,
-    },
-    investButtonText: {
-        color: DarkColors.white,
-        fontWeight: '600',
-        fontSize: 15,
+        marginTop: 8,
     },
 });
