@@ -112,3 +112,4 @@ wallet/
 !client_app/src/services/wallet/
 
 organizations/
+.aider*

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,6 +8,7 @@ import {
     RefreshControl,
     ActivityIndicator,
     Dimensions,
+    Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Avatar } from 'react-native-paper';
@@ -17,6 +18,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { investApi, AvailableLoan, InvestmentStats } from '../../services/invest';
 import { useAuth } from '../../contexts/AuthContext';
 import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
+import { SkeletonLoader } from '../../components/common';
 import { UnifiedSpacing, UnifiedRadius } from '../../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -56,10 +58,14 @@ export default function InvestListScreen() {
     // Chart interactivity state
     const [chartRange, setChartRange] = useState<'1W' | '1M' | '3M' | '1Y'>('1M');
     const [chartData, setChartData] = useState<Array<{ value: number; label: string }>>([]);
+    const [projectedIncome, setProjectedIncome] = useState<Array<{ label: string; value: number; principal: number; interest: number }>>([]);
     const [chartLoading, setChartLoading] = useState(false);
     const [chartSummary, setChartSummary] = useState<{ totalProfit: number; totalBalance: number } | null>(null);
 
-    // Load chart data
+    // Animations
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    // Load chart data (History)
     const loadChartData = useCallback(async (range: string) => {
         try {
             setChartLoading(true);
@@ -77,17 +83,66 @@ export default function InvestListScreen() {
             setChartData([
                 { value: 48000000, label: 'T1' },
                 { value: 52000000, label: 'T2' },
-                { value: 49500000, label: 'T3' },
+                { value: 55000000, label: 'T3' },
                 { value: 62000000, label: 'T4' },
                 { value: 58000000, label: 'T5' },
-                { value: balance?.availableBalance || 65000000, label: 'T6' },
+                { value: 65000000, label: 'T6' },
             ]);
         } finally {
             setChartLoading(false);
         }
-    }, [balance]);
+    }, []);
 
-    useEffect(() => { loadChartData(chartRange); }, [chartRange]);
+    // Load Projected Income (Future)
+    const loadProjectedIncome = useCallback(async () => {
+        try {
+            const data = await investApi.getProjectedIncome();
+            console.log('[DEBUG] Projected Income API Response:', JSON.stringify(data, null, 2));
+            if (data && data.length > 0) {
+                setProjectedIncome(data);
+            }
+        } catch (err) {
+            console.log('Failed to load projected income:', err);
+        }
+    }, []);
+
+    useEffect(() => { loadChartData(chartRange); }, [chartRange, loadChartData]);
+    useEffect(() => {
+        console.log('[DEBUG] useEffect loadProjectedIncome triggered');
+        loadProjectedIncome();
+    }, [loadProjectedIncome]);
+
+    // Merge History + Projection into unified timeline for dual-line chart
+    const { mergedHistory, mergedProjection } = useMemo(() => {
+        console.log('[DEBUG] useMemo merge - chartData:', chartData.length, 'projectedIncome:', projectedIncome.length);
+
+        if (chartData.length === 0) {
+            return { mergedHistory: [], mergedProjection: [] };
+        }
+
+        // History line: original data + zeros for future
+        const history = [...chartData];
+        // Projection line: zeros for past + projection values
+        const projection: Array<{ value: number; label: string }> = chartData.map(() => ({ value: 0, label: '' }));
+
+        // Connect: set last projection point to last history value
+        if (projection.length > 0 && history.length > 0) {
+            projection[projection.length - 1] = {
+                value: history[history.length - 1].value,
+                label: history[history.length - 1].label
+            };
+        }
+
+        // Append projection data
+        projectedIncome.forEach(p => {
+            history.push({ value: 0, label: p.label }); // Zero for history line
+            projection.push({ value: p.value, label: p.label }); // Actual value for projection line
+        });
+
+        console.log('[DEBUG] Final merged - History:', history.length, 'Projection:', projection.length);
+
+        return { mergedHistory: history, mergedProjection: projection };
+    }, [chartData, projectedIncome]);
 
     const loadData = useCallback(async (isRefresh = false) => {
         try {
@@ -101,13 +156,23 @@ export default function InvestListScreen() {
             setStats(statsRes);
             setBalance(balanceRes);
             setHasMore(loansRes.pagination.page < loansRes.pagination.totalPages);
+
+            // Animate In
+            if (isRefresh || page === 1) {
+                fadeAnim.setValue(0);
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 600,
+                    useNativeDriver: true,
+                }).start();
+            }
         } catch (error: any) {
             console.error('Error loading data:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [page, loans]);
+    }, [page, loans, fadeAnim]);
 
     useEffect(() => { loadData(true); }, []);
     const onRefresh = () => loadData(true);
@@ -115,61 +180,97 @@ export default function InvestListScreen() {
     const formatCurrency = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 
     // --- RENDER LOAN ITEM (Keep the new design) ---
-    const renderLoanItem = ({ item }: { item: AvailableLoan }) => {
+    const renderLoanItem = ({ item, index }: { item: AvailableLoan; index: number }) => {
         const purpose = getPurposeConfig(item.info.willing);
         const credit = getCreditGrade(item.info.rate);
         const rate = item.lenderInterestRate || item.info.rate;
 
         return (
-            <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('InvestDetail', { loan: item })}>
-                <GlassCard blur={GlassTokens.blur.medium} style={styles.loanCard}>
-                    <View style={styles.cardHeader}>
-                        <View style={styles.headerLeft}>
-                            <View style={[styles.iconBox, { backgroundColor: `${purpose.color}20` }]}>
-                                <MaterialCommunityIcons name={purpose.icon} size={20} color={purpose.color} />
+            <Animated.View
+                style={{
+                    opacity: fadeAnim,
+                    transform: [{
+                        translateY: fadeAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20 * ((index % 5) + 1), 0]
+                        })
+                    }]
+                }}
+            >
+                <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('InvestDetail', { loan: item })}>
+                    <GlassCard blur={GlassTokens.blur.medium} style={styles.loanCard}>
+                        <View style={styles.cardHeader}>
+                            <View style={styles.headerLeft}>
+                                <View style={[styles.iconBox, { backgroundColor: `${purpose.color}20` }]}>
+                                    <MaterialCommunityIcons name={purpose.icon} size={20} color={purpose.color} />
+                                </View>
+                                <View>
+                                    <Text style={styles.loanCode}>LOAN #{item.contractId.slice(-4)}</Text>
+                                    <Text style={styles.loanPurpose}>{purpose.label}</Text>
+                                </View>
                             </View>
-                            <View>
-                                <Text style={styles.loanCode}>LOAN #{item.contractId.slice(-4)}</Text>
-                                <Text style={styles.loanPurpose}>{purpose.label}</Text>
+                            <View style={[styles.gradeBadge, { borderColor: credit.color }]}>
+                                <Text style={[styles.gradeText, { color: credit.color }]}>{credit.grade}</Text>
                             </View>
                         </View>
-                        <View style={[styles.gradeBadge, { borderColor: credit.color }]}>
-                            <Text style={[styles.gradeText, { color: credit.color }]}>{credit.grade}</Text>
+                        <View style={styles.divider} />
+                        <View style={styles.statsContainer}>
+                            <View style={styles.statCol}>
+                                <Text style={styles.statLabel}>Lãi suất / năm</Text>
+                                <Text style={[styles.statValueBig, { color: GlassTokens.colors.success }]}>{rate}%</Text>
+                            </View>
+                            <View style={[styles.statCol, { alignItems: 'center' }]}>
+                                <Text style={styles.statLabel}>Kỳ hạn</Text>
+                                <Text style={styles.statValue}>{item.info.periodMonth}T</Text>
+                            </View>
+                            <View style={[styles.statCol, { alignItems: 'flex-end' }]}>
+                                <Text style={styles.statLabel}>Cần huy động</Text>
+                                <Text style={styles.statValue}>{formatCurrency(item.availableAmount)}₫</Text>
+                            </View>
                         </View>
-                    </View>
-                    <View style={styles.divider} />
-                    <View style={styles.statsContainer}>
-                        <View style={styles.statCol}>
-                            <Text style={styles.statLabel}>Lãi suất / năm</Text>
-                            <Text style={[styles.statValueBig, { color: GlassTokens.colors.success }]}>{rate}%</Text>
+                        <View style={styles.progressSection}>
+                            <View style={styles.progressRow}>
+                                <Text style={styles.progressText}>Đã gọi: {item.fundedPercentage}%</Text>
+                                <Text style={styles.progressText}>{item.availableNotes} notes còn lại</Text>
+                            </View>
+                            <View style={styles.progressBarBg}>
+                                <LinearGradient
+                                    colors={[GlassTokens.colors.primary, GlassTokens.colors.info]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={[styles.progressBarFill, { width: `${item.fundedPercentage}%` }]}
+                                />
+                            </View>
                         </View>
-                        <View style={[styles.statCol, { alignItems: 'center' }]}>
-                            <Text style={styles.statLabel}>Kỳ hạn</Text>
-                            <Text style={styles.statValue}>{item.info.periodMonth}T</Text>
-                        </View>
-                        <View style={[styles.statCol, { alignItems: 'flex-end' }]}>
-                            <Text style={styles.statLabel}>Cần huy động</Text>
-                            <Text style={styles.statValue}>{formatCurrency(item.availableAmount)}₫</Text>
-                        </View>
-                    </View>
-                    <View style={styles.progressSection}>
-                        <View style={styles.progressRow}>
-                            <Text style={styles.progressText}>Đã gọi: {item.fundedPercentage}%</Text>
-                            <Text style={styles.progressText}>{item.availableNotes} notes còn lại</Text>
-                        </View>
-                        <View style={styles.progressBarBg}>
-                            <LinearGradient
-                                colors={[GlassTokens.colors.primary, GlassTokens.colors.info]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={[styles.progressBarFill, { width: `${item.fundedPercentage}%` }]}
-                            />
-                        </View>
-                    </View>
-                </GlassCard>
-            </TouchableOpacity>
+                    </GlassCard>
+                </TouchableOpacity>
+            </Animated.View>
         );
     };
+
+    const renderSkeleton = () => (
+        <View>
+            {[1, 2, 3].map(i => (
+                <GlassCard key={i} blur={GlassTokens.blur.medium} style={styles.loanCard}>
+                    <View style={styles.cardHeader}>
+                        <View style={styles.headerLeft}>
+                            <SkeletonLoader width={40} height={40} borderRadius={12} style={{ marginRight: 12 }} />
+                            <View>
+                                <SkeletonLoader width={80} height={12} style={{ marginBottom: 6 }} />
+                                <SkeletonLoader width={100} height={16} />
+                            </View>
+                        </View>
+                        <SkeletonLoader width={40} height={24} />
+                    </View>
+                    <View style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <SkeletonLoader width={80} height={40} />
+                        <SkeletonLoader width={60} height={40} />
+                        <SkeletonLoader width={90} height={40} />
+                    </View>
+                </GlassCard>
+            ))}
+        </View>
+    );
 
     const renderHeader = () => {
         // Fallback with 2+ points for valid line chart
@@ -229,19 +330,26 @@ export default function InvestListScreen() {
                             </View>
                         ) : (
                             <LineChart
-                                data={displayData}
+                                data={mergedHistory.length > 0 ? mergedHistory : displayData}
+                                data2={mergedProjection.length > 0 ? mergedProjection : undefined}
                                 areaChart
                                 isAnimated
-                                animationDuration={1200}
-                                width={SCREEN_WIDTH - 110}
+                                animationDuration={800}
+                                width={SCREEN_WIDTH - 80}
                                 adjustToWidth
                                 height={160}
                                 color={GlassTokens.colors.primary}
+                                color2="#FACC15"
                                 startFillColor={GlassTokens.colors.primary}
                                 endFillColor="rgba(10, 132, 255, 0.0)"
+                                startFillColor2="#FACC15"
+                                endFillColor2="rgba(250, 204, 21, 0.0)"
                                 startOpacity={0.3}
                                 endOpacity={0.0}
-                                thickness={3}
+                                startOpacity2={0.2}
+                                endOpacity2={0.0}
+                                thickness={2}
+                                thickness2={2}
                                 initialSpacing={20}
                                 endSpacing={20}
                                 noOfSections={3}
@@ -250,6 +358,8 @@ export default function InvestListScreen() {
                                 rulesColor="rgba(255,255,255,0.1)"
                                 rulesType="solid"
                                 yAxisTextStyle={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                                xAxisLabelTextStyle={{ color: 'white', fontSize: 10, marginTop: 4 }}
+                                spacing={45}
                                 formatYLabel={(val) => {
                                     const num = Number(val);
                                     if (num >= 1000000) return `${(num / 1000000).toFixed(0)}M`;
@@ -259,34 +369,7 @@ export default function InvestListScreen() {
                                 hideRules={false}
                                 hideYAxisText={false}
                                 yAxisLabelWidth={40}
-
-                                // Interactive Pointer Styling
-                                pointerConfig={{
-                                    pointerStripHeight: 160,
-                                    pointerStripColor: 'rgba(255,255,255,0.3)',
-                                    pointerStripWidth: 2,
-                                    pointerColor: 'white', // Glowing white dot
-                                    radius: 6,
-                                    pointerLabelWidth: 120,
-                                    pointerLabelHeight: 90,
-                                    activatePointersOnLongPress: false,
-                                    autoAdjustPointerLabelPosition: true,
-                                    pointerComponent: () => (
-                                        <View style={{
-                                            height: 12, width: 12, borderRadius: 6, backgroundColor: 'white',
-                                            shadowColor: 'white', shadowOpacity: 0.8, shadowRadius: 10, elevation: 5,
-                                            borderWidth: 2, borderColor: GlassTokens.colors.primary
-                                        }} />
-                                    ),
-                                    pointerLabelComponent: (items: any) => {
-                                        return (
-                                            <View style={styles.glassTooltip}>
-                                                <Text style={styles.tooltipLabel}>{items[0]?.label || 'Date'}</Text>
-                                                <Text style={styles.tooltipValue}>{formatCurrency(items[0]?.value || 0)}₫</Text>
-                                            </View>
-                                        );
-                                    },
-                                }}
+                                showXAxisIndices={false}
                             />
                         )}
                     </View>
@@ -320,23 +403,32 @@ export default function InvestListScreen() {
 
     return (
         <GradientBackground>
-            <FlatList
-                data={loans}
-                keyExtractor={(item) => item._id}
-                renderItem={renderLoanItem}
-                ListHeaderComponent={renderHeader}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GlassTokens.colors.primary} />
-                }
-                onEndReached={loadMore}
-            />
+            {loading && !refreshing ? (
+                <View style={{ flex: 1 }}>
+                    {renderHeader()}
+                    <View style={styles.listContent}>
+                        {renderSkeleton()}
+                    </View>
+                </View>
+            ) : (
+                <FlatList
+                    data={loans}
+                    keyExtractor={(item) => item._id}
+                    renderItem={renderLoanItem}
+                    ListHeaderComponent={renderHeader}
+                    contentContainerStyle={styles.listContent}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GlassTokens.colors.primary} />
+                    }
+                    onEndReached={loadMore}
+                />
+            )}
         </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    listContent: { paddingBottom: 100 },
+    listContent: { paddingBottom: 100, paddingHorizontal: 16 },
     header: { paddingTop: 60, paddingHorizontal: UnifiedSpacing.lg },
     headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
     headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },

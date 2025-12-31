@@ -24,19 +24,20 @@ const getStatusColor = (status: LoanStatus) => {
         case 'success':
         case 'done':
         case 'clean':
-            return '#4ADE80'; // Bright Green
+            return '#10B981'; // Emerald 500
         case 'waiting':
         case 'pending':
-            return '#FACC15'; // Bright Yellow
+            return '#F59E0B'; // Amber 500
         case 'active':
         case 'on_going':
-            return '#60A5FA'; // Bright Blue
+        case 'disbursed':
+            return '#3B82F6'; // Blue 500
         case 'overdue':
         case 'fail':
         case 'rejected':
-            return '#F87171'; // Bright Red
+            return '#EF4444'; // Red 500
         default:
-            return '#94A3B8'; // Grey
+            return '#9CA3AF'; // Gray 400
     }
 };
 
@@ -83,9 +84,11 @@ export default function LoanListAllScreen({ navigation }: Props) {
     const fetchLoans = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await loanApi.getMyLoans();
+            const result = await loanApi.getMyLoans(1, 1000); // Fetch a large number for local list
+            const loansArray = result.data || [];
+
             // Sort by createdDate descending
-            const sortedData = data.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+            const sortedData = [...loansArray].sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
 
             setAllLoans(sortedData);
             setTotalPages(Math.ceil(sortedData.length / ITEMS_PER_PAGE) || 1);
@@ -129,23 +132,30 @@ export default function LoanListAllScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('LoanDetail', { loanId: item.contractId })}
                 style={styles.itemWrapper}
             >
-                <View style={[styles.iconContainer, { backgroundColor: `${statusColor}15` }]}>
-                    <MaterialCommunityIcons name="file-document-outline" size={22} color={statusColor} />
-                </View>
-
-                <View style={styles.itemContent}>
+                {/* Header: Title + Status Badge */}
+                <View style={styles.itemHeader}>
                     <Text style={styles.itemTitle}>#{item.contractId.slice(-6)}</Text>
-                    <Text style={[styles.itemSubtitle, { color: statusColor }]}>
-                        {getStatusLabel(item.status)}
-                    </Text>
+                    <View style={[styles.statusBadge, { borderColor: statusColor, backgroundColor: `${statusColor}15` }]}>
+                        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                        <Text style={[styles.statusText, { color: statusColor }]}>
+                            {getStatusLabel(item.status)}
+                        </Text>
+                    </View>
                 </View>
 
-                <View style={styles.itemRight}>
+                {/* Amount Row */}
+                <View style={styles.amountRow}>
+                    <View style={[styles.iconContainer, { backgroundColor: `${statusColor}15` }]}>
+                        <MaterialCommunityIcons name="file-document-outline" size={20} color={statusColor} />
+                    </View>
                     <Text style={styles.itemAmount}>{amount}₫</Text>
-                    <Text style={styles.itemDate}>{date}</Text>
                 </View>
 
-                <MaterialCommunityIcons name="chevron-right" size={20} color={DarkColors.textMuted} />
+                {/* Footer: Date */}
+                <View style={styles.itemFooter}>
+                    <Text style={styles.itemDate}>Ngày tạo: {date}</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={DarkColors.textMuted} />
+                </View>
             </TouchableOpacity>
         );
     };
@@ -225,59 +235,83 @@ const styles = StyleSheet.create({
         marginTop: 10,
     },
     listContent: {
-        paddingHorizontal: 20,
+        paddingHorizontal: 16, // Reduced from 20 to match LoanListScreen
         paddingBottom: 80, // Add space for pagination footer
     },
     // Loan Item
     itemWrapper: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 16,
-        paddingHorizontal: 16,
-        marginBottom: 12,
+        padding: 16, // Increased from 12
+        marginBottom: 8,
         backgroundColor: 'rgba(255,255,255,0.03)',
         borderRadius: 16,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
     },
-    iconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
+    itemHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        marginRight: 12,
-    },
-    itemContent: {
-        flex: 1,
+        marginBottom: 12, // Increased from 8
     },
     itemTitle: {
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: 'rgba(255,255,255,0.7)',
         fontFamily: 'Poppins_600SemiBold',
         letterSpacing: 0.5,
     },
-    itemSubtitle: {
-        fontSize: 12,
-        marginTop: 2,
-        fontFamily: 'Poppins_400Regular',
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        borderWidth: 1,
+        gap: 4,
     },
-    itemRight: {
-        alignItems: 'flex-end',
-        marginRight: 8,
+    statusDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+    },
+    statusText: {
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    
+    // Amount Row
+    amountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12, // Increased from 8
+    },
+    iconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
     },
     itemAmount: {
-        fontSize: 15,
+        fontSize: 20, // Prominent amount
         fontWeight: '700',
         color: '#FFFFFF',
         fontFamily: 'Poppins_700Bold',
+        letterSpacing: -0.5,
+    },
+
+    // Footer
+    itemFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
     itemDate: {
         fontSize: 11,
         color: DarkColors.textSecondary,
-        marginTop: 2,
     },
+
     // Empty
     emptyContainer: {
         paddingTop: 100,

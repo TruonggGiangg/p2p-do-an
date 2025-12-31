@@ -141,7 +141,7 @@ export class WalletService {
 
         // 2. Fetch Transactions from Fineract
         // MATCH P2P REFERENCE: Use pagination params - Fineract /transactions endpoint returns already sorted by date descending
-        const fineractTxns = await this.fineractService.getSavingsAccountTransactions(savingsAccount.id, limit, offset);
+        const { pageItems: fineractTxns, totalFilteredRecords } = await this.fineractService.getSavingsAccountTransactions(savingsAccount.id, limit, offset);
         this.logger.log(`[getWalletTransactions] Fetched ${fineractTxns.length} transactions from Fineract`);
 
         // 3. Transform to our format
@@ -183,11 +183,11 @@ export class WalletService {
                     date: txn.date ? new Date(txn.date[0], txn.date[1] - 1, txn.date[2]).toISOString() : new Date().toISOString(),
                     description: description,
                     balance: txn.runningBalance || 0,
-                    context: description // Alias for grouping in Frontend if needed
+                    context: description, // Alias for grouping in Frontend if needed
+                    transferId: txn.transfer?.id // Include transfer ID for detail fetching
                 };
             });
 
-        // ✅ Group transactions by Context if they happen on same day
         // ✅ Group transactions by Context if they happen on same day
         const groupedTransactions: any[] = [];
         let skippedIndices = new Set();
@@ -206,8 +206,15 @@ export class WalletService {
 
         return {
             transactions: groupedTransactions,
-            total: fineractTxns.length,
+            total: totalFilteredRecords,
         };
+    }
+
+    /**
+     * Get details of a specific transfer (Sender/Receiver info)
+     */
+    async getTransferDetails(transferId: number) {
+        return this.fineractService.getAccountTransfer(transferId);
     }
 
     /**

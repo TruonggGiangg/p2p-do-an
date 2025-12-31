@@ -2,47 +2,97 @@
 description: Giao Thức Hoạt Động (Fullstack Developer Mode) - Tối ưu hóa Hiệu Năng và Hiệu Suất
 ---
 
-# AGENT_PROTOCOL.md - Giao Thức Hoạt Động (Fullstack Developer Mode)
+# Fullstack Development Workflow (Free-Tier Only)
 
-> **Mục tiêu**: Tối ưu hóa Hiệu Năng (Performance), Hiệu Quả (Effectiveness) và Hiệu Suất (Productivity) cho dự án P2P Lending.
+Workflow này mô tả cách phối hợp các AI tools miễn phí để phát triển ứng dụng P2P một cách hiệu quả.
 
-## 1. Định Nghĩa Vai Trò (Role Definition)
-Tôi hoạt động với tư cách là một **Senior Fullstack Developer** có trách nhiệm cao nhất với mã nguồn.
-*   **Phạm vi**: Không chỉ viết code, tôi phải nắm rõ toàn bộ hệ sinh thái: Mobile App (FE), Backend API (BE), Business Logic (Nghiệp vụ), và Blockchain Ledger.
-*   **Tư duy**: "Hiểu sâu rồi mới làm" (Think deep, act fast). Không viết code khi chưa hình dung được tác động của nó đến toàn bộ hệ thống.
+## 🎯 Nguyên tắc Core
 
-## 2. Quy Trình Làm Việc (Workflow)
+| Tool | Vai trò | Chi phí |
+|------|---------|---------|
+| **Gemini CLI** | Đọc code, debug, explore | ✅ FREE (OAuth Google) |
+| **Antigravity (IDE Agent)** | Viết code, implementation | ✅ FREE |
+| **Aider** | Refactor lớn, rename | ✅ FREE (local) |
+| **Git** | Version control | ✅ FREE |
 
-Để đảm bảo hiệu suất cao nhất, tôi tuân thủ quy trình 4 bước cho mọi yêu cầu phức tạp:
+## ⚡ Quy tắc vàng
 
-### Bước 1: Trinh Sát & Thấu Hiểu (Deep Dive Reconnaissance)
-*   **Hành động**: Đọc code liên quan ở cả 3 tầng (FE, BE, DB/Blockchain) trước khi sửa bất cứ dòng nào.
-*   **Câu hỏi bắt buộc**:
-    *   Sự thay đổi này ảnh hưởng đến user flow nào trên App?
-    *   API nào sẽ xử lý? Dữ liệu đi qua những Service nào?
-    *   Có ảnh hưởng đến dữ liệu cũ (Legacy Data) hay Smart Contract không?
+```
+❌ Không dùng GEMINI_API_KEY
+❌ Không bật Google Cloud billing
+❌ Không dùng OpenAI API
+✅ Gemini CLI = OAuth Google account
+✅ Developer = final decision-maker
+```
 
-### Bước 2: Phân Tích & Tối Ưu (Analyze & Optimize)
-*   **Hiệu Năng (Performance)**:
-    *   FE: Tránh re-render thừa, tối ưu React Context.
-    *   BE: Tránh N+1 query, dùng Index hiệu quả, hạn chế gọi Blockchain/Fineract nếu không cần thiết.
-*   **Hiệu Quả (Effectiveness)**: Giải pháp này có giải quyết triệt để vấn đề hay chỉ là vá víu (patch)?
+## 📋 Phân chia công việc
 
-### Bước 3: Triển Khai Chính Xác (Implementation)
-*   Code một lần là chạy (hạn chế sửa đi sửa lại).
-*   Tuân thủ nghiêm ngặt `coding-conventions.md` và `AGENT_CONTEXT.md`.
-*   Viết log rõ ràng, dễ debug.
+### 1. Gemini CLI - "Sub-Agent" Đọc Code
 
-### Bước 4: Kiểm Tra Đa Chiều (Multi-layer Verification)
-*   Verify logic code.
-*   Verify luồng dữ liệu (Data Flow).
-*   Verify tác động giao diện (UI/UX).
+**Chỉ dùng để:**
+- Explore codebase
+- Debug issues
+- Trace data flow
+- Tìm file/enum/type
 
-## 3. Nguyên Tắc Tối Ưu (Optimization Principles)
+**Ví dụ prompts:**
+```bash
+# Sub-agent 1: Code Explorer
+gemini "In src/, list all enums related to Loan. Return file paths only."
 
-1.  **Context là Vua**: Luôn bắt đầu phiên làm việc bằng cách đọc `AGENT_CONTEXT.md` để nạp kiến thức nền.
-2.  **Fullstack Mindset**: Khi sửa API, phải nghĩ ngay đến việc App sẽ hiển thị loading state thế nào. Khi sửa UI, phải biết API trả về dữ liệu chậm hay nhanh.
-3.  **Tiếng Việt là Ngôn Ngữ Chính**: Giao tiếp, giải thích và tư duy logic bằng tiếng Việt để đồng bộ tối đa với team (User).
+# Sub-agent 2: Debugger
+gemini "Debug: Loan status mismatch. Check enum, mapper, UI. Return facts only."
 
----
-*File này nhằm nhắc nhở Agent luôn giữ vững tiêu chuẩn cao nhất trong mọi thao tác.*
+# Sub-agent 3: Data Flow Tracer
+gemini "Trace data flow of loanStatus from API to UI. Return step-by-step."
+```
+
+### 2. Antigravity (IDE Agent) - Viết Code
+
+**Chỉ giao task sau khi có facts từ Gemini CLI:**
+
+```
+Facts:
+- enum values confirmed: [list]
+- mapping file: [path]
+- current behavior: [description]
+
+Task:
+- update UI label at [file:line]
+- do not change enum
+```
+
+**❌ KHÔNG cho Antigravity:**
+- Explore project
+- Search enum
+- Đọc nghiệp vụ
+
+### 3. Aider - Refactor Lớn
+
+**Khi nào dùng:**
+- Rename field across many files
+- Apply rule hàng loạt
+- Refactor architecture
+
+```bash
+# Chỉ add file cần sửa
+aider src/loan/loan.service.ts src/loan/loan.controller.ts
+```
+
+## 🚀 Workflow Mẫu
+
+```
+1. [Gemini CLI] Explore → Facts
+2. [IDE Agent] Implement → Code
+3. [Git] Commit → History
+4. [Aider] Refactor (if needed)
+```
+
+## ✅ Checklist Trước Mỗi Buổi
+
+// turbo-all
+- [ ] `gemini login` (OAuth, không API key)
+- [ ] Không set `GEMINI_API_KEY` trong env
+- [ ] Không bật Google Cloud billing
+- [ ] IDE agent chỉ viết code
+- [ ] Gemini CLI chỉ đọc

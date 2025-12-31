@@ -107,6 +107,16 @@ export class InvestController {
     }
 
     /**
+     * Get Projected Income
+     */
+    @Get('income/projected')
+    @ApiOperation({ summary: 'Get projected income from active loans' })
+    async getProjectedIncome(@Request() req) {
+        const user = req.user as AuthUser;
+        return this.investService.getProjectedIncome(user.keycloakUserId);
+    }
+
+    /**
      * Get investment by ID
      */
     @Get(':id')
@@ -118,4 +128,5 @@ export class InvestController {
         const user = req.user as AuthUser;
         return this.investService.getInvestmentById(user, id);
     }
+
 }

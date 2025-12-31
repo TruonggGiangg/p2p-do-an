@@ -314,15 +314,19 @@ export class LoanService {
                     throw new Error(`Cannot resolve Fineract Client ID for user ${user.username}`);
                 }
 
+                const fineractPayload = {
+                    capital: loanContract.info.capital,
+                    periodMonth: loanContract.info.periodMonth,
+                    disbursementDate: loanContract.info.disbursementDate.toISOString(),
+                    willing: loanContract.info.willing,
+                    contractId: loanContract.contractId,
+                };
+
+                this.logger.log(`[Fineract] Sending Loan Application Payload: ${JSON.stringify(fineractPayload)}`);
+
                 const result = await this.fineractService.createLoanApplication(
                     clientId,
-                    {
-                        capital: loanContract.info.capital,
-                        periodMonth: loanContract.info.periodMonth,
-                        disbursementDate: loanContract.info.disbursementDate.toISOString(),
-                        willing: loanContract.info.willing,
-                        contractId: loanContract.contractId,
-                    },
+                    fineractPayload,
                 );
 
                 fineractLoanId = result.fineractLoanId;
@@ -498,14 +502,23 @@ export class LoanService {
 
 
     /**
-     * Get loans for current borrower
+     * Get loans for current borrower with pagination
      * Prefer getting from Fineract if enabled
      */
-    async getMyLoans(user: AuthUser): Promise<any[]> {
+    async getMyLoans(
+        user: AuthUser,
+        page: number = 1,
+        limit: number = 10,
+        status?: string
+    ): Promise<{ data: LoanContract[]; total: number; page: number; limit: number; totalPages: number }> {
         const userId = user.username || user.keycloakUserId || user._id;
+        const offset = (page - 1) * limit;
+
+        this.logger.log(`[getMyLoans] START: userId=${userId}, page=${page}, limit=${limit}, status=${status}`);
 
         // 1. Try to get from Fineract if enabled
         if (this.fineractService.isFineractEnabled() && user.fineractClientId) {
+            this.logger.log(`[getMyLoans] Trying Fineract path...`);
             try {
                 let clientId: number | null = null;
 
@@ -518,47 +531,140 @@ export class LoanService {
                 }
 
                 if (clientId) {
-                    const response = await this.fineractService.getLoans({ limit: 1000 });
-                    if (response?.pageItems) {
-                        // Filter loans by clientId (Fineract sqlSearch is unreliable)
-                        const clientLoans = response.pageItems.filter(
-                            (loan: any) => loan.clientId === clientId
-                        );
-                        this.logger.log(`[getMyLoans] Found ${clientLoans.length} loans for client ${clientId}`);
-                        return clientLoans.map(l => this.mapFineractLoanToContract(l));
+                    // Check if we need to filter status - if so, we must fetch ALL loans then filter & paginate manually
+                    const isFiltering = status && status !== 'all';
+
+                    // IF Filtering: Fetch up to 1000 items to ensure we get enough candidates
+                    // IF Not Filtering: Fetch just the requested page
+                    const fetchLimit = isFiltering ? 1000 : limit;
+                    const fetchOffset = isFiltering ? 0 : offset;
+
+                    this.logger.log(`[getMyLoans] Fineract clientId=${clientId}, requesting offset=${fetchOffset}, limit=${fetchLimit}, isFiltering=${isFiltering}`);
+
+                    const response = await this.fineractService.getLoans({
+                        offset: fetchOffset,
+                        limit: fetchLimit,
+                        clientId,
+                        orderBy: 'id', // Use id for deterministic pagination (submittedOnDate can have duplicates)
+                        sortOrder: 'DESC'
+                    });
+
+                    this.logger.log(`[getMyLoans] Fineract response keys: ${Object.keys(response || {}).join(', ')}`);
+
+                    // Handle both Fineract response formats:
+                    // 1. Paginated: { pageItems: [...], totalFilteredRecords: N }
+                    // 2. Direct array: [...] (some Fineract versions)
+                    let loanItems: any[] = [];
+                    let total = 0;
+
+                    if (response?.pageItems && Array.isArray(response.pageItems)) {
+                        loanItems = response.pageItems;
+                        // For manual filtering, total is length of fetched items initially
+                        total = isFiltering ? loanItems.length : (response.totalFilteredRecords || response.totalRecords || loanItems.length);
+
+                        // If NOT filtering and native pagination seems incomplete, apply heuristic
+                        if (!isFiltering && total === loanItems.length && loanItems.length === limit) {
+                            total = (page * limit) + limit;
+                        }
+                    } else if (Array.isArray(response)) {
+                        // Direct array response
+                        loanItems = response;
+                        total = response.length;
+                    }
+
+                    if (loanItems.length > 0) {
+                        let loans = loanItems.map(l => this.mapFineractLoanToContract(l));
+
+                        // Apply status filter if provided (filter after mapping)
+                        if (isFiltering) {
+                            const statusFilters = status!.split(',').map(s => s.trim().toLowerCase());
+                            this.logger.log(`[getMyLoans] Applying status filter: ${statusFilters.join(', ')}`);
+
+                            const beforeCount = loans.length;
+                            loans = loans.filter(loan => {
+                                const loanStatus = (loan.status || '').toLowerCase();
+                                return statusFilters.some(sf => loanStatus.includes(sf) || sf.includes(loanStatus));
+                            });
+                            this.logger.log(`[getMyLoans] Filtered: ${beforeCount} -> ${loans.length} loans`);
+
+                            // Update total to actual filtered count
+                            total = loans.length;
+
+                            // Perform Manual Pagination on the filtered result
+                            // Because we fetched a large batch (page 1 huge limit), we need to slice it for the requested page
+                            // Note: If user has > 1000 loans, this simplistic approach might miss some, but sufficient for now.
+                            // Real production would need to fetch ALL pages or use Fineract Search API if available.
+                            const startIndex = (page - 1) * limit;
+                            const endIndex = startIndex + limit;
+                            loans = loans.slice(startIndex, endIndex);
+
+                            this.logger.log(`[getMyLoans] Manual Pagination: Sliced ${startIndex}-${endIndex}, returning ${loans.length} items`);
+                        }
+
+                        this.logger.log(`[getMyLoans] Returning ${loans.length} loans for client ${clientId} (Page ${page})`);
+
+                        return {
+                            data: loans,
+                            total,
+                            page,
+                            limit,
+                            totalPages: Math.ceil(total / limit)
+                        };
                     }
                 }
             } catch (error) {
                 this.logger.warn(`[getMyLoans] Fineract fetch failed: ${error.message}. Falling back to DB.`);
             }
+        } else {
+            this.logger.log(`[getMyLoans] Fineract disabled or no clientId, using MongoDB...`);
         }
 
         // 2. Fallback to MongoDB
         this.logger.log(`[getMyLoans] Fetching from MongoDB...`);
-        let loans: LoanContract[] = [];
+        let query: any = {};
 
-        // Try 1: Match as ObjectId
+        // Build query for borrower
         if (Types.ObjectId.isValid(userId)) {
-            loans = await this.loanContractModel
-                .find({ borrower: new Types.ObjectId(userId) })
-                .sort({ createdAt: -1 })
-                .exec();
+            query = { borrower: new Types.ObjectId(userId) };
+        } else {
+            query = {
+                $or: [
+                    { 'borrower': userId },
+                    { 'borrower.keycloakUserId': userId },
+                ]
+            };
         }
 
-        // Try 2: If no results, also try matching as string (keycloakUserId)
-        if (loans.length === 0) {
-            loans = await this.loanContractModel
-                .find({
-                    $or: [
-                        { 'borrower': userId },
-                        { 'borrower.keycloakUserId': userId },
-                    ]
-                })
-                .sort({ createdAt: -1 })
-                .exec();
+        // Add status filter if provided
+        if (status && status !== 'all') {
+            // Check if status is a comma-separated list or single status
+            const statuses = status.split(',').map(s => s.trim());
+            if (statuses.length > 0) {
+                // Map frontend status to backend/Fineract status values if needed
+                // But MongoDB stores string status like 'active', 'waiting'
+                query.status = { $in: statuses };
+            }
         }
 
-        return loans;
+        const [loans, total] = await Promise.all([
+            this.loanContractModel
+                .find(query)
+                .sort({ createdAt: -1 })
+                .skip(offset)
+                .limit(limit)
+                .exec(),
+            this.loanContractModel.countDocuments(query)
+        ]);
+
+        this.logger.log(`[getMyLoans] MongoDB result: ${loans.length} loans, total=${total}, page=${page}, totalPages=${Math.ceil(total / limit)}`);
+
+        return {
+            data: loans,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        };
     }
 
     /**
@@ -626,6 +732,13 @@ export class LoanService {
         const status = statusMap[fLoan.status.id] || 'pending';
         const fStatus = fLoan.status;
 
+        // DEBUG: Log loanPurposeName from Fineract
+        this.logger.log(`[DEBUG mapFineract] Loan ${fLoan.id}: loanPurposeName="${fLoan.loanPurposeName}", loanPurposeId=${fLoan.loanPurposeId}, loanPurpose=${JSON.stringify(fLoan.loanPurpose)}`);
+
+        const createdDate = this.parseFineractDate(fLoan.timeline?.submittedOnDate) || new Date();
+        const disbursementDate = this.parseFineractDate(fLoan.timeline?.actualDisbursementDate);
+        const maturityDate = this.parseFineractDate(fLoan.timeline?.expectedMaturityDate);
+
         return {
             contractId: fLoan.externalId || `LOAN_F${fLoan.id}`,
             borrower: fLoan.clientId, // Just ID
@@ -634,14 +747,15 @@ export class LoanService {
                 rate: fLoan.interestRatePerPeriod || 0,
                 annualRate: fLoan.annualInterestRate || 0, // Approximate
                 periodMonth: fLoan.numberOfRepayments || 0, // Assuming months
-                willing: fLoan.loanPurposeName || 'Personal',
-                disbursementDate: this.parseFineractDate(fLoan.timeline?.actualDisbursementDate),
-                maturityDate: this.parseFineractDate(fLoan.timeline?.expectedMaturityDate),
+                willing: fLoan.loanPurposeName || 'Khoản vay',
+                disbursementDate: disbursementDate?.toISOString(),
+                maturityDate: maturityDate?.toISOString(),
                 monthlyPay: (fLoan.totalExpectedRepayment || 0) / (fLoan.numberOfRepayments || 1), // Approx
                 entirelyPay: fLoan.totalExpectedRepayment || 0,
-                createdDate: this.parseFineractDate(fLoan.timeline?.submittedOnDate) || new Date(),
+                createdDate: createdDate.toISOString(),
             },
             status: status,
+            createdAt: createdDate.toISOString(), // Populate root field for LoanListScreen
             fineractLoanId: fLoan.id,
             fineractStatus: fStatus.value,
             blockchainSynced: true // Assume synced if exists in Core

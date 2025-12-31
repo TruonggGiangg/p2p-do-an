@@ -3,24 +3,17 @@ import { View, StyleSheet, Dimensions, StatusBar, ViewStyle, Animated, Easing } 
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// MÀU SẮC MỚI: Sáng hơn, Rực rỡ hơn (Neon tones)
+// RESTORED: Galaxy Colors (Vibrant & Deep)
 const GalaxyColors = {
-    bgDeep: '#020b1a', // Đen xanh thẫm thay vì đen tuyền (tạo chiều sâu)
-
-    // Cyan/Blue cực sáng (Electric Blue)
-    nebulaPrimary: '#00C6FF',
-
-    // Purple/Pink rực rỡ (Magenta)
-    nebulaSecondary: '#9D50BB',
-
-    // Điểm nhấn vàng/cam nhẹ (Stardust)
-    nebulaAccent: '#F4D03F',
-
+    bgDeep: '#020b1a', 
+    nebulaPrimary: '#00C6FF', // Cyan
+    nebulaSecondary: '#9D50BB', // Purple
+    nebulaAccent: '#F4D03F', // Gold
     transparent: 'transparent',
 };
 
 const { width, height } = Dimensions.get('window');
-const CLOUD_SIZE = Math.max(width, height) * 1.5;
+const ORB_SIZE = Math.max(width, height) * 1.4;
 
 interface GradientBackgroundProps {
     children: React.ReactNode;
@@ -35,67 +28,102 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
 }) => {
     const Container = useSafeArea ? SafeAreaView : View;
 
-    // 1. Animation "Thở" (Sáng/Tối)
-    const breathAnim = useRef(new Animated.Value(0)).current;
-
-    // 2. Animation "Xoay" (Rotation) - Tạo hiệu ứng trôi
+    // --- ANIMATION VALUES ---
+    // 1. Rotation (Base drift)
     const rotateAnim = useRef(new Animated.Value(0)).current;
-    const rotateAnim2 = useRef(new Animated.Value(0)).current;
+    
+    // 2. Wobble (Organic floating movement)
+    const wobbleAnim = useRef(new Animated.Value(0)).current;
+
+    // 3. Pulse (Breathing scale)
+    const pulseAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        // Hiệu ứng Thở: Chạy liên tục
+        // A. Endless Rotation: background drift
+        Animated.loop(
+            Animated.timing(rotateAnim, {
+                toValue: 1,
+                duration: 3000, // Faster: 30s
+                easing: Easing.linear,
+                useNativeDriver: true,
+            })
+        ).start();
+
+        // B. Organic Wobble: Sine-wave movement
         Animated.loop(
             Animated.sequence([
-                Animated.timing(breathAnim, {
+                Animated.timing(wobbleAnim, {
                     toValue: 1,
-                    duration: 6000,
-                    easing: Easing.inOut(Easing.ease),
+                    duration: 8000, // Faster
+                    easing: Easing.inOut(Easing.sin),
                     useNativeDriver: true,
                 }),
-                Animated.timing(breathAnim, {
+                Animated.timing(wobbleAnim, {
+                    toValue: -1,
+                    duration: 16000, // Faster
+                    easing: Easing.inOut(Easing.sin),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(wobbleAnim, {
                     toValue: 0,
-                    duration: 6000,
-                    easing: Easing.inOut(Easing.ease),
+                    duration: 8000, // Faster
+                    easing: Easing.inOut(Easing.sin),
+                    useNativeDriver: true,
+                }),
+            ])
+        ).start();
+
+        // C. Deep Breathing: Scale & Opacity pulse
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 5000, // Faster: 5s
+                    easing: Easing.out(Easing.quad),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 0,
+                    duration: 5000, // Faster: 5s
+                    easing: Easing.in(Easing.quad),
                     useNativeDriver: true,
                 })
             ])
         ).start();
-
-        // Hiệu ứng Xoay 1: Xoay tròn rất chậm (30s 1 vòng)
-        Animated.loop(
-            Animated.timing(rotateAnim, {
-                toValue: 1,
-                duration: 30000,
-                easing: Easing.linear,
-                useNativeDriver: true,
-            })
-        ).start();
-
-        // Hiệu ứng Xoay 2: Xoay ngược chiều và chậm hơn (40s 1 vòng)
-        Animated.loop(
-            Animated.timing(rotateAnim2, {
-                toValue: 1,
-                duration: 40000,
-                easing: Easing.linear,
-                useNativeDriver: true,
-            })
-        ).start();
     }, []);
 
-    // Nội suy giá trị animation
-    const opacityInterp = breathAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0.5, 0.75] // Tăng độ sáng tối thiểu lên 0.5 (Sáng hơn cũ)
-    });
+    // --- INTERPOLATIONS ---
 
     const spin = rotateAnim.interpolate({
         inputRange: [0, 1],
         outputRange: ['0deg', '360deg']
     });
 
-    const spinReverse = rotateAnim2.interpolate({
+    const spinReverse = rotateAnim.interpolate({
         inputRange: [0, 1],
         outputRange: ['360deg', '0deg']
+    });
+
+    // Wobble Translations
+    const transX = wobbleAnim.interpolate({
+        inputRange: [-1, 1],
+        outputRange: [-50, 50] // Drift 50px left/right
+    });
+
+    const transY = wobbleAnim.interpolate({
+        inputRange: [-1, 1],
+        outputRange: [-30, 30] // Drift 30px up/down
+    });
+
+    // Breathing Scale
+    const scaleOrb1 = pulseAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1.1, 1.3]
+    });
+
+    const scaleOrb2 = pulseAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1.3, 1.1] // Counter-pulse
     });
 
     const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient);
@@ -104,7 +132,7 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
         <View style={styles.wrapper}>
             <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-            {/* --- LAYER 1: BASE (Deep Blue Black) --- */}
+            {/* LAYER 1: Deep Space Background */}
             <LinearGradient
                 colors={[GalaxyColors.bgDeep, '#000000']}
                 style={StyleSheet.absoluteFill}
@@ -112,59 +140,67 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
                 end={{ x: 0.5, y: 1 }}
             />
 
-            {/* --- LAYER 2: PRIMARY NEBULA (Xoay xuôi chiều) --- */}
+            {/* LAYER 2: Primary Nebula (Cyan) - Drifts & Rotates */}
             <AnimatedGradient
-                // Dùng màu đậm dần về trong suốt
                 colors={[GalaxyColors.nebulaPrimary, 'rgba(0, 198, 255, 0.1)', GalaxyColors.transparent]}
                 style={[
-                    styles.nebulaCloud,
-                    styles.cloudPrimary,
+                    styles.orb,
+                    styles.orbPrimary,
                     {
-                        opacity: opacityInterp,
-                        transform: [{ rotate: spin }, { scale: 1.2 }]
+                        opacity: 0.6,
+                        transform: [
+                            { rotate: spin }, 
+                            { scale: scaleOrb1 },
+                            { translateX: transX },
+                            { translateY: transY }
+                        ]
                     }
                 ]}
-                start={{ x: 0.2, y: 0.2 }} // Gradient chéo
+                start={{ x: 0.2, y: 0.2 }}
                 end={{ x: 0.8, y: 0.8 }}
             />
 
-            {/* --- LAYER 3: SECONDARY NEBULA (Xoay ngược chiều) --- */}
+            {/* LAYER 3: Secondary Nebula (Purple) - Counter-Rotates & Counter-Pulses */}
             <AnimatedGradient
                 colors={[GalaxyColors.nebulaSecondary, 'rgba(157, 80, 187, 0.1)', GalaxyColors.transparent]}
                 style={[
-                    styles.nebulaCloud,
-                    styles.cloudSecondary,
+                    styles.orb,
+                    styles.orbSecondary,
                     {
-                        // Opacity cố định thấp hơn một chút để làm nền
-                        opacity: 0.6,
-                        transform: [{ rotate: spinReverse }, { scale: 1.4 }]
+                        opacity: 0.5,
+                        transform: [
+                            { rotate: spinReverse },
+                            { scale: scaleOrb2 },
+                            { translateX: Animated.multiply(transX, -1) }, // Move opposite
+                        ]
                     }
                 ]}
                 start={{ x: 0.8, y: 0.2 }}
                 end={{ x: 0.2, y: 0.8 }}
             />
 
-            {/* --- LAYER 4: CORE GLOW (Điểm sáng trung tâm) --- */}
-            {/* Giúp màn hình không bị tối ở giữa, tạo tiêu điểm */}
+            {/* LAYER 4: Stardust Accent (Gold) - Subtle center glow */}
             <AnimatedGradient
                 colors={[GalaxyColors.nebulaAccent, GalaxyColors.transparent]}
                 style={[
-                    styles.nebulaCloud,
-                    styles.cloudCenter,
-                    { opacity: 0.2 } // Chỉ sáng nhẹ
+                    styles.orb,
+                    styles.orbCenter,
+                    { 
+                        opacity: 0.15,
+                        transform: [{ scale: 1.5 }] 
+                    }
                 ]}
             />
 
-            {/* --- LAYER 5: VIGNETTE (Làm tối viền để tập trung nội dung) --- */}
-            {/* Chỉnh lại: Nhạt hơn bản cũ để tổng thể sáng hơn */}
+            {/* LAYER 5: Vignette - Focus attention */}
             <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.8)']}
-                locations={[0, 0.7, 1]}
+                colors={['transparent', 'rgba(2, 11, 26, 0.5)', 'rgba(2, 11, 26, 0.9)']}
+                locations={[0, 0.6, 1]}
                 style={StyleSheet.absoluteFill}
                 pointerEvents="none"
             />
 
-            {/* --- CONTENT --- */}
+            {/* Content Container */}
             <Container style={[styles.container, style]} edges={['top', 'left', 'right']}>
                 {children}
             </Container>
@@ -182,24 +218,22 @@ const styles = StyleSheet.create({
         flex: 1,
         zIndex: 20,
     },
-    nebulaCloud: {
+    orb: {
         position: 'absolute',
-        width: CLOUD_SIZE,
-        height: CLOUD_SIZE,
-        borderRadius: CLOUD_SIZE / 2,
+        width: ORB_SIZE,
+        height: ORB_SIZE,
+        borderRadius: ORB_SIZE / 2,
     },
-    cloudPrimary: {
-        top: -CLOUD_SIZE * 0.3,
-        left: -CLOUD_SIZE * 0.3,
+    orbPrimary: {
+        top: -ORB_SIZE * 0.35,
+        left: -ORB_SIZE * 0.25,
     },
-    cloudSecondary: {
-        bottom: -CLOUD_SIZE * 0.3,
-        right: -CLOUD_SIZE * 0.3,
+    orbSecondary: {
+        bottom: -ORB_SIZE * 0.35,
+        right: -ORB_SIZE * 0.25,
     },
-    cloudCenter: {
-        top: height / 2 - CLOUD_SIZE / 2,
-        left: width / 2 - CLOUD_SIZE / 2,
-        width: CLOUD_SIZE,
-        height: CLOUD_SIZE,
+    orbCenter: {
+        top: height / 2 - ORB_SIZE / 2,
+        left: width / 2 - ORB_SIZE / 2,
     }
 });

@@ -1013,5 +1013,99 @@ export class InvestService {
             },
         };
     }
+
+    /**
+     * Get Projected Income based on active loan schedules
+     */
+    async getProjectedIncome(lenderId: string): Promise<any[]> {
+        this.logger.log(`[getProjectedIncome] START - Lender: ${lenderId}`);
+        try {
+            // 1. Find all active investments
+            const investments = await this.investmentModel.find({
+                lender: lenderId,
+                status: 'success'
+            }).populate('loanContract');
+
+            this.logger.log(`[getProjectedIncome] Found ${investments.length} active investments`);
+
+            const projectionMap = new Map<string, { principal: number, interest: number, count: number }>();
+            const today = new Date();
+
+            for (const inv of investments) {
+                const loan = inv.loanContract as any;
+                if (!loan || !loan.fineractLoanId) continue;
+
+                const repaymentSchedule = await this.fineractService.getLoanRepaymentSchedule(loan.fineractLoanId);
+                if (!repaymentSchedule || !repaymentSchedule.periods) continue;
+
+                // Rates
+                const borrowerRate = loan.borrowerInterestRate || 12;
+                let lenderRate = Number(loan.lenderInterestRate) || 10;
+
+                // Override with FD rate if applicable
+                if (inv.fineractFixedDepositAccountId && inv.fixedDepositInterestRate) {
+                    lenderRate = inv.fixedDepositInterestRate;
+                }
+
+                // Ratio
+                const investmentAmount = inv.info.capital;
+                const totalLoanAmount = loan.info.capital;
+                const ratio = investmentAmount / totalLoanAmount;
+
+                for (const period of repaymentSchedule.periods) {
+                    if (period.complete || !period.dueDate) continue;
+
+                    // Parse date array [YYYY, MM, DD]
+                    const dateArr = period.dueDate;
+                    const dateStr = `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}-${String(dateArr[2]).padStart(2, '0')}`;
+                    const dueDate = new Date(dateStr);
+
+                    if (dueDate <= today) continue;
+
+                    const monthKey = `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}`; // YYYY-MM
+
+                    // Calculate Shares
+                    // Principal Share: installment.principalDue * ratio
+                    const principalShare = (period.principalDue || 0) * ratio;
+
+                    // Interest Share: installment.interestDue * (lenderRate/borrowerRate) * ratio
+                    // Note: interestDue from Fineract is the total interest for that period from borrower
+                    const totalInterestDue = period.interestDue || 0;
+                    const interestShare = totalInterestDue * (lenderRate / borrowerRate) * ratio;
+
+                    if (!projectionMap.has(monthKey)) {
+                        projectionMap.set(monthKey, { principal: 0, interest: 0, count: 0 });
+                    }
+
+                    const entry = projectionMap.get(monthKey)!;
+                    entry.principal += principalShare;
+                    entry.interest += interestShare;
+                    entry.count += 1;
+                }
+            }
+
+            // Convert Map to Array & Sort
+            const results = Array.from(projectionMap.entries())
+                .map(([date, data]) => ({
+                    label: `T${date.split('-')[1]}`, // Label format: "T12"
+                    date,
+                    value: Math.floor(data.principal + data.interest),
+                    principal: Math.floor(data.principal),
+                    interest: Math.floor(data.interest)
+                }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            this.logger.log(`[getProjectedIncome] Lender: ${lenderId}, Total Months: ${results.length}`);
+            results.slice(0, 6).forEach(r => {
+                this.logger.log(`  -> ${r.label} (${r.date}): Total=${r.value}, Principal=${r.principal}, Interest=${r.interest}`);
+            });
+
+            // Return top 6 months
+            return results.slice(0, 6);
+        } catch (error) {
+            this.logger.error(`Failed to calculate projected income: ${error.message}`);
+            return [];
+        }
+    }
 }
 

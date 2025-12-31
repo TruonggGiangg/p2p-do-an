@@ -221,7 +221,7 @@ export class FDReconciliationService {
             const escrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
 
             // Get transactions from BOTH Admin Main and Escrow Account
-            const transactionPromises: Promise<any[]>[] = [];
+            const transactionPromises: Promise<{ transactions: any[]; total: number }>[] = [];
 
             if (adminSavingsId) {
                 transactionPromises.push(this.fineractService.getAccountTransactions(adminSavingsId));
@@ -234,7 +234,7 @@ export class FDReconciliationService {
 
             const results = await Promise.all(transactionPromises);
             // Flatten (and deduplicate by ID if needed, though rare to have same ID across accounts)
-            const flatTransactions = results.flat();
+            const flatTransactions = results.map(r => r.transactions).flat();
 
             // Deduplicate by ID
             const transactions: any[] = Array.from(new Map(flatTransactions.map((t: any) => [t.id, t])).values());
@@ -507,7 +507,7 @@ export class FDReconciliationService {
 
         // 2. Get admin/escrow transactions from Fineract
         const escrowAccountId = parseInt(process.env.FINERACT_ESCROW_ACCOUNT_ID || '1');
-        const escrowTxns = await this.fineractService.getSavingsAccountTransactions(escrowAccountId, 500, 0);
+        const { pageItems: escrowTxns } = await this.fineractService.getSavingsAccountTransactions(escrowAccountId, 500, 0);
 
         // 3. Filter for distribution transactions for this loan
         const distributionTxns = escrowTxns.filter((txn: any) => {

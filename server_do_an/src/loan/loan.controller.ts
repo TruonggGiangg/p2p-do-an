@@ -4,6 +4,7 @@ import {
     Get,
     Body,
     Param,
+    Query,
     UseGuards,
     HttpCode,
     HttpStatus,
@@ -198,7 +199,7 @@ export class LoanController {
 
     /**
      * GET /loan/me
-     * Get current borrower's loans
+     * Get current borrower's loans with pagination
      */
     @Get('me')
     @UseGuards(DualAuthGuard, BorrowerGuard)
@@ -206,16 +207,19 @@ export class LoanController {
     @ApiOperation({ summary: 'Lấy danh sách khoản vay của tôi (Borrower)' })
     @ApiResponse({
         status: 200,
-        description: 'Danh sách khoản vay',
+        description: 'Danh sách khoản vay phân trang',
     })
-    async getMyLoans(@User() user: AuthUser) {
-        // Use username as primary identifier to match DB storage
-        // const userId = user.username || user.keycloakUserId || user._id; // Deprecated: Service now takes user object
-        const loans = await this.loanService.getMyLoans(user);
+    async getMyLoans(
+        @User() user: AuthUser,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('status') status?: string,
+    ) {
+        const result = await this.loanService.getMyLoans(user, Number(page), Number(limit), status);
         return {
             statusCode: HttpStatus.OK,
             message: 'Danh sách khoản vay của bạn',
-            data: loans,
+            data: result,
         };
     }
 

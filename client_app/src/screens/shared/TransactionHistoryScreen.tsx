@@ -1,8 +1,8 @@
 /**
- * TransactionHistoryScreen - Display transaction history for both lenders and borrowers
+ * TransactionHistoryScreen - Fintech Style (Updated to match Loan/Wallet UI)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -12,58 +12,55 @@ import {
     ActivityIndicator,
     TouchableOpacity,
     StatusBar,
+    Animated,
+    Dimensions,
+    Platform,
+    Modal,
+    TouchableWithoutFeedback,
+    ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { walletApi } from '../../services';
-import type { WalletTransaction } from '../../services/wallet/wallet.api';
-import { GradientBackground, GlassCard, GlassTokens, PageHeader } from '../../components/glass';
+import { WalletTransaction } from '../../services/wallet/wallet.api';
+import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
+import { PageHeader, ListSkeleton } from '../../components/common';
 
-// Transaction type configurations
-const TRANSACTION_TYPES: Record<string, { icon: string; color: string; label: string }> = {
-    deposit: { icon: 'arrow-down-bold', color: GlassTokens.colors.success, label: 'Nạp tiền' },
-    withdrawal: { icon: 'arrow-up-bold', color: GlassTokens.colors.error, label: 'Rút tiền' },
-    payment: { icon: 'cash-minus', color: GlassTokens.colors.warning, label: 'Thanh toán' },
-    receipt: { icon: 'cash-plus', color: GlassTokens.colors.success, label: 'Thu tiền' },
-    transfer_out: { icon: 'bank-transfer-out', color: GlassTokens.colors.error, label: 'Chuyển đi' },
-    transfer_in: { icon: 'bank-transfer-in', color: GlassTokens.colors.success, label: 'Nhận tiền' },
-    repayment: { icon: 'hand-coin', color: GlassTokens.colors.primary, label: 'Trả nợ' },
-    investment: { icon: 'chart-line', color: GlassTokens.colors.info, label: 'Đầu tư' },
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Transaction type configurations with Fintech Colors
+const TRANSACTION_TYPES: Record<string, { icon: string; color: string; bg: string; label: string }> = {
+    deposit: { icon: 'arrow-down-bold', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', label: 'Nạp tiền' },
+    withdrawal: { icon: 'arrow-up-bold', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)', label: 'Rút tiền' },
+    payment: { icon: 'cash-minus', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)', label: 'Thanh toán' },
+    receipt: { icon: 'cash-plus', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', label: 'Thu tiền' },
+    transfer_out: { icon: 'bank-transfer-out', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)', label: 'Chuyển đi' },
+    transfer_in: { icon: 'bank-transfer-in', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)', label: 'Nhận tiền' },
+    repayment: { icon: 'hand-coin', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)', label: 'Trả nợ' },
+    investment: { icon: 'chart-line', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)', label: 'Đầu tư' },
 };
 
-// Format currency
-const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('vi-VN').format(value);
-};
+const formatCurrency = (value: number): string => new Intl.NumberFormat('vi-VN').format(Math.abs(value));
 
-// Format date
 const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-        return `Hôm nay, ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (diffDays === 1) {
-        return `Hôm qua, ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (diffDays < 7) {
-        return `${diffDays} ngày trước`;
-    } else {
-        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
+    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 export default function TransactionHistoryScreen() {
     const navigation = useNavigation();
     const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+    const [selectedTransaction, setSelectedTransaction] = useState<WalletTransaction | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(0);
     const [walletNotLinked, setWalletNotLinked] = useState(false);
+    const [transferDetail, setTransferDetail] = useState<any>(null);
     const PAGE_SIZE = 20;
+
+    const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const loadTransactions = useCallback(async (pageNum: number = 0, refresh: boolean = false) => {
         try {
@@ -77,35 +74,50 @@ export default function TransactionHistoryScreen() {
 
             const response = await walletApi.getTransactions(PAGE_SIZE, pageNum * PAGE_SIZE);
 
-            if (refresh || pageNum === 0) {
-                setTransactions(response.transactions);
-            } else {
-                setTransactions(prev => [...prev, ...response.transactions]);
+            setTransactions(prev => {
+                const updated = pageNum === 0 ? response.transactions : [...prev, ...response.transactions];
+                setHasMore(updated.length < response.total);
+                return updated;
+            });
+
+            if (pageNum === 0) {
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 500,
+                    useNativeDriver: true,
+                }).start();
             }
 
-            setHasMore(response.transactions.length === PAGE_SIZE);
             setPage(pageNum);
-            setWalletNotLinked(false); // Clear error if successful
+            setWalletNotLinked(false);
         } catch (error: any) {
             console.error('Error loading transactions:', error);
-            // Check if wallet is not linked
             if (error.message && error.message.includes('Wallet not linked')) {
                 setWalletNotLinked(true);
             }
-            // Silent fail - transactions might not be available yet
-            if (pageNum === 0) {
-                setTransactions([]);
-            }
+            if (pageNum === 0) setTransactions([]);
         } finally {
             setLoading(false);
             setRefreshing(false);
             setLoadingMore(false);
         }
-    }, []);
+    }, [fadeAnim]); // Keep fadeAnim, but setTransactions handles prev state
 
     useEffect(() => {
         loadTransactions(0);
     }, [loadTransactions]);
+
+    // Fetch transfer details when a transaction is selected
+    useEffect(() => {
+        if (selectedTransaction?.transferId) {
+            setTransferDetail(null);
+            walletApi.getTransferDetails(selectedTransaction.transferId)
+                .then(data => setTransferDetail(data))
+                .catch(err => console.error('Fetch transfer detail error:', err));
+        } else {
+            setTransferDetail(null);
+        }
+    }, [selectedTransaction]);
 
     const handleRefresh = () => {
         loadTransactions(0, true);
@@ -118,66 +130,81 @@ export default function TransactionHistoryScreen() {
     };
 
     const getTransactionConfig = (type: string) => {
-        return TRANSACTION_TYPES[type] || TRANSACTION_TYPES.transfer_in;
+        return TRANSACTION_TYPES[type] || { icon: 'circle-small', color: '#9CA3AF', bg: 'rgba(156, 163, 175, 0.1)', label: type };
     };
 
-    const renderTransaction = ({ item }: { item: WalletTransaction }) => {
+    const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
+    const renderTransaction = ({ item, index }: { item: WalletTransaction; index: number }) => {
         const config = getTransactionConfig(item.type);
         const isCredit = ['deposit', 'receipt', 'transfer_in', 'repayment'].includes(item.type);
+        const sign = isCredit ? '+' : '-';
+        const color = isCredit ? '#10B981' : '#EF4444';
 
         return (
-            <TouchableOpacity activeOpacity={0.7} onPress={() => { }}>
-                <GlassCard style={styles.transactionCard} blur={GlassTokens.blur.light}>
-                    <View style={styles.transactionRow}>
-                        <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
-                            <MaterialCommunityIcons name={config.icon} size={24} color={config.color} />
-                        </View>
-
-                        <View style={styles.transactionInfo}>
-                            <Text style={styles.transactionType}>{config.label}</Text>
-                            <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
-                            {item.description && (
-                                <Text style={styles.transactionDesc} numberOfLines={1}>
-                                    {item.description}
-                                </Text>
-                            )}
-                        </View>
-
-                        <View style={styles.amountContainer}>
-                            <Text style={[styles.amount, { color: isCredit ? GlassTokens.colors.success : GlassTokens.colors.error }]}>
-                                {isCredit ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}₫
-                            </Text>
-                            {item.balance !== undefined && (
-                                <Text style={styles.balance}>Số dư: {formatCurrency(item.balance)}₫</Text>
-                            )}
-                        </View>
+            <AnimatedTouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setSelectedTransaction(item)}
+                style={{
+                    opacity: fadeAnim,
+                    transform: [{
+                        translateY: fadeAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20 * ((index % 10) + 1), 0]
+                        })
+                    }],
+                }}
+            >
+                <View style={styles.itemContainer}>
+                    {/* Left: Icon */}
+                    <View style={[styles.iconContainer, { backgroundColor: `${config.color}15` }]}>
+                        <MaterialCommunityIcons name={config.icon} size={18} color={config.color} />
                     </View>
-                </GlassCard>
-            </TouchableOpacity>
+
+                    {/* Middle: Info */}
+                    <View style={styles.contentContainer}>
+                        <Text style={styles.typeText}>{config.label}</Text>
+                        <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+                        {item.description ? (
+                            <Text style={styles.descText} numberOfLines={1}>
+                                {item.description}
+                            </Text>
+                        ) : null}
+                    </View>
+
+                    {/* Right: Amount & Balance */}
+                    <View style={styles.rightContainer}>
+                        <Text style={[styles.amountText, { color: color }]}>
+                            {sign}{formatCurrency(item.amount)}
+                        </Text>
+                        {item.balance !== undefined && (
+                            <Text style={styles.balanceText}>
+                                {formatCurrency(item.balance)}₫
+                            </Text>
+                        )}
+                    </View>
+                </View>
+            </AnimatedTouchableOpacity>
         );
     };
+
+    const renderSeparator = () => <View style={styles.separator} />;
 
     const renderEmpty = () => (
         <View style={styles.emptyContainer}>
             <MaterialCommunityIcons
-                name={walletNotLinked ? "wallet-plus" : "history"}
+                name={walletNotLinked ? "wallet-plus" : "file-search-outline"}
                 size={64}
-                color={GlassTokens.colors.textMuted}
+                color="rgba(255,255,255,0.2)"
             />
             <Text style={styles.emptyText}>
-                {walletNotLinked ? 'Chưa liên kết ví' : 'Chưa có giao dịch'}
-            </Text>
-            <Text style={styles.emptySubtext}>
-                {walletNotLinked
-                    ? 'Bạn cần liên kết ví Fineract để xem lịch sử giao dịch'
-                    : 'Lịch sử giao dịch của bạn sẽ hiển thị ở đây'
-                }
+                {walletNotLinked ? 'Chưa liên kết ví' : 'Chưa có giao dịch nào'}
             </Text>
         </View>
     );
 
     const renderFooter = () => {
-        if (!loadingMore) return null;
+        if (!loadingMore) return <View style={{ height: 40 }} />;
         return (
             <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={GlassTokens.colors.primary} />
@@ -185,202 +212,361 @@ export default function TransactionHistoryScreen() {
         );
     };
 
-    if (loading) {
+    const renderDetailModal = () => {
+        if (!selectedTransaction) return null;
+
+        const config = getTransactionConfig(selectedTransaction.type);
+        const isCredit = ['deposit', 'receipt', 'transfer_in', 'repayment'].includes(selectedTransaction.type);
+        const sign = isCredit ? '+' : '-';
+        const color = isCredit ? '#10B981' : '#EF4444';
+
         return (
-            <GradientBackground>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
-                    <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
-                </View>
-            </GradientBackground>
+            <Modal
+                transparent={true}
+                visible={!!selectedTransaction}
+                animationType="fade"
+                onRequestClose={() => setSelectedTransaction(null)}
+            >
+                <TouchableWithoutFeedback onPress={() => setSelectedTransaction(null)}>
+                    <View style={styles.modalBackdrop}>
+                        <View style={styles.modalContentWrapper}>
+                            <View style={styles.modalCard}>
+                                <View>
+                                    {/* Header Icon */}
+                                    <View style={styles.modalHeader}>
+                                        <View style={[styles.bigIconContainer, { backgroundColor: `${config.color}20` }]}>
+                                            <MaterialCommunityIcons name={config.icon} size={40} color={config.color} />
+                                        </View>
+                                        <Text style={[styles.modalAmount, { color: color }]}>
+                                            {sign}{formatCurrency(selectedTransaction.amount)}₫
+                                        </Text>
+                                        <Text style={styles.modalTypeLabel}>{config.label}</Text>
+                                    </View>
+
+                                    {/* Divider */}
+                                    <View style={styles.modalDivider} />
+
+                                    {/* Details */}
+                                    <View style={styles.detailRow}>
+                                        <Text style={styles.detailLabel}>Thời gian</Text>
+                                        <Text style={styles.detailValue}>{formatDate(selectedTransaction.date)}</Text>
+                                    </View>
+
+                                    {selectedTransaction.id && (
+                                        <View style={styles.detailRow}>
+                                            <Text style={styles.detailLabel}>Mã giao dịch</Text>
+                                            <Text style={styles.detailValue}>{selectedTransaction.id}</Text>
+                                        </View>
+                                    )}
+
+                                    {selectedTransaction.balance !== undefined && (
+                                        <View style={styles.detailRow}>
+                                            <Text style={styles.detailLabel}>Số dư sau GD</Text>
+                                            <Text style={styles.detailValue}>{formatCurrency(selectedTransaction.balance)}₫</Text>
+                                        </View>
+                                    )}
+
+                                    {/* Transfer Details */}
+                                    {transferDetail && (
+                                        <>
+                                            <View style={[styles.modalDivider, { marginTop: 10, marginBottom: 10 }]} />
+
+                                            {transferDetail.fromClient && (
+                                                <View style={styles.detailRow}>
+                                                    <Text style={styles.detailLabel}>Người gửi</Text>
+                                                    <Text style={styles.detailValue}>{transferDetail.fromClient.displayName}</Text>
+                                                </View>
+                                            )}
+                                            {transferDetail.fromAccount && (
+                                                <View style={styles.detailRow}>
+                                                    <Text style={styles.detailLabel}>TK Gửi</Text>
+                                                    <Text style={styles.detailValue}>{transferDetail.fromAccount.accountNo}</Text>
+                                                </View>
+                                            )}
+
+                                            {transferDetail.toClient && (
+                                                <View style={styles.detailRow}>
+                                                    <Text style={styles.detailLabel}>Người nhận</Text>
+                                                    <Text style={styles.detailValue}>{transferDetail.toClient.displayName}</Text>
+                                                </View>
+                                            )}
+                                            {transferDetail.toAccount && (
+                                                <View style={styles.detailRow}>
+                                                    <Text style={styles.detailLabel}>TK Nhận</Text>
+                                                    <Text style={styles.detailValue}>{transferDetail.toAccount.accountNo}</Text>
+                                                </View>
+                                            )}
+                                            <View style={[styles.modalDivider, { marginTop: 10, marginBottom: 10 }]} />
+                                        </>
+                                    )}
+
+                                    <View style={styles.detailRow}>
+                                        <Text style={styles.detailLabel}>Nội dung</Text>
+                                        <Text style={[styles.detailValue, { flex: 1, textAlign: 'right' }]}>
+                                            {selectedTransaction.description || 'Không có nội dung'}
+                                        </Text>
+                                    </View>
+
+                                    {/* Close Button */}
+                                    <TouchableOpacity
+                                        style={styles.closeButton}
+                                        onPress={() => setSelectedTransaction(null)}
+                                    >
+                                        <Text style={styles.closeButtonText}>Đóng</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                </TouchableWithoutFeedback>
+            </Modal>
         );
-    }
+    };
 
     return (
         <GradientBackground>
             <StatusBar barStyle="light-content" />
 
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
-                >
-                    <MaterialCommunityIcons name="arrow-left" size={24} color={GlassTokens.colors.textPrimary} />
-                </TouchableOpacity>
-
-                <View style={styles.headerContent}>
-                    <Text style={styles.headerTitle}>Lịch sử giao dịch</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {transactions.length} giao dịch
-                    </Text>
+            <View style={styles.safeArea}>
+                {/* Header */}
+                <View style={styles.headerContainer}>
+                    <PageHeader
+                        title="Lịch sử giao dịch"
+                        showBack={true}
+                        onBack={() => navigation.goBack()}
+                    />
                 </View>
 
-                <TouchableOpacity style={styles.filterButton}>
-                    <MaterialCommunityIcons name="filter-variant" size={24} color={GlassTokens.colors.textSecondary} />
-                </TouchableOpacity>
+                {/* Body Section */}
+                <View style={styles.listSection}>
+                    {loading && !refreshing ? (
+                        <View style={{ padding: 20 }}>
+                            <ListSkeleton count={8} />
+                        </View>
+                    ) : (
+                        <FlatList
+                            data={transactions}
+                            renderItem={renderTransaction}
+                            ItemSeparatorComponent={renderSeparator}
+                            keyExtractor={(item, index) => `${item.id || index}`}
+                            contentContainerStyle={styles.listContent}
+                            ListEmptyComponent={renderEmpty}
+                            ListFooterComponent={renderFooter}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={refreshing}
+                                    onRefresh={handleRefresh}
+                                    tintColor="#3B82F6"
+                                />
+                            }
+                            onEndReached={handleLoadMore}
+                            onEndReachedThreshold={0.5}
+                            showsVerticalScrollIndicator={false}
+                        />
+                    )}
+                </View>
             </View>
-
-            {/* Transaction List */}
-            <FlatList
-                data={transactions}
-                renderItem={renderTransaction}
-                keyExtractor={(item, index) => `${item.id || index}`}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={renderEmpty}
-                ListFooterComponent={renderFooter}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={GlassTokens.colors.primary}
-                        colors={[GlassTokens.colors.primary]}
-                    />
-                }
-                onEndReached={handleLoadMore}
-                onEndReachedThreshold={0.5}
-            />
+            {renderDetailModal()}
         </GradientBackground>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
+    safeArea: {
         flex: 1,
+        paddingTop: Platform.OS === 'android' ? 10 : 0,
     },
-    loadingContainer: {
+    headerContainer: {
+        paddingBottom: 10,
+    },
+
+    // List Section (Rounded Top)
+    listSection: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)', // Slightly darker for better contrast
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        overflow: 'hidden',
     },
-    loadingText: {
-        marginTop: 12,
-        color: GlassTokens.colors.textSecondary,
-        fontSize: 14,
-        fontFamily: 'Poppins_400Regular',
-    },
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingTop: 60,
-        paddingBottom: 20,
-        paddingHorizontal: GlassTokens.spacing.md,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    headerContent: {
-        flex: 1,
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: GlassTokens.colors.textPrimary,
-        marginBottom: 2,
-        fontFamily: 'Poppins_700Bold',
-    },
-    headerSubtitle: {
-        fontSize: 12,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
-    },
-    filterButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    // List
     listContent: {
-        paddingHorizontal: GlassTokens.spacing.md,
-        paddingBottom: 100,
+        paddingTop: 10,
+        paddingBottom: 40,
     },
-    // Transaction Card
-    transactionCard: {
-        marginBottom: 12,
-        padding: 0, // Reset padding as we use wrapper
-    },
-    transactionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: GlassTokens.spacing.md,
-    },
-    iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+    loadingCenter: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
     },
-    transactionInfo: {
+
+    // Item Layout
+    itemContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+    },
+
+    iconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 14,
+        marginTop: 2,
+    },
+
+    contentContainer: {
         flex: 1,
+        marginRight: 8,
+        justifyContent: 'center',
     },
-    transactionType: {
-        fontSize: 15,
+    typeText: {
+        fontSize: 17,
         fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
+        color: 'white',
         marginBottom: 2,
-        fontFamily: 'Poppins_600SemiBold',
     },
-    transactionDate: {
-        fontSize: 12,
-        color: GlassTokens.colors.textSecondary,
-        marginBottom: 2,
-        fontFamily: 'Poppins_400Regular',
+    dateText: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.4)',
+        marginBottom: 3,
     },
-    transactionDesc: {
-        fontSize: 11,
-        color: GlassTokens.colors.textMuted,
+    descText: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.7)',
         fontStyle: 'italic',
-        fontFamily: 'Poppins_400Regular',
+        lineHeight: 18,
     },
-    amountContainer: {
+
+    rightContainer: {
         alignItems: 'flex-end',
+        justifyContent: 'center',
     },
-    amount: {
-        fontSize: 16,
+    amountText: {
+        fontSize: 17,
         fontWeight: '700',
         marginBottom: 2,
-        fontFamily: 'Poppins_700Bold',
     },
-    balance: {
-        fontSize: 11,
-        color: GlassTokens.colors.textSecondary,
-        fontFamily: 'Poppins_400Regular',
+    balanceText: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.3)',
+        fontWeight: '500',
     },
+
+    separator: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        marginLeft: 78,
+        marginRight: 20,
+    },
+
     // Empty State
     emptyContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 80,
+        paddingTop: 100,
+        gap: 16,
     },
     emptyText: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: GlassTokens.colors.textPrimary,
-        marginTop: 16,
-        marginBottom: 8,
-        fontFamily: 'Poppins_600SemiBold',
+        fontSize: 16,
+        color: 'rgba(255,255,255,0.5)',
     },
-    emptySubtext: {
-        fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
-        textAlign: 'center',
-        fontFamily: 'Poppins_400Regular',
-    },
+
     // Footer
     footerLoader: {
         paddingVertical: 20,
         alignItems: 'center',
+    },
+
+    // Modal Styles
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContentWrapper: {
+        width: '85%',
+        maxWidth: 340,
+    },
+    modalCard: {
+        borderRadius: 24,
+        backgroundColor: '#1E1E24',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        overflow: 'hidden',
+        padding: 20,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    modalScrollContent: {
+        padding: 0,
+    },
+    modalHeader: {
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    bigIconContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    modalAmount: {
+        fontSize: 26,
+        fontWeight: '700',
+        marginBottom: 2,
+        textAlign: 'center',
+        color: 'white',
+        letterSpacing: -0.5,
+    },
+    modalTypeLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.5)',
+        textAlign: 'center',
+    },
+    modalDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 16,
+        marginHorizontal: 10,
+    },
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+        alignItems: 'flex-start',
+    },
+    detailLabel: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.4)',
+        width: 100,
+    },
+    detailValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.9)',
+        flex: 1,
+        textAlign: 'right',
+    },
+    closeButton: {
+        marginTop: 16,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    closeButtonText: {
+        color: 'white',
+        fontWeight: '600',
+        fontSize: 14,
     },
 });

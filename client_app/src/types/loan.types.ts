@@ -236,7 +236,7 @@ export interface PrepayAmount {
  * Fineract loan details (extracted info)
  */
 export interface FineractLoanDetails {
-    fineractLoanId: number;
+    fineractLoanId: number | string;
     contractId?: string; // MongoDB contract ID
     fineractStatus: string;
     principal: number;
@@ -261,6 +261,38 @@ export interface FineractLoanDetails {
         actualDisbursementDate?: number[];
     };
     transactions: LoanTransaction[];
+
+    // Extended fields from Fineract API
+    loanPurposeName?: string;
+    loanPurposeId?: number;
+    repaymentEvery?: number;
+    interestType?: {
+        id: number;
+        code: string;
+        value: string;
+    };
+    amortizationType?: {
+        id: number;
+        code: string;
+        value: string;
+    };
+    interestCalculationPeriodType?: {
+        id: number;
+        code: string;
+        value: string;
+    };
+    daysInYearType?: {
+        id: number;
+        code: string;
+        value: string;
+    };
+    daysInMonthType?: {
+        id: number;
+        code: string;
+        value: string;
+    };
+    transactionProcessingStrategyCode?: string;
+    transactionProcessingStrategyName?: string;
 }
 
 // ========== REPAYMENT REQUEST TYPES ==========

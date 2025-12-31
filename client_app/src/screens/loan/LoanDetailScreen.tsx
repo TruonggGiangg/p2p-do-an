@@ -69,6 +69,7 @@ export const LoanDetailScreen: React.FC = () => {
     const [loan, setLoan] = useState<LoanContract | null>(null);
     const [fineractDetails, setFineractDetails] = useState<FineractLoanDetails | null>(null);
     const [outstanding, setOutstanding] = useState<OutstandingBalance | null>(null);
+    const [walletBalance, setWalletBalance] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [timelineCollapsed, setTimelineCollapsed] = useState(false);
@@ -103,6 +104,14 @@ export const LoanDetailScreen: React.FC = () => {
                 setLoan(loanData);
             }
 
+            // Fetch wallet balance
+            try {
+                const wallet = await loanApi.getWalletBalance();
+                setWalletBalance(wallet.availableBalance);
+            } catch (e) {
+                console.log('Could not fetch wallet balance:', e);
+            }
+
             const id = loanId || contractId;
             if (id) {
                 try {
@@ -132,7 +141,7 @@ export const LoanDetailScreen: React.FC = () => {
                     periodMonth: loan.info?.periodMonth,
                 });
                 console.log('Fineract:', {
-                    loanId: fineractDetails.loanId,
+                    loanId: fineractDetails.fineractLoanId,
                     principal: fineractDetails.principal,
                     interestRate: fineractDetails.interestRate,
                 });
@@ -163,30 +172,55 @@ export const LoanDetailScreen: React.FC = () => {
         fetchData();
     }, [fetchData]);
 
+    const getNextUnpaidPeriod = () => {
+        if (!fineractDetails?.repaymentSchedule?.periods) return null;
+        return fineractDetails.repaymentSchedule.periods.find(p => !p.complete && p.period > 0);
+    };
+
     const handleRepayment = () => {
         const fineractLoanId = fineractDetails?.fineractLoanId || loan?.fineractLoanId;
         if (!fineractLoanId) {
             Alert.alert('Lỗi', 'Không tìm thấy thông tin khoản vay để thanh toán');
             return;
         }
-        (navigation.navigate as any)('Repayment', {
-            loanId: fineractLoanId,
-            contractId: contractId || loan?.contractId,
-            isPrepay: false,
+
+        const nextPeriod = getNextUnpaidPeriod();
+        const suggestedAmount = nextPeriod ? (nextPeriod.totalDue || ((nextPeriod.principalDue || 0) + (nextPeriod.interestDue || 0))) : 0;
+
+        (navigation.navigate as any)('Transfer', {
+            mode: 'repayment',
+            balance: walletBalance,
+            fineractLoanId,
+            loanCode: loan?.contractId || `Khoản vay #${fineractLoanId}`,
+            amount: suggestedAmount > 0 ? suggestedAmount : undefined,
+            note: `Thanh toán kỳ ${nextPeriod?.period || '?'} - Hợp đồng ${loan?.contractId || ''}`,
         });
     };
 
-    const handlePrepay = () => {
+    const handlePrepay = async () => {
         const fineractLoanId = fineractDetails?.fineractLoanId || loan?.fineractLoanId;
-        if (!fineractLoanId) {
+        const id = loanId || contractId || loan?.contractId;
+
+        if (!fineractLoanId || !id) {
             Alert.alert('Lỗi', 'Không tìm thấy thông tin khoản vay');
             return;
         }
-        (navigation.navigate as any)('Repayment', {
-            loanId: fineractLoanId,
-            contractId: contractId || loan?.contractId,
-            isPrepay: true,
-        });
+
+        try {
+            const prepayInfo = await loanApi.getPrepayAmount(id);
+
+            (navigation.navigate as any)('Transfer', {
+                mode: 'prepay',
+                balance: walletBalance,
+                fineractLoanId,
+                loanCode: loan?.contractId || `Khoản vay #${fineractLoanId}`,
+                amount: prepayInfo.amount,
+                note: `Tất toán toàn bộ HĐ ${loan?.contractId || ''}`,
+                readOnlyAmount: true
+            });
+        } catch (error) {
+            Alert.alert('Lỗi', 'Không thể lấy thông tin tất toán. Vui lòng thử lại.');
+        }
     };
 
     const handleDisburse = async () => {
@@ -217,10 +251,7 @@ export const LoanDetailScreen: React.FC = () => {
         );
     };
 
-    const getNextUnpaidPeriod = () => {
-        if (!fineractDetails?.repaymentSchedule?.periods) return null;
-        return fineractDetails.repaymentSchedule.periods.find(p => !p.complete && p.period > 0);
-    };
+
 
     if (loading) {
         return (
@@ -296,10 +327,26 @@ export const LoanDetailScreen: React.FC = () => {
 
                         {/* Loan Info */}
                         <GlassCard blur={GlassTokens.blur.medium}>
-                            <SectionTitle>Thông tin chi tiết</SectionTitle>
+                            <SectionTitle>Thông tin khoản vay</SectionTitle>
                             <InfoRow
                                 label="Mã hợp đồng"
                                 value={loan?.contractId || `LOAN_${fineractDetails?.fineractLoanId || '???'}`}
+                            />
+                            <InfoRow
+                                label="Mã Fineract"
+                                value={fineractDetails?.fineractLoanId?.toString() || 'N/A'}
+                            />
+                            <InfoRow
+                                label="Mục đích vay"
+                                value={fineractDetails?.loanPurposeName || loan?.info?.willing || 'Chưa xác định'}
+                            />
+                            <InfoRow
+                                label="Trạng thái"
+                                value={fineractDetails?.status?.value || loan?.status || 'N/A'}
+                            />
+                            <InfoRow
+                                label="Ngày nộp đơn"
+                                value={formatDate(fineractDetails?.timeline?.submittedOnDate)}
                             />
                             <InfoRow
                                 label="Ngày giải ngân"
@@ -309,10 +356,94 @@ export const LoanDetailScreen: React.FC = () => {
                                 }
                             />
                             <InfoRow
-                                label="Mục đích vay"
-                                value={loan?.info?.willing || 'Tiêu dùng'}
+                                label="Ngày đáo hạn"
+                                value={formatDate(fineractDetails?.timeline?.expectedMaturityDate)}
                             />
                         </GlassCard>
+
+                        {/* Loan Configuration Details */}
+                        <GlassCard blur={GlassTokens.blur.medium}>
+                            <SectionTitle>Chi tiết khoản vay</SectionTitle>
+                            <InfoRow
+                                label="Lãi suất"
+                                value={`${(fineractDetails?.interestRate?.annual || rate * 12).toFixed(2)}% / năm (${rate}% / tháng)`}
+                            />
+                            <InfoRow
+                                label="Loại lãi"
+                                value={`${fineractDetails?.interestType?.value || 'Số dư giảm dần'}`}
+                            />
+                            <InfoRow
+                                label="Phân bổ trả nợ"
+                                value={fineractDetails?.amortizationType?.value || 'Trả góp đều'}
+                            />
+                            <InfoRow
+                                label="Các kỳ trả nợ"
+                                value={`${periods} kỳ, mỗi ${fineractDetails?.repaymentEvery || 1} tháng`}
+                            />
+                            <InfoRow
+                                label="Chiến lược trả nợ"
+                                value={fineractDetails?.transactionProcessingStrategyName || 'Phạt, Phí, Lãi, Gốc'}
+                            />
+                            <InfoRow
+                                label="Kỳ tính lãi"
+                                value={fineractDetails?.interestCalculationPeriodType?.value || 'Giống kỳ hạn trả nợ'}
+                            />
+                            <InfoRow
+                                label="Số ngày trong năm"
+                                value={fineractDetails?.daysInYearType?.value || '365 Ngày'}
+                            />
+                            <InfoRow
+                                label="Số ngày trong tháng"
+                                value={fineractDetails?.daysInMonthType?.value || 'Thực tế'}
+                            />
+                        </GlassCard>
+
+                        {/* Transactions */}
+                        {fineractDetails?.transactions && fineractDetails.transactions.length > 0 && (
+                            <GlassCard blur={GlassTokens.blur.medium}>
+                                <SectionTitle>Giao dịch ({fineractDetails.transactions.length})</SectionTitle>
+                                <View style={styles.transactionsList}>
+                                    {fineractDetails.transactions.slice(0, 10).map((tx: any, idx: number) => {
+                                        const isDebit = tx.type?.disbursement || tx.type?.code?.includes('disburse');
+                                        const isCredit = tx.type?.repayment || tx.type?.code?.includes('repayment');
+
+                                        let txColor = GlassTokens.colors.textSecondary;
+                                        let txIcon = 'swap-horizontal';
+                                        let txLabel = tx.type?.value || 'Giao dịch';
+
+                                        if (isDebit) {
+                                            txColor = GlassTokens.colors.error;
+                                            txIcon = 'arrow-down-circle';
+                                            txLabel = 'Giải ngân';
+                                        } else if (isCredit) {
+                                            txColor = GlassTokens.colors.success;
+                                            txIcon = 'arrow-up-circle';
+                                            txLabel = 'Thanh toán';
+                                        }
+
+                                        return (
+                                            <View key={idx} style={styles.transactionItem}>
+                                                <View style={[styles.txIconBg, { backgroundColor: `${txColor}20` }]}>
+                                                    <Ionicons name={txIcon as any} size={20} color={txColor} />
+                                                </View>
+                                                <View style={styles.txContent}>
+                                                    <Text style={styles.txLabel}>{txLabel}</Text>
+                                                    <Text style={styles.txDate}>{formatDate(tx.date)}</Text>
+                                                </View>
+                                                <Text style={[styles.txAmount, { color: txColor }]}>
+                                                    {isDebit ? '-' : '+'}{formatNumber(tx.amount)} đ
+                                                </Text>
+                                            </View>
+                                        );
+                                    })}
+                                    {fineractDetails.transactions.length > 10 && (
+                                        <Text style={styles.moreText}>
+                                            Và {fineractDetails.transactions.length - 10} giao dịch khác...
+                                        </Text>
+                                    )}
+                                </View>
+                            </GlassCard>
+                        )}
 
                         {/* Repayment Timeline */}
                         {fineractDetails?.repaymentSchedule?.periods && (
@@ -330,6 +461,30 @@ export const LoanDetailScreen: React.FC = () => {
                                         color={GlassTokens.colors.textSecondary}
                                     />
                                 </TouchableOpacity>
+
+                                {/* Schedule Summary */}
+                                {fineractDetails.repaymentSchedule && (
+                                    <View style={styles.scheduleSummary}>
+                                        <View style={styles.summaryItem}>
+                                            <Text style={styles.summaryLabel}>Tổng gốc</Text>
+                                            <Text style={styles.summaryValue}>
+                                                {formatCurrency(fineractDetails.repaymentSchedule.totalPrincipalExpected)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.summaryItem}>
+                                            <Text style={styles.summaryLabel}>Tổng lãi</Text>
+                                            <Text style={[styles.summaryValue, { color: '#FACC15' }]}>
+                                                {formatCurrency(fineractDetails.repaymentSchedule.totalInterestCharged)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.summaryItem}>
+                                            <Text style={styles.summaryLabel}>Tổng cộng</Text>
+                                            <Text style={[styles.summaryValue, { color: GlassTokens.colors.primary }]}>
+                                                {formatCurrency(fineractDetails.repaymentSchedule.totalRepaymentExpected)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
 
                                 {!timelineCollapsed && (
                                     <View style={styles.timelineList}>
@@ -674,6 +829,74 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: GlassTokens.colors.primary,
         letterSpacing: 0.3,
+    },
+
+    // Transactions styles
+    transactionsList: {
+        marginTop: GlassTokens.spacing.xs,
+    },
+    transactionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: GlassTokens.spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: GlassTokens.colors.borderGlassSubtle,
+    },
+    txIconBg: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    txContent: {
+        flex: 1,
+        marginLeft: GlassTokens.spacing.sm,
+    },
+    txLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: GlassTokens.colors.textPrimary,
+    },
+    txDate: {
+        fontSize: 12,
+        color: GlassTokens.colors.textSecondary,
+        marginTop: 2,
+    },
+    txAmount: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    moreText: {
+        textAlign: 'center',
+        color: GlassTokens.colors.textSecondary,
+        fontSize: 12,
+        marginTop: GlassTokens.spacing.sm,
+        fontStyle: 'italic',
+    },
+
+    // Schedule Summary
+    scheduleSummary: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: GlassTokens.spacing.md,
+        paddingBottom: GlassTokens.spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: GlassTokens.colors.borderGlassSubtle,
+    },
+    summaryItem: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    summaryLabel: {
+        fontSize: 11,
+        color: GlassTokens.colors.textSecondary,
+        marginBottom: 4,
+    },
+    summaryValue: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: GlassTokens.colors.textPrimary,
     },
 });
 

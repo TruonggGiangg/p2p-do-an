@@ -92,3 +92,27 @@
 *   `RepaymentService.ts`: Handles money distribution.
 *   `FineractEscrowService.ts`: Core Banking integration.
 *   `coding-conventions.md`: Detailed style guide.
+
+## 7. AI Workflow (Free-Tier Only)
+
+> **Không dùng API trả phí. Developer remains final decision-maker.**
+
+| Tool | Vai trò | Chi phí |
+|------|---------|---------|
+| **Gemini CLI** | Read-only, exploration, debug | ✅ FREE (OAuth) |
+| **IDE Agent** | Implementation only | ✅ FREE |
+| **Aider** | Refactor when needed | ✅ FREE |
+
+### Quy tắc vàng
+```
+Gemini CLI → Facts → IDE Agent → Code → Git
+```
+
+### Workflows
+*   [**🔍 Gemini CLI Debug**](.agent/workflows/gemini-cli-debug.md) - Sub-agent patterns cho debug.
+*   [**🛠️ Fullstack Development**](.agent/workflows/fullstack-development.md) - Full protocol.
+
+### Giải thích với GV/Hội đồng
+> "Em dùng Gemini CLI bằng tài khoản Google cá nhân (free) để đọc code và phân tích.
+> Việc viết code vẫn do em kiểm soát qua IDE Agent và git.
+> Không dùng API trả phí, không tự động sửa code ngoài tầm kiểm soát."

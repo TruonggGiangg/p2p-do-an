@@ -79,6 +79,11 @@ function LoanStack() {
         options={{ title: 'Thanh Toán' }}
       />
       <Stack.Screen
+        name="Transfer"
+        component={TransferScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="TransactionHistory"
         component={TransactionHistoryScreen}
         options={{ headerShown: false }}

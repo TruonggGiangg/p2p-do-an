@@ -205,6 +205,14 @@ export const investApi = {
         const response = await httpClient.get<Investment>(INVEST_ENDPOINTS.DETAIL(investmentId));
         return response.data;
     },
+
+    /**
+     * Get Projected Income
+     */
+    async getProjectedIncome() {
+        const response = await httpClient.get<Array<{ label: string; date: string; value: number; principal: number; interest: number }>>('/invest/income/projected');
+        return response.data;
+    },
 };
 
 export default investApi;

@@ -38,12 +38,25 @@ export class WalletController {
         try {
             const user = req.user as any;
             const userId = user.username || user.keycloakUserId || user._id; // Use username first!
-            const { limit, offset } = query;
+            const limit = query.limit ? parseInt(query.limit as string, 10) : 20;
+            const offset = query.offset ? parseInt(query.offset as string, 10) : 0;
 
             const transactions = await this.walletService.getWalletTransactions(userId, limit, offset);
             return res.status(HttpStatus.OK).json({ success: true, ...transactions });
         } catch (error) {
             this.logger.error(`Get transactions error: ${error.message}`);
+            return res.status(HttpStatus.BAD_REQUEST).json({ message: error.message });
+        }
+    }
+
+    @Get('transfer/:id')
+    async getTransferDetails(@Req() req: Request, @Res() res: Response) {
+        try {
+            const transferId = parseInt(req.params.id);
+            const details = await this.walletService.getTransferDetails(transferId);
+            return res.status(HttpStatus.OK).json({ success: true, ...details });
+        } catch (error) {
+            this.logger.error(`Get transfer details error: ${error.message}`);
             return res.status(HttpStatus.BAD_REQUEST).json({ message: error.message });
         }
     }

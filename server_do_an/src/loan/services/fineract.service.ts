@@ -408,7 +408,14 @@ export class FineractService {
             const submittedDate = [disbDate.getFullYear(), disbDate.getMonth() + 1, disbDate.getDate()];
             const expectedDisbursementDate = submittedDate;
 
-            const payload = {
+            // Resolve loanPurposeId from willing (Vietnamese) value
+            let loanPurposeId: number | undefined;
+            if (loanData.willing) {
+                loanPurposeId = await this.resolveLoanPurposeId(loanData.willing);
+                this.logger.log(`[createLoanApplication] Resolved loanPurposeId: ${loanPurposeId} from willing: "${loanData.willing}"`);
+            }
+
+            const payload: any = {
                 clientId: Number(borrowerClientId),
                 productId: this.loanProductId,
                 principal: loanData.capital,
@@ -431,6 +438,14 @@ export class FineractService {
                 externalId: loanData.contractId,
             };
 
+            // Add loanPurposeId if resolved
+            if (loanPurposeId) {
+                payload.loanPurposeId = loanPurposeId;
+                this.logger.log(`[createLoanApplication] ✅ Added loanPurposeId: ${loanPurposeId}`);
+            } else {
+                this.logger.warn(`[createLoanApplication] ⚠️ No loanPurposeId resolved for willing: "${loanData.willing}"`);
+            }
+
             this.logger.log(`[createLoanApplication] Payload interestType: ${payload.interestType}`);
             this.logger.log(`[createLoanApplication] Payload amortizationType: ${payload.amortizationType}`);
 
@@ -451,6 +466,71 @@ export class FineractService {
                 this.logger.error(`Fineract error: ${JSON.stringify(error.response.data)}`);
             }
             throw error;
+        }
+    }
+
+    /**
+     * Resolve loanPurposeId from Vietnamese willing value
+     * Looks up Fineract code values and matches by name
+     */
+    private async resolveLoanPurposeId(willing: string): Promise<number | undefined> {
+        try {
+            const loanPurposes = await this.getLoanPurposeCodeValues();
+
+            // Direct match (exact)
+            const exactMatch = loanPurposes.find(
+                (p) => p.name.toLowerCase() === willing.toLowerCase()
+            );
+            if (exactMatch) {
+                return exactMatch.id;
+            }
+
+            // Fuzzy match (contains)
+            const partialMatch = loanPurposes.find(
+                (p) => p.name.toLowerCase().includes(willing.toLowerCase()) ||
+                    willing.toLowerCase().includes(p.name.toLowerCase())
+            );
+            if (partialMatch) {
+                this.logger.log(`[resolveLoanPurposeId] Fuzzy match: "${willing}" → "${partialMatch.name}" (ID: ${partialMatch.id})`);
+                return partialMatch.id;
+            }
+
+            // Mapping fallback for common Vietnamese values
+            // Mapping fallback: Map [Fineract Purpose Name] to [Keywords from Client Input]
+            const willingMapping: Record<string, string[]> = {
+                'Mua sắm': ['mua sắm', 'shopping', 'tiêu dùng', 'cá nhân', 'sinh hoạt'],
+                'Đóng học phí': ['học phí', 'giáo dục', 'education', 'school'],
+                'Mua xe máy': ['xe máy', 'xe', 'motorcycle'],
+                'Mua xe ô tô': ['ô tô', 'car'],
+                'Mua nhà/đất': ['nhà', 'đất', 'house', 'land', 'property', 'bất động sản'],
+                'Sửa chữa nhà': ['sửa chữa', 'sửa nhà', 'repair', 'renovation', 'cải tạo'],
+                'Kinh doanh': ['kinh doanh', 'business', 'buôn bán', 'vốn'],
+                'Y tế/sức khỏe': ['y tế', 'sức khỏe', 'medical', 'health', 'khám chữa bệnh'],
+                'Đi du lịch': ['du lịch', 'travel', 'tourism', 'nghỉ dưỡng'],
+                'Cưới hỏi': ['cưới', 'wedding', 'kết hôn'],
+                'Khác': ['khác', 'other'],
+            };
+
+            for (const [purposeName, keywords] of Object.entries(willingMapping)) {
+                const matchesKeyword = keywords.some(kw =>
+                    willing.toLowerCase().includes(kw.toLowerCase())
+                );
+                if (matchesKeyword) {
+                    const purpose = loanPurposes.find(p =>
+                        p.name.toLowerCase() === purposeName.toLowerCase()
+                    );
+                    if (purpose) {
+                        this.logger.log(`[resolveLoanPurposeId] Keyword match: "${willing}" → "${purposeName}" (ID: ${purpose.id})`);
+                        return purpose.id;
+                    }
+                }
+            }
+
+            this.logger.warn(`[resolveLoanPurposeId] No match found for: "${willing}". Available purposes: ${loanPurposes.map(p => p.name).join(', ')}`);
+            return undefined;
+        } catch (error) {
+            this.logger.error(`[resolveLoanPurposeId] Error: ${error}`);
+            return undefined;
         }
     }
 
@@ -750,6 +830,25 @@ export class FineractService {
     }
 
     /**
+     * Get loan repayment schedule
+     */
+    async getLoanRepaymentSchedule(loanId: number): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/loans/${loanId}?associations=repaymentSchedule`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers })
+            );
+
+            return response.data.repaymentSchedule;
+        } catch (error: any) {
+            this.logger.error(`Failed to get repayment schedule for loan ${loanId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
      * Early repayment (prepay loan)
      */
     async prepayLoan(loanId: number, amount: number, transactionDate?: string, note?: string): Promise<any> {
@@ -879,6 +978,18 @@ export class FineractService {
             },
 
             transactions: fineractLoan.transactions || [],
+
+            // Extended fields for loan configuration
+            loanPurposeName: fineractLoan.loanPurpose?.name,
+            loanPurposeId: fineractLoan.loanPurpose?.id,
+            repaymentEvery: fineractLoan.repaymentEvery,
+            interestType: fineractLoan.interestType,
+            amortizationType: fineractLoan.amortizationType,
+            interestCalculationPeriodType: fineractLoan.interestCalculationPeriodType,
+            daysInYearType: fineractLoan.daysInYearType,
+            daysInMonthType: fineractLoan.daysInMonthType,
+            transactionProcessingStrategyCode: fineractLoan.transactionProcessingStrategyCode,
+            transactionProcessingStrategyName: fineractLoan.transactionProcessingStrategyName,
         };
     }
     /**
@@ -1348,7 +1459,7 @@ export class FineractService {
      * Fetches transaction history for a savings account
      * MATCH P2P REFERENCE: Use /transactions endpoint with pagination (line 264-272 of InvestmentManagementService.js)
      */
-    async getSavingsAccountTransactions(savingsAccountId: number, limit: number = 200, offset: number = 0): Promise<any[]> {
+    async getSavingsAccountTransactions(savingsAccountId: number, limit: number = 200, offset: number = 0): Promise<{ pageItems: any[], totalFilteredRecords: number }> {
         try {
             const headers = await this.getHeaders();
 
@@ -1376,8 +1487,10 @@ export class FineractService {
                 const firstTxn = txns[0];
                 this.logger.debug(`[getSavingsTransactions] First transaction: id=${firstTxn.id}, amount=${firstTxn.amount}, type=${firstTxn.transactionType?.value}`);
             }
-
-            return txns;
+            return {
+                pageItems: txns,
+                totalFilteredRecords: response.data?.totalFilteredRecords || txns.length
+            };
         } catch (error: any) {
             // Fallback to associations=all if /transactions returns 405
             if (error.response?.status === 405) {
@@ -1389,14 +1502,14 @@ export class FineractService {
             if (error.response) {
                 this.logger.error(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`);
             }
-            return [];
+            return { pageItems: [], totalFilteredRecords: 0 };
         }
     }
 
     /**
      * Fallback: Get transactions via associations=all
      */
-    private async getSavingsAccountTransactionsFallback(savingsAccountId: number): Promise<any[]> {
+    private async getSavingsAccountTransactionsFallback(savingsAccountId: number): Promise<{ pageItems: any[], totalFilteredRecords: number }> {
         try {
             const headers = await this.getHeaders();
             const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}?associations=all`;
@@ -1408,10 +1521,13 @@ export class FineractService {
             const txns = response.data.transactions || [];
             this.logger.log(`[getSavingsTransactions-Fallback] Found ${txns.length} transactions`);
 
-            return txns;
+            return {
+                pageItems: txns,
+                totalFilteredRecords: txns.length
+            };
         } catch (error: any) {
             this.logger.error(`Fallback also failed for ${savingsAccountId}: ${error.message}`);
-            return [];
+            return { pageItems: [], totalFilteredRecords: 0 };
         }
     }
 
@@ -1441,7 +1557,7 @@ export class FineractService {
     /**
      * Get Savings Account Transactions
      */
-    async getAccountTransactions(savingsAccountId: number): Promise<any[]> {
+    async getAccountTransactions(savingsAccountId: number): Promise<{ transactions: any[], total: number }> {
         try {
             const headers = await this.getHeaders();
             const url = `${this.baseUrl}/fineract-provider/api/v1/savingsaccounts/${savingsAccountId}/transactions`;
@@ -1449,10 +1565,33 @@ export class FineractService {
             const response = await firstValueFrom(
                 this.httpService.get(url, { headers })
             );
-            return response.data.transactions || [];
+            const txns = response.data.transactions || [];
+            return {
+                transactions: txns,
+                total: txns.length
+            };
         } catch (error: any) {
             this.logger.error(`Failed to get transactions for ${savingsAccountId}: ${error.message}`);
-            return [];
+            return { transactions: [], total: 0 };
+        }
+    }
+
+    /**
+     * Get details of an Account Transfer
+     * Used to find sender/receiver info
+     */
+    async getAccountTransfer(transferId: number): Promise<any> {
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/accounttransfers/${transferId}`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers })
+            );
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`Failed to get transfer details for ${transferId}: ${error.message}`);
+            return null;
         }
     }
 }

@@ -55,14 +55,24 @@ export const GlassCard: React.FC<GlassCardProps> = ({
 
     const colors = getColors();
 
+    // Extract borderRadius from style if present, otherwise use default
+    const flatStyle = StyleSheet.flatten(style) || {};
+    const radius = flatStyle.borderRadius ?? GlassTokens.radius.xl;
+
     return (
-        <View style={[styles.glassCardWrapper, style]}>
+        <View style={[styles.glassCardWrapper, style, { borderRadius: radius }]}>
             <BlurView
                 intensity={blur}
                 tint="dark"
-                style={[styles.glassBlurView, { borderColor: colors.border }]}
+                style={[styles.glassBlurView, {
+                    borderColor: colors.border,
+                    borderRadius: radius
+                }]}
             >
-                <View style={[styles.glassCardInner, { backgroundColor: colors.bg }]}>
+                <View style={[styles.glassCardInner, {
+                    backgroundColor: colors.bg,
+                    borderRadius: radius
+                }]}>
                     {children}
                 </View>
             </BlurView>
@@ -91,7 +101,7 @@ export const InfoRow: React.FC<InfoRowProps> = ({ label, value, accent }) => (
 
 // Section Title Component
 interface SectionTitleProps {
-    children: string;
+    children: React.ReactNode;
     style?: TextStyle;
 }
 
@@ -101,7 +111,7 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({ children, style }) =
 
 // Glass Button Component
 interface GlassButtonProps {
-    children: string;
+    children: React.ReactNode;
     onPress: () => void;
     variant?: 'primary' | 'success' | 'error' | 'outline';
     style?: ViewStyle;

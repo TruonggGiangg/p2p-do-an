@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -11,9 +11,12 @@ import {
     ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { walletApi } from '../../services/wallet/wallet.api';
-import { GradientBackground, GlassCard, GlassButton, GlassTokens, PageHeader } from '../../components/glass';
+import { walletApi, loanApi } from '../../services';
+import { GradientBackground, GlassCard, GlassButton, GlassTokens, InfoRow, SectionTitle } from '../../components/glass';
+import { PageHeader } from '../../components/common';
 import { UnifiedSpacing, UnifiedRadius } from '../../theme';
+
+type TransferMode = 'transfer' | 'repayment' | 'prepay';
 
 interface TransferScreenProps {
     navigation: any;
@@ -21,26 +24,55 @@ interface TransferScreenProps {
 }
 
 export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, route }) => {
-    const [recipientPhone, setRecipientPhone] = useState('');
-    const [amount, setAmount] = useState('');
-    const [note, setNote] = useState('');
+    const params = route.params || {};
+    const mode: TransferMode = params.mode || 'transfer';
+    const balance = params.balance ?? 0;
+    const loanCode = params.loanCode || '';
+    const fineractLoanId = params.fineractLoanId;
+
+    // Initial state from params
+    const [recipientPhone, setRecipientPhone] = useState(params.recipientPhone || '');
+    const [amount, setAmount] = useState(params.amount ? String(params.amount) : '');
+    const [note, setNote] = useState(params.note || '');
     const [loading, setLoading] = useState(false);
 
-    // Safely get balance from route params with proper null checking
-    const balance = route?.params?.balance ?? 0;
+    // Determine titles and labels based on mode
+    const getScreenTitle = () => {
+        switch (mode) {
+            case 'repayment': return 'THANH TOÁN KHOẢN VAY';
+            case 'prepay': return 'TẤT TOÁN KHOẢN VAY';
+            default: return 'CHUYỂN TIỀN';
+        }
+    };
+
+    const getButtonTitle = () => {
+        switch (mode) {
+            case 'repayment': return 'THANH TOÁN';
+            case 'prepay': return 'TẤT TOÁN';
+            default: return 'CHUYỂN TIỀN';
+        }
+    };
+
+    const isLoanPayment = mode === 'repayment' || mode === 'prepay';
+
+    const formatCurrency = (val: number) => {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    };
 
     const handleTransfer = async () => {
-        if (!recipientPhone.trim()) {
-            Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại người nhận');
-            return;
+        // Validation
+        if (!isLoanPayment) {
+            if (!recipientPhone.trim()) {
+                Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại người nhận');
+                return;
+            }
+            if (recipientPhone.replace(/\D/g, '').length !== 10) {
+                Alert.alert('Lỗi', 'Số điện thoại phải có 10 chữ số');
+                return;
+            }
         }
 
-        if (recipientPhone.replace(/\D/g, '').length !== 10) {
-            Alert.alert('Lỗi', 'Số điện thoại phải có 10 chữ số');
-            return;
-        }
-
-        const transferAmount = parseFloat(amount);
+        const transferAmount = parseFloat(amount.replace(/,/g, ''));
         if (!amount || isNaN(transferAmount) || transferAmount <= 0) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
@@ -51,9 +83,24 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
             return;
         }
 
+        // Confirmation Message
+        let confirmTitle = 'Xác nhận giao dịch';
+        let confirmMessage = '';
+
+        if (mode === 'transfer') {
+            confirmTitle = 'Xác nhận chuyển tiền';
+            confirmMessage = `Chuyển ${transferAmount.toLocaleString('vi-VN')} VND đến ${recipientPhone}?`;
+        } else if (mode === 'repayment') {
+            confirmTitle = 'Xác nhận thanh toán';
+            confirmMessage = `Thanh toán ${transferAmount.toLocaleString('vi-VN')} VND cho khoản vay ${loanCode}?`;
+        } else if (mode === 'prepay') {
+            confirmTitle = 'Xác nhận tất toán';
+            confirmMessage = `Tất toán khoản vay ${loanCode} với số tiền ${transferAmount.toLocaleString('vi-VN')} VND?`;
+        }
+
         Alert.alert(
-            'Xác nhận chuyển tiền',
-            `Chuyển ${transferAmount.toLocaleString('vi-VN')} VND đến ${recipientPhone}?`,
+            confirmTitle,
+            confirmMessage,
             [
                 { text: 'Hủy', style: 'cancel' },
                 {
@@ -61,12 +108,33 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                     onPress: async () => {
                         try {
                             setLoading(true);
-                            const result = await walletApi.transfer(recipientPhone, transferAmount, note);
-                            Alert.alert('Thành công', result.message, [
+                            let result: any;
+
+                            if (mode === 'transfer') {
+                                result = await walletApi.transfer(recipientPhone, transferAmount, note);
+                            } else if (mode === 'repayment') {
+                                if (!fineractLoanId) throw new Error('Missing Fineract Loan ID');
+                                result = await loanApi.makeRepayment({
+                                    fineractLoanId,
+                                    transactionAmount: transferAmount,
+                                    note: note || 'Repayment via P2P App'
+                                });
+                            } else if (mode === 'prepay') {
+                                if (!fineractLoanId) throw new Error('Missing Fineract Loan ID');
+                                result = await loanApi.prepayLoan({
+                                    fineractLoanId,
+                                    transactionAmount: transferAmount, // Optional, can be auto-calculated backend side but explicit is better
+                                    note: note || 'Prepay via P2P App'
+                                });
+                            }
+
+                            const message = result?.message || (result?.resourceId ? 'Giao dịch thành công' : 'Đã xử lý');
+
+                            Alert.alert('Thành công', message, [
                                 { text: 'OK', onPress: () => navigation.goBack() },
                             ]);
                         } catch (error: any) {
-                            Alert.alert('Lỗi', error.message || 'Chuyển tiền thất bại');
+                            Alert.alert('Lỗi', error.message || 'Giao dịch thất bại');
                         } finally {
                             setLoading(false);
                         }
@@ -88,7 +156,7 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                             <Ionicons name="arrow-back" size={24} color={GlassTokens.colors.textPrimary} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>CHUYỂN TIỀN</Text>
+                        <Text style={styles.headerTitle}>{getScreenTitle()}</Text>
                         <View style={{ width: 40 }} />
                     </View>
 
@@ -103,22 +171,33 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
 
                     {/* Form */}
                     <GlassCard blur={GlassTokens.blur.light} style={styles.formCard}>
-                        {/* Recipient */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>SỐ ĐIỆN THOẠI NGƯỜI NHẬN</Text>
-                            <View style={styles.inputContainer}>
-                                <Ionicons name="person-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Nhập số điện thoại"
-                                    placeholderTextColor={GlassTokens.colors.textMuted}
-                                    value={recipientPhone}
-                                    onChangeText={setRecipientPhone}
-                                    keyboardType="phone-pad"
-                                    maxLength={10}
-                                />
+
+                        {/* Info for Loan Payment */}
+                        {isLoanPayment && (
+                            <View style={styles.loanInfoContainer}>
+                                <InfoRow label="Mã hợp đồng" value={loanCode} />
+                                <View style={styles.divider} />
                             </View>
-                        </View>
+                        )}
+
+                        {/* Recipient (Only for Transfer) */}
+                        {!isLoanPayment && (
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>SỐ ĐIỆN THOẠI NGƯỜI NHẬN</Text>
+                                <View style={styles.inputContainer}>
+                                    <Ionicons name="person-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Nhập số điện thoại"
+                                        placeholderTextColor={GlassTokens.colors.textMuted}
+                                        value={recipientPhone}
+                                        onChangeText={setRecipientPhone}
+                                        keyboardType="phone-pad"
+                                        maxLength={10}
+                                    />
+                                </View>
+                            </View>
+                        )}
 
                         {/* Amount */}
                         <View style={styles.inputGroup}>
@@ -132,25 +211,28 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                                     value={amount}
                                     onChangeText={setAmount}
                                     keyboardType="numeric"
+                                    editable={!params.readOnlyAmount}
                                 />
                                 <Text style={styles.currency}>VND</Text>
                             </View>
                         </View>
 
-                        {/* Quick Amount */}
-                        <View style={styles.quickAmountContainer}>
-                            {[50000, 100000, 200000, 500000].map((quickAmount) => (
-                                <TouchableOpacity
-                                    key={quickAmount}
-                                    style={styles.quickAmountButton}
-                                    onPress={() => setAmount(String(quickAmount))}
-                                >
-                                    <Text style={styles.quickAmountText}>
-                                        {(quickAmount / 1000).toLocaleString('vi-VN')}K
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
+                        {/* Quick Amount - Hide if readOnly */}
+                        {!params.readOnlyAmount && (
+                            <View style={styles.quickAmountContainer}>
+                                {[50000, 100000, 500000, 1000000].map((quickAmount) => (
+                                    <TouchableOpacity
+                                        key={quickAmount}
+                                        style={styles.quickAmountButton}
+                                        onPress={() => setAmount(String(quickAmount))}
+                                    >
+                                        <Text style={styles.quickAmountText}>
+                                            {(quickAmount / 1000).toLocaleString('vi-VN')}K
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
 
                         {/* Note */}
                         <View style={styles.inputGroup}>
@@ -159,7 +241,7 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                                 <Ionicons name="create-outline" size={20} color={GlassTokens.colors.primary} style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.input}
-                                    placeholder="Nhập ghi chú"
+                                    placeholder="Nhập ghi chú giao dịch"
                                     placeholderTextColor={GlassTokens.colors.textMuted}
                                     value={note}
                                     onChangeText={setNote}
@@ -169,13 +251,13 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                         </View>
                     </GlassCard>
 
-                    {/* Transfer Button */}
+                    {/* Action Button */}
                     <GlassButton
-                        title="CHUYỂN TIỀN"
-                        icon="arrow-forward-circle"
+                        title={getButtonTitle()}
+                        icon={isLoanPayment ? "check-circle-outline" : "arrow-right-circle"}
                         onPress={handleTransfer}
                         loading={loading}
-                        variant="primary"
+                        variant={mode === 'prepay' ? 'error' : 'primary'}
                         style={styles.transferButton}
                     />
                 </ScrollView>
@@ -198,7 +280,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingVertical: UnifiedSpacing.lg,
-        paddingTop: 60, 
+        paddingTop: 60,
     },
     backButton: {
         width: 40,
@@ -245,6 +327,14 @@ const styles = StyleSheet.create({
     },
     formCard: {
         marginBottom: UnifiedSpacing.lg,
+    },
+    loanInfoContainer: {
+        marginBottom: 16,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: GlassTokens.colors.borderGlassSubtle,
+        marginVertical: 12,
     },
     inputGroup: {
         marginBottom: 20,

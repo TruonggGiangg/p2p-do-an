@@ -112,10 +112,12 @@ export const loanApi = {
      * Create new loan (Borrower only)
      */
     createLoan: async (data: CreateLoanRequest): Promise<CreateLoanResponse> => {
+        console.log('[LoanAPI] createLoan Payload:', JSON.stringify(data));
         const response = await httpClient.post<LoanApiResponse<CreateLoanResponse>>(
             ENDPOINTS.createLoan,
             data,
         );
+        console.log('[LoanAPI] createLoan Status:', response.status);
         if (!response.data.data) {
             throw new Error('Invalid response from server');
         }
@@ -123,13 +125,43 @@ export const loanApi = {
     },
 
     /**
-     * Get current user's loans (Borrower only)
+     * Get current user's loans (Borrower only) with pagination
      */
-    getMyLoans: async (): Promise<LoanContract[]> => {
-        const response = await httpClient.get<LoanApiResponse<LoanContract[]>>(
+    getMyLoans: async (page: number = 1, limit: number = 10, status?: string): Promise<{ data: LoanContract[]; total: number; page: number; limit: number; totalPages: number }> => {
+        console.log('[LoanAPI] getMyLoans Request:', { page, limit, status });
+        const response = await httpClient.get<LoanApiResponse<any>>(
             ENDPOINTS.myLoans,
+            { params: { page, limit, status } }
         );
-        return response.data.data ?? [];
+        console.log('[LoanAPI] getMyLoans Raw Response Status:', response.status);
+
+        const apiData = response.data.data;
+
+        // Handle both old (array) and new (paginated object) response formats
+        let result: { data: LoanContract[]; total: number; page: number; limit: number; totalPages: number };
+
+        if (Array.isArray(apiData)) {
+            // Old format: server returns array directly (no pagination metadata)
+            console.log('[LoanAPI] Detected OLD array format, normalizing...');
+            result = {
+                data: apiData,
+                total: apiData.length,
+                page: 1,
+                limit: apiData.length,
+                totalPages: 1
+            };
+        } else if (apiData && typeof apiData === 'object' && Array.isArray(apiData.data)) {
+            // New format: server returns { data: [...], total, page, limit, totalPages }
+            console.log('[LoanAPI] Detected NEW paginated format');
+            result = apiData;
+        } else {
+            // Fallback for unexpected formats
+            console.warn('[LoanAPI] Unexpected response format, using empty result');
+            result = { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+        }
+
+        console.log('[LoanAPI] getMyLoans Normalized Result: count=', result.data.length, 'total=', result.total);
+        return result;
     },
 
     /**

@@ -25,6 +25,7 @@ export interface WalletTransaction {
     date: string;
     description?: string;
     balance?: number;
+    transferId?: number;
 }
 
 /**
@@ -123,6 +124,19 @@ export const walletApi = {
         } catch (error: any) {
             console.error('[walletApi.transfer] Failed:', error);
             throw new Error(error.response?.data?.message || 'Chuyển tiền thất bại');
+        }
+    },
+
+    /**
+     * Get transfer details (sender/receiver)
+     */
+    async getTransferDetails(transferId: number): Promise<any> {
+        try {
+            const response = await httpClient.get<any>(`${ENDPOINTS.transfer}/${transferId}`);
+            return response.data;
+        } catch (error: any) {
+            console.error('[walletApi.getTransferDetails] Failed:', error);
+            return null;
         }
     },
 };
