@@ -1031,12 +1031,22 @@ export class InvestService {
             const projectionMap = new Map<string, { principal: number, interest: number, count: number }>();
             const today = new Date();
 
+            let processedCount = 0;
+            let skippedNoLoan = 0;
+            let skippedNoSchedule = 0;
+
             for (const inv of investments) {
                 const loan = inv.loanContract as any;
-                if (!loan || !loan.fineractLoanId) continue;
+                if (!loan || !loan.fineractLoanId) {
+                    skippedNoLoan++;
+                    continue;
+                }
 
                 const repaymentSchedule = await this.fineractService.getLoanRepaymentSchedule(loan.fineractLoanId);
-                if (!repaymentSchedule || !repaymentSchedule.periods) continue;
+                if (!repaymentSchedule || !repaymentSchedule.periods) {
+                    skippedNoSchedule++;
+                    continue;
+                }
 
                 // Rates
                 const borrowerRate = loan.borrowerInterestRate || 12;
@@ -1052,6 +1062,7 @@ export class InvestService {
                 const totalLoanAmount = loan.info.capital;
                 const ratio = investmentAmount / totalLoanAmount;
 
+                let futurePeriods = 0;
                 for (const period of repaymentSchedule.periods) {
                     if (period.complete || !period.dueDate) continue;
 
@@ -1062,14 +1073,11 @@ export class InvestService {
 
                     if (dueDate <= today) continue;
 
+                    futurePeriods++;
                     const monthKey = `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}`; // YYYY-MM
 
                     // Calculate Shares
-                    // Principal Share: installment.principalDue * ratio
                     const principalShare = (period.principalDue || 0) * ratio;
-
-                    // Interest Share: installment.interestDue * (lenderRate/borrowerRate) * ratio
-                    // Note: interestDue from Fineract is the total interest for that period from borrower
                     const totalInterestDue = period.interestDue || 0;
                     const interestShare = totalInterestDue * (lenderRate / borrowerRate) * ratio;
 
@@ -1082,17 +1090,31 @@ export class InvestService {
                     entry.interest += interestShare;
                     entry.count += 1;
                 }
+
+                if (futurePeriods > 0) {
+                    processedCount++;
+                    this.logger.log(`[getProjectedIncome] Inv ${inv._id}: ${futurePeriods} future periods, ratio=${ratio.toFixed(2)}, lenderRate=${lenderRate}%`);
+                }
             }
+
+            this.logger.log(`[getProjectedIncome] Summary: Processed=${processedCount}, SkippedNoLoan=${skippedNoLoan}, SkippedNoSchedule=${skippedNoSchedule}`);
 
             // Convert Map to Array & Sort
             const results = Array.from(projectionMap.entries())
-                .map(([date, data]) => ({
-                    label: `T${date.split('-')[1]}`, // Label format: "T12"
-                    date,
-                    value: Math.floor(data.principal + data.interest),
-                    principal: Math.floor(data.principal),
-                    interest: Math.floor(data.interest)
-                }))
+                .map(([date, data]) => {
+                    // Get last day of the month for label (e.g., "31/01" for January)
+                    const [year, month] = date.split('-').map(Number);
+                    const lastDay = new Date(year, month, 0).getDate(); // 0 = last day of previous month
+                    const label = `${String(lastDay).padStart(2, '0')}/${String(month).padStart(2, '0')}`;
+
+                    return {
+                        label,
+                        date,
+                        value: Math.floor(data.principal + data.interest),
+                        principal: Math.floor(data.principal),
+                        interest: Math.floor(data.interest)
+                    };
+                })
                 .sort((a, b) => a.date.localeCompare(b.date));
 
             this.logger.log(`[getProjectedIncome] Lender: ${lenderId}, Total Months: ${results.length}`);
