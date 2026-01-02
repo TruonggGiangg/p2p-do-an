@@ -25,6 +25,7 @@ import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen, Lo
 import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen } from './src/screens/invest';
 import TransactionHistoryScreen from './src/screens/shared/TransactionHistoryScreen';
 import { TransferScreen } from './src/screens/shared/TransferScreen';
+import KYCScreen from './src/screens/kyc/KYCScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -142,9 +143,26 @@ function WalletStack() {
         component={TransactionHistoryScreen}
         options={{ headerShown: false }}
       />
+    </Stack.Navigator>
+  );
+}
+
+// Profile Stack Navigator
+function ProfileStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        ...darkHeaderOptions,
+      }}
+    >
       <Stack.Screen
-        name="Transfer"
-        component={TransferScreen}
+        name="ProfileMain"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="KYC"
+        component={KYCScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
@@ -229,7 +247,7 @@ function MainTabs() {
 
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
+        component={ProfileStack}
         options={{ title: 'Hồ Sơ' }}
       />
       <Tab.Screen

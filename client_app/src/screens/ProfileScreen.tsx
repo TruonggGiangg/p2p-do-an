@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi } from '../services';
 import type { KeycloakUserDetails } from '../types';
@@ -9,6 +10,7 @@ import { GradientBackground, GlassCard, GlassButton, GlassTokens, InfoRow, Secti
 import { UnifiedSpacing, UnifiedRadius } from '../theme';
 
 export default function ProfileScreen() {
+    const navigation = useNavigation();
     const { user, logout, isLoading } = useAuth();
     const [keycloakDetails, setKeycloakDetails] = useState<KeycloakUserDetails | null>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
@@ -123,6 +125,14 @@ export default function ProfileScreen() {
                 )}
 
                 {/* Action Buttons */}
+                <GlassButton
+                    title="Xác thực KYC"
+                    icon="card-account-details-outline"
+                    onPress={() => navigation.navigate('KYC' as never)}
+                    variant="primary"
+                    style={{ marginBottom: 12 }}
+                />
+
                 <GlassButton
                     title="Làm mới"
                     icon="refresh"

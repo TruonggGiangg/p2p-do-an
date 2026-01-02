@@ -2,7 +2,7 @@
  * Services Index - Export tất cả services từ một điểm
  * 
  * Usage:
- * import { authApi, keycloakApi, storageService, apiConfig, loanApi } from '@/services';
+ * import { authApi, keycloakApi, storageService, apiConfig, loanApi, ekycApi } from '@/services';
  */
 
 export { authApi } from './auth/auth.api';
@@ -15,4 +15,5 @@ export { loanApi } from './loan/loan.api';
 export { investApi } from './invest/invest.api';
 export { walletApi } from './wallet/wallet.api';
 export { repaymentApi } from './repayment/repayment.api';
+export { ekycApi } from './ekyc/ekyc.api';
 

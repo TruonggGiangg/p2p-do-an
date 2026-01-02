@@ -10,6 +10,7 @@ import { RepaymentModule } from './repayment/repayment.module';
 import { WalletModule } from './wallet/wallet.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { EkycModule } from './ekyc/ekyc.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -38,6 +39,7 @@ import { APP_GUARD } from '@nestjs/core';
     WalletModule,
     EscrowModule,
     ReconciliationModule,
+    EkycModule,
   ],
 
   controllers: [AppController],
