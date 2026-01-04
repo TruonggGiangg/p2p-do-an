@@ -381,7 +381,33 @@ export class InvestService {
             fixedDepositInterestRate: lenderAnnualRate,
             fixedDepositStatus: 'pending',
             fixedDepositBalance: investmentCapital,
+            totalPrincipalDistributed: 0,
+            fixedDepositTrackedBalance: investmentCapital,
         });
+
+        // ✅ 5.5 Calculate and save lender schedule (HỢP ĐỒNG LỊCH NHẬN TIỀN)
+        if (loanContract.fineractLoanId) {
+            try {
+                const lenderSchedule = await this.calculateLenderScheduleForCreate(
+                    investmentCapital,
+                    loanContract
+                );
+
+                if (lenderSchedule.length > 0) {
+                    investment.lenderSchedule = lenderSchedule;
+                    investment.scheduleTotalPrincipal = lenderSchedule.reduce((sum, p) => sum + p.principal, 0);
+                    investment.scheduleTotalInterest = lenderSchedule.reduce((sum, p) => sum + p.interest, 0);
+                    investment.scheduleTotalIncome = lenderSchedule.reduce((sum, p) => sum + p.total, 0);
+                    investment.schedulePeriodCount = lenderSchedule.length;
+
+                    this.logger.log(`[Investment] ✅ Lender Schedule saved: ${lenderSchedule.length} periods, ` +
+                        `Total Interest: ${investment.scheduleTotalInterest.toLocaleString()} VND`);
+                }
+            } catch (scheduleError: any) {
+                this.logger.warn(`[Investment] ⚠️ Failed to calculate lender schedule: ${scheduleError.message}`);
+                // Non-blocking - investment still proceeds
+            }
+        }
 
         // ✅ DEBUG: Verify lenderFineractClientId is being saved
         this.logger.debug(`[Investment] Creating investment ${contractId} with lenderFineractClientId: ${investment.lenderFineractClientId}`);
@@ -763,13 +789,279 @@ export class InvestService {
     }
 
     /**
-     * Enrich investment with real-time Fixed Deposit data
-     * ✅ FIX: Fetch actual profit from Fineract FD account
+     * Calculate lender income schedule using Distributed Accumulation Algorithm
+     * Matches loan repayment schedule structure with 3%/year admin spread deducted
+     */
+    private async calculateLenderSchedule(
+        investment: any,
+        loanContract: any,
+    ): Promise<Array<{
+        period: number;
+        dueDate: string;
+        principal: number;
+        interest: number;
+        total: number;
+    }>> {
+        if (!loanContract?.fineractLoanId) {
+            this.logger.warn(`[LenderSchedule] No fineractLoanId for loan ${loanContract?.contractId}`);
+            return [];
+        }
+
+        try {
+            // 1. Get loan repayment schedule from Fineract
+            const repaymentSchedule = await this.fineractService.getLoanRepaymentSchedule(
+                loanContract.fineractLoanId
+            );
+
+            if (!repaymentSchedule?.periods) {
+                this.logger.warn(`[LenderSchedule] No repayment schedule for loan ${loanContract.fineractLoanId}`);
+                return [];
+            }
+
+            // 2. Calculate rates and ratios
+            const borrowerMonthlyRate = loanContract.info?.rate || 1.5;
+            const borrowerAnnualRate = borrowerMonthlyRate * 12; // e.g., 18%
+            const adminSpread = this.configService.get<number>('ADMIN_SPREAD_PERCENTAGE') || 3;
+            const lenderAnnualRate = Math.max(0.5, borrowerAnnualRate - adminSpread); // e.g., 15%
+
+            // Ratio of lender interest to borrower interest
+            const rateRatio = lenderAnnualRate / borrowerAnnualRate;
+
+            // Investment share of total loan
+            const investmentCapital = investment.info?.capital || 0;
+            const loanCapital = loanContract.info?.capital || 1;
+            const investmentRatio = investmentCapital / loanCapital;
+
+            // 3. Rounding config (match Fineract)
+            const inMultiplesOf = 1000; // VND rounding
+
+            // 4. Distributed Accumulation Algorithm
+            // Smooths out rounding errors by tracking cumulative targets
+            let accumulatedBorrowerInterest = 0;
+            let accumulatedLenderInterest = 0;
+            let accumulatedLenderPrincipal = 0;
+
+            const validPeriods = repaymentSchedule.periods.filter(
+                (p: any) => p.period && p.period > 0 && !p.complete
+            );
+
+            this.logger.log(`[LenderSchedule] Calculating for ${investment.contractId}: ` +
+                `${validPeriods.length} periods, rateRatio=${rateRatio.toFixed(4)}, ` +
+                `investmentRatio=${investmentRatio.toFixed(4)}`);
+
+            const lenderSchedule = validPeriods.map((p: any, index: number) => {
+                const isLastPeriod = index === validPeriods.length - 1;
+
+                // Parse dueDate array [YYYY, MM, DD]
+                let dueDateStr = '';
+                if (Array.isArray(p.dueDate)) {
+                    const [year, month, day] = p.dueDate;
+                    dueDateStr = `${day}/${month}/${year}`;
+                } else if (p.dueDate) {
+                    dueDateStr = p.dueDate;
+                }
+
+                // Borrower values for this period
+                const borrowerPrincipal = p.principalDue || 0;
+                const borrowerInterest = p.interestDue || 0;
+
+                // Accumulate borrower interest
+                accumulatedBorrowerInterest += borrowerInterest;
+
+                // Target cumulative lender interest (rounded)
+                const targetCumulativeLenderInterest = this.roundToCurrency(
+                    accumulatedBorrowerInterest * rateRatio * investmentRatio,
+                    inMultiplesOf
+                );
+
+                // This period's lender interest = difference to reach target
+                const lenderInterest = Math.max(0, targetCumulativeLenderInterest - accumulatedLenderInterest);
+                accumulatedLenderInterest += lenderInterest;
+
+                // Lender principal share
+                let lenderPrincipal: number;
+                if (isLastPeriod) {
+                    // CRITICAL: Adjust last period to ensure total principal = investment capital
+                    lenderPrincipal = investmentCapital - accumulatedLenderPrincipal;
+                } else {
+                    lenderPrincipal = this.roundToCurrency(
+                        borrowerPrincipal * investmentRatio,
+                        inMultiplesOf
+                    );
+                }
+                accumulatedLenderPrincipal += lenderPrincipal;
+
+                return {
+                    period: p.period,
+                    dueDate: dueDateStr,
+                    principal: lenderPrincipal,
+                    interest: lenderInterest,
+                    total: lenderPrincipal + lenderInterest,
+                };
+            });
+
+            // Log first and last periods for debugging
+            if (lenderSchedule.length > 0) {
+                this.logger.log(`[LenderSchedule] First: ${JSON.stringify(lenderSchedule[0])}`);
+                this.logger.log(`[LenderSchedule] Last: ${JSON.stringify(lenderSchedule[lenderSchedule.length - 1])}`);
+                this.logger.log(`[LenderSchedule] Total Principal: ${accumulatedLenderPrincipal.toLocaleString()} VND (Capital: ${investmentCapital.toLocaleString()} VND)`);
+                this.logger.log(`[LenderSchedule] Total Interest: ${accumulatedLenderInterest.toLocaleString()} VND`);
+            }
+
+            return lenderSchedule;
+
+        } catch (error: any) {
+            this.logger.error(`[LenderSchedule] Error: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Round to currency multiples (Fineract rounding rule)
+     */
+    private roundToCurrency(amount: number, inMultiplesOf: number): number {
+        return Math.round(amount / inMultiplesOf) * inMultiplesOf;
+    }
+
+    /**
+     * Calculate lender schedule for use during investment creation
+     * Similar to calculateLenderSchedule but takes capital directly
+     */
+    private async calculateLenderScheduleForCreate(
+        investmentCapital: number,
+        loanContract: any,
+    ): Promise<Array<{
+        period: number;
+        dueDate: string;
+        principal: number;
+        interest: number;
+        total: number;
+        status: string;
+    }>> {
+        if (!loanContract?.fineractLoanId) {
+            return [];
+        }
+
+        try {
+            // 1. Get loan repayment schedule from Fineract
+            const repaymentSchedule = await this.fineractService.getLoanRepaymentSchedule(
+                loanContract.fineractLoanId
+            );
+
+            if (!repaymentSchedule?.periods) {
+                return [];
+            }
+
+            // 2. Calculate rates and ratios
+            const borrowerMonthlyRate = loanContract.info?.rate || 1.5;
+            const borrowerAnnualRate = borrowerMonthlyRate * 12;
+            const adminSpread = this.configService.get<number>('ADMIN_SPREAD_PERCENTAGE') || 3;
+            const lenderAnnualRate = Math.max(0.5, borrowerAnnualRate - adminSpread);
+
+            const rateRatio = lenderAnnualRate / borrowerAnnualRate;
+            const loanCapital = loanContract.info?.capital || 1;
+            const investmentRatio = investmentCapital / loanCapital;
+
+            const inMultiplesOf = 1000;
+
+            // 3. Distributed Accumulation Algorithm
+            let accumulatedBorrowerInterest = 0;
+            let accumulatedLenderInterest = 0;
+            let accumulatedLenderPrincipal = 0;
+
+            const validPeriods = repaymentSchedule.periods.filter(
+                (p: any) => p.period && p.period > 0
+            );
+
+            return validPeriods.map((p: any, index: number) => {
+                const isLastPeriod = index === validPeriods.length - 1;
+
+                let dueDateStr = '';
+                if (Array.isArray(p.dueDate)) {
+                    const [year, month, day] = p.dueDate;
+                    dueDateStr = `${day}/${month}/${year}`;
+                } else if (p.dueDate) {
+                    dueDateStr = p.dueDate;
+                }
+
+                const borrowerPrincipal = p.principalDue || 0;
+                const borrowerInterest = p.interestDue || 0;
+
+                accumulatedBorrowerInterest += borrowerInterest;
+                const targetCumulativeLenderInterest = this.roundToCurrency(
+                    accumulatedBorrowerInterest * rateRatio * investmentRatio,
+                    inMultiplesOf
+                );
+                const lenderInterest = Math.max(0, targetCumulativeLenderInterest - accumulatedLenderInterest);
+                accumulatedLenderInterest += lenderInterest;
+
+                // CRITICAL: Adjust last period to ensure total principal = investment capital
+                let lenderPrincipal: number;
+                if (isLastPeriod) {
+                    lenderPrincipal = investmentCapital - accumulatedLenderPrincipal;
+                } else {
+                    lenderPrincipal = this.roundToCurrency(
+                        borrowerPrincipal * investmentRatio,
+                        inMultiplesOf
+                    );
+                }
+                accumulatedLenderPrincipal += lenderPrincipal;
+
+                return {
+                    period: p.period,
+                    dueDate: dueDateStr,
+                    principal: lenderPrincipal,
+                    interest: lenderInterest,
+                    total: lenderPrincipal + lenderInterest,
+                    status: 'pending',
+                };
+            });
+
+        } catch (error: any) {
+            this.logger.error(`[LenderScheduleForCreate] Error: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Enrich investment with real-time Fixed Deposit data AND lender schedule
+     * ✅ FIX: Fetch actual profit from Fineract FD account + income schedule
      */
     private async enrichInvestmentWithFD(investment: any): Promise<any> {
-        // If no FD account, return as-is
+        const loanContract = investment.loanContract;
+
+        // Calculate lender schedule (always try, even without FD)
+        let lenderSchedule: any[] = [];
+        if (loanContract?.fineractLoanId) {
+            lenderSchedule = await this.calculateLenderSchedule(investment, loanContract);
+        }
+
+        // Calculate totals from schedule
+        const totalPrincipal = lenderSchedule.reduce((sum, p) => sum + p.principal, 0);
+        const totalInterest = lenderSchedule.reduce((sum, p) => sum + p.interest, 0);
+        const totalIncome = lenderSchedule.reduce((sum, p) => sum + p.total, 0);
+        const periodCount = lenderSchedule.length || (loanContract?.info?.periodMonth || 12);
+
+        // If no FD account, return with schedule only
         if (!investment.fineractFixedDepositAccountId) {
-            return investment;
+            return {
+                ...investment,
+                info: {
+                    ...investment.info,
+                    // Update with schedule-derived values if available
+                    entirelyProfit: totalInterest > 0 ? totalInterest : investment.info?.entirelyProfit,
+                    monthlyProfit: totalInterest > 0 ? Math.round(totalInterest / periodCount) : investment.info?.monthlyProfit,
+                    monthlyIncome: totalIncome > 0 ? Math.round(totalIncome / periodCount) : investment.info?.monthlyIncome,
+                    monthlyPrincipalIncome: totalPrincipal > 0 ? Math.round(totalPrincipal / periodCount) : investment.info?.monthlyPrincipalIncome,
+                },
+                lenderSchedule,
+                scheduleSummary: {
+                    totalPrincipal,
+                    totalInterest,
+                    totalIncome,
+                    periodCount,
+                },
+            };
         }
 
         try {
@@ -782,14 +1074,16 @@ export class InvestService {
             const accruedInterest = fdDetails.totalInterestEarned || 0;
             const currentBalance = fdDetails.accountBalance || investment.info.capital;
 
-            // Enrich investment info with FD data
+            // Enrich investment info with FD data + schedule
             const enriched = {
                 ...investment,
                 info: {
                     ...investment.info,
-                    // ✅ Update with real-time values
-                    entirelyProfit: Math.round(accruedInterest),
-                    monthlyProfit: Math.round(accruedInterest), // Total accrued so far
+                    // ✅ Update with schedule-derived values (more accurate than simple calculations)
+                    entirelyProfit: totalInterest > 0 ? totalInterest : Math.round(accruedInterest),
+                    monthlyProfit: totalInterest > 0 ? Math.round(totalInterest / periodCount) : Math.round(accruedInterest / periodCount),
+                    monthlyIncome: totalIncome > 0 ? Math.round(totalIncome / periodCount) : investment.info?.monthlyIncome,
+                    monthlyPrincipalIncome: totalPrincipal > 0 ? Math.round(totalPrincipal / periodCount) : investment.info?.monthlyPrincipalIncome,
                     accruedInterest: accruedInterest,
                     currentBalance: currentBalance,
                 },
@@ -800,17 +1094,36 @@ export class InvestService {
                     nominalAnnualInterestRate: fdDetails.nominalAnnualInterestRate,
                     maturityDate: fdDetails.maturityDate,
                     status: fdDetails.status,
-                }
+                },
+                // Add lender schedule
+                lenderSchedule,
+                scheduleSummary: {
+                    totalPrincipal,
+                    totalInterest,
+                    totalIncome,
+                    periodCount,
+                },
             };
 
-            this.logger.log(`[FD Enrichment] Investment ${investment.contractId}: profit=${accruedInterest.toLocaleString()} VND (from FD ${fdDetails.accountNo})`);
+            this.logger.log(`[FD Enrichment] Investment ${investment.contractId}: ` +
+                `FD profit=${accruedInterest.toLocaleString()}, ` +
+                `Schedule profit=${totalInterest.toLocaleString()} VND`);
 
             return enriched;
 
         } catch (error: any) {
             this.logger.error(`[FD Enrichment] Failed to fetch FD data for investment ${investment.contractId}: ${error.message}`);
-            // Return original investment if enrichment fails
-            return investment;
+            // Return with schedule but without FD data
+            return {
+                ...investment,
+                lenderSchedule,
+                scheduleSummary: {
+                    totalPrincipal,
+                    totalInterest,
+                    totalIncome,
+                    periodCount,
+                },
+            };
         }
     }
 

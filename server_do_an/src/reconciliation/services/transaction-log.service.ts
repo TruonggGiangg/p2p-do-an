@@ -134,7 +134,7 @@ export class TransactionLogService {
         investmentId: string;
         lenderId: string;
         amount: number;
-        action: 'FD_CREATE' | 'FD_TRANSFER' | 'FD_CLOSE';
+        action: 'FD_CREATE' | 'FD_TRANSFER' | 'FD_CLOSE' | 'FD_CLOSE_REIMBURSE';
         fineractTransactionId?: number; // Added
         status?: string;
     }) {
@@ -146,7 +146,9 @@ export class TransactionLogService {
                 status: params.status || 'SUCCESS',
                 p2pContext: params.action === 'FD_CLOSE'
                     ? 'Hoàn vốn FD'
-                    : 'Gửi vào FD',
+                    : params.action === 'FD_CLOSE_REIMBURSE'
+                        ? 'Hoàn vốn FD (Reimburse Admin)'
+                        : 'Gửi vào FD',
                 investmentId: params.investmentId,
                 lenderId: params.lenderId,
                 fineractFixedDepositAccountId: params.fdAccountId,

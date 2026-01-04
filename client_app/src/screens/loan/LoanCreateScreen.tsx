@@ -1,8 +1,4 @@
-/**
- * LoanCreateScreen - Fintech Calculator UI
- */
-
-import React, { useState, useCallback, useLayoutEffect, useRef } from 'react';
+import React, { useState, useCallback, useLayoutEffect, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -51,12 +47,27 @@ const getPurposeIcon = (purposeName: string): string => {
     return 'cash-multiple';
 };
 
+// ✅ Debounce hook for smoother input
+const useDebounce = (callback: () => void, delay: number) => {
+    const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+    return useCallback(() => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+        timeoutRef.current = setTimeout(() => {
+            callback();
+        }, delay);
+    }, [callback, delay]);
+};
+
 export default function LoanCreateScreen({ navigation }: any) {
     useLayoutEffect(() => {
         navigation.setOptions({ headerShown: false });
     }, [navigation]);
 
-    const [capital, setCapital] = useState<string>('10,000,000');
+    // ✅ Use raw input for smooth typing, format only for display
+    const [capitalRaw, setCapitalRaw] = useState<string>('10000000');
     const [periodMonth, setPeriodMonth] = useState<number>(12);
     const [willing, setWilling] = useState<string>('');
     const [disbursementDate] = useState<Date>(new Date(Date.now() + 86400000)); // Tomorrow
@@ -69,10 +80,16 @@ export default function LoanCreateScreen({ navigation }: any) {
     const [rejectionVisible, setRejectionVisible] = useState(false);
     const [rejectionData, setRejectionData] = useState<any>(null);
 
+    // ✅ Memoized formatted display value
+    const capitalDisplay = useMemo(() => formatNumber(parseInt(capitalRaw) || 0), [capitalRaw]);
+
     // Animation values
-    const purposeScaleAnim = useRef(new Animated.Value(1)).current;
-    const pillBounceAnim = useRef(new Animated.Value(1)).current;
     const rateCardFadeAnim = useRef(new Animated.Value(0)).current;
+
+    // ✅ Debounced rate preview reset
+    const debouncedResetPreview = useDebounce(() => {
+        setRatePreview(null);
+    }, 300);
 
     const loadPurposes = useCallback(async () => {
         try {
@@ -101,7 +118,7 @@ export default function LoanCreateScreen({ navigation }: any) {
     }, [loadPurposes]);
 
     const handleCheckRate = useCallback(async () => {
-        const capitalValue = parseNumber(capital);
+        const capitalValue = parseInt(capitalRaw) || 0;
         if (!capitalValue || capitalValue < 1000000) {
             Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 1,000,000 đ');
             return;
@@ -127,10 +144,10 @@ export default function LoanCreateScreen({ navigation }: any) {
                 useNativeDriver: true,
             }).start();
         }
-    }, [capital, periodMonth, disbursementDate]);
+    }, [capitalRaw, periodMonth, disbursementDate]);
 
     const handleSubmit = useCallback(async () => {
-        const capitalValue = parseNumber(capital);
+        const capitalValue = parseInt(capitalRaw) || 0;
         if (!capitalValue || capitalValue < 1000000) {
             Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 1,000,000 đ');
             return;
@@ -152,10 +169,10 @@ export default function LoanCreateScreen({ navigation }: any) {
                 ratePreview, // Pass rate preview for display
             },
         });
-    }, [capital, periodMonth, willing, disbursementDate, navigation, ratePreview]);
+    }, [capitalRaw, periodMonth, willing, disbursementDate, navigation, ratePreview]);
 
     return (
-        <GradientBackground>
+        <GradientBackground seed={capitalRaw}>
             <StatusBar barStyle="light-content" />
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
                 <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -176,11 +193,12 @@ export default function LoanCreateScreen({ navigation }: any) {
                         </View>
                         <View style={styles.amountInputWrapper}>
                             <TextInput
-                                value={capital}
+                                value={capitalDisplay}
                                 onChangeText={(val) => {
-                                    const num = parseNumber(val);
-                                    setCapital(formatNumber(num));
-                                    setRatePreview(null); // Reset preview on change
+                                    // ✅ Only store raw digits for smooth typing
+                                    const digits = val.replace(/[^0-9]/g, '');
+                                    setCapitalRaw(digits);
+                                    debouncedResetPreview(); // Debounced reset
                                 }}
                                 keyboardType="numeric"
                                 style={styles.amountInput}
@@ -232,31 +250,17 @@ export default function LoanCreateScreen({ navigation }: any) {
                             <ActivityIndicator color={GlassTokens.colors.primary} style={{ marginVertical: 20 }} />
                         ) : (
                             <View style={styles.gridContainer}>
-                                {purposes.map((item, index) => (
+                                {purposes.map((item) => (
                                     <TouchableOpacity
                                         key={item.id}
                                         activeOpacity={0.7}
                                         style={styles.gridItemWrapper}
-                                        onPressIn={() => {
-                                            Animated.spring(purposeScaleAnim, {
-                                                toValue: 0.95,
-                                                useNativeDriver: true,
-                                            }).start();
-                                        }}
-                                        onPressOut={() => {
-                                            Animated.spring(purposeScaleAnim, {
-                                                toValue: 1,
-                                                friction: 3,
-                                                useNativeDriver: true,
-                                            }).start();
-                                        }}
                                         onPress={() => setWilling(item.name)}
                                     >
-                                        <Animated.View
+                                        <View
                                             style={[
                                                 styles.gridItem,
                                                 willing === item.name && styles.gridItemActive,
-                                                { transform: [{ scale: purposeScaleAnim }] }
                                             ]}
                                         >
                                             <MaterialCommunityIcons
@@ -271,7 +275,7 @@ export default function LoanCreateScreen({ navigation }: any) {
                                             ]}>
                                                 {item.name}
                                             </Text>
-                                        </Animated.View>
+                                        </View>
                                     </TouchableOpacity>
                                 ))}
                             </View>
@@ -293,7 +297,7 @@ export default function LoanCreateScreen({ navigation }: any) {
                                 </View>
                                 <View style={styles.ticketRow}>
                                     <Text style={styles.ticketRowLabel}>Tổng lãi dự kiến</Text>
-                                    <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay - parseNumber(capital))} ₫</Text>
+                                    <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay - (parseInt(capitalRaw) || 0))} ₫</Text>
                                 </View>
                                 <View style={styles.ticketRow}>
                                     <Text style={styles.ticketRowLabel}>Tổng thanh toán</Text>
@@ -349,39 +353,42 @@ export default function LoanCreateScreen({ navigation }: any) {
                                 )}
                             </LinearGradient>
                         </TouchableOpacity>
-                    )}
+                    )
+                    }
 
                     <View style={{ height: 100 }} />
-                </ScrollView>
+                </ScrollView >
 
                 {/* Footer Submit */}
-                {ratePreview && (
-                    <View style={styles.footer}>
-                        <View style={styles.submitButtonShadowWrapper}>
-                            <TouchableOpacity
-                                activeOpacity={0.8}
-                                style={styles.submitButton}
-                                onPress={handleSubmit}
-                                disabled={submitting}
-                            >
-                                <LinearGradient
-                                    colors={['#3B82F6', '#2563EB']}
-                                    style={styles.submitGradient}
+                {
+                    ratePreview && (
+                        <View style={styles.footer}>
+                            <View style={styles.submitButtonShadowWrapper}>
+                                <TouchableOpacity
+                                    activeOpacity={0.8}
+                                    style={styles.submitButton}
+                                    onPress={handleSubmit}
+                                    disabled={submitting}
                                 >
-                                    {submitting ? (
-                                        <ActivityIndicator color="white" />
-                                    ) : (
-                                        <>
-                                            <Text style={styles.submitText}>Xác nhận vay ngay</Text>
-                                            <Ionicons name="arrow-forward" size={20} color="white" />
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
+                                    <LinearGradient
+                                        colors={['#3B82F6', '#2563EB']}
+                                        style={styles.submitGradient}
+                                    >
+                                        {submitting ? (
+                                            <ActivityIndicator color="white" />
+                                        ) : (
+                                            <>
+                                                <Text style={styles.submitText}>Xác nhận vay ngay</Text>
+                                                <Ionicons name="arrow-forward" size={20} color="white" />
+                                            </>
+                                        )}
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
-                )}
-            </KeyboardAvoidingView>
+                    )
+                }
+            </KeyboardAvoidingView >
 
             {rejectionData && (
                 <CreditRejectionModal
@@ -389,8 +396,9 @@ export default function LoanCreateScreen({ navigation }: any) {
                     onClose={() => setRejectionVisible(false)}
                     creditData={rejectionData}
                 />
-            )}
-        </GradientBackground>
+            )
+            }
+        </GradientBackground >
     );
 }
 

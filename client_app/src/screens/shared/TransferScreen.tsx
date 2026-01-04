@@ -115,15 +115,15 @@ export const TransferScreen: React.FC<TransferScreenProps> = ({ navigation, rout
                             } else if (mode === 'repayment') {
                                 if (!fineractLoanId) throw new Error('Missing Fineract Loan ID');
                                 result = await loanApi.makeRepayment({
-                                    fineractLoanId,
-                                    transactionAmount: transferAmount,
+                                    loanId: fineractLoanId, // Server expects 'loanId' not 'fineractLoanId'
+                                    amount: transferAmount, // Server expects 'amount' not 'transactionAmount'
                                     note: note || 'Repayment via P2P App'
                                 });
                             } else if (mode === 'prepay') {
                                 if (!fineractLoanId) throw new Error('Missing Fineract Loan ID');
                                 result = await loanApi.prepayLoan({
-                                    fineractLoanId,
-                                    transactionAmount: transferAmount, // Optional, can be auto-calculated backend side but explicit is better
+                                    loanId: fineractLoanId, // Server expects 'loanId' not 'fineractLoanId'
+                                    transactionAmount: transferAmount,
                                     note: note || 'Prepay via P2P App'
                                 });
                             }

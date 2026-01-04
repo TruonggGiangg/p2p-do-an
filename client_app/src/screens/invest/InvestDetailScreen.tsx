@@ -85,24 +85,34 @@ export default function InvestDetailScreen() {
             const investmentRatio = investmentAmount / totalLoan;
             const rateRatio = lenderAnnualRate / borrowerAnnualRate;
 
+            // ✅ Use Distributed Accumulation Algorithm (matching server)
+            let accumulatedBorrowerInterest = 0;
+            let accumulatedLenderInterest = 0;
             let accumulatedPrincipal = 0;
+
             sPeriodsData = periods.map((period: any, index: number) => {
+                const isLastPeriod = index === periods.length - 1;
                 const borrowerPrincipal = period.principalDue || 0;
                 const borrowerInterest = period.interestDue || 0;
 
-                let lenderPrincipal = roundToCurrency(borrowerPrincipal * investmentRatio);
-
-                // Adjust last period to ensure total principal equals investment amount
-                if (index === periods.length - 1) {
-                    const adjustment = investmentAmount - accumulatedPrincipal;
-                    // Only adjust if difference is reasonable (prevent massive jumps if logic is wrong)
-                    // But here we trust the logic.
-                    lenderPrincipal = adjustment;
+                // Calculate Principal
+                let lenderPrincipal: number;
+                if (isLastPeriod) {
+                    // Last period: ensure total principal = investment amount
+                    lenderPrincipal = investmentAmount - accumulatedPrincipal;
                     if (lenderPrincipal < 0) lenderPrincipal = 0;
+                } else {
+                    lenderPrincipal = roundToCurrency(borrowerPrincipal * investmentRatio);
                 }
                 accumulatedPrincipal += lenderPrincipal;
 
-                const lenderInterest = roundToCurrency(borrowerInterest * rateRatio * investmentRatio);
+                // Calculate Interest using Distributed Accumulation Algorithm
+                accumulatedBorrowerInterest += borrowerInterest;
+                const targetCumulativeLenderInterest = roundToCurrency(
+                    accumulatedBorrowerInterest * rateRatio * investmentRatio
+                );
+                const lenderInterest = Math.max(0, targetCumulativeLenderInterest - accumulatedLenderInterest);
+                accumulatedLenderInterest += lenderInterest;
 
                 return {
                     period: period.period,

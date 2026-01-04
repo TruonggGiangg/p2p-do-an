@@ -127,6 +127,11 @@ function InvestStack() {
         component={TransactionHistoryScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="Transfer"
+        component={TransferScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 }
@@ -147,6 +152,11 @@ function WalletStack() {
       <Stack.Screen
         name="TransactionHistory"
         component={TransactionHistoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Transfer"
+        component={TransferScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

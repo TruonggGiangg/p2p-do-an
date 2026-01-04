@@ -317,8 +317,8 @@ export interface FineractLoanDetails {
  * Make repayment request
  */
 export interface MakeRepaymentRequest {
-    fineractLoanId: number;
-    transactionAmount: number;
+    loanId: number | string; // Server expects 'loanId' (can be fineractLoanId or contractId)
+    amount: number; // Server expects 'amount'
     transactionDate?: string;
     note?: string;
 }
@@ -327,7 +327,7 @@ export interface MakeRepaymentRequest {
  * Prepay loan request
  */
 export interface PrepayLoanRequest {
-    fineractLoanId: number;
+    loanId: number | string; // Server expects 'loanId' (can be fineractLoanId or contractId)
     transactionAmount?: number;
     transactionDate?: string;
     note?: string;

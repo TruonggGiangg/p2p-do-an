@@ -89,7 +89,7 @@ export class EscrowService {
                 lenderSavings.id,
                 this.adminEscrowAccountId,
                 amount,
-                `Fund escrow for loan ${escrow.loanContractId}`
+                `Escrow for loan: ${escrow.loanContractId}`
             );
 
             // Update Escrow Status
@@ -140,7 +140,7 @@ export class EscrowService {
                 this.adminEscrowAccountId,
                 borrowerSavings.id,
                 amount,
-                `Disbursement for loan ${loanId}`
+                `Disbursement for loan: ${loanId}`
             );
 
             return {
@@ -202,7 +202,7 @@ export class EscrowService {
                     this.adminEscrowAccountId,
                     lenderSavings.id,
                     lenderShare,
-                    `Interest distribution for loan: ${loanId}`
+                    `Distribution for loan: ${loanId}`
                 );
 
                 results.push({

@@ -65,22 +65,18 @@ export class FixedDepositService {
         this.logger.log(`[createFixedDepositForLender] Creating FD for investment ${investmentContract.contractId}`);
 
         // Lấy thông tin loan
-        const borrowerInterestRate = loanContract.info?.rate || loanContract.borrowerInterestRate;
+        // ✅ FIX: Use ACTUAL rate from Fineract Loan Product (e.g., 1.5%/month = 18%/year)
+        // NOT the InterestRateCalculator's base rate which is different
+        const monthlyRate = loanContract.info?.rate || 1.5; // Default 1.5% per month
+        const borrowerRate = monthlyRate * 12; // Convert to annual: 18%
         const periodMonth = loanContract.info?.periodMonth || 12;
-        const creditScore = loanContract.creditScore || 500;
 
-        // Tính lãi suất dynamic
-        const rates = this.interestRateCalculator.calculateRates(
-            loanContract.info.capital,
-            periodMonth,
-            creditScore
-        );
+        // Admin spread is always 3%
+        const adminSpread = this.configService.get<number>('ADMIN_SPREAD_PERCENTAGE') || 3;
+        const lenderRate = Math.max(0.5, borrowerRate - adminSpread); // 18% - 3% = 15%
+        const spread = adminSpread;
 
-        const borrowerRate = rates.annualBorrowerRate;
-        const lenderRate = rates.annualLenderRate;
-        const spread = rates.annualSpread;
-
-        this.logger.log(`[createFixedDepositForLender] Dynamic rates: Borrower ${borrowerRate}%, Lender ${lenderRate}%, Spread ${spread}%`);
+        this.logger.log(`[createFixedDepositForLender] Rates from Loan Product: Borrower ${borrowerRate}%, Lender ${lenderRate}%, Spread ${spread}%`);
 
         // Tính ngày đáo hạn
         const disbursementDate = loanContract.disburse_date || loanContract.info?.disbursementDate || new Date();

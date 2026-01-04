@@ -36,18 +36,29 @@ export class RepaymentService {
      * 4. Update Investment records
      * 5. Track admin spread earned
      */
-    async processRepayment(loanId: string, repaymentAmount: number, repaymentDate: Date): Promise<any> {
+    async processRepayment(loanId: string | number, repaymentAmount: number, repaymentDate: Date): Promise<any> {
         this.logger.log(`Processing repayment for loan ${loanId}, amount: ${repaymentAmount}`);
 
-        // 1. Find Loan
-        let loan = await this.loanModel.findOne({ contractId: loanId });
-        if (!loan && loanId.startsWith('LOAN_')) {
-            const fineractId = parseInt(loanId.replace('LOAN_', ''), 10);
+        // 1. Find Loan - convert loanId to string for safe operations
+        const loanIdStr = String(loanId);
+        let loan = await this.loanModel.findOne({ contractId: loanIdStr });
+
+        if (!loan && loanIdStr.startsWith('LOAN_')) {
+            const fineractId = parseInt(loanIdStr.replace('LOAN_', ''), 10);
             loan = await this.loanModel.findOne({ fineractLoanId: fineractId });
         }
+
+        // Try by numeric fineractLoanId directly  
+        if (!loan) {
+            const numericId = parseInt(loanIdStr, 10);
+            if (!isNaN(numericId)) {
+                loan = await this.loanModel.findOne({ fineractLoanId: numericId });
+            }
+        }
+
         // Fallback: Check if loanId is ObjectId
-        if (!loan && loanId.match(/^[0-9a-fA-F]{24}$/)) {
-            loan = await this.loanModel.findById(loanId);
+        if (!loan && loanIdStr.match(/^[0-9a-fA-F]{24}$/)) {
+            loan = await this.loanModel.findById(loanIdStr);
         }
 
         if (!loan) {
@@ -98,12 +109,44 @@ export class RepaymentService {
                 lenderFineractClientId: inv.lenderFineractClientId
             }));
 
+            // ✅ AUTO-DETECT PREPAYMENT: Check if this payment closes the loan
+            // Query Fineract for current loan status after repayment
+            let isFinalPayment = false;
+            let interestPortion: number | undefined = undefined;
+
+            try {
+                if (!loan.fineractLoanId) {
+                    this.logger.warn('[Repayment] No fineractLoanId, cannot auto-detect final payment');
+                } else {
+                    const loanDetails = await this.fineractService.getLoanDetails(loan.fineractLoanId);
+                    const outstanding = loanDetails.summary?.totalOutstanding || 0;
+
+                    // If outstanding is 0 or very small (rounding), this is final payment
+                    if (outstanding <= 1000) {
+                        isFinalPayment = true;
+                        this.logger.log(`[Repayment] AUTO-DETECTED FINAL PAYMENT: Outstanding balance = ${outstanding}`);
+
+                        // Get exact interest from repayment breakdown
+                        const lastTransaction = loanDetails.transactions?.find((t: any) =>
+                            t.type?.repayment && t.amount === repaymentAmount
+                        );
+                        if (lastTransaction) {
+                            interestPortion = lastTransaction.interestPortion || 0;
+                            this.logger.log(`[Repayment] Exact interest from Fineract: ${interestPortion}`);
+                        }
+                    }
+                }
+            } catch (err) {
+                this.logger.warn(`[Repayment] Could not auto-detect final payment: ${err.message}`);
+            }
+
             distributions = await this.distributeRepaymentToLendersWithFD(
                 loan.contractId,
                 repaymentAmount,
                 enrichedInvestments,
-                false, // isFinalPayment (default false for regular repayment)
-                loan
+                isFinalPayment,
+                loan,
+                interestPortion
             );
 
             // Calculate admin spread for return object
@@ -193,23 +236,70 @@ export class RepaymentService {
             monthlyPrincipal = repaymentAmount - interestPortion;
             this.logger.log(`[FD Distribution] ✅ Using EXACT interest from Fineract: ${interestPortion}`);
         } else {
-            // REGULAR: Formula
-            monthlyPrincipal = repaymentAmount / (1 + (borrowerRate / 100 / 12));
-            monthlyInterest = repaymentAmount - monthlyPrincipal;
-            this.logger.log(`[FD Distribution] Using formula calculation`);
+            // REGULAR: Calculate actual borrower interest based on outstanding principal
+            // For Declining Balance: Interest = Outstanding Principal × Monthly Rate
+            // We need to estimate the outstanding principal based on loan progress
+
+            // Get current period from schedule (first lender's schedule)
+            const firstInvestment = investments[0];
+            const fullFirstInv = await this.investModel.findById(firstInvestment._id);
+            const currentPeriod = this.getCurrentPeriodFromSchedule(fullFirstInv?.lenderSchedule);
+            const periodNumber = currentPeriod?.period || 1;
+
+            // Calculate borrower interest for this period
+            // Borrower schedule interest decreases over time as principal is paid
+            // Use ratio: borrowerRate / lenderRate to estimate borrower interest from lender interest
+            const lenderRate = fullFirstInv?.fixedDepositInterestRate || 15.0;
+            const rateRatio = borrowerRate / lenderRate; // 18/15 = 1.2
+
+            // Total lender interest from schedule for this period
+            const totalLenderInterestFromSchedule = investments.length * (currentPeriod?.interest || 6000);
+
+            // Borrower interest = Lender interest × rate ratio
+            monthlyInterest = Math.round(totalLenderInterestFromSchedule * rateRatio);
+            monthlyPrincipal = repaymentAmount - monthlyInterest;
+
+            this.logger.log(`[FD Distribution] Using Declining Balance calculation: Period ${periodNumber}, RateRatio=${rateRatio.toFixed(2)}`);
         }
 
         this.logger.log(`[FD Distribution] Breakdown: Principal=${monthlyPrincipal}, Interest=${monthlyInterest}`);
 
         for (const investment of investments) {
-            const ratio = investment.amount / totalCapital;
-            const fdRate = investment.fixedDepositInterestRate || 10.0;
-            const principalShare = Math.floor(monthlyPrincipal * ratio);
+            // ✅ NEW: Get amounts from stored lenderSchedule instead of recalculating
+            const fullInvestment = await this.investModel.findById(investment._id);
+            const currentPeriod = this.getCurrentPeriodFromSchedule(fullInvestment?.lenderSchedule);
 
-            // 🔧 CRITICAL: Round DOWN to nearest 1000 VND (Fineract VND requirement: inMultiplesOf 1000)
-            // P2P reference transfers 40,000 VND (not 40,066) - this makes transfers visible in UI
-            const rawInterest = monthlyInterest * (fdRate / borrowerRate) * ratio;
-            const interestShare = Math.floor(rawInterest / 1000) * 1000;
+            let principalShare: number;
+            let interestShare: number;
+
+            if (currentPeriod) {
+                // Use schedule values (HỢP ĐỒNG)
+                principalShare = currentPeriod.principal;
+                interestShare = currentPeriod.interest;
+                this.logger.log(`[FD Distribution] Using SCHEDULE for ${investment._id}: Period ${currentPeriod.period}, P=${principalShare}, I=${interestShare}`);
+
+                // ✅ PREPAYMENT OVERRIDE: Use proportional interest based on actual borrower interest
+                // Schedule Period 1 interest ≠ actual prepayment interest
+                // Lender should receive: borrowerInterest × (lenderRate / borrowerRate) × investmentRatio
+                if (isFinalPayment && interestPortion != null && interestPortion > 0) {
+                    const lenderAnnualRate = fullInvestment?.fixedDepositInterestRate || 15.0;
+                    const ratio = investment.amount / totalCapital;
+                    // Proportional interest: borrowerInterest × (lenderRate / borrowerRate) × ratio
+                    const proportionalInterest = Math.floor((interestPortion * (lenderAnnualRate / borrowerRate) * ratio) / 1000) * 1000;
+                    this.logger.log(`[Prepayment] OVERRIDE interest: Schedule=${interestShare} → Proportional=${proportionalInterest} (ratio=${ratio.toFixed(2)}, lenderRate=${lenderAnnualRate}%, borrowerRate=${borrowerRate}%)`);
+                    interestShare = proportionalInterest;
+                    // Also override principal for prepayment: full investment amount
+                    principalShare = investment.amount;
+                }
+            } else {
+                // Fallback: Calculate if no schedule (legacy investments)
+                const ratio = investment.amount / totalCapital;
+                const fdRate = investment.fixedDepositInterestRate || 10.0;
+                principalShare = Math.floor(monthlyPrincipal * ratio);
+                const rawInterest = monthlyInterest * (fdRate / borrowerRate) * ratio;
+                interestShare = Math.floor(rawInterest / 1000) * 1000;
+                this.logger.warn(`[FD Distribution] No schedule for ${investment._id}, using FALLBACK calculation`);
+            }
 
             const totalShare = principalShare + interestShare;
 
@@ -254,45 +344,55 @@ export class RepaymentService {
                 }
 
                 if (isFinalPayment) {
-                    // PREPAYMENT: Post interest to FD, close FD, then transfer interest from Escrow
+                    const fdAccountIdNum = Number(investment.fineractFixedDepositAccountId);
+                    if (isNaN(fdAccountIdNum)) throw new Error('Invalid FD Account ID');
+
+                    // PREPAYMENT: Close FD. proceeds go to ADMIN (Reimbursement)
+                    // Lender already received periodic principal from Escrow
                     const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
                     const lenderMainSavingsId = savingsAccount?.id;
                     if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
 
-                    // 1. Post final interest to FD (accumulate before closure)
+                    // 1. Post final interest to FD (tracked logically, borrower interest from Fineract prepay template)
                     if (interestShare > 0) {
-                        await this.fdService.postInterestToFD(fdAccountId, interestShare);
-                        this.logger.log(`✓ Posted interest ${interestShare} to FD ${fdAccountId}`);
+                        await this.fdService.postInterestToFD(fdAccountIdNum, interestShare);
+                        this.logger.log(`✓ Posted interest ${interestShare} to FD ${fdAccountIdNum}`);
                     }
 
-                    // 2. Close FD → Transfers principal from FD to Lender Main Savings
-                    const closureResult = await this.fdService.closeFixedDepositAccount(fdAccountId, lenderMainSavingsId, loanId);
-                    this.logger.log(`✓ Closed FD ${fdAccountId}, FD closure amount: ${closureResult.closureAmount}`);
+                    // 2. CLOSE FD TO ADMIN (REIMBURSEMENT)
+                    // Lender has already received principal through direct distribution
+                    // FD proceeds must return to Admin/Escrow to cover those advanced payments
+                    const adminSavingsAccount = await this.fineractService.getClientSavingsAccount(this.escrowService['adminClientId']);
+                    const adminSavingsId = adminSavingsAccount?.id as number;
 
-                    // 3. ✅ LOG FD CLOSURE (principal transfer from FD)
+                    this.logger.log(`[FD Closure] Closing FD ${fdAccountIdNum} to ADMIN ${this.escrowService['adminClientId']} (Account ${adminSavingsId}) for REIMBURSEMENT`);
+                    const closureResult = await this.fdService.closeFixedDepositAccount(fdAccountIdNum, adminSavingsId, `REIMBURSEMENT for loan ${loan.contractId}`);
+                    this.logger.log(`✓ Closed FD ${fdAccountIdNum}, Reimbursement amount: ${closureResult.closureAmount}`);
+
+                    // 3. LOG REIMBURSEMENT
                     await this.transactionLogService.logFDTransfer({
-                        fdAccountId: fdAccountId,
+                        fdAccountId: fdAccountIdNum,
                         investmentId: investment.contractId || String(investment._id),
                         lenderId: investment.lender,
                         amount: closureResult.closureAmount,
-                        action: 'FD_CLOSE',
+                        action: 'FD_CLOSE_REIMBURSE',
                         fineractTransactionId: closureResult.transactionId
                     });
 
-                    // 4. 🆕 Transfer interest from Escrow → Lender Main Savings (P2P Reference line 882-904)
+                    // 4. Transfer final interest from Escrow → Lender Main Savings
                     if (interestShare > 0) {
-                        this.logger.log(`[Interest Transfer] Transferring ${interestShare} from Escrow to Lender ${investment.lender}`);
+                        this.logger.log(`[Interest Transfer] Transferring final interest ${interestShare} from Escrow to Lender ${investment.lender}`);
 
                         const interestTransferId = await this.transferFromEscrowToLender(
                             String(lenderFineractClientId),
                             lenderMainSavingsId,
                             interestShare,
-                            loan.contractId || loanId // Use contractId format like P2P reference
+                            loan.contractId || loanId
                         );
 
-                        this.logger.log(`✓ Interest transferred from Escrow: ${interestShare}, txId: ${interestTransferId}`);
+                        this.logger.log(`✓ Final interest transferred from Escrow: ${interestShare}, txId: ${interestTransferId}`);
 
-                        // 5. ✅ LOG INTEREST DISTRIBUTION
+                        // 5. LOG INTEREST DISTRIBUTION
                         await this.transactionLogService.logDistribution({
                             loanId,
                             lenderId: investment.lender,
@@ -302,68 +402,45 @@ export class RepaymentService {
                         });
                     }
 
-                    // Total amount lender receives = FD closure + interest from Escrow
-                    const totalReceivedByLender = closureResult.closureAmount + interestShare;
-                    this.logger.log(`[Final Payment] Lender receives total: ${totalReceivedByLender} (FD: ${closureResult.closureAmount} + Interest: ${interestShare})`);
+                    this.logger.log(`[Final Payment] Lender received interest: ${interestShare}. FD Principal ${closureResult.closureAmount} returned to Admin.`);
 
                     withdrawalResult = {
                         transactionId: closureResult.transactionId,
                         remainingBalance: 0,
-                        note: `FD closed: ${closureResult.closureAmount}, Interest from Escrow: ${interestShare}`
+                        note: `FD closed for reimbursement: ${closureResult.closureAmount}, Interest from Escrow: ${interestShare}`
                     };
                 } else {
-                    // REGULAR REPAYMENT: Bypass FD, direct transfer from Escrow → Lender (P2P Reference lines 910-956)
-                    // Reason: Fineract FD does NOT support partial withdrawal
-
+                    // REGULAR REPAYMENT: Distribute FULL (P+I) from Escrow → Lender
                     const savingsAccount = await this.fineractService.getClientSavingsAccount(lenderFineractClientId);
                     const lenderMainSavingsId = savingsAccount?.id;
                     if (!lenderMainSavingsId) throw new Error('Lender main savings account not found');
 
-                    // Calculate total share (principal + interest)
                     const totalDistribute = principalShare + interestShare;
 
                     if (totalDistribute > 0) {
-                        this.logger.log(`[Regular Repayment] Bypassing FD, direct transfer ${totalDistribute} (P: ${principalShare}, I: ${interestShare}) from Escrow to Lender ${investment.lender}`);
+                        this.logger.log(`[Regular Repayment] Distributing FULL: ${totalDistribute} (P: ${principalShare}, I: ${interestShare}) from Escrow to Lender ${investment.lender}`);
 
                         const distTxnId = await this.transferFromEscrowToLender(
                             String(lenderFineractClientId),
                             lenderMainSavingsId,
                             totalDistribute,
-                            loan.contractId || loanId // Use contractId format like P2P reference
+                            loan.contractId || loanId
                         );
 
-                        this.logger.log(`✓ Direct transfer completed: ${totalDistribute}, txId: ${distTxnId}`);
+                        this.logger.log(`✓ Full distribution completed: ${totalDistribute}, txId: ${distTxnId}`);
 
-                        // ✅ LOG DISTRIBUTION (principal + interest combined)
-                        let distType: 'PRINCIPAL' | 'INTEREST' | 'BOTH' = 'INTEREST';
-                        if (principalShare > 0 && interestShare > 0) distType = 'BOTH';
-                        else if (principalShare > 0) distType = 'PRINCIPAL';
-
+                        // LOG DISTRIBUTION (Both P+I)
                         await this.transactionLogService.logDistribution({
                             loanId,
                             lenderId: investment.lender,
                             amount: totalDistribute,
-                            type: distType,
+                            type: principalShare > 0 && interestShare > 0 ? 'BOTH' : (principalShare > 0 ? 'PRINCIPAL' : 'INTEREST'),
                             fineractTransactionId: distTxnId
                         });
                     }
 
-                    // 2. Update FD principal balance if principal is repaid
-                    if (principalShare > 0) {
-                        try {
-                            await this.fdService.withdrawFixedDeposit(fdAccountId, principalShare, 'Partial Principal Repayment');
-                            this.logger.log(`✓ Withdrew principal ${principalShare} from FD ${fdAccountId}`);
-                        } catch (e: any) {
-                            this.logger.warn(`Failed to sync partial principal withdrawal for FD ${fdAccountId}: ${e.message}`);
-                        }
-                    }
-
-                    // ✅ NO TRANSFER, NO DISTRIBUTION LOG for regular repayment
-                    // Interest accumulates in FD, will be paid out when FD closes
-
-                    this.logger.log(`[Regular Repayment] Interest ${interestShare} accumulated in FD ${fdAccountId} (Principal: ${principalShare})`);
-                    withdrawalResult = { transactionId: null, remainingBalance: null, note: `Interest accumulated in FD, Principal adjusted: ${principalShare}` };
-
+                    this.logger.log(`[Regular Repayment] Distributed ${totalDistribute} to lender. FD ${fdAccountId} balance remains as record.`);
+                    withdrawalResult = { transactionId: null, remainingBalance: investment.fixedDepositBalance - principalShare, note: `Full distribution: ${totalDistribute}` };
                 }
 
                 // Update Local Record
@@ -374,7 +451,8 @@ export class RepaymentService {
                             totalReceived: totalShare,
                             totalPrincipalReceived: principalShare,
                             totalInterestReceived: interestShare,
-                            fixedDepositInterestEarned: interestShare
+                            fixedDepositInterestEarned: interestShare,
+                            totalPrincipalDistributed: principalShare // Tracking
                         },
                         $push: {
                             repaymentHistory: {
@@ -386,6 +464,7 @@ export class RepaymentService {
                             }
                         },
                         fixedDepositBalance: withdrawalResult.remainingBalance || 0,
+                        fixedDepositTrackedBalance: (fullInvestment?.fixedDepositTrackedBalance ?? investment.fixedDepositBalance) - principalShare,
                         fixedDepositStatus: isFinalPayment ? 'closed' : 'active'
                     }
                 );
@@ -399,16 +478,47 @@ export class RepaymentService {
                     isFinalPayment
                 });
 
+                // ✅ Update lenderSchedule status to 'paid'
+                if (currentPeriod) {
+                    await this.updateScheduleStatus(String(investment._id), currentPeriod.period, totalShare);
+                }
+
             } catch (error: any) {
                 this.logger.error(`Error distributing to lender ${investment.lender}: ${error.message}`);
                 results.push({ lenderId: investment.lender, amount: 0, error: error.message });
             }
         }
 
-        // Log Admin Profit
+        // Calculate Admin Profit correctly based on payment type
+        // For Regular Repayment: Lenders only receive INTEREST, principal stays in FD
+        // For Final Payment: Lenders receive FD closure (principal) + interest
         const totalLenderInterest = results.reduce((sum, r) => sum + (r.interest || 0), 0);
-        const adminSpreadEarned = monthlyInterest - totalLenderInterest;
-        this.logger.log(`[Admin Profit] Spread Earned: ${adminSpreadEarned}`);
+
+        let adminSpreadEarned: number;
+        let totalActuallyDistributed: number;
+
+        if (isFinalPayment) {
+            // Final payment: Borrower pays remaining principal + interest
+            // Lenders receive: FD closure (principal) + interest from Escrow
+            // Admin spread = borrowerInterest - lenderInterest (principal is 1:1)
+            const borrowerInterestPortion = interestPortion || monthlyInterest;
+            adminSpreadEarned = borrowerInterestPortion - totalLenderInterest;
+            totalActuallyDistributed = repaymentAmount; // Full prepay amount (includes FD closures handled separately)
+            this.logger.log(`[Admin Profit] FINAL: BorrowerInterest=${borrowerInterestPortion}, LenderInterest=${totalLenderInterest}, Spread=${adminSpreadEarned}`);
+        } else {
+            // Regular repayment: Only INTEREST distributed from Escrow
+            // Principal schedule portion goes to escrow but lender doesn't receive it yet (it's in FD)
+            // Interest portion of borrower payment - interest distributed to lenders = admin spread
+            const totalLenderInterest = results.reduce((sum, r) => sum + r.interest, 0);
+            // Recalculate rates for spread estimation block
+            const bRate = loan.borrowerInterestRate || (loan.info?.rate * 12) || 16;
+            const lRate = loan.lenderInterestRate || bRate || 12;
+
+            const borrowerInterestEstimate = Math.round(totalLenderInterest * (bRate / lRate));
+            adminSpreadEarned = borrowerInterestEstimate - totalLenderInterest;
+
+            this.logger.log(`[Admin Profit] FULL_DIST: BorrowerInterest=${borrowerInterestEstimate}, LenderInterest=${totalLenderInterest}, Spread=${adminSpreadEarned}`);
+        }
 
         await this.loanModel.updateOne({ contractId: loanId }, { $inc: { adminSpreadEarned: adminSpreadEarned } });
 
@@ -417,6 +527,48 @@ export class RepaymentService {
 
     private async distributeLegacy(loanId: string, amount: number, investments: any[]): Promise<any[]> {
         return await this.escrowService.distributeRepaymentToLenders(loanId, amount, investments);
+    }
+
+    /**
+     * Get current pending period from lenderSchedule
+     * Returns the first period with status = 'pending'
+     */
+    private getCurrentPeriodFromSchedule(schedule: any[] | undefined): { period: number; principal: number; interest: number; total: number } | null {
+        if (!schedule || schedule.length === 0) {
+            return null;
+        }
+        // Find first pending period
+        const pendingPeriod = schedule.find(p => p.status === 'pending');
+        if (pendingPeriod) {
+            return {
+                period: pendingPeriod.period,
+                principal: pendingPeriod.principal,
+                interest: pendingPeriod.interest,
+                total: pendingPeriod.total,
+            };
+        }
+        return null;
+    }
+
+    /**
+     * Update lenderSchedule status after payment
+     */
+    private async updateScheduleStatus(investmentId: string, period: number, paidAmount: number): Promise<void> {
+        try {
+            await this.investModel.updateOne(
+                { _id: investmentId, 'lenderSchedule.period': period },
+                {
+                    $set: {
+                        'lenderSchedule.$.status': 'paid',
+                        'lenderSchedule.$.paidDate': new Date(),
+                        'lenderSchedule.$.paidAmount': paidAmount,
+                    }
+                }
+            );
+            this.logger.log(`[Schedule Update] Period ${period} marked as PAID for investment ${investmentId}`);
+        } catch (error: any) {
+            this.logger.error(`[Schedule Update] Failed to update period ${period}: ${error.message}`);
+        }
     }
 
     private async getLenderMainSavingsAccountId(lenderId: string): Promise<number | null> {

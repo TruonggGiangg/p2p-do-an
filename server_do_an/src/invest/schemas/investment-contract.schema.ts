@@ -62,6 +62,43 @@ export class RepaymentHistoryItem {
 }
 
 /**
+ * Lender Schedule Item - Lịch nhận tiền của nhà đầu tư
+ * Đây là hợp đồng giữa sàn và lender về lịch trả tiền
+ */
+@Schema({ _id: false })
+export class LenderScheduleItem {
+    @Prop({ required: true })
+    period: number; // Kỳ thứ mấy (1, 2, 3, ...)
+
+    @Prop({ required: true })
+    dueDate: string; // Ngày đến hạn nhận tiền (DD/MM/YYYY)
+
+    @Prop({ required: true })
+    principal: number; // Gốc nhận kỳ này
+
+    @Prop({ required: true })
+    interest: number; // Lãi nhận kỳ này (đã trừ 3% spread)
+
+    @Prop({ required: true })
+    total: number; // Tổng nhận kỳ này
+
+    @Prop({
+        enum: ['pending', 'paid', 'partial', 'overdue'],
+        default: 'pending'
+    })
+    status: string; // Trạng thái thanh toán
+
+    @Prop()
+    paidDate?: Date; // Ngày thực nhận
+
+    @Prop()
+    paidAmount?: number; // Số tiền thực nhận
+
+    @Prop()
+    fineractTransactionId?: number; // ID giao dịch Fineract
+}
+
+/**
  * InvestmentContract Schema
  */
 @Schema({
@@ -155,6 +192,30 @@ export class InvestmentContract extends Document {
 
     @Prop({ default: 0 })
     totalInterestReceived: number;
+
+    // === LENDER SCHEDULE (Hợp đồng lịch nhận tiền) ===
+    @Prop({ type: [LenderScheduleItem], default: [] })
+    lenderSchedule: LenderScheduleItem[];
+
+    // Summary totals from schedule
+    @Prop({ default: 0 })
+    scheduleTotalPrincipal: number;
+
+    @Prop({ default: 0 })
+    scheduleTotalInterest: number;
+
+    @Prop({ default: 0 })
+    scheduleTotalIncome: number;
+
+    @Prop({ default: 0 })
+    schedulePeriodCount: number;
+
+    // === FD DIRECT DISTRIBUTION TRACKING ===
+    @Prop({ default: 0 })
+    totalPrincipalDistributed: number;
+
+    @Prop({ default: null })
+    fixedDepositTrackedBalance: number;
 }
 
 export const InvestmentContractSchema = SchemaFactory.createForClass(InvestmentContract);

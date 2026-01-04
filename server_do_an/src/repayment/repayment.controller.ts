@@ -39,12 +39,22 @@ export class RepaymentController {
                 return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Invalid loanId or amount' });
             }
 
-            // 2. Find Loan
-            let loan = await this.loanModel.findOne({ contractId: loanId });
-            // ... (helper to find by fineract ID if needed)
-            if (!loan && loanId.startsWith('LOAN_')) {
-                const fineractId = parseInt(loanId.replace('LOAN_', ''), 10);
+            // 2. Find Loan - support both string contractId and numeric fineractLoanId
+            const loanIdStr = String(loanId);
+            let loan = await this.loanModel.findOne({ contractId: loanIdStr });
+
+            // Try by LOAN_xxx format
+            if (!loan && loanIdStr.startsWith('LOAN_')) {
+                const fineractId = parseInt(loanIdStr.replace('LOAN_', ''), 10);
                 loan = await this.loanModel.findOne({ fineractLoanId: fineractId });
+            }
+
+            // Try by numeric fineractLoanId directly
+            if (!loan) {
+                const numericId = parseInt(loanIdStr, 10);
+                if (!isNaN(numericId)) {
+                    loan = await this.loanModel.findOne({ fineractLoanId: numericId });
+                }
             }
 
             if (!loan) {
@@ -60,13 +70,35 @@ export class RepaymentController {
                 }
             }
 
-            // 5. Get Borrower Wallet & Balance
+            // 5. Get Borrower Fineract Client ID
+            // First try wallet model, then try from loan.borrower, finally use resolveClientId
+            let borrowerFineractClientId: number | null = null;
+
+            // Try from wallet model
             const wallet = await this.walletModel.findOne({ p2pUserId: userId });
-            if (!wallet || !wallet.fineractClientId) {
+            if (wallet?.fineractClientId) {
+                borrowerFineractClientId = Number(wallet.fineractClientId);
+            }
+
+            // Fallback: Try resolveClientId using borrower's phone from loan
+            if (!borrowerFineractClientId) {
+                try {
+                    // Get borrower phone from loan (could be username format)
+                    const borrower = loan.borrower as any;
+                    const borrowerPhone = typeof borrower === 'string' ? borrower : borrower?.username || String(borrower);
+                    if (borrowerPhone) {
+                        borrowerFineractClientId = await this.fineractService.resolveClientId(String(borrowerPhone));
+                    }
+                } catch (err) {
+                    this.logger.warn(`[Repayment] Could not resolve borrower client ID: ${err.message}`);
+                }
+            }
+
+            if (!borrowerFineractClientId) {
                 return res.status(HttpStatus.BAD_REQUEST).json({ message: 'Borrower wallet not linked via Fineract' });
             }
 
-            const clientDetails = await this.fineractService.getClientDetails(Number(wallet.fineractClientId));
+            const clientDetails = await this.fineractService.getClientDetails(borrowerFineractClientId);
             // CRITICAL: Must filter by depositType=100 AND externalId WALLET_ (p2p ref line 927-931)
             const savingsAccount = clientDetails.savingsAccounts?.find((acc: any) =>
                 acc.depositType?.id === 100 && // Savings (NOT FD=200)
@@ -91,18 +123,19 @@ export class RepaymentController {
                     loan.fineractLoanId,
                     amount,
                     new Date().toISOString().split('T')[0],
-                    `Repayment for loan ${loanId} [Fineract:${loan.fineractLoanId}]`
+                    `Thanh toán gốc & lãi for loan: ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
                 );
             }
 
             // 7. Transfer Borrower -> Escrow
+            // Description MUST match p2pService.parseP2PDescription regex: /(?:Repayment|Trả nợ).*?loan[:\s]+([A-Z0-9_]+)/i
             const transferRes = await this.fineractService.transferFunds(
-                Number(wallet.fineractClientId),
-                this.escrowService['adminClientId'], // access via service or config
+                borrowerFineractClientId,
+                this.escrowService['adminClientId'],
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 amount,
-                `Repayment for loan ${loanId} [Fineract:${loan.fineractLoanId}]`
+                `Trả nợ for loan: ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
             );
 
             // 8. Distribute to Lenders
@@ -275,13 +308,14 @@ export class RepaymentController {
             );
 
             // 6. Transfer Borrower → Escrow
+            // Description MUST contain "Trả nợ" or "Repayment" to match mifos regex: /(?:Repayment|Trả nợ).*?loan[:\s]+([A-Z0-9_]+)/i
             const transferRes = await this.fineractService.transferFunds(
                 Number(borrowerFineractClientId),
                 this.escrowService['adminClientId'],
                 savingsAccount.id,
                 this.escrowService['adminEscrowAccountId'],
                 totalPrepayAmount,
-                `Prepayment (full) for loan ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
+                `Trả nợ (Tất toán) for loan: ${loan.contractId} [Fineract:${loan.fineractLoanId}]`
             );
 
             // 7. ✅ Fetch investments and prepare for FD distribution

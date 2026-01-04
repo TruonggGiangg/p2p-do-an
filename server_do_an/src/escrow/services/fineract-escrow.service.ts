@@ -219,7 +219,7 @@ export class FineractEscrowService {
                 this.escrowAccountId,
                 borrowerAccountId,
                 escrow.amount,
-                `Escrow release: ${escrowId}`
+                `Disbursement for loan: ${escrow.loanContractId} [Fineract:${escrow.metadata?.fineractLoanId || ''}]`
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;
@@ -304,7 +304,7 @@ export class FineractEscrowService {
                 this.escrowAccountId,
                 borrowerAccountId,
                 totalAmount,
-                'Giải ngân'
+                `Disbursement for loan: ${escrows[0]?.loanContractId || ''} [Fineract:${escrows[0]?.metadata?.fineractLoanId || ''}]`
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;
@@ -361,7 +361,7 @@ export class FineractEscrowService {
                 this.escrowAccountId,
                 lenderAccountId,
                 escrow.amount,
-                `Escrow return: ${escrowId}`
+                `Refund for loan: ${escrow.loanContractId} [Fineract:${escrow.metadata?.fineractLoanId || ''}]`
             );
 
             const transactionId = txnResponse.savingsId || txnResponse.resourceId;
