@@ -40,6 +40,7 @@ export default {
             KEYCLOAK_CLIENT_ID: process.env.KEYCLOAK_CLIENT_ID || "community-app",
             KEYCLOAK_ADMIN_USERNAME: process.env.KEYCLOAK_ADMIN_USERNAME || "admin",
             KEYCLOAK_ADMIN_PASSWORD: process.env.KEYCLOAK_ADMIN_PASSWORD || "admin",
+            EKYC_SERVICE_URL: process.env.EKYC_SERVICE_URL || "http://192.168.1.36:8000",
         }
     }
 };

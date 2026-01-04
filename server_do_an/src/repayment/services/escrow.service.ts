@@ -202,7 +202,7 @@ export class EscrowService {
                     this.adminEscrowAccountId,
                     lenderSavings.id,
                     lenderShare,
-                    `Repayment distribution for loan ${loanId}`
+                    `Interest distribution for loan: ${loanId}`
                 );
 
                 results.push({

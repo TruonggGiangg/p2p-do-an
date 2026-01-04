@@ -20,6 +20,7 @@ interface ApiConfig {
         adminTokenEndpoint: string;
         usersEndpoint: string;
     };
+    ekycServiceUrl: string;
     timeout: number;
 }
 
@@ -60,6 +61,7 @@ export const apiConfig: ApiConfig = {
         adminTokenEndpoint: `${KEYCLOAK_BASE_URL}/realms/master/protocol/openid-connect/token`,
         usersEndpoint: `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/users`,
     },
+    ekycServiceUrl: getEnvVar('EKYC_SERVICE_URL', 'http://192.168.1.36:8000'),
     timeout: 30000,
 };
 

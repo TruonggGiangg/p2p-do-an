@@ -7,25 +7,48 @@ import {
     Min,
     Max,
     ValidateNested,
-    IsObject,
+    IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * Credit Assessment DTO (Optional)
- * Dữ liệu đánh giá tín dụng từ client
+ * Digital Footprint DTO
+ * Dữ liệu dấu vân tay số từ thiết bị để chấm điểm tín dụng
  */
-export class CreditAssessmentDto {
-    @ApiPropertyOptional({ description: 'Assessment data từ ML model' })
-    @IsOptional()
-    @IsObject()
-    assessmentData?: Record<string, any>;
-
-    @ApiPropertyOptional({ description: 'Credit score' })
+export class DigitalFootprintDto {
+    @ApiPropertyOptional({ description: 'Mức pin thiết bị (0-100)', example: 75 })
     @IsOptional()
     @IsNumber()
-    score?: number;
+    @Min(0)
+    @Max(100)
+    battery_level?: number;
+
+    @ApiPropertyOptional({ description: 'Giờ gửi yêu cầu (0-23)', example: 14 })
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    @Max(23)
+    submission_hour?: number;
+
+    @ApiPropertyOptional({ description: 'Loại kết nối mạng', example: 'wifi' })
+    @IsOptional()
+    @IsString()
+    @IsIn(['wifi', '4g', 'unknown'])
+    connection_type?: 'wifi' | '4g' | 'unknown';
+
+    @ApiPropertyOptional({ description: 'Đã cấp quyền vị trí', example: 'true' })
+    @IsOptional()
+    @IsString()
+    @IsIn(['true', 'false'])
+    location_match?: 'true' | 'false';
+
+    @ApiPropertyOptional({ description: 'Điểm thiết bị (0-100)', example: 60 })
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    @Max(100)
+    device_score?: number;
 }
 
 /**
@@ -71,11 +94,12 @@ export class CreateLoanDto {
     disbursementDate: string;
 
     @ApiPropertyOptional({
-        description: 'Dữ liệu đánh giá tín dụng (optional)',
-        type: CreditAssessmentDto,
+        description: 'Dữ liệu dấu vân tay số từ thiết bị (Digital Footprint)',
+        type: DigitalFootprintDto,
     })
     @IsOptional()
     @ValidateNested()
-    @Type(() => CreditAssessmentDto)
-    creditAssessment?: CreditAssessmentDto;
+    @Type(() => DigitalFootprintDto)
+    digitalFootprint?: DigitalFootprintDto;
 }
+

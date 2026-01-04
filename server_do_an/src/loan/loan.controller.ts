@@ -483,5 +483,81 @@ export class LoanController {
             data: result,
         };
     }
+
+    // ==================== CREDIT SCORECARD ENDPOINTS ====================
+
+    /**
+     * GET /loan/:id/scorecard
+     * Get credit scorecard history for a loan
+     */
+    @Get(':id/scorecard')
+    @UseGuards(DualAuthGuard, BorrowerOrLenderGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Lấy lịch sử chấm điểm tín dụng' })
+    @ApiParam({ name: 'id', description: 'Fineract Loan ID hoặc Contract ID' })
+    async getScorecardHistory(@Param('id') id: string) {
+        const fineractLoanId = await this.loanService.resolveFineractLoanIdPublic(id);
+        if (!fineractLoanId) {
+            return {
+                statusCode: HttpStatus.OK,
+                message: 'Chưa có lịch sử chấm điểm',
+                data: { scorecards: [], count: 0 },
+            };
+        }
+
+        const scorecards = await this.loanService.getScorecardHistory(fineractLoanId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: scorecards.length > 0 ? 'Lịch sử chấm điểm' : 'Chưa có lịch sử',
+            data: {
+                scorecards,
+                count: scorecards.length,
+                latest: scorecards.length > 0 ? scorecards[0] : null,
+            },
+        };
+    }
+
+    /**
+     * POST /loan/:id/assess
+     * Assess credit score using Digital Footprint
+     */
+    @Post(':id/assess')
+    @UseGuards(DualAuthGuard, BorrowerGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Chấm điểm tín dụng với Digital Footprint' })
+    @ApiParam({ name: 'id', description: 'Fineract Loan ID hoặc Contract ID' })
+    async assessCreditScore(
+        @Param('id') id: string,
+        @Body() body: {
+            battery_level?: number;
+            submission_hour?: number;
+            connection_type?: 'wifi' | '4g' | 'unknown';
+            location_match?: 'true' | 'false';
+            device_score?: number;
+        },
+        @User() user: AuthUser,
+    ) {
+        const fineractLoanId = await this.loanService.resolveFineractLoanIdPublic(id);
+        if (!fineractLoanId) {
+            return {
+                statusCode: HttpStatus.BAD_REQUEST,
+                message: 'Không tìm thấy khoản vay trên Fineract',
+                data: null,
+            };
+        }
+
+        const result = await this.loanService.assessCreditScore(
+            fineractLoanId,
+            user._id,
+            body,
+        );
+
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Đã chấm điểm tín dụng',
+            data: result,
+        };
+    }
 }
 

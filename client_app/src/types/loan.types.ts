@@ -23,7 +23,15 @@ export interface CreateLoanRequest {
     disbursementDate: string;
 }
 
-// ========== LOAN RESPONSE TYPES ==========
+/**
+ * Schedule period for preview (WYSIWYG)
+ */
+export interface SchedulePeriod {
+    period: number;
+    principal: number;
+    interest: number;
+    total: number;
+}
 
 /**
  * Response from rate check API
@@ -41,6 +49,7 @@ export interface RateCheckResponse {
     maturityDate?: string;
     interestType: string;
     rateSource: string;
+    schedulePreview?: SchedulePeriod[];  // NEW: For UI schedule table
 }
 
 /**

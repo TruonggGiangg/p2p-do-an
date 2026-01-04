@@ -26,6 +26,7 @@ import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen
 import TransactionHistoryScreen from './src/screens/shared/TransactionHistoryScreen';
 import { TransferScreen } from './src/screens/shared/TransferScreen';
 import KYCScreen from './src/screens/kyc/KYCScreen';
+import FaceDetectionScreen from './src/screens/kyc/FaceDetectionScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -163,6 +164,11 @@ function ProfileStack() {
       <Stack.Screen
         name="KYC"
         component={KYCScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FaceDetection"
+        component={FaceDetectionScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

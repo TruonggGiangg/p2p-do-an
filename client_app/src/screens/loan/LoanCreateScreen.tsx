@@ -216,6 +216,30 @@ export default function LoanCreateScreen({ navigation }: any) {
                                 <Text style={styles.ticketRowLabel}>Tổng thanh toán</Text>
                                 <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay)} ₫</Text>
                             </View>
+
+                            {/* Schedule Preview Table (WYSIWYG) */}
+                            {ratePreview.schedulePreview && ratePreview.schedulePreview.length > 0 && (
+                                <View style={styles.scheduleContainer}>
+                                    <View style={styles.dashedLine} />
+                                    <Text style={styles.scheduleTitle}>Lịch trả nợ chi tiết</Text>
+                                    <View style={styles.scheduleHeader}>
+                                        <Text style={[styles.scheduleHeaderText, { flex: 0.5 }]}>Kỳ</Text>
+                                        <Text style={styles.scheduleHeaderText}>Gốc</Text>
+                                        <Text style={styles.scheduleHeaderText}>Lãi</Text>
+                                        <Text style={styles.scheduleHeaderText}>Tổng</Text>
+                                    </View>
+                                    {ratePreview.schedulePreview.map((item, idx) => (
+                                        <View key={idx} style={[styles.scheduleRow, idx % 2 === 0 && styles.scheduleRowAlt]}>
+                                            <Text style={[styles.scheduleCell, { flex: 0.5 }]}>{item.period}</Text>
+                                            <Text style={styles.scheduleCell}>{formatNumber(item.principal)}</Text>
+                                            <Text style={styles.scheduleCell}>{formatNumber(item.interest)}</Text>
+                                            <Text style={[styles.scheduleCell, { fontWeight: '600', color: '#10B981' }]}>
+                                                {formatNumber(item.total)}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
                         </GlassCard>
                     ) : (
                         <TouchableOpacity
@@ -475,5 +499,45 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '700',
+    },
+
+    // Schedule Preview Table (WYSIWYG)
+    scheduleContainer: {
+        marginTop: 16,
+    },
+    scheduleTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.8)',
+        marginBottom: 12,
+        marginTop: 8,
+    },
+    scheduleHeader: {
+        flexDirection: 'row',
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.2)',
+    },
+    scheduleHeaderText: {
+        flex: 1,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        textAlign: 'center',
+    },
+    scheduleRow: {
+        flexDirection: 'row',
+        paddingVertical: 10,
+        alignItems: 'center',
+    },
+    scheduleRowAlt: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 6,
+    },
+    scheduleCell: {
+        flex: 1,
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.7)',
+        textAlign: 'center',
     },
 });

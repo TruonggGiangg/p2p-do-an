@@ -464,7 +464,7 @@ export class RepaymentService {
             escrowAccountId,
             lenderSavingsAccountId,
             amount,
-            `Repayment distribution for loan ${loanId}${loanIdSuffix}`, // Match p2p reference pattern
+            `Interest distribution for loan: ${loanId}${loanIdSuffix}`, // Match web app regex pattern
             true, // deductFeeFromAmount
             true  // skipFee - CRITICAL: Skip fee for escrow transfers (p2p ref line 898, 948)
         );

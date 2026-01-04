@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { roundToCurrency as roundToMultiples } from '../../utils/RoundingUtils';
 
 /**
  * Fineract Loan Product details
@@ -268,6 +269,7 @@ export class FineractService {
         monthlyPay: number;
         entirelyPay: number;
         interestType: string;
+        schedulePreview: Array<{ period: number; principal: number; interest: number; total: number }>;
     }> {
         // Get full product details to access currency config
         const product = await this.getLoanProductDetails();
@@ -283,15 +285,10 @@ export class FineractService {
         this.logger.log(`[calculateLoanSchedule] Product Config: Rate=${monthlyRate}%, InterestType=${interestType}`);
         this.logger.log(`[calculateLoanSchedule] Rounding Rule: Multiples of ${inMultiplesOf}`);
 
-        // Helper: Dynamic Rounding based on Config with LOGGING
+        // Helper: Dynamic Rounding using shared RoundingUtils
         const roundToCurrency = (val: number, context: string) => {
-            let res = val;
-            if (inMultiplesOf > 0) {
-                res = Math.round(val / inMultiplesOf) * inMultiplesOf;
-            } else {
-                res = Math.round(val);
-            }
-            // Log detail (Verbose)
+            const res = roundToMultiples(val, inMultiplesOf);
+            // Log detail (Verbose) - uncomment for debugging
             // this.logger.log(`[Rounding] ${context}: ${val.toFixed(2)} => ${res}`);
             return res;
         };
@@ -301,6 +298,14 @@ export class FineractService {
         let monthlyInterestPay: number;
         let monthlyPay: number;
         let entirelyPay: number;
+
+        // NEW: Schedule preview array for UI display (WYSIWYG)
+        const schedulePreview: Array<{
+            period: number;
+            principal: number;
+            interest: number;
+            total: number;
+        }> = [];
 
         if (interestType === 'Declining Balance' || product.interestType?.code === 'interestType.declining.balance') {
             // DECLINING BALANCE
@@ -336,14 +341,21 @@ export class FineractService {
                     this.logger.log(`[calculateLoanSchedule] Last Payment Adjustment: Principal=${principal}, Interest=${interest}, Total=${payment}`);
                 }
 
+                // Add to schedule preview (WYSIWYG)
+                schedulePreview.push({
+                    period: i,
+                    principal: principal,
+                    interest: interest,
+                    total: payment,
+                });
+
                 outstanding -= principal;
                 totalPaid += payment;
             }
 
             entirelyPay = totalPaid; // Exact sum of all payments
 
-            // For simplified display: Use "Average Principal" approarch or first month?
-            // User UI usually expects a representative split.
+            // For simplified display: Use "Average Principal" approach
             monthlyPrincipalPay = roundToCurrency(capital / periodMonth, 'Avg Principal');
             monthlyInterestPay = monthlyPay - monthlyPrincipalPay;
 
@@ -356,9 +368,19 @@ export class FineractService {
 
             monthlyPay = monthlyPrincipalPay + monthlyInterestPay;
             entirelyPay = monthlyPay * periodMonth;
+
+            // Build schedule preview for FLAT
+            for (let i = 1; i <= periodMonth; i++) {
+                schedulePreview.push({
+                    period: i,
+                    principal: monthlyPrincipalPay,
+                    interest: monthlyInterestPay,
+                    total: monthlyPay,
+                });
+            }
         }
 
-        this.logger.log(`[calculateLoanSchedule] RESULT: Monthly=${monthlyPay}, Total=${entirelyPay}`);
+        this.logger.log(`[calculateLoanSchedule] RESULT: Monthly=${monthlyPay}, Total=${entirelyPay}, SchedulePeriods=${schedulePreview.length}`);
 
         return {
             rate: monthlyRate,
@@ -368,6 +390,7 @@ export class FineractService {
             monthlyPay,
             entirelyPay,
             interestType: interestType,
+            schedulePreview, // NEW: For UI display
         };
     }
 

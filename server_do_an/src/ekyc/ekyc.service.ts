@@ -131,15 +131,88 @@ export class EkycService {
     }
 
     /**
+     * Resolve Fineract Client ID from string (UUID) or number
+     * If input is number, return as is.
+     * If input is string (UUID), query Fineract for client with externalId = UUID
+     * If externalId lookup fails, search by phone number (like reference project)
+     */
+    async resolveFineractClientId(id: string | number, username?: string): Promise<number | null> {
+        if (!id) return null;
+
+        // If already a number or numeric string
+        if (typeof id === 'number') return id;
+        if (!isNaN(Number(id)) && !id.toString().includes('-')) return Number(id);
+
+        try {
+            this.logger.log(`[resolveFineractClientId] Resolving externalId: ${id}`);
+            const headers = await this.getFineractHeaders();
+
+            // Strategy 1: Search client by externalId
+            const response = await firstValueFrom(
+                this.httpService.get(
+                    `${this.fineractBaseUrl}/fineract-provider/api/v1/clients`,
+                    {
+                        headers,
+                        params: {
+                            externalId: id,
+                            exactMatch: true
+                        }
+                    },
+                ),
+            );
+
+            const pageItems = response.data?.pageItems || [];
+            if (pageItems.length > 0) {
+                const client = pageItems[0];
+                this.logger.log(`[resolveFineractClientId] Resolved via externalId ${id} -> ${client.id}`);
+                return client.id;
+            }
+
+            // Strategy 2: Search by phone number (like reference project)
+            if (username) {
+                this.logger.log(`[resolveFineractClientId] externalId not found, trying phone lookup: ${username}`);
+
+                const allClientsRes = await firstValueFrom(
+                    this.httpService.get(
+                        `${this.fineractBaseUrl}/fineract-provider/api/v1/clients`,
+                        { headers },
+                    ),
+                );
+
+                const clients = allClientsRes.data?.pageItems || [];
+                const normalizedPhone = username.replace(/\D+/g, '');
+
+                const matchingClient = clients.find((c: any) => {
+                    const clientPhone = (c?.mobileNo || '').replace(/\D+/g, '');
+                    return clientPhone === normalizedPhone;
+                });
+
+                if (matchingClient) {
+                    this.logger.log(`[resolveFineractClientId] Resolved via phone ${username} -> ${matchingClient.id}`);
+                    return matchingClient.id;
+                }
+            }
+
+            this.logger.warn(`[resolveFineractClientId] Could not resolve externalId: ${id}`);
+            return null;
+        } catch (error: any) {
+            this.logger.error(`[resolveFineractClientId] Error: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
      * Get existing CCCD images from Fineract Client Identifiers
      */
-    async getKycImages(fineractClientId: number): Promise<KycImagesResult> {
+    async getKycImages(clientIdOrUuid: string | number, username?: string): Promise<KycImagesResult> {
+        const fineractClientId = await this.resolveFineractClientId(clientIdOrUuid, username);
+
         if (!fineractClientId) {
             return {
                 success: true,
                 hasImages: false,
                 images: [],
-                message: 'Chưa có thông tin CCCD',
+                message: 'Chưa có thông tin CCCD (Client ID not found)',
             };
         }
 
@@ -259,12 +332,19 @@ export class EkycService {
      * Upload CCCD images to Fineract Client Identifiers
      */
     async uploadCccdToFineract(
-        fineractClientId: number,
+        clientIdOrUuid: string | number,
         frontBase64: string,
         backBase64: string,
         ocrData: any,
+        username?: string,
     ): Promise<UploadCccdResult> {
         try {
+            const fineractClientId = await this.resolveFineractClientId(clientIdOrUuid, username);
+
+            if (!fineractClientId) {
+                return { success: false, error: 'Could not resolve Fineract Client ID' };
+            }
+
             const headers = await this.getFineractHeaders();
             const result: UploadCccdResult = { success: false };
 

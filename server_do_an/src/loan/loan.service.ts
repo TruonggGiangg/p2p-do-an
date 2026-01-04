@@ -59,6 +59,16 @@ export interface CreateLoanResponse {
 }
 
 /**
+ * Schedule period for preview (WYSIWYG)
+ */
+export interface SchedulePeriod {
+    period: number;
+    principal: number;
+    interest: number;
+    total: number;
+}
+
+/**
  * Rate check response
  */
 export interface RateCheckResponse {
@@ -74,6 +84,7 @@ export interface RateCheckResponse {
     maturityDate?: string;
     interestType: string;
     rateSource: string;
+    schedulePreview?: SchedulePeriod[]; // NEW: For UI display
 }
 
 import { FixedDepositService } from './services/fixed-deposit.service';
@@ -133,8 +144,9 @@ export class LoanService {
             periodMonth,
             disbursementDate: disbursementDateStr,
             maturityDate: maturityDateStr,
-            interestType: schedule.interestType, // Now from Fineract!
+            interestType: schedule.interestType,
             rateSource: 'Fineract Loan Product',
+            schedulePreview: schedule.schedulePreview, // NEW: WYSIWYG schedule
         };
     }
 
@@ -174,20 +186,17 @@ export class LoanService {
             this.logger.log('DEV_MODE: Skipping active loan check');
         }
 
-        // 3. 🔍 CREDIT ASSESSMENT (New Smart Scoring)
+        // 3. 🔍 CREDIT ASSESSMENT (Digital Footprint Scoring)
         this.logger.log(`\n========== CREDIT ASSESSMENT START ==========`);
         const creditAssessment = await this.creditScoringService.assessCreditworthiness(
             borrowerId,
             capital,
-            undefined // monthlyIncome - TODO: get from user profile
+            dto.digitalFootprint as any, // Pass digital footprint data from client
         );
 
         this.logger.log(`[Credit Score] ${creditAssessment.score} / 850 (Grade: ${creditAssessment.grade})`);
         this.logger.log(`[Risk Level] ${creditAssessment.riskLevel}`);
-        this.logger.log(`[Factors]:`);
-        Object.entries(creditAssessment.factors).forEach(([key, factor]) => {
-            this.logger.log(`  - ${key}: ${factor.score}/100 (${factor.details})`);
-        });
+        this.logger.log(`[Source] ${creditAssessment.source} | Predicted Risk: ${creditAssessment.predictedRisk}`);
 
         // ❌ REJECT if not approved
         if (!creditAssessment.isApproved) {
@@ -704,6 +713,43 @@ export class LoanService {
      */
     private async resolveFineractClientId(username: string, email?: string): Promise<number | null> {
         return this.fineractService.resolveClientId(username, email);
+    }
+
+    /**
+     * Public method to resolve Fineract Loan ID
+     * Used by controller for scorecard endpoints
+     */
+    async resolveFineractLoanIdPublic(loanIdOrContractId: string): Promise<number | null> {
+        return this.resolveFineractLoanId(loanIdOrContractId);
+    }
+
+    /**
+     * Get credit scorecard history for a loan
+     * @param fineractLoanId - Fineract loan ID
+     * @returns Array of scorecards, newest first
+     */
+    async getScorecardHistory(fineractLoanId: number): Promise<any[]> {
+        return this.creditScoringService.getScorecardHistory(fineractLoanId);
+    }
+
+    /**
+     * Assess credit score using Digital Footprint
+     * @param fineractLoanId - Fineract loan ID
+     * @param userId - User ID for logging
+     * @param footprint - Digital footprint data
+     */
+    async assessCreditScore(
+        fineractLoanId: number,
+        userId: string,
+        footprint: any,
+    ): Promise<any> {
+        const result = await this.creditScoringService.assessCreditworthiness(
+            userId,
+            0, // requestedAmount not used for assessment
+            footprint,
+            fineractLoanId,
+        );
+        return result;
     }
 
     /**

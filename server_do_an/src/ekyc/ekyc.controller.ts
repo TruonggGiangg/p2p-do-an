@@ -56,7 +56,7 @@ export class EkycController {
             };
         }
 
-        return this.ekycService.getKycImages(Number(fineractClientId));
+        return this.ekycService.getKycImages(fineractClientId, user?.username);
     }
 
     /**
@@ -164,10 +164,11 @@ export class EkycController {
         if (fineractClientId && frontBase64) {
             const ocrData = frontOCRData?.data || frontOCRData;
             fineractResult = await this.ekycService.uploadCccdToFineract(
-                Number(fineractClientId),
+                fineractClientId,
                 frontBase64,
                 backBase64 || '',
                 ocrData,
+                user?.username,
             );
             console.log('[EkycController] Fineract upload result:', fineractResult);
         }

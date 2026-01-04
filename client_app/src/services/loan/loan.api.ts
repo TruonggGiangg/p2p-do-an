@@ -51,6 +51,9 @@ const ENDPOINTS = {
     prepay: '/repayment/prepay',    // ✅ Fixed: Use RepaymentController with lender distribution
     blockchainStatus: '/loan/blockchain/status',
     disburse: (id: string) => `/loan/${id}/disburse`,
+    // Scorecard endpoints
+    scorecardHistory: (id: string) => `/loan/${id}/scorecard`,
+    assessCredit: (id: string) => `/loan/${id}/assess`,
     // Wallet endpoints
     walletBalance: '/loan/wallet/balance',
     // Debug
@@ -319,6 +322,33 @@ export const loanApi = {
         const response = await httpClient.post<LoanApiResponse<any>>(
             ENDPOINTS.disburse(loanId),
             {},
+        );
+        return response.data.data;
+    },
+
+    /**
+     * Get credit scorecard history for a loan
+     */
+    getScorecardHistory: async (loanId: string): Promise<{
+        scorecards: any[];
+        count: number;
+        latest: any | null;
+    }> => {
+        const response = await httpClient.get<LoanApiResponse<{
+            scorecards: any[];
+            count: number;
+            latest: any | null;
+        }>>(ENDPOINTS.scorecardHistory(loanId));
+        return response.data.data ?? { scorecards: [], count: 0, latest: null };
+    },
+
+    /**
+     * Assess credit score using Digital Footprint
+     */
+    assessCredit: async (loanId: string, footprint: any): Promise<any> => {
+        const response = await httpClient.post<LoanApiResponse<any>>(
+            ENDPOINTS.assessCredit(loanId),
+            footprint,
         );
         return response.data.data;
     },

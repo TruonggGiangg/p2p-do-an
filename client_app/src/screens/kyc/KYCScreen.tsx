@@ -9,7 +9,7 @@
  * - Upload lên Fineract khi thành công
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     StyleSheet,
@@ -36,7 +36,7 @@ import { ekycApi, storageService, apiConfig } from '../../services';
 
 // ⚠️ BYPASS FLAG - Set true để tạm thời bỏ qua face matching
 // Tương ứng với EKYC_BYPASS_FACE_MATCHING trong server
-const BYPASS_FACE_MATCHING = true;
+const BYPASS_FACE_MATCHING = false;
 
 interface KycState {
     // Existing images from Fineract
@@ -101,18 +101,43 @@ export default function KYCScreen() {
                 );
 
                 const token = await storageService.getAccessToken();
-                const frontUrl = frontImg
-                    ? `${apiConfig.baseUrl}${frontImg.downloadUrl}`
-                    : null;
-                const backUrl = backImg
-                    ? `${apiConfig.baseUrl}${backImg.downloadUrl}`
-                    : null;
+
+                // Fetch images with auth headers and convert to base64
+                const fetchImageAsBase64 = async (downloadUrl: string): Promise<string | null> => {
+                    try {
+                        const imageUrl = `${apiConfig.baseUrl}${downloadUrl}`;
+                        const response = await fetch(imageUrl, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                            },
+                        });
+
+                        if (!response.ok) {
+                            console.log('[KYC] Failed to fetch image:', response.status);
+                            return null;
+                        }
+
+                        const blob = await response.blob();
+                        return new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.onerror = () => resolve(null);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (error) {
+                        console.log('[KYC] Error fetching image:', error);
+                        return null;
+                    }
+                };
+
+                const frontBase64 = frontImg ? await fetchImageAsBase64(frontImg.downloadUrl) : null;
+                const backBase64 = backImg ? await fetchImageAsBase64(backImg.downloadUrl) : null;
 
                 setState(s => ({
                     ...s,
-                    existingFrontUrl: frontUrl,
-                    existingBackUrl: backUrl,
-                    hasExisting: true,
+                    existingFrontUrl: frontBase64,
+                    existingBackUrl: backBase64,
+                    hasExisting: !!(frontBase64 || backBase64),
                 }));
             }
         } catch (error: any) {
@@ -198,19 +223,32 @@ export default function KYCScreen() {
         }
 
         // Face matching check (or bypass)
-        let faceMatchingPassed = BYPASS_FACE_MATCHING;
-
         if (!BYPASS_FACE_MATCHING) {
-            // TODO: Implement face detection navigation
-            // Navigate to FaceDetection screen and wait for result
-            Alert.alert('Thông báo', 'Tính năng face verification đang phát triển');
+            // Navigate to FaceDetection screen
+            (navigation as any).navigate('FaceDetection', {
+                frontImageUri: state.frontImageUri,
+                onVerificationComplete: async (result: { success: boolean; faceMatchingResult: boolean; livenessResult: any }) => {
+                    console.log('[KYC] Face verification result:', result);
+                    if (result.success) {
+                        setState(s => ({ ...s, faceMatchingResult: result.faceMatchingResult, livenessResult: result.livenessResult }));
+                        // Proceed with save after face matching
+                        await saveKycData(result.faceMatchingResult);
+                    }
+                },
+            });
             return;
         }
 
+        // Bypass mode - save directly
+        await saveKycData(true);
+    };
+
+    // Extracted save logic for reuse
+    const saveKycData = async (faceMatchingPassed: boolean) => {
         setState(s => ({ ...s, submitting: true }));
         try {
             // Convert URI to base64
-            const frontBase64 = await uriToBase64(state.frontImageUri);
+            const frontBase64 = await uriToBase64(state.frontImageUri!);
             const backBase64 = state.backImageUri
                 ? await uriToBase64(state.backImageUri)
                 : undefined;
@@ -370,6 +408,10 @@ export default function KYCScreen() {
                             <InfoRow label="Họ tên" value={state.frontOcrData.fullName || '-'} />
                             <InfoRow label="Số CCCD" value={state.frontOcrData.idNumber || '-'} />
                             <InfoRow label="Ngày sinh" value={state.frontOcrData.dob || '-'} />
+                            <InfoRow label="Giới tính" value={state.frontOcrData.gender || '-'} />
+                            <InfoRow label="Quốc tịch" value={state.frontOcrData.nationality || '-'} />
+                            <InfoRow label="Quê quán" value={state.frontOcrData.birthplace || '-'} />
+                            <InfoRow label="Địa chỉ" value={state.frontOcrData.address || '-'} />
                         </View>
                     )}
                 </GlassCard>
@@ -418,6 +460,24 @@ export default function KYCScreen() {
                         <View style={styles.loadingRow}>
                             <ActivityIndicator color={GlassTokens.colors.primary} />
                             <Text style={styles.loadingText}>Đang xử lý OCR...</Text>
+                        </View>
+                    )}
+
+                    {state.backOcrData && !state.loadingBackOcr && (
+                        <View style={styles.ocrResult}>
+                            <InfoRow
+                                label="Ngày cấp"
+                                value={state.backOcrData.issue_date || state.backOcrData.init_date || '-'}
+                            />
+                            {state.backOcrData.expiry_date && (
+                                <InfoRow label="Ngày hết hạn" value={state.backOcrData.expiry_date} />
+                            )}
+                            {state.backOcrData.place_of_birth && (
+                                <InfoRow label="Nơi cấp" value={state.backOcrData.place_of_birth} />
+                            )}
+                            {state.backOcrData.address && (
+                                <InfoRow label="Địa chỉ" value={state.backOcrData.address} />
+                            )}
                         </View>
                     )}
                 </GlassCard>

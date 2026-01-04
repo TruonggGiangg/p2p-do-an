@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     infoRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start', // Align to top for multiline text
         paddingVertical: GlassTokens.spacing.sm,
         borderBottomWidth: 0.5,
         borderBottomColor: GlassTokens.colors.borderGlassSubtle,
@@ -181,12 +181,17 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: GlassTokens.colors.textSecondary,
         letterSpacing: 0.1,
+        maxWidth: '35%', // Prevent label from getting too wide
+        marginTop: 2, // Slight adjustment for alignment with value line-height
     },
     infoValue: {
         fontSize: 16,
         fontWeight: '700',
         color: GlassTokens.colors.textPrimary,
         letterSpacing: -0.2,
+        flex: 1, // Take up remaining space
+        textAlign: 'right', // Align to right
+        marginLeft: 16, // Add breathing room from label
     },
 
     sectionTitle: {

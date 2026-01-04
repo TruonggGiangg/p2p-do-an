@@ -1,424 +1,363 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { LoanContract } from '../schemas/loan-contract.schema';
-import { InvestmentContract } from '../../invest/schemas/investment-contract.schema';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
 
 /**
- * Credit Assessment Result
+ * Digital Footprint Data (from client device)
+ */
+export interface DigitalFootprintData {
+    battery_level: number;          // 0-100
+    submission_hour: number;        // 0-23
+    connection_type: 'wifi' | '4g' | 'unknown';
+    location_match: 'true' | 'false';
+    device_score?: number;          // 0-100 (optional, calculated by client)
+}
+
+/**
+ * Credit Assessment Result (from Fineract)
  */
 export interface CreditAssessment {
-    score: number;              // 300-850 (FICO scale)
+    score: number;              // Credit score (300-850)
     grade: string;              // A+, A, B, C, D, F
     riskLevel: 'low' | 'medium' | 'high' | 'very_high';
     isApproved: boolean;
-    factors: {
-        paymentHistory: { score: number; weight: number; details: string };
-        debtToIncome: { score: number; weight: number; details: string };
-        creditAge: { score: number; weight: number; details: string };
-        creditUtilization: { score: number; weight: number; details: string };
-        recentInquiries: { score: number; weight: number; details: string };
-    };
+    source: 'fineract_scorecard';
+    predictedRisk: string;
+    accuracy?: number;
     recommendations: string[];
     rejectionReasons?: string[];
 }
 
 /**
- * Smart Credit Scoring Service
- * Evaluates borrower creditworthiness using multiple factors
+ * Credit Scoring Service
+ * 
+ * Gọi API Fineract Credit Scorecard để chấm điểm tín dụng.
+ * Không tự tính local - tất cả logic nằm trên Fineract.
+ * 
+ * API: POST /fineract-provider/api/v1/creditScorecard/loans/{loanId}/assess
+ * Ref: fineract-dev/docs/MOBILE_API_GUIDE.md
  */
 @Injectable()
 export class CreditScoringService {
     private readonly logger = new Logger(CreditScoringService.name);
 
-    // Scoring thresholds
-    private readonly EXCELLENT_SCORE = 750;
-    private readonly GOOD_SCORE = 650;
-    private readonly FAIR_SCORE = 550;
-    private readonly POOR_SCORE = 450;
+    private readonly baseUrl: string;
+    private readonly tenantId: string;
+    private readonly keycloakUrl: string;
+    private readonly username: string;
+    private readonly password: string;
+    private readonly oauthClientId: string;
+    private readonly oauthClientSecret: string;
+
+    // Scoring thresholds (for approval decision)
     private readonly MIN_APPROVAL_SCORE = 450;
 
+    // Token cache
+    private accessToken: string | null = null;
+    private tokenExpiry: Date | null = null;
+
     constructor(
-        @InjectModel(LoanContract.name) private loanModel: Model<LoanContract>,
-        @InjectModel(InvestmentContract.name) private investModel: Model<InvestmentContract>,
-    ) { }
+        private readonly httpService: HttpService,
+        private readonly configService: ConfigService,
+    ) {
+        this.baseUrl = this.configService.get<string>('FINERACT_BASE_URL') || 'http://localhost:8080';
+        this.tenantId = this.configService.get<string>('FINERACT_TENANT_ID') || 'default';
+        this.keycloakUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://localhost:9000';
+        this.username = this.configService.get<string>('FINERACT_USERNAME') || 'mifos';
+        this.password = this.configService.get<string>('FINERACT_PASSWORD') || 'password';
+        this.oauthClientId = this.configService.get<string>('FINERACT_OAUTH_CLIENT_ID') || 'community-app';
+        this.oauthClientSecret = this.configService.get<string>('FINERACT_OAUTH_CLIENT_SECRET') || '123';
+    }
 
     /**
-     * Calculate comprehensive credit score for a borrower
+     * Get OAuth2 token from Keycloak
+     */
+    private async getAccessToken(): Promise<string> {
+        if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
+            return this.accessToken;
+        }
+
+        try {
+            const tokenUrl = `${this.keycloakUrl}/realms/fineract/protocol/openid-connect/token`;
+            const params = new URLSearchParams();
+            params.append('grant_type', 'password');
+            params.append('client_id', this.oauthClientId);
+            params.append('client_secret', this.oauthClientSecret);
+            params.append('username', this.username);
+            params.append('password', this.password);
+
+            const response = await firstValueFrom(
+                this.httpService.post(tokenUrl, params.toString(), {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    timeout: 15000,
+                }),
+            );
+
+            this.accessToken = response.data.access_token;
+            this.tokenExpiry = new Date(Date.now() + (response.data.expires_in - 60) * 1000);
+            return this.accessToken as string;
+        } catch (error: any) {
+            this.logger.error(`Failed to get OAuth2 token: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get headers for Fineract API calls
+     */
+    private async getHeaders(): Promise<Record<string, string>> {
+        const token = await this.getAccessToken();
+        return {
+            'Authorization': `Bearer ${token}`,
+            'Fineract-Platform-TenantId': this.tenantId,
+            'Content-Type': 'application/json',
+        };
+    }
+
+    /**
+     * Assess creditworthiness by calling Fineract Credit Scorecard API
+     * 
+     * @param userId - User ID (for logging)
+     * @param requestedAmount - Loan amount (for logging)
+     * @param footprint - Digital footprint data from client device
+     * @param fineractLoanId - Optional Fineract loan ID (if loan already exists)
      */
     async assessCreditworthiness(
         userId: string,
         requestedAmount: number,
-        monthlyIncome?: number,
+        footprint?: DigitalFootprintData,
+        fineractLoanId?: number,
     ): Promise<CreditAssessment> {
-        this.logger.log(`Assessing credit for user ${userId}, amount: ${requestedAmount}`);
+        this.logger.log(`[CreditScoring] Assessing user ${userId}, amount: ${requestedAmount}`);
 
-        // 1. Payment History (35% weight) - Most important factor
-        const paymentHistoryScore = await this.evaluatePaymentHistory(userId);
+        // If no footprint, use defaults
+        const data: DigitalFootprintData = footprint || {
+            battery_level: 50,
+            submission_hour: new Date().getHours(),
+            connection_type: 'unknown',
+            location_match: 'false',
+        };
 
-        // 2. Debt-to-Income Ratio (30% weight)
-        const debtToIncomeScore = await this.evaluateDebtToIncome(userId, requestedAmount, monthlyIncome);
+        this.logger.log(`[CreditScoring] Digital Footprint: ${JSON.stringify(data)}`);
 
-        // 3. Credit Age (15% weight) - Account history
-        const creditAgeScore = await this.evaluateCreditAge(userId);
+        // If no Fineract loan ID, use fallback scoring
+        if (!fineractLoanId) {
+            this.logger.warn('[CreditScoring] No Fineract loan ID - using fallback scoring');
+            return this.fallbackScoring(data);
+        }
 
-        // 4. Credit Utilization (10% weight) - Current debt vs available credit
-        const creditUtilizationScore = await this.evaluateCreditUtilization(userId, requestedAmount);
+        try {
+            // Call Fineract Credit Scorecard API
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/creditScorecard/loans/${fineractLoanId}/assess?scoringMethod=digital`;
 
-        // 5. Recent Inquiries (10% weight) - New credit applications
-        const recentInquiriesScore = await this.evaluateRecentInquiries(userId);
+            this.logger.log(`[CreditScoring] Calling Fineract: ${url}`);
 
-        // Calculate weighted average (FICO formula)
-        const rawScore =
-            paymentHistoryScore.score * 0.35 +
-            debtToIncomeScore.score * 0.30 +
-            creditAgeScore.score * 0.15 +
-            creditUtilizationScore.score * 0.10 +
-            recentInquiriesScore.score * 0.10;
+            const response = await firstValueFrom(
+                this.httpService.post(url, data, { headers, timeout: 30000 }),
+            );
+
+            const result = response.data;
+            this.logger.log(`[CreditScoring] Fineract response: ${JSON.stringify(result)}`);
+
+            // Extract score from response
+            const scorecard = result.mlScorecard || result;
+            const creditScore = scorecard.creditScore || 500;
+            const predictedRisk = scorecard.predictedRisk || 'medium';
+
+            // Map to internal format
+            const assessment = this.mapFineractResponse(creditScore, predictedRisk, scorecard.accuracy);
+
+            this.logger.log(`[CreditScoring] Result: Score=${assessment.score}, Grade=${assessment.grade}, Approved=${assessment.isApproved}`);
+
+            return assessment;
+
+        } catch (error: any) {
+            this.logger.error(`[CreditScoring] Fineract API error: ${error.message}`);
+
+            // Fallback to local calculation if Fineract fails
+            this.logger.warn('[CreditScoring] Using fallback scoring due to API error');
+            return this.fallbackScoring(data);
+        }
+    }
+
+    /**
+     * Fallback scoring when Fineract is unavailable
+     * Simple calculation based on digital footprint
+     */
+    private fallbackScoring(data: DigitalFootprintData): CreditAssessment {
+        this.logger.log('[CreditScoring] Using fallback local scoring');
+
+        let rawScore = 50; // Base score
+
+        // Battery level (max +20)
+        if (data.battery_level >= 80) rawScore += 20;
+        else if (data.battery_level >= 50) rawScore += 15;
+        else if (data.battery_level >= 20) rawScore += 10;
+
+        // Submission hour - business hours (max +25)
+        const hour = data.submission_hour;
+        if (hour >= 8 && hour <= 18) rawScore += 25;
+        else if (hour >= 6 && hour <= 22) rawScore += 15;
+
+        // Connection type (max +20)
+        if (data.connection_type === 'wifi') rawScore += 20;
+        else if (data.connection_type === '4g') rawScore += 15;
+
+        // Location (max +35)
+        if (data.location_match === 'true') rawScore += 35;
 
         // Convert to FICO scale (300-850)
         const ficoScore = Math.round(300 + (rawScore / 100) * 550);
         const clampedScore = Math.max(300, Math.min(850, ficoScore));
 
-        // Determine grade and risk level
-        const { grade, riskLevel } = this.getGradeAndRisk(clampedScore);
+        return this.mapFineractResponse(clampedScore, this.getRiskLevel(clampedScore));
+    }
 
-        // Approval decision
-        const isApproved = clampedScore >= this.MIN_APPROVAL_SCORE;
-        const rejectionReasons = isApproved ? undefined : this.getRejectionReasons(clampedScore, {
-            paymentHistoryScore,
-            debtToIncomeScore,
-            creditAgeScore,
-            creditUtilizationScore,
-            recentInquiriesScore
-        });
+    /**
+     * Map Fineract response to internal CreditAssessment format
+     */
+    private mapFineractResponse(
+        creditScore: number,
+        predictedRisk: string,
+        accuracy?: number,
+    ): CreditAssessment {
+        const grade = this.getGrade(creditScore);
+        const riskLevel = this.normalizeRiskLevel(predictedRisk);
+        const isApproved = creditScore >= this.MIN_APPROVAL_SCORE;
 
-        // Recommendations
-        const recommendations = this.generateRecommendations(clampedScore, {
-            paymentHistoryScore,
-            debtToIncomeScore,
-            creditAgeScore,
-            creditUtilizationScore,
-            recentInquiriesScore
-        });
+        const recommendations = this.generateRecommendations(creditScore, isApproved);
+        const rejectionReasons = isApproved ? undefined : this.getRejectionReasons(creditScore);
 
-        const assessment: CreditAssessment = {
-            score: clampedScore,
+        return {
+            score: creditScore,
             grade,
             riskLevel,
             isApproved,
-            factors: {
-                paymentHistory: paymentHistoryScore,
-                debtToIncome: debtToIncomeScore,
-                creditAge: creditAgeScore,
-                creditUtilization: creditUtilizationScore,
-                recentInquiries: recentInquiriesScore
-            },
+            source: 'fineract_scorecard',
+            predictedRisk,
+            accuracy,
             recommendations,
-            rejectionReasons
+            rejectionReasons,
         };
-
-        this.logger.log(`Credit assessment completed: Score=${clampedScore}, Grade=${grade}, Approved=${isApproved}`);
-
-        return assessment;
     }
 
     /**
-     * 1. Payment History (35%) - Track record of on-time payments
+     * Get grade from score
      */
-    private async evaluatePaymentHistory(userId: string): Promise<{ score: number; weight: number; details: string }> {
-        // Get all completed loans
-        const completedLoans = await this.loanModel.find({
-            borrower: userId,
-            status: { $in: ['closed', 'completed'] }
-        });
-
-        if (completedLoans.length === 0) {
-            return {
-                score: 50, // Neutral for new borrowers
-                weight: 0.35,
-                details: 'Chưa có lịch sử vay. Điểm trung lập.'
-            };
-        }
-
-        let totalPayments = 0;
-        let onTimePayments = 0;
-        let latePayments = 0;
-        let defaulted = 0;
-
-        for (const loan of completedLoans) {
-            if (loan.isDefaulted) {
-                defaulted++;
-            } else {
-                // Count repayment history
-                const repaymentHistory = (loan as any).repaymentHistory || [];
-                totalPayments += repaymentHistory.length;
-
-                // In real system, check actual vs expected dates
-                // For now, assume on-time if loan not defaulted
-                onTimePayments += repaymentHistory.length;
-            }
-        }
-
-        // Calculate score
-        let score = 100;
-
-        if (defaulted > 0) {
-            score = 0; // Defaulted = instant fail
-        } else if (totalPayments > 0) {
-            const onTimeRatio = onTimePayments / totalPayments;
-            score = onTimeRatio * 100;
-        }
-
-        const details = defaulted > 0
-            ? `${defaulted} khoản vay vi phạm. KHÔNG ĐỦ ĐIỀU KIỆN.`
-            : totalPayments > 0
-                ? `${onTimePayments}/${totalPayments} kỳ trả đúng hạn (${(onTimePayments / totalPayments * 100).toFixed(1)}%)`
-                : 'Chưa có lịch sử thanh toán';
-
-        return { score, weight: 0.35, details };
+    private getGrade(score: number): string {
+        if (score >= 750) return 'A+';
+        if (score >= 700) return 'A';
+        if (score >= 650) return 'B+';
+        if (score >= 600) return 'B';
+        if (score >= 550) return 'C+';
+        if (score >= 500) return 'C';
+        if (score >= 450) return 'D';
+        return 'F';
     }
 
     /**
-     * 2. Debt-to-Income Ratio (30%) - Current debt obligations vs income
+     * Get risk level from score
      */
-    private async evaluateDebtToIncome(
-        userId: string,
-        requestedAmount: number,
-        monthlyIncome?: number
-    ): Promise<{ score: number; weight: number; details: string }> {
-        // Get active loans
-        const activeLoans = await this.loanModel.find({
-            borrower: userId,
-            status: { $in: ['waiting', 'success', 'active'] },
-            fineractStatus: { $ne: 'CLOSED' }
-        });
-
-        // Calculate total monthly debt
-        let totalMonthlyDebt = 0;
-        for (const loan of activeLoans) {
-            totalMonthlyDebt += loan.info?.monthlyPay || 0;
-        }
-
-        // Add requested loan monthly payment (estimate)
-        const estimatedMonthlyPayment = requestedAmount / 12 * 1.12; // Assuming 12% rate, 12 months
-        const projectedMonthlyDebt = totalMonthlyDebt + estimatedMonthlyPayment;
-
-        // If no income provided, use conservative estimate
-        const income = monthlyIncome || 15000000; // 15M VND default
-
-        const debtToIncomeRatio = (projectedMonthlyDebt / income) * 100;
-
-        // Score based on DTI ratio
-        let score: number;
-        if (debtToIncomeRatio <= 20) {
-            score = 100; // Excellent
-        } else if (debtToIncomeRatio <= 35) {
-            score = 80;  // Good
-        } else if (debtToIncomeRatio <= 50) {
-            score = 50;  // Fair
-        } else if (debtToIncomeRatio <= 70) {
-            score = 20;  // Poor
-        } else {
-            score = 0;   // Very poor
-        }
-
-        const details = `DTI: ${debtToIncomeRatio.toFixed(1)}%. Nợ hàng tháng: ${projectedMonthlyDebt.toLocaleString()} VND / Thu nhập: ${income.toLocaleString()} VND`;
-
-        return { score, weight: 0.30, details };
+    private getRiskLevel(score: number): 'low' | 'medium' | 'high' | 'very_high' {
+        if (score >= 700) return 'low';
+        if (score >= 550) return 'medium';
+        if (score >= 450) return 'high';
+        return 'very_high';
     }
 
     /**
-     * 3. Credit Age (15%) - Length of credit history
+     * Normalize risk level from Fineract
      */
-    private async evaluateCreditAge(userId: string): Promise<{ score: number; weight: number; details: string }> {
-        // Find oldest loan
-        const oldestLoan = await this.loanModel
-            .findOne({ borrower: userId })
-            .sort({ createdAt: 1 })
-            .lean(); // Convert to plain object to access createdAt
-
-        if (!oldestLoan) {
-            return {
-                score: 30, // New user penalty
-                weight: 0.15,
-                details: 'Tài khoản mới. Chưa có lịch sử tín dụng.'
-            };
-        }
-
-        // Use type assertion for createdAt (Mongoose timestamps)
-        const createdAt = (oldestLoan as any).createdAt || new Date();
-        const accountAgeMonths = Math.floor(
-            (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
-        );
-
-        // Score based on age
-        let score: number;
-        if (accountAgeMonths >= 24) {
-            score = 100; // 2+ years
-        } else if (accountAgeMonths >= 12) {
-            score = 80;  // 1-2 years
-        } else if (accountAgeMonths >= 6) {
-            score = 60;  // 6-12 months
-        } else if (accountAgeMonths >= 3) {
-            score = 40;  // 3-6 months
-        } else {
-            score = 20;  // < 3 months
-        }
-
-        const details = `Tuổi tài khoản: ${accountAgeMonths} tháng`;
-
-        return { score, weight: 0.15, details };
-    }
-
-    /**
-     * 4. Credit Utilization (10%) - How much credit is being used
-     */
-    private async evaluateCreditUtilization(
-        userId: string,
-        requestedAmount: number
-    ): Promise<{ score: number; weight: number; details: string }> {
-        // Calculate total borrowed vs historical capacity
-        const allLoans = await this.loanModel.find({ borrower: userId });
-
-        if (allLoans.length === 0) {
-            return {
-                score: 70, // Neutral-good for new users
-                weight: 0.10,
-                details: 'Chưa sử dụng tín dụng'
-            };
-        }
-
-        // Max loan amount user has taken before
-        const maxHistoricalLoan = Math.max(...allLoans.map(l => l.info?.capital || 0));
-
-        // Active loans total
-        const activeLoans = allLoans.filter(l =>
-            ['waiting', 'success', 'active'].includes(l.status)
-        );
-        const totalActiveBorrowed = activeLoans.reduce((sum, l) => sum + (l.info?.capital || 0), 0);
-
-        // Utilization ratio
-        const utilizationRatio = (totalActiveBorrowed / (maxHistoricalLoan || requestedAmount)) * 100;
-
-        let score: number;
-        if (utilizationRatio <= 30) {
-            score = 100; // Low utilization
-        } else if (utilizationRatio <= 50) {
-            score = 80;
-        } else if (utilizationRatio <= 70) {
-            score = 50;
-        } else {
-            score = 20; // High utilization
-        }
-
-        const details = `Tỷ lệ sử dụng tín dụng: ${utilizationRatio.toFixed(1)}%`;
-
-        return { score, weight: 0.10, details };
-    }
-
-    /**
-     * 5. Recent Inquiries (10%) - New credit applications
-     */
-    private async evaluateRecentInquiries(userId: string): Promise<{ score: number; weight: number; details: string }> {
-        // Count loans created in last 3 months
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
-        const recentLoans = await this.loanModel.countDocuments({
-            borrower: userId,
-            createdAt: { $gte: threeMonthsAgo }
-        });
-
-        let score: number;
-        if (recentLoans === 0) {
-            score = 100; // No recent inquiries
-        } else if (recentLoans === 1) {
-            score = 80;  // One is ok
-        } else if (recentLoans === 2) {
-            score = 50;  // Two is concerning
-        } else {
-            score = 0;   // 3+ is red flag
-        }
-
-        const details = `${recentLoans} yêu cầu vay trong 3 tháng gần đây`;
-
-        return { score, weight: 0.10, details };
-    }
-
-    /**
-     * Get grade and risk level from score
-     */
-    private getGradeAndRisk(score: number): { grade: string; riskLevel: CreditAssessment['riskLevel'] } {
-        if (score >= 750) {
-            return { grade: 'A+', riskLevel: 'low' };
-        } else if (score >= 700) {
-            return { grade: 'A', riskLevel: 'low' };
-        } else if (score >= 650) {
-            return { grade: 'B+', riskLevel: 'medium' };
-        } else if (score >= 600) {
-            return { grade: 'B', riskLevel: 'medium' };
-        } else if (score >= 550) {
-            return { grade: 'C+', riskLevel: 'medium' };
-        } else if (score >= 500) {
-            return { grade: 'C', riskLevel: 'high' };
-        } else if (score >= 450) {
-            return { grade: 'D', riskLevel: 'high' };
-        } else {
-            return { grade: 'F', riskLevel: 'very_high' };
-        }
-    }
-
-    /**
-     * Generate rejection reasons
-     */
-    private getRejectionReasons(score: number, factors: any): string[] {
-        const reasons: string[] = [];
-
-        if (factors.paymentHistoryScore.score < 50) {
-            reasons.push('Lịch sử thanh toán không đủ tốt');
-        }
-        if (factors.debtToIncomeScore.score < 30) {
-            reasons.push('Tỷ lệ nợ/thu nhập quá cao');
-        }
-        if (factors.recentInquiriesScore.score < 50) {
-            reasons.push('Quá nhiều yêu cầu vay gần đây');
-        }
-        if (score < this.MIN_APPROVAL_SCORE) {
-            reasons.push(`Điểm tín dụng (${score}) thấp hơn ngưỡng tối thiểu (${this.MIN_APPROVAL_SCORE})`);
-        }
-
-        return reasons;
+    private normalizeRiskLevel(risk: string): 'low' | 'medium' | 'high' | 'very_high' {
+        const normalized = risk.toLowerCase().replace('_', '').replace('-', '');
+        if (normalized.includes('low')) return 'low';
+        if (normalized.includes('high') && normalized.includes('very')) return 'very_high';
+        if (normalized.includes('high')) return 'high';
+        return 'medium';
     }
 
     /**
      * Generate recommendations
      */
-    private generateRecommendations(score: number, factors: any): string[] {
+    private generateRecommendations(score: number, isApproved: boolean): string[] {
+        if (score >= 750) {
+            return ['✅ Tín dụng xuất sắc! Đủ điều kiện vay với lãi suất ưu đãi.'];
+        }
+
         const recommendations: string[] = [];
 
-        if (score >= 750) {
-            recommendations.push('Tín dụng xuất sắc! Bạn đủ điều kiện vay với lãi suất ưu đãi nhất.');
-            return recommendations;
+        if (!isApproved) {
+            recommendations.push('⚠️ Cần cải thiện điểm tín dụng trước khi vay.');
         }
 
-        if (factors.paymentHistoryScore.score < 80) {
-            recommendations.push('✅ Trả nợ đúng hạn để cải thiện lịch sử thanh toán');
-        }
-        if (factors.debtToIncomeScore.score < 70) {
-            recommendations.push('💰 Giảm nợ hiện tại hoặc tăng thu nhập trước khi vay thêm');
-        }
-        if (factors.creditAgeScore.score < 60) {
-            recommendations.push('⏰ Duy trì tài khoản lâu dài để tăng điểm tuổi tín dụng');
-        }
-        if (factors.recentInquiriesScore.score < 80) {
-            recommendations.push('🚫 Tránh tạo nhiều khoản vay mới trong thời gian ngắn');
+        if (score < 600) {
+            recommendations.push('📍 Cấp quyền vị trí để tăng độ tin cậy');
+            recommendations.push('⏰ Gửi yêu cầu trong giờ làm việc (8h-18h)');
         }
 
-        if (score < 550) {
-            recommendations.push('⚠️ Cần cải thiện điểm tín dụng trước khi vay số tiền lớn');
-        }
+        return recommendations.length > 0 ? recommendations : ['Tiếp tục sử dụng dịch vụ để cải thiện điểm.'];
+    }
 
-        return recommendations;
+    /**
+     * Get rejection reasons
+     */
+    private getRejectionReasons(score: number): string[] {
+        return [
+            `Điểm tín dụng (${score}) thấp hơn ngưỡng tối thiểu (${this.MIN_APPROVAL_SCORE})`,
+            'Vui lòng cải thiện các yếu tố Digital Footprint và thử lại.',
+        ];
+    }
+
+    /**
+     * Get scorecard history from Fineract
+     * GET /creditScorecard/loans/{loanId}/scorecard
+     * 
+     * @param fineractLoanId - Fineract loan ID
+     * @returns Array of scorecards, newest first
+     */
+    async getScorecardHistory(fineractLoanId: number): Promise<any[]> {
+        this.logger.log(`[CreditScoring] Getting scorecard history for loan ${fineractLoanId}`);
+
+        try {
+            const headers = await this.getHeaders();
+            const url = `${this.baseUrl}/fineract-provider/api/v1/creditScorecard/loans/${fineractLoanId}/scorecard`;
+
+            const response = await firstValueFrom(
+                this.httpService.get(url, { headers, timeout: 15000 }),
+            );
+
+            // Response is array of scorecards
+            let scorecards = Array.isArray(response.data) ? response.data : [];
+
+            // Parse createdOn date arrays to Date objects
+            scorecards = scorecards.map((s: any) => {
+                let date = s.createdOn || s.createdDate;
+                if (Array.isArray(date)) {
+                    // Format: [year, month, day, hour, minute, second]
+                    date = new Date(date[0], date[1] - 1, date[2],
+                        date[3] || 0, date[4] || 0, date[5] || 0);
+                }
+                return { ...s, createdOn: date };
+            });
+
+            // Sort by date descending (newest first)
+            scorecards.sort((a: any, b: any) => {
+                return new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime();
+            });
+
+            this.logger.log(`[CreditScoring] Found ${scorecards.length} scorecard(s)`);
+            return scorecards;
+
+        } catch (error: any) {
+            if (error.response?.status === 404) {
+                this.logger.log('[CreditScoring] No scorecard found (404)');
+                return [];
+            }
+            this.logger.error(`[CreditScoring] Error fetching history: ${error.message}`);
+            throw error;
+        }
     }
 }
+

@@ -8,7 +8,7 @@ import { httpClient } from '../http/httpClient';
 import { apiConfig } from '../config/api.config';
 
 // eKYC Python service URL (OCR, Face Detection)
-const EKYC_SERVICE_URL = 'http://10.10.3.114:8000';
+const EKYC_SERVICE_URL = apiConfig.ekycServiceUrl;
 
 export interface KycImage {
     id: number;
@@ -145,7 +145,7 @@ export const ekycApi = {
     processOcrFront: async (imageUri: string): Promise<OcrResponse> => {
         try {
             const formData = new FormData();
-            formData.append('image', {
+            formData.append('frontID', {
                 uri: imageUri,
                 type: 'image/jpeg',
                 name: 'front_cccd.jpg',
@@ -156,7 +156,12 @@ export const ekycApi = {
                 body: formData,
             });
 
-            return await response.json();
+            const result = await response.json();
+            // Normalize Python response {"result": {"idNumber": "...", ...}}
+            if (result.result && result.result.idNumber) {
+                return { success: true, data: result.result };
+            }
+            return { success: false, error: result.error || 'Dữ liệu không hợp lệ' };
         } catch (error: any) {
             console.error('[ekycApi] OCR Front error:', error.message);
             return { success: false, error: error.message };
@@ -169,7 +174,7 @@ export const ekycApi = {
     processOcrBack: async (imageUri: string): Promise<OcrResponse> => {
         try {
             const formData = new FormData();
-            formData.append('image', {
+            formData.append('backID', {
                 uri: imageUri,
                 type: 'image/jpeg',
                 name: 'back_cccd.jpg',
@@ -180,7 +185,9 @@ export const ekycApi = {
                 body: formData,
             });
 
-            return await response.json();
+            const result = await response.json();
+            // Normalize Python response {"result": {"success": true, "data": {...}}}
+            return result.result || { success: false, error: 'Dữ liệu không hợp lệ' };
         } catch (error: any) {
             console.error('[ekycApi] OCR Back error:', error.message);
             return { success: false, error: error.message };
@@ -220,9 +227,11 @@ export const ekycApi = {
             });
 
             const result = await response.json();
+            // Normalize Python response {"results": {"success": true, ...}}
+            const livenessResult = result.results || result;
             return {
-                success: true,
-                results: result.results || result,
+                success: livenessResult.success !== false,
+                results: livenessResult,
             };
         } catch (error: any) {
             console.error('[ekycApi] Liveness error:', error.message);
