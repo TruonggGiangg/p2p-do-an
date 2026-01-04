@@ -2,7 +2,7 @@
  * LoanCreateScreen - Fintech Calculator UI
  */
 
-import React, { useState, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -14,7 +14,8 @@ import {
     StatusBar,
     KeyboardAvoidingView,
     Platform,
-    ActivityIndicator
+    ActivityIndicator,
+    Animated
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import {
     RateCheckResponse,
     LOAN_WILLINGS,
     LOAN_PERIODS,
+    LoanPurpose,
 } from '../../types';
 import { CreditRejectionModal } from '../../components/CreditRejectionModal';
 import { GradientBackground, GlassCard, GlassTokens } from '../../components/glass';
@@ -36,6 +38,19 @@ const formatNumber = (num: number): string => num.toString().replace(/\B(?=(\d{3
 const parseNumber = (str: string): number => parseInt(str.replace(/,/g, ''), 10) || 0;
 const formatDate = (date: Date): string => date.toISOString().split('T')[0];
 
+// Purpose icon mapper
+const getPurposeIcon = (purposeName: string): string => {
+    const lowerName = purposeName.toLowerCase();
+    if (lowerName.includes('tiêu dùng') || lowerName.includes('consumption')) return 'cart-outline';
+    if (lowerName.includes('kinh doanh') || lowerName.includes('business')) return 'briefcase-outline';
+    if (lowerName.includes('y tế') || lowerName.includes('medical')) return 'medical-bag';
+    if (lowerName.includes('giáo dục') || lowerName.includes('education')) return 'school-outline';
+    if (lowerName.includes('nhà') || lowerName.includes('real')) return 'home-city-outline';
+    if (lowerName.includes('du lịch') || lowerName.includes('travel')) return 'airplane';
+    if (lowerName.includes('cưới') || lowerName.includes('wedding')) return 'ring';
+    return 'cash-multiple';
+};
+
 export default function LoanCreateScreen({ navigation }: any) {
     useLayoutEffect(() => {
         navigation.setOptions({ headerShown: false });
@@ -43,14 +58,47 @@ export default function LoanCreateScreen({ navigation }: any) {
 
     const [capital, setCapital] = useState<string>('10,000,000');
     const [periodMonth, setPeriodMonth] = useState<number>(12);
-    const [willing, setWilling] = useState<string>(LOAN_WILLINGS[0]);
+    const [willing, setWilling] = useState<string>('');
     const [disbursementDate] = useState<Date>(new Date(Date.now() + 86400000)); // Tomorrow
+    const [purposes, setPurposes] = useState<LoanPurpose[]>([]);
+    const [loadingPurposes, setLoadingPurposes] = useState(false);
 
     const [ratePreview, setRatePreview] = useState<RateCheckResponse | null>(null);
     const [loadingRate, setLoadingRate] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [rejectionVisible, setRejectionVisible] = useState(false);
     const [rejectionData, setRejectionData] = useState<any>(null);
+
+    // Animation values
+    const purposeScaleAnim = useRef(new Animated.Value(1)).current;
+    const pillBounceAnim = useRef(new Animated.Value(1)).current;
+    const rateCardFadeAnim = useRef(new Animated.Value(0)).current;
+
+    const loadPurposes = useCallback(async () => {
+        try {
+            setLoadingPurposes(true);
+            const data = await loanApi.getLoanPurposes();
+            if (data && data.length > 0) {
+                setPurposes(data);
+                // Set initial willing if not set
+                setWilling(data[0].name);
+            } else {
+                // Fallback
+                setPurposes(LOAN_WILLINGS.map((name, index) => ({ id: index, name, position: index })));
+                setWilling(LOAN_WILLINGS[0]);
+            }
+        } catch (error) {
+            console.warn('[LoanCreate] Failed to fetch purposes:', error);
+            setPurposes(LOAN_WILLINGS.map((name, index) => ({ id: index, name, position: index })));
+            setWilling(LOAN_WILLINGS[0]);
+        } finally {
+            setLoadingPurposes(false);
+        }
+    }, []);
+
+    useLayoutEffect(() => {
+        loadPurposes();
+    }, [loadPurposes]);
 
     const handleCheckRate = useCallback(async () => {
         const capitalValue = parseNumber(capital);
@@ -72,6 +120,12 @@ export default function LoanCreateScreen({ navigation }: any) {
             Alert.alert('Lỗi', error.message || 'Không thể kiểm tra lãi suất');
         } finally {
             setLoadingRate(false);
+            // Fade in rate card
+            Animated.timing(rateCardFadeAnim, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: true,
+            }).start();
         }
     }, [capital, periodMonth, disbursementDate]);
 
@@ -82,33 +136,23 @@ export default function LoanCreateScreen({ navigation }: any) {
             return;
         }
 
-        try {
-            setSubmitting(true);
-            const request: CreateLoanRequest = {
+        if (!willing) {
+            Alert.alert('Lỗi', 'Vui lòng chọn mục đích vay');
+            return;
+        }
+
+        // Navigate to CreditAssessment screen with loan data
+        // Pre-loan scoring will be performed there
+        navigation.navigate('CreditAssessment', {
+            loanData: {
                 capital: capitalValue,
                 periodMonth,
                 willing,
                 disbursementDate: formatDate(disbursementDate),
-            };
-
-            const result = await loanApi.createLoan(request);
-
-            Alert.alert(
-                'Thành công!',
-                'Hồ sơ vay đã được tạo thành công.',
-                [{ text: 'Về trang chủ', onPress: () => navigation.goBack() }]
-            );
-        } catch (error: any) {
-            if (error.status === 400 && error.data?.creditScore) {
-                setRejectionData(error.data);
-                setRejectionVisible(true);
-            } else {
-                Alert.alert('Lỗi', error.message || 'Không thể tạo khoản vay');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    }, [capital, periodMonth, willing, disbursementDate, navigation]);
+                ratePreview, // Pass rate preview for display
+            },
+        });
+    }, [capital, periodMonth, willing, disbursementDate, navigation, ratePreview]);
 
     return (
         <GradientBackground>
@@ -126,7 +170,10 @@ export default function LoanCreateScreen({ navigation }: any) {
 
                     {/* Amount Input (Calculator Style) */}
                     <View style={styles.amountContainer}>
-                        <Text style={styles.inputLabel}>Bạn muốn vay bao nhiêu?</Text>
+                        <View style={styles.sectionHeaderWithIcon}>
+                            <Ionicons name="cash-outline" size={20} color="rgba(255,255,255,0.7)" style={styles.sectionIcon} />
+                            <Text style={styles.inputLabel}>Bạn muốn vay bao nhiêu?</Text>
+                        </View>
                         <View style={styles.amountInputWrapper}>
                             <TextInput
                                 value={capital}
@@ -147,7 +194,10 @@ export default function LoanCreateScreen({ navigation }: any) {
 
                     {/* Term Selector */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionLabel}>Kỳ hạn vay</Text>
+                        <View style={styles.sectionHeaderWithIcon}>
+                            <Ionicons name="calendar-outline" size={18} color="white" style={styles.sectionIcon} />
+                            <Text style={styles.sectionLabel}>Kỳ hạn vay</Text>
+                        </View>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
                             {LOAN_PERIODS.map((item) => (
                                 <TouchableOpacity
@@ -174,84 +224,130 @@ export default function LoanCreateScreen({ navigation }: any) {
 
                     {/* Purpose Selector */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionLabel}>Mục đích vay</Text>
-                        <View style={styles.gridContainer}>
-                            {LOAN_WILLINGS.slice(0, 6).map((item) => (
-                                <TouchableOpacity
-                                    key={item}
-                                    onPress={() => setWilling(item)}
-                                    style={[
-                                        styles.gridItem,
-                                        willing === item && styles.gridItemActive
-                                    ]}
-                                >
-                                    <Text style={[
-                                        styles.gridText,
-                                        willing === item && styles.gridTextActive
-                                    ]}>
-                                        {item}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                        <View style={styles.sectionHeaderWithIcon}>
+                            <Ionicons name="list-outline" size={18} color="white" style={styles.sectionIcon} />
+                            <Text style={styles.sectionLabel}>Mục đích vay</Text>
                         </View>
+                        {loadingPurposes ? (
+                            <ActivityIndicator color={GlassTokens.colors.primary} style={{ marginVertical: 20 }} />
+                        ) : (
+                            <View style={styles.gridContainer}>
+                                {purposes.map((item, index) => (
+                                    <TouchableOpacity
+                                        key={item.id}
+                                        activeOpacity={0.7}
+                                        style={styles.gridItemWrapper}
+                                        onPressIn={() => {
+                                            Animated.spring(purposeScaleAnim, {
+                                                toValue: 0.95,
+                                                useNativeDriver: true,
+                                            }).start();
+                                        }}
+                                        onPressOut={() => {
+                                            Animated.spring(purposeScaleAnim, {
+                                                toValue: 1,
+                                                friction: 3,
+                                                useNativeDriver: true,
+                                            }).start();
+                                        }}
+                                        onPress={() => setWilling(item.name)}
+                                    >
+                                        <Animated.View
+                                            style={[
+                                                styles.gridItem,
+                                                willing === item.name && styles.gridItemActive,
+                                                { transform: [{ scale: purposeScaleAnim }] }
+                                            ]}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name={getPurposeIcon(item.name)}
+                                                size={24}
+                                                color={willing === item.name ? '#3B82F6' : 'rgba(255,255,255,0.5)'}
+                                                style={styles.purposeIcon}
+                                            />
+                                            <Text style={[
+                                                styles.gridText,
+                                                willing === item.name && styles.gridTextActive
+                                            ]}>
+                                                {item.name}
+                                            </Text>
+                                        </Animated.View>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
                     </View>
 
                     {/* Rate Result Ticket */}
                     {ratePreview ? (
-                        <GlassCard blur={GlassTokens.blur.medium} style={styles.ticketCard}>
-                            <View style={styles.ticketHeader}>
-                                <Text style={styles.ticketLabel}>Dự tính trả hàng tháng</Text>
-                                <Text style={styles.ticketAmount}>{formatNumber(ratePreview.monthlyPay)} ₫</Text>
-                            </View>
-                            <View style={styles.dashedLine} />
-                            <View style={styles.ticketRow}>
-                                <Text style={styles.ticketRowLabel}>Lãi suất</Text>
-                                <Text style={styles.ticketRowValue}>{ratePreview.rate.toFixed(2)}% / tháng</Text>
-                            </View>
-                            <View style={styles.ticketRow}>
-                                <Text style={styles.ticketRowLabel}>Tổng lãi dự kiến</Text>
-                                <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay - parseNumber(capital))} ₫</Text>
-                            </View>
-                            <View style={styles.ticketRow}>
-                                <Text style={styles.ticketRowLabel}>Tổng thanh toán</Text>
-                                <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay)} ₫</Text>
-                            </View>
-
-                            {/* Schedule Preview Table (WYSIWYG) */}
-                            {ratePreview.schedulePreview && ratePreview.schedulePreview.length > 0 && (
-                                <View style={styles.scheduleContainer}>
-                                    <View style={styles.dashedLine} />
-                                    <Text style={styles.scheduleTitle}>Lịch trả nợ chi tiết</Text>
-                                    <View style={styles.scheduleHeader}>
-                                        <Text style={[styles.scheduleHeaderText, { flex: 0.5 }]}>Kỳ</Text>
-                                        <Text style={styles.scheduleHeaderText}>Gốc</Text>
-                                        <Text style={styles.scheduleHeaderText}>Lãi</Text>
-                                        <Text style={styles.scheduleHeaderText}>Tổng</Text>
-                                    </View>
-                                    {ratePreview.schedulePreview.map((item, idx) => (
-                                        <View key={idx} style={[styles.scheduleRow, idx % 2 === 0 && styles.scheduleRowAlt]}>
-                                            <Text style={[styles.scheduleCell, { flex: 0.5 }]}>{item.period}</Text>
-                                            <Text style={styles.scheduleCell}>{formatNumber(item.principal)}</Text>
-                                            <Text style={styles.scheduleCell}>{formatNumber(item.interest)}</Text>
-                                            <Text style={[styles.scheduleCell, { fontWeight: '600', color: '#10B981' }]}>
-                                                {formatNumber(item.total)}
-                                            </Text>
-                                        </View>
-                                    ))}
+                        <Animated.View style={{ opacity: rateCardFadeAnim }}>
+                            <GlassCard blur={GlassTokens.blur.medium} style={styles.ticketCard}>
+                                <View style={styles.ticketHeader}>
+                                    <Text style={styles.ticketLabel}>Dự tính trả hàng tháng</Text>
+                                    <Text style={styles.ticketAmount}>{formatNumber(ratePreview.monthlyPay)} ₫</Text>
                                 </View>
-                            )}
-                        </GlassCard>
+                                <View style={styles.dashedLine} />
+                                <View style={styles.ticketRow}>
+                                    <Text style={styles.ticketRowLabel}>Lãi suất</Text>
+                                    <Text style={styles.ticketRowValue}>{ratePreview.rate.toFixed(2)}% / tháng</Text>
+                                </View>
+                                <View style={styles.ticketRow}>
+                                    <Text style={styles.ticketRowLabel}>Tổng lãi dự kiến</Text>
+                                    <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay - parseNumber(capital))} ₫</Text>
+                                </View>
+                                <View style={styles.ticketRow}>
+                                    <Text style={styles.ticketRowLabel}>Tổng thanh toán</Text>
+                                    <Text style={styles.ticketRowValue}>{formatNumber(ratePreview.entirelyPay)} ₫</Text>
+                                </View>
+
+                                {/* Schedule Preview Table (WYSIWYG) */}
+                                {ratePreview.schedulePreview && ratePreview.schedulePreview.length > 0 && (
+                                    <View style={styles.scheduleContainer}>
+                                        <View style={styles.dashedLine} />
+                                        <Text style={styles.scheduleTitle}>Lịch trả nợ chi tiết</Text>
+                                        <View style={styles.scheduleHeader}>
+                                            <Text style={[styles.scheduleHeaderText, { flex: 0.5 }]}>Kỳ</Text>
+                                            <Text style={styles.scheduleHeaderText}>Gốc</Text>
+                                            <Text style={styles.scheduleHeaderText}>Lãi</Text>
+                                            <Text style={styles.scheduleHeaderText}>Tổng</Text>
+                                        </View>
+                                        {ratePreview.schedulePreview.map((item, idx) => (
+                                            <View key={idx} style={[styles.scheduleRow, idx % 2 === 0 && styles.scheduleRowAlt]}>
+                                                <Text style={[styles.scheduleCell, { flex: 0.5 }]}>{item.period}</Text>
+                                                <Text style={styles.scheduleCell}>{formatNumber(item.principal)}</Text>
+                                                <Text style={styles.scheduleCell}>{formatNumber(item.interest)}</Text>
+                                                <Text style={[styles.scheduleCell, { fontWeight: '600', color: '#10B981' }]}>
+                                                    {formatNumber(item.total)}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                            </GlassCard>
+                        </Animated.View>
                     ) : (
                         <TouchableOpacity
-                            style={styles.checkRateButton}
+                            activeOpacity={0.8}
+                            style={[
+                                styles.checkRateButton,
+                                loadingRate && styles.checkRateButtonDisabled
+                            ]}
                             onPress={handleCheckRate}
                             disabled={loadingRate}
                         >
-                            {loadingRate ? (
-                                <ActivityIndicator color="white" />
-                            ) : (
-                                <Text style={styles.checkRateText}>Tính toán khoản vay</Text>
-                            )}
+                            <LinearGradient
+                                colors={loadingRate ? ['rgba(59,130,246,0.3)', 'rgba(37,99,235,0.3)'] : ['#3B82F6', '#2563EB']}
+                                style={styles.checkRateButtonGradient}
+                            >
+                                {loadingRate ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="calculator-outline" size={20} color="white" style={{ marginRight: 8 }} />
+                                        <Text style={styles.checkRateText}>Tính toán khoản vay</Text>
+                                    </>
+                                )}
+                            </LinearGradient>
                         </TouchableOpacity>
                     )}
 
@@ -261,23 +357,28 @@ export default function LoanCreateScreen({ navigation }: any) {
                 {/* Footer Submit */}
                 {ratePreview && (
                     <View style={styles.footer}>
-                        <TouchableOpacity
-                            style={styles.submitButton}
-                            onPress={handleSubmit}
-                            disabled={submitting}
-                        >
-                            {submitting ? (
-                                <ActivityIndicator color="white" />
-                            ) : (
+                        <View style={styles.submitButtonShadowWrapper}>
+                            <TouchableOpacity
+                                activeOpacity={0.8}
+                                style={styles.submitButton}
+                                onPress={handleSubmit}
+                                disabled={submitting}
+                            >
                                 <LinearGradient
                                     colors={['#3B82F6', '#2563EB']}
                                     style={styles.submitGradient}
                                 >
-                                    <Text style={styles.submitText}>Xác nhận vay ngay</Text>
-                                    <Ionicons name="arrow-forward" size={20} color="white" />
+                                    {submitting ? (
+                                        <ActivityIndicator color="white" />
+                                    ) : (
+                                        <>
+                                            <Text style={styles.submitText}>Xác nhận vay ngay</Text>
+                                            <Ionicons name="arrow-forward" size={20} color="white" />
+                                        </>
+                                    )}
                                 </LinearGradient>
-                            )}
-                        </TouchableOpacity>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 )}
             </KeyboardAvoidingView>
@@ -354,13 +455,21 @@ const styles = StyleSheet.create({
 
     // Sections
     section: {
-        marginBottom: 24,
+        marginBottom: 36,
+    },
+    sectionHeaderWithIcon: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    sectionIcon: {
+        marginRight: 8,
     },
     sectionLabel: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
         color: 'white',
-        marginBottom: 12,
+        letterSpacing: 0.3,
     },
     pillsContainer: {
         gap: 10,
@@ -389,24 +498,45 @@ const styles = StyleSheet.create({
     gridContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 10,
+        justifyContent: 'space-between',
+        paddingHorizontal: 0,
+    },
+    gridItemWrapper: {
+        width: '48%',
+        marginBottom: 12,
     },
     gridItem: {
-        width: '48%',
-        paddingVertical: 12,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 1,
+        width: '100%',
+        paddingVertical: 16,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1.5,
         borderColor: 'rgba(255,255,255,0.1)',
         alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
     gridItemActive: {
-        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+        backgroundColor: 'rgba(59, 130, 246, 0.25)',
         borderColor: '#3B82F6',
+        borderWidth: 2,
+        shadowColor: '#3B82F6',
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    purposeIcon: {
+        marginBottom: 8,
     },
     gridText: {
         fontSize: 13,
         color: 'rgba(255,255,255,0.7)',
+        textAlign: 'center',
+        lineHeight: 18,
     },
     gridTextActive: {
         color: 'white',
@@ -415,56 +545,76 @@ const styles = StyleSheet.create({
 
     // Ticket
     ticketCard: {
-        padding: 20,
+        padding: 24,
+        paddingHorizontal: 20,
         borderRadius: 24,
-        marginTop: 10,
+        marginTop: 16,
+        marginHorizontal: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        // Avoid overflow: 'hidden' here if GlassCard handles it, 
+        // but ensure radius is consistent
     },
     ticketHeader: {
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: 20,
+        paddingBottom: 16,
     },
     ticketLabel: {
-        fontSize: 13,
+        fontSize: 14,
         color: 'rgba(255,255,255,0.6)',
-        marginBottom: 4,
+        marginBottom: 8,
+        letterSpacing: 0.3,
     },
     ticketAmount: {
-        fontSize: 28,
+        fontSize: 32,
         fontWeight: '700',
         color: '#10B981', // Emerald
+        letterSpacing: -0.5,
     },
     dashedLine: {
         height: 1,
         width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        borderStyle: 'dashed', // Note: React Native borderStyle 'dashed' needs borderWidth
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        marginBottom: 16,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        marginVertical: 16,
     },
     ticketRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        alignItems: 'center',
+        paddingVertical: 8,
+        marginBottom: 4,
     },
     ticketRowLabel: {
         fontSize: 14,
         color: 'rgba(255,255,255,0.6)',
     },
     ticketRowValue: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
         color: 'white',
     },
 
     checkRateButton: {
         marginTop: 20,
-        paddingVertical: 16,
         borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: '#3B82F6', // Base color to prevent corner bleeding
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    checkRateButtonDisabled: {
+        opacity: 0.6,
+    },
+    checkRateButtonGradient: {
+        paddingVertical: 16,
+        flexDirection: 'row',
+        justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 16,
     },
     checkRateText: {
         fontSize: 16,
@@ -484,15 +634,23 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.1)',
     },
+    submitButtonShadowWrapper: {
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+        elevation: 6,
+    },
     submitButton: {
         borderRadius: 16,
-        overflow: 'hidden',
+        backgroundColor: '#3B82F6',
     },
     submitGradient: {
         paddingVertical: 16,
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
+        borderRadius: 16,
         gap: 8,
     },
     submitText: {
@@ -514,30 +672,39 @@ const styles = StyleSheet.create({
     },
     scheduleHeader: {
         flexDirection: 'row',
-        paddingBottom: 8,
+        paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.2)',
+        borderBottomColor: 'rgba(59,130,246,0.3)',
+        backgroundColor: 'rgba(59,130,246,0.15)',
+        borderRadius: 12,
+        paddingHorizontal: 8,
+        marginBottom: 8,
     },
     scheduleHeaderText: {
         flex: 1,
         fontSize: 11,
-        fontWeight: '600',
-        color: 'rgba(255,255,255,0.5)',
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.8)',
         textAlign: 'center',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     scheduleRow: {
         flexDirection: 'row',
-        paddingVertical: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 8,
         alignItems: 'center',
+        borderRadius: 6,
+        marginBottom: 2,
     },
     scheduleRowAlt: {
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 6,
+        backgroundColor: 'rgba(59,130,246,0.08)',
     },
     scheduleCell: {
         flex: 1,
-        fontSize: 11,
-        color: 'rgba(255,255,255,0.7)',
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.85)',
         textAlign: 'center',
+        fontWeight: '500',
     },
 });

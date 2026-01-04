@@ -36,6 +36,7 @@ interface LoanApiResponse<T> {
 const ENDPOINTS = {
     checkRate: '/loan/rate',
     createLoan: '/loan/create-auto',
+    preAssess: '/loan/pre-assess',  // Pre-loan credit assessment
     myLoans: '/loan/me',
     loanDetail: (id: string) => `/loan/${id}`,
     loanStatistics: (id: string) => `/loan/${id}/statistics`,
@@ -123,6 +124,42 @@ export const loanApi = {
         console.log('[LoanAPI] createLoan Status:', response.status);
         if (!response.data.data) {
             throw new Error('Invalid response from server');
+        }
+        return response.data.data;
+    },
+
+    /**
+     * Pre-assess credit score before loan creation
+     * HIGH_RISK → canProceed: false, MEDIUM/LOW → canProceed: true
+     */
+    preAssess: async (data: {
+        capital: number;
+        periodMonth: number;
+        willing?: string;
+        footprint: {
+            battery_level: number;
+            submission_hour: number;
+            connection_type: 'wifi' | '4g' | 'unknown';
+            location_match: 'true' | 'false';
+            device_score?: number;
+        };
+    }): Promise<{
+        score: number;
+        grade: string;
+        riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+        canProceed: boolean;
+        isApproved: boolean;
+        rejectionMessage?: string;
+        recommendations: string[];
+    }> => {
+        console.log('[LoanAPI] preAssess Payload:', JSON.stringify(data));
+        const response = await httpClient.post<LoanApiResponse<any>>(
+            ENDPOINTS.preAssess,
+            data,
+        );
+        console.log('[LoanAPI] preAssess Response:', response.data);
+        if (!response.data.data) {
+            throw new Error(response.data.message || 'Pre-assessment failed');
         }
         return response.data.data;
     },

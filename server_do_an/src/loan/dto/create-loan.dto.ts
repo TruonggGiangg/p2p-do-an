@@ -103,3 +103,46 @@ export class CreateLoanDto {
     digitalFootprint?: DigitalFootprintDto;
 }
 
+/**
+ * Pre-Assess DTO
+ * Chấm điểm tín dụng TRƯỚC khi tạo khoản vay
+ */
+export class PreAssessDto {
+    @ApiProperty({
+        description: 'Số tiền vay (VND)',
+        minimum: 1000000,
+        maximum: 500000000,
+        example: 10000000,
+    })
+    @IsNumber()
+    @Min(1000000)
+    @Max(500000000)
+    capital: number;
+
+    @ApiProperty({
+        description: 'Kỳ hạn vay (tháng)',
+        minimum: 1,
+        maximum: 60,
+        example: 12,
+    })
+    @IsNumber()
+    @Min(1)
+    @Max(60)
+    periodMonth: number;
+
+    @ApiPropertyOptional({
+        description: 'Mục đích vay',
+        example: 'Mua sắm',
+    })
+    @IsOptional()
+    @IsString()
+    willing?: string;
+
+    @ApiProperty({
+        description: 'Dữ liệu dấu vân tay kỹ thuật số',
+        type: DigitalFootprintDto,
+    })
+    @ValidateNested()
+    @Type(() => DigitalFootprintDto)
+    footprint: DigitalFootprintDto;
+}

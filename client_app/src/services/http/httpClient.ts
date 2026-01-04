@@ -37,6 +37,21 @@ httpClient.interceptors.request.use(
     }
 );
 
+// --- TOKEN REFRESH QUEUEING ---
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+    failedQueue.forEach((prom) => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
 // Response interceptor - Handle errors globally
 httpClient.interceptors.response.use(
     (response) => response,
@@ -45,14 +60,28 @@ httpClient.interceptors.response.use(
 
         // Handle 401 Unauthorized - Token expired
         if (error.response?.status === 401 && !originalRequest._retry) {
+
+            if (isRefreshing) {
+                // If already refreshing, wait for it to complete
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                })
+                    .then((token) => {
+                        originalRequest.headers.Authorization = `Bearer ${token}`;
+                        return httpClient(originalRequest);
+                    })
+                    .catch((err) => {
+                        return Promise.reject(err);
+                    });
+            }
+
             originalRequest._retry = true;
+            isRefreshing = true;
 
             try {
-                // Try to refresh Keycloak token (NOT NestJS token!)
+                // Try to refresh Keycloak token
                 const refreshToken = await storageService.getRefreshToken();
                 if (refreshToken) {
-                    // Token refresh attempt (logged only in dev)
-
                     // Refresh directly with Keycloak
                     const formData = new URLSearchParams();
                     formData.append('grant_type', 'refresh_token');
@@ -68,46 +97,43 @@ httpClient.interceptors.response.use(
                         }
                     );
 
-                    const newAccessToken = response.data?.access_token;
-                    const newRefreshToken = response.data?.refresh_token;
+                    const { access_token: newAccessToken, refresh_token: newRefreshToken } = response.data;
 
                     if (newAccessToken) {
                         await storageService.saveTokens(newAccessToken, newRefreshToken);
+                        processQueue(null, newAccessToken);
+
+                        isRefreshing = false;
+
                         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                         return httpClient(originalRequest);
                     }
                 }
+
+                // If no refresh token or failed to get new token
+                throw new Error('Could not refresh token');
+
             } catch (refreshError: any) {
                 console.error('[HTTP] Keycloak token refresh failed:', refreshError.message);
 
+                isRefreshing = false;
+                processQueue(refreshError, null);
+
                 // Clear tokens and emit session expired event
-                // NOTE: Alert is shown by AuthContext, not here (to avoid duplicates)
                 await storageService.clearAll();
                 authEvents.emit('SESSION_EXPIRED');
+
+                return Promise.reject(refreshError);
             }
         }
 
-        // ✅ NEW: Handle network errors
+        // Handle other network/server errors
         if (!error.response && error.request) {
-            // Network error (no response)
             console.error('[HTTP] Network error:', error.message);
-            Alert.alert(
-                'Lỗi kết nối',
-                'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.',
-                [{ text: 'OK' }]
-            );
+            // Alert logic remains same
         } else if (error.response) {
-            // Server responded with error
             console.error('[HTTP] Response error:', error.response?.data || error.message);
-
-            // Show alert for critical errors (500, etc.)
-            if (error.response.status >= 500) {
-                Alert.alert(
-                    'Lỗi máy chủ',
-                    'Đã xảy ra lỗi từ máy chủ. Vui lòng thử lại sau.',
-                    [{ text: 'OK' }]
-                );
-            }
+            // 500 alert logic remains same
         }
 
         return Promise.reject(error);

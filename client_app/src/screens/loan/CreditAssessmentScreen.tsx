@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+
 import {
     View,
     Text,
@@ -17,6 +18,7 @@ import {
     Alert,
     StyleSheet,
 } from 'react-native';
+
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,11 +30,34 @@ import { loanApi } from '../../services';
 // Max scoring attempts allowed (enforced on client)
 const MAX_SCORING_ATTEMPTS = 3;
 
-// Route params
+// Pre-loan data (from LoanCreate screen)
+interface PreLoanData {
+    capital: number;
+    periodMonth: number;
+    willing: string;
+    disbursementDate: string;
+    ratePreview?: any;
+}
+
+// Pre-assessment result
+interface PreAssessResult {
+    score: number;
+    grade: string;
+    riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+    canProceed: boolean;
+    isApproved: boolean;
+    rejectionMessage?: string;
+    recommendations: string[];
+}
+
+// Route params - supports both pre-loan and post-loan modes
 type RouteParams = {
     CreditAssessment: {
-        loanId: string;
+        // Post-loan mode (view/rescore existing loan)
+        loanId?: string;
         fineractLoanId?: number;
+        // Pre-loan mode (from LoanCreate)
+        loanData?: PreLoanData;
     };
 };
 
@@ -58,20 +83,25 @@ interface ScorecardResponse {
 
 export default function CreditAssessmentScreen() {
     const route = useRoute<RouteProp<RouteParams, 'CreditAssessment'>>();
-    const navigation = useNavigation();
-    const { loanId, fineractLoanId } = route.params || {};
+    const navigation = useNavigation<any>();
+    const { loanId, fineractLoanId, loanData } = route.params || {};
+
+    // Determine mode
+    const isPreLoanMode = !!loanData && !loanId;
 
     // State
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!isPreLoanMode); // Pre-loan starts not loading
     const [assessing, setAssessing] = useState(false);
+    const [creating, setCreating] = useState(false);
     const [scorecards, setScorecards] = useState<ScorecardItem[]>([]);
     const [latestScore, setLatestScore] = useState<ScorecardItem | null>(null);
+    const [preAssessResult, setPreAssessResult] = useState<PreAssessResult | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // Digital Footprint hook
     const { collectFootprint, loading: collectingFootprint } = useDigitalFootprint();
 
-    // Check if can score again
+    // Check if can score again (post-loan mode only)
     const canScoreAgain = scorecards.length < MAX_SCORING_ATTEMPTS;
     const remainingAttempts = MAX_SCORING_ATTEMPTS - scorecards.length;
 
@@ -99,7 +129,7 @@ export default function CreditAssessmentScreen() {
     }, [loanId]);
 
     /**
-     * Assess credit score with Digital Footprint
+     * Assess credit score with Digital Footprint (Post-loan mode)
      */
     const handleAssessCredit = useCallback(async () => {
         if (!canScoreAgain) {
@@ -109,6 +139,8 @@ export default function CreditAssessmentScreen() {
             );
             return;
         }
+
+        if (!loanId) return;
 
         try {
             setAssessing(true);
@@ -139,7 +171,107 @@ export default function CreditAssessmentScreen() {
         }
     }, [loanId, canScoreAgain, collectFootprint, loadScorecardHistory]);
 
-    // Load on mount
+    /**
+     * Pre-Assess credit score (Pre-loan mode)
+     * Called when coming from LoanCreateScreen
+     */
+    const handlePreAssess = useCallback(async () => {
+        if (!loanData) return;
+
+        try {
+            setAssessing(true);
+            setError(null);
+
+            // Collect digital footprint
+            const footprint = await collectFootprint();
+            if (!footprint) {
+                Alert.alert('Lỗi', 'Không thể thu thập dữ liệu thiết bị. Vui lòng thử lại.');
+                return;
+            }
+
+            console.log('[PreAssess] Footprint:', footprint);
+            console.log('[PreAssess] Loan Data:', loanData);
+
+            // Call pre-assess API
+            const result = await loanApi.preAssess({
+                capital: loanData.capital,
+                periodMonth: loanData.periodMonth,
+                willing: loanData.willing,
+                footprint: {
+                    battery_level: footprint.battery_level ?? 50,
+                    submission_hour: footprint.submission_hour ?? new Date().getHours(),
+                    connection_type: footprint.connection_type ?? 'unknown',
+                    location_match: footprint.location_match ?? 'false',
+                    device_score: footprint.device_score,
+                },
+            });
+
+            console.log('[PreAssess] Result:', result);
+            setPreAssessResult(result);
+
+            // Handle rejection immediately
+            if (!result.canProceed) {
+                Alert.alert(
+                    'Không đủ điều kiện',
+                    result.rejectionMessage || 'Hồ sơ của bạn không đủ điều kiện để vay lúc này.',
+                    [{ text: 'Đã hiểu', onPress: () => navigation.goBack() }]
+                );
+            }
+
+        } catch (err: any) {
+            console.error('[PreAssess] Error:', err);
+            setError(err.message || 'Không thể đánh giá tín dụng');
+            Alert.alert('Lỗi', err.message || 'Không thể đánh giá tín dụng');
+        } finally {
+            setAssessing(false);
+        }
+    }, [loanData, collectFootprint, navigation]);
+
+    /**
+     * Create loan after successful pre-assessment
+     */
+    const handleCreateLoan = useCallback(async () => {
+        if (!loanData || !preAssessResult?.canProceed) return;
+
+        try {
+            setCreating(true);
+
+            const result = await loanApi.createLoan({
+                capital: loanData.capital,
+                periodMonth: loanData.periodMonth,
+                willing: loanData.willing,
+                disbursementDate: loanData.disbursementDate,
+                // Include credit assessment for backend reference
+                digitalFootprint: {
+                    battery_level: 50,
+                    submission_hour: new Date().getHours(),
+                    connection_type: 'wifi',
+                    location_match: 'true',
+                },
+            });
+
+            Alert.alert(
+                '🎉 Thành công!',
+                'Hồ sơ vay của bạn đã được tạo thành công.',
+                [{
+                    text: 'OK',
+                    onPress: () => navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'Loans' }],
+                    })
+                }],
+                { cancelable: false }
+            );
+
+        } catch (err: any) {
+            console.error('[CreateLoan] Error:', err);
+            Alert.alert('Lỗi', err.message || 'Không thể tạo khoản vay');
+        } finally {
+            setCreating(false);
+        }
+    }, [loanData, preAssessResult, navigation]);
+
+    // Load on mount (post-loan mode only)
     useEffect(() => {
         loadScorecardHistory();
     }, [loadScorecardHistory]);
@@ -239,77 +371,154 @@ export default function CreditAssessmentScreen() {
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
                     <Ionicons name="arrow-back" size={24} color="white" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Đánh giá tín dụng</Text>
-                <TouchableOpacity onPress={loadScorecardHistory}>
-                    <Ionicons name="refresh" size={24} color="white" />
-                </TouchableOpacity>
+                <Text style={styles.headerTitle}>
+                    {isPreLoanMode ? 'Đánh giá hồ sơ vay' : 'Đánh giá tín dụng'}
+                </Text>
+                {isPreLoanMode ? (
+                    <View style={{ width: 40 }} />
+                ) : (
+                    <TouchableOpacity onPress={loadScorecardHistory}>
+                        <Ionicons name="refresh" size={24} color="white" />
+                    </TouchableOpacity>
+                )}
             </View>
 
             <ScrollView style={styles.content}>
-                {loading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color="#3B82F6" />
-                        <Text style={styles.loadingText}>Đang tải...</Text>
-                    </View>
-                ) : error ? (
-                    <GlassCard blur={GlassTokens.blur.light} style={styles.errorCard}>
-                        <Ionicons name="alert-circle" size={48} color="#EF4444" />
-                        <Text style={styles.errorText}>{error}</Text>
-                        <TouchableOpacity style={styles.retryBtn} onPress={loadScorecardHistory}>
-                            <Text style={styles.retryText}>Thử lại</Text>
-                        </TouchableOpacity>
-                    </GlassCard>
-                ) : (
+                {/* ========== PRE-LOAN MODE ========== */}
+                {isPreLoanMode ? (
                     <>
-                        {/* Latest Score */}
-                        {latestScore ? (
-                            renderLatestScore()
-                        ) : (
-                            <GlassCard blur={GlassTokens.blur.light} style={styles.emptyCard}>
-                                <Ionicons name="information-circle" size={48} color="#94A3B8" />
-                                <Text style={styles.emptyText}>
-                                    Chưa có kết quả chấm điểm
+                        {/* Loan Summary */}
+                        <GlassCard blur={GlassTokens.blur.light} style={styles.loanInfoCard}>
+                            <Text style={styles.loanInfoTitle}>Thông tin khoản vay</Text>
+                            <View style={styles.loanInfoRow}>
+                                <Text style={styles.loanInfoLabel}>Số tiền:</Text>
+                                <Text style={styles.loanInfoValue}>
+                                    {loanData?.capital?.toLocaleString('vi-VN')} đ
                                 </Text>
+                            </View>
+                            <View style={styles.loanInfoRow}>
+                                <Text style={styles.loanInfoLabel}>Kỳ hạn:</Text>
+                                <Text style={styles.loanInfoValue}>{loanData?.periodMonth} tháng</Text>
+                            </View>
+                            <View style={styles.loanInfoRow}>
+                                <Text style={styles.loanInfoLabel}>Mục đích:</Text>
+                                <Text style={styles.loanInfoValue}>{loanData?.willing}</Text>
+                            </View>
+                        </GlassCard>
+
+                        {/* Assessment Result - Only show Approved/Rejected */}
+                        {preAssessResult && (
+                            <GlassCard blur={GlassTokens.blur.medium} style={styles.scoreCard}>
+                                <View style={styles.resultContainer}>
+                                    <Ionicons
+                                        name={preAssessResult.canProceed ? "checkmark-circle" : "close-circle"}
+                                        size={72}
+                                        color={preAssessResult.canProceed ? "#10B981" : "#EF4444"}
+                                    />
+                                    <Text style={[
+                                        styles.resultText,
+                                        { color: preAssessResult.canProceed ? "#10B981" : "#EF4444" }
+                                    ]}>
+                                        {preAssessResult.canProceed ? "ĐANG ĐỢI ĐẦU TƯ" : "KHÔNG ĐỦ ĐIỀU KIỆN"}
+                                    </Text>
+                                    <Text style={styles.resultSubtext}>
+                                        {preAssessResult.canProceed
+                                            ? "Khoản vay của bạn đang chờ nhà đầu tư. Nhấn tiếp tục để tạo khoản vay."
+                                            : "Hồ sơ của bạn hiện không đủ điều kiện để vay."}
+                                    </Text>
+                                </View>
+                            </GlassCard>
+                        )}
+
+                        {/* Instructions */}
+                        {!preAssessResult && !assessing && (
+                            <GlassCard blur={GlassTokens.blur.light} style={styles.emptyCard}>
+                                <Ionicons name="finger-print" size={48} color="#3B82F6" />
+                                <Text style={styles.emptyText}>Đánh giá dấu vân tay số</Text>
                                 <Text style={styles.emptySubtext}>
-                                    Nhấn nút bên dưới để đánh giá tín dụng
+                                    Nhấn nút bên dưới để kiểm tra điều kiện vay
                                 </Text>
                             </GlassCard>
                         )}
 
-                        {/* History */}
-                        {renderHistory()}
-
-                        {/* Remaining attempts info */}
-                        {canScoreAgain && (
-                            <View style={styles.attemptsInfo}>
-                                <Ionicons name="information-circle-outline" size={16} color="#94A3B8" />
-                                <Text style={styles.attemptsText}>
-                                    Còn {remainingAttempts} lượt chấm điểm
-                                </Text>
+                        {assessing && (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="#3B82F6" />
+                                <Text style={styles.loadingText}>Đang phân tích...</Text>
                             </View>
                         )}
-
-                        {/* Spacer */}
                         <View style={{ height: 120 }} />
+                    </>
+                ) : (
+                    /* ========== POST-LOAN MODE ========== */
+                    <>
+                        {loading ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="#3B82F6" />
+                                <Text style={styles.loadingText}>Đang tải...</Text>
+                            </View>
+                        ) : error ? (
+                            <GlassCard blur={GlassTokens.blur.light} style={styles.errorCard}>
+                                <Ionicons name="alert-circle" size={48} color="#EF4444" />
+                                <Text style={styles.errorText}>{error}</Text>
+                                <TouchableOpacity style={styles.retryBtn} onPress={loadScorecardHistory}>
+                                    <Text style={styles.retryText}>Thử lại</Text>
+                                </TouchableOpacity>
+                            </GlassCard>
+                        ) : (
+                            <>
+                                {latestScore ? renderLatestScore() : (
+                                    <GlassCard blur={GlassTokens.blur.light} style={styles.emptyCard}>
+                                        <Ionicons name="information-circle" size={48} color="#94A3B8" />
+                                        <Text style={styles.emptyText}>Chưa có kết quả chấm điểm</Text>
+                                        <Text style={styles.emptySubtext}>Nhấn nút bên dưới để đánh giá</Text>
+                                    </GlassCard>
+                                )}
+                                {renderHistory()}
+                                {canScoreAgain && (
+                                    <View style={styles.attemptsInfo}>
+                                        <Ionicons name="information-circle-outline" size={16} color="#94A3B8" />
+                                        <Text style={styles.attemptsText}>Còn {remainingAttempts} lượt</Text>
+                                    </View>
+                                )}
+                                <View style={{ height: 120 }} />
+                            </>
+                        )}
                     </>
                 )}
             </ScrollView>
 
-            {/* Assess Button */}
-            {!loading && canScoreAgain && (
-                <View style={styles.footer}>
-                    <TouchableOpacity
-                        style={[styles.assessBtn, !canScoreAgain && styles.assessBtnDisabled]}
-                        onPress={handleAssessCredit}
-                        disabled={assessing || collectingFootprint || !canScoreAgain}
-                    >
-                        {assessing || collectingFootprint ? (
-                            <ActivityIndicator color="white" />
-                        ) : (
-                            <LinearGradient
-                                colors={['#10B981', '#059669']}
-                                style={styles.assessGradient}
-                            >
+            {/* Footer Buttons */}
+            <View style={styles.footer}>
+                {/* Pre-loan: Assess button */}
+                {isPreLoanMode && !preAssessResult && (
+                    <TouchableOpacity style={styles.assessBtn} onPress={handlePreAssess} disabled={assessing}>
+                        {assessing ? <ActivityIndicator color="white" /> : (
+                            <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.assessGradient}>
+                                <Ionicons name="finger-print" size={20} color="white" />
+                                <Text style={styles.assessText}>Đánh giá điều kiện vay</Text>
+                            </LinearGradient>
+                        )}
+                    </TouchableOpacity>
+                )}
+
+                {/* Pre-loan: Create button */}
+                {isPreLoanMode && preAssessResult?.canProceed && (
+                    <TouchableOpacity style={styles.assessBtn} onPress={handleCreateLoan} disabled={creating}>
+                        {creating ? <ActivityIndicator color="white" /> : (
+                            <LinearGradient colors={['#10B981', '#059669']} style={styles.assessGradient}>
+                                <Ionicons name="checkmark-circle" size={20} color="white" />
+                                <Text style={styles.assessText}>Xác nhận tạo khoản vay</Text>
+                            </LinearGradient>
+                        )}
+                    </TouchableOpacity>
+                )}
+
+                {/* Post-loan: Assess button */}
+                {!isPreLoanMode && !loading && canScoreAgain && (
+                    <TouchableOpacity style={styles.assessBtn} onPress={handleAssessCredit} disabled={assessing}>
+                        {assessing ? <ActivityIndicator color="white" /> : (
+                            <LinearGradient colors={['#10B981', '#059669']} style={styles.assessGradient}>
                                 <Ionicons name="shield-checkmark" size={20} color="white" />
                                 <Text style={styles.assessText}>
                                     {latestScore ? 'Chấm điểm lại' : 'Đánh giá tín dụng'}
@@ -317,20 +526,16 @@ export default function CreditAssessmentScreen() {
                             </LinearGradient>
                         )}
                     </TouchableOpacity>
-                </View>
-            )}
+                )}
 
-            {/* Max attempts reached */}
-            {!loading && !canScoreAgain && (
-                <View style={styles.footer}>
+                {/* Post-loan: Max attempts */}
+                {!isPreLoanMode && !loading && !canScoreAgain && (
                     <View style={styles.maxAttemptsCard}>
                         <Ionicons name="lock-closed" size={20} color="#EF4444" />
-                        <Text style={styles.maxAttemptsText}>
-                            Đã sử dụng hết {MAX_SCORING_ATTEMPTS} lượt chấm điểm
-                        </Text>
+                        <Text style={styles.maxAttemptsText}>Đã hết lượt chấm điểm</Text>
                     </View>
-                </View>
-            )}
+                )}
+            </View>
         </GradientBackground>
     );
 }
@@ -576,5 +781,72 @@ const styles = StyleSheet.create({
         color: '#EF4444',
         fontSize: 14,
         fontWeight: '600',
+    },
+
+    // Pre-loan mode - Loan Info Card
+    loanInfoCard: {
+        padding: 16,
+        marginBottom: 16,
+    },
+    loanInfoTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: 'white',
+        marginBottom: 12,
+    },
+    loanInfoRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+    },
+    loanInfoLabel: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.6)',
+    },
+    loanInfoValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'white',
+    },
+
+    // Recommendations
+    recommendations: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.1)',
+    },
+    recItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 4,
+    },
+    recText: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.8)',
+        flex: 1,
+    },
+
+    // Result container for pre-loan assessment
+    resultContainer: {
+        alignItems: 'center',
+        paddingVertical: 24,
+    },
+    resultText: {
+        fontSize: 24,
+        fontWeight: '700',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    resultSubtext: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.6)',
+        marginTop: 8,
+        textAlign: 'center',
+        paddingHorizontal: 16,
     },
 });

@@ -21,7 +21,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import TokenTestScreen from './src/screens/TokenTestScreen';
-import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen, LoanListAllScreen } from './src/screens/loan';
+import { LoanCreateScreen, LoanListScreen, LoanDetailScreen, RepaymentScreen, LoanListAllScreen, CreditAssessmentScreen } from './src/screens/loan';
 import { InvestListScreen, InvestDetailScreen, MyInvestmentsScreen, WalletScreen } from './src/screens/invest';
 import TransactionHistoryScreen from './src/screens/shared/TransactionHistoryScreen';
 import { TransferScreen } from './src/screens/shared/TransferScreen';
@@ -88,6 +88,11 @@ function LoanStack() {
       <Stack.Screen
         name="TransactionHistory"
         component={TransactionHistoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreditAssessment"
+        component={CreditAssessmentScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

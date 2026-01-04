@@ -97,12 +97,15 @@ export default function InvestListScreen() {
     const loadProjectedIncome = useCallback(async () => {
         try {
             const data = await investApi.getProjectedIncome();
-            console.log('[DEBUG] Projected Income API Response:', JSON.stringify(data, null, 2));
-            if (data && data.length > 0) {
+            if (data && Array.isArray(data)) {
                 setProjectedIncome(data);
+            } else {
+                setProjectedIncome([]);
             }
         } catch (err) {
-            console.log('Failed to load projected income:', err);
+            // Error is handled by httpClient (refresh or logout)
+            // Just ensure state is consistent to avoid chart crashes
+            setProjectedIncome([]);
         }
     }, []);
 

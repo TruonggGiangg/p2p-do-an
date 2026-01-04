@@ -20,7 +20,7 @@ import {
 
 import { LoanService } from './loan.service';
 import { FineractService } from './services/fineract.service';
-import { CreateLoanDto, CheckRateDto } from './dto';
+import { CreateLoanDto, CheckRateDto, PreAssessDto } from './dto';
 import { BorrowerGuard, LenderGuard, BorrowerOrLenderGuard } from './guards';
 import { DualAuthGuard } from '@auth/guard/dual-auth.guard';
 import { Public, User } from '@decorator/customize';
@@ -79,6 +79,50 @@ export class LoanController {
         return {
             statusCode: HttpStatus.OK,
             message: 'Thông tin lãi suất',
+            data: result,
+        };
+    }
+
+    /**
+     * POST /loan/pre-assess
+     * Pre-loan credit assessment (before loan creation)
+     * HIGH_RISK → Reject, MEDIUM/LOW → Proceed
+     */
+    @Post('pre-assess')
+    @UseGuards(DualAuthGuard, BorrowerGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Chấm điểm tín dụng trước khi tạo khoản vay' })
+    @ApiResponse({
+        status: 200,
+        description: 'Kết quả đánh giá tín dụng',
+        schema: {
+            example: {
+                score: 650,
+                grade: 'B+',
+                riskLevel: 'medium',
+                canProceed: true,
+                isApproved: true,
+                recommendations: ['Điểm tín dụng ở mức tốt'],
+            },
+        },
+    })
+    async preAssess(
+        @Body(ValidationPipe) dto: PreAssessDto,
+        @User() user: AuthUser,
+    ) {
+        const result = await this.loanService.preAssessCreditScore(
+            user._id,
+            dto.capital,
+            dto.periodMonth,
+            dto.footprint,
+        );
+
+        return {
+            statusCode: result.canProceed ? HttpStatus.OK : HttpStatus.FORBIDDEN,
+            message: result.canProceed
+                ? 'Hồ sơ đủ điều kiện vay'
+                : result.rejectionMessage || 'Không đủ điều kiện vay',
             data: result,
         };
     }
@@ -276,6 +320,46 @@ export class LoanController {
         };
     }
 
+    // ==================== LENDER ENDPOINTS ====================
+
+    /**
+     * GET /loan/current/waiting
+     * Get waiting loans for investment (Lender only)
+     */
+    @Get('current/waiting')
+    @UseGuards(DualAuthGuard, LenderGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Lấy danh sách khoản vay đang chờ đầu tư (Lender)' })
+    @ApiResponse({
+        status: 200,
+        description: 'Danh sách khoản vay đang chờ',
+    })
+    async getWaitingLoans() {
+        const loans = await this.loanService.getWaitingLoans();
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Danh sách khoản vay đang chờ đầu tư',
+            data: loans,
+        };
+    }
+
+    // ==================== FINERACT DETAIL ENDPOINTS ====================
+
+    /**
+     * GET /loan/purposes
+     * Get loan purpose options from Fineract
+     */
+    @Public()
+    @Get('purposes')
+    @ApiOperation({ summary: 'Lấy danh sách mục đích vay từ Fineract' })
+    async getLoanPurposes() {
+        const purposes = await this.loanService.getLoanPurposes();
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Danh sách mục đích vay',
+            data: { purposes },
+        };
+    }
 
     /**
      * GET /loan/:id
@@ -329,46 +413,7 @@ export class LoanController {
         };
     }
 
-    // ==================== LENDER ENDPOINTS ====================
 
-    /**
-     * GET /loan/current
-     * Get waiting loans for investment (Lender only)
-     */
-    @Get('current/waiting')
-    @UseGuards(DualAuthGuard, LenderGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Lấy danh sách khoản vay đang chờ đầu tư (Lender)' })
-    @ApiResponse({
-        status: 200,
-        description: 'Danh sách khoản vay đang chờ',
-    })
-    async getWaitingLoans() {
-        const loans = await this.loanService.getWaitingLoans();
-        return {
-            statusCode: HttpStatus.OK,
-            message: 'Danh sách khoản vay đang chờ đầu tư',
-            data: loans,
-        };
-    }
-
-    // ==================== FINERACT DETAIL ENDPOINTS ====================
-
-    /**
-     * GET /loan/purposes
-     * Get loan purpose options from Fineract
-     */
-    @Public()
-    @Get('purposes')
-    @ApiOperation({ summary: 'Lấy danh sách mục đích vay từ Fineract' })
-    async getLoanPurposes() {
-        const purposes = await this.loanService.getLoanPurposes();
-        return {
-            statusCode: HttpStatus.OK,
-            message: 'Danh sách mục đích vay',
-            data: { purposes },
-        };
-    }
 
     /**
      * GET /loan/:id/fineract-details

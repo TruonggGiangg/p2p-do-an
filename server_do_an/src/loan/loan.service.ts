@@ -186,12 +186,17 @@ export class LoanService {
             this.logger.log('DEV_MODE: Skipping active loan check');
         }
 
-        // 3. 🔍 CREDIT ASSESSMENT (Digital Footprint Scoring)
+        // 3. 🔍 CREDIT ASSESSMENT (Pre-Loan via Fineract /predict API)
         this.logger.log(`\n========== CREDIT ASSESSMENT START ==========`);
-        const creditAssessment = await this.creditScoringService.assessCreditworthiness(
-            borrowerId,
+        const creditAssessment = await this.creditScoringService.assessPreLoan(
+            (dto.digitalFootprint || {
+                battery_level: 50,
+                submission_hour: new Date().getHours(),
+                connection_type: 'unknown',
+                location_match: 'false',
+            }) as any,
             capital,
-            dto.digitalFootprint as any, // Pass digital footprint data from client
+            periodMonth,
         );
 
         this.logger.log(`[Credit Score] ${creditAssessment.score} / 850 (Grade: ${creditAssessment.grade})`);
@@ -749,6 +754,34 @@ export class LoanService {
             footprint,
             fineractLoanId,
         );
+        return result;
+    }
+
+    /**
+     * Pre-Assess Credit Score (before loan creation)
+     * Chấm điểm TRƯỚC khi tạo khoản vay.
+     * HIGH_RISK → Từ chối, MEDIUM/LOW → Cho phép
+     * 
+     * @param userId - User ID for logging
+     * @param capital - Loan amount
+     * @param periodMonth - Loan term
+     * @param footprint - Digital footprint data
+     */
+    async preAssessCreditScore(
+        userId: string,
+        capital: number,
+        periodMonth: number,
+        footprint: any,
+    ): Promise<any> {
+        this.logger.log(`[PreAssess] User ${userId} requesting ${capital} VND for ${periodMonth} months`);
+
+        const result = await this.creditScoringService.assessPreLoan(
+            footprint,
+            capital,
+            periodMonth,
+        );
+
+        this.logger.log(`[PreAssess] Result: Score=${result.score}, CanProceed=${result.canProceed}`);
         return result;
     }
 

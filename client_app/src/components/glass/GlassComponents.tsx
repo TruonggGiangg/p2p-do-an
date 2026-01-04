@@ -55,24 +55,59 @@ export const GlassCard: React.FC<GlassCardProps> = ({
 
     const colors = getColors();
 
-    // Extract borderRadius from style if present, otherwise use default
+    // Extract layout/visual properties from style
     const flatStyle = StyleSheet.flatten(style) || {};
-    const radius = flatStyle.borderRadius ?? GlassTokens.radius.xl;
+    const {
+        borderRadius,
+        backgroundColor,
+        borderWidth,
+        borderColor,
+        margin,
+        marginBottom,
+        marginTop,
+        marginHorizontal,
+        marginVertical,
+        width,
+        height,
+        flex,
+        ...restStyle
+    } = flatStyle;
+
+    const radius = borderRadius ?? GlassTokens.radius.xl;
 
     return (
-        <View style={[styles.glassCardWrapper, style, { borderRadius: radius }]}>
+        <View style={[
+            styles.glassCardWrapper,
+            {
+                borderRadius: radius,
+                margin,
+                marginBottom,
+                marginTop,
+                marginHorizontal,
+                marginVertical,
+                width,
+                height,
+                flex
+            }
+        ]}>
             <BlurView
                 intensity={blur}
                 tint="dark"
                 style={[styles.glassBlurView, {
-                    borderColor: colors.border,
-                    borderRadius: radius
+                    borderRadius: radius,
+                    borderWidth: borderWidth ?? 0,
+                    borderColor: borderColor ?? colors.border,
+                    overflow: 'hidden', // Ensure BlurView clips properly
                 }]}
             >
-                <View style={[styles.glassCardInner, {
-                    backgroundColor: colors.bg,
-                    borderRadius: radius
-                }]}>
+                <View style={[
+                    styles.glassCardInner,
+                    restStyle,
+                    {
+                        backgroundColor: backgroundColor ?? colors.bg,
+                        borderRadius: radius
+                    }
+                ]}>
                     {children}
                 </View>
             </BlurView>

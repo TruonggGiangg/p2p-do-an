@@ -21,6 +21,13 @@ export interface CreateLoanRequest {
     periodMonth: number;
     willing: string;
     disbursementDate: string;
+    digitalFootprint?: {
+        battery_level?: number;
+        submission_hour?: number;
+        connection_type?: 'wifi' | '4g' | 'unknown';
+        location_match?: 'true' | 'false';
+        device_score?: number;
+    };
 }
 
 /**

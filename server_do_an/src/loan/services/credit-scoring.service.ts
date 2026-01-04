@@ -19,8 +19,8 @@ export interface DigitalFootprintData {
  */
 export interface CreditAssessment {
     score: number;              // Credit score (300-850)
-    grade: string;              // A+, A, B, C, D, F
-    riskLevel: 'low' | 'medium' | 'high' | 'very_high';
+    grade: string;              // A, B, C
+    riskLevel: 'low' | 'medium' | 'high';
     isApproved: boolean;
     source: 'fineract_scorecard';
     predictedRisk: string;
@@ -118,102 +118,74 @@ export class CreditScoringService {
     /**
      * Assess creditworthiness by calling Fineract Credit Scorecard API
      * 
+     * ONLY uses Fineract API - no local fallback.
+     * Throws error if Fineract loan ID is missing or API call fails.
+     * 
      * @param userId - User ID (for logging)
      * @param requestedAmount - Loan amount (for logging)
      * @param footprint - Digital footprint data from client device
-     * @param fineractLoanId - Optional Fineract loan ID (if loan already exists)
+     * @param fineractLoanId - Required Fineract loan ID
      */
     async assessCreditworthiness(
         userId: string,
         requestedAmount: number,
-        footprint?: DigitalFootprintData,
-        fineractLoanId?: number,
+        footprint: DigitalFootprintData,
+        fineractLoanId: number,
     ): Promise<CreditAssessment> {
-        this.logger.log(`[CreditScoring] Assessing user ${userId}, amount: ${requestedAmount}`);
+        this.logger.log(`[CreditScoring] Assessing user ${userId}, amount: ${requestedAmount}, loanId: ${fineractLoanId}`);
 
-        // If no footprint, use defaults
-        const data: DigitalFootprintData = footprint || {
-            battery_level: 50,
-            submission_hour: new Date().getHours(),
-            connection_type: 'unknown',
-            location_match: 'false',
+        if (!fineractLoanId) {
+            throw new Error('Fineract Loan ID is required for credit assessment');
+        }
+
+        const data: DigitalFootprintData = {
+            battery_level: footprint.battery_level ?? 50,
+            submission_hour: footprint.submission_hour ?? new Date().getHours(),
+            connection_type: footprint.connection_type ?? 'unknown',
+            location_match: footprint.location_match ?? 'false',
+            device_score: footprint.device_score,
         };
 
         this.logger.log(`[CreditScoring] Digital Footprint: ${JSON.stringify(data)}`);
 
-        // If no Fineract loan ID, use fallback scoring
-        if (!fineractLoanId) {
-            this.logger.warn('[CreditScoring] No Fineract loan ID - using fallback scoring');
-            return this.fallbackScoring(data);
+        // Call Fineract Credit Scorecard API
+        const headers = await this.getHeaders();
+        const url = `${this.baseUrl}/fineract-provider/api/v1/creditScorecard/loans/${fineractLoanId}/assess?scoringMethod=digital`;
+
+        this.logger.log(`[CreditScoring] Calling Fineract: ${url}`);
+
+        const response = await firstValueFrom(
+            this.httpService.post(url, data, { headers, timeout: 30000 }),
+        );
+
+        const result = response.data;
+        this.logger.log(`[CreditScoring] Fineract response: ${JSON.stringify(result)}`);
+
+        // Extract score from response
+        const scorecard = result.mlScorecard || result;
+        let creditScore = scorecard.creditScore;
+        let predictedRisk = scorecard.predictedRisk || 'medium';
+
+        // Normalize risk label
+        if (predictedRisk === 'low_risk') predictedRisk = 'low';
+        if (predictedRisk === 'high_risk') predictedRisk = 'high';
+
+        // Score mapping if Fineract returns default 500
+        const SCORE_MAP: Record<string, number> = { low: 750, medium: 600, high: 400 };
+        if (!creditScore || creditScore === 500) {
+            creditScore = SCORE_MAP[predictedRisk] || 600;
+            this.logger.log(`[CreditScoring] Score mapped: Risk "${predictedRisk}" → Score ${creditScore}`);
         }
 
-        try {
-            // Call Fineract Credit Scorecard API
-            const headers = await this.getHeaders();
-            const url = `${this.baseUrl}/fineract-provider/api/v1/creditScorecard/loans/${fineractLoanId}/assess?scoringMethod=digital`;
+        // Map to internal format
+        const assessment = this.mapFineractResponse(creditScore, predictedRisk, scorecard.accuracy);
 
-            this.logger.log(`[CreditScoring] Calling Fineract: ${url}`);
+        this.logger.log(`[CreditScoring] Result: Score=${assessment.score}, Grade=${assessment.grade}, Approved=${assessment.isApproved}`);
 
-            const response = await firstValueFrom(
-                this.httpService.post(url, data, { headers, timeout: 30000 }),
-            );
-
-            const result = response.data;
-            this.logger.log(`[CreditScoring] Fineract response: ${JSON.stringify(result)}`);
-
-            // Extract score from response
-            const scorecard = result.mlScorecard || result;
-            const creditScore = scorecard.creditScore || 500;
-            const predictedRisk = scorecard.predictedRisk || 'medium';
-
-            // Map to internal format
-            const assessment = this.mapFineractResponse(creditScore, predictedRisk, scorecard.accuracy);
-
-            this.logger.log(`[CreditScoring] Result: Score=${assessment.score}, Grade=${assessment.grade}, Approved=${assessment.isApproved}`);
-
-            return assessment;
-
-        } catch (error: any) {
-            this.logger.error(`[CreditScoring] Fineract API error: ${error.message}`);
-
-            // Fallback to local calculation if Fineract fails
-            this.logger.warn('[CreditScoring] Using fallback scoring due to API error');
-            return this.fallbackScoring(data);
-        }
+        return assessment;
     }
 
-    /**
-     * Fallback scoring when Fineract is unavailable
-     * Simple calculation based on digital footprint
-     */
-    private fallbackScoring(data: DigitalFootprintData): CreditAssessment {
-        this.logger.log('[CreditScoring] Using fallback local scoring');
 
-        let rawScore = 50; // Base score
-
-        // Battery level (max +20)
-        if (data.battery_level >= 80) rawScore += 20;
-        else if (data.battery_level >= 50) rawScore += 15;
-        else if (data.battery_level >= 20) rawScore += 10;
-
-        // Submission hour - business hours (max +25)
-        const hour = data.submission_hour;
-        if (hour >= 8 && hour <= 18) rawScore += 25;
-        else if (hour >= 6 && hour <= 22) rawScore += 15;
-
-        // Connection type (max +20)
-        if (data.connection_type === 'wifi') rawScore += 20;
-        else if (data.connection_type === '4g') rawScore += 15;
-
-        // Location (max +35)
-        if (data.location_match === 'true') rawScore += 35;
-
-        // Convert to FICO scale (300-850)
-        const ficoScore = Math.round(300 + (rawScore / 100) * 550);
-        const clampedScore = Math.max(300, Math.min(850, ficoScore));
-
-        return this.mapFineractResponse(clampedScore, this.getRiskLevel(clampedScore));
-    }
 
     /**
      * Map Fineract response to internal CreditAssessment format
@@ -223,11 +195,11 @@ export class CreditScoringService {
         predictedRisk: string,
         accuracy?: number,
     ): CreditAssessment {
+        const riskLevel = this.normalizeRiskLevel(predictedRisk || this.getRiskLevel(creditScore));
         const grade = this.getGrade(creditScore);
-        const riskLevel = this.normalizeRiskLevel(predictedRisk);
-        const isApproved = creditScore >= this.MIN_APPROVAL_SCORE;
+        const isApproved = riskLevel !== 'high';
 
-        const recommendations = this.generateRecommendations(creditScore, isApproved);
+        const recommendations = this.generateRecommendations(creditScore, riskLevel);
         const rejectionReasons = isApproved ? undefined : this.getRejectionReasons(creditScore);
 
         return {
@@ -236,7 +208,7 @@ export class CreditScoringService {
             riskLevel,
             isApproved,
             source: 'fineract_scorecard',
-            predictedRisk,
+            predictedRisk: riskLevel,
             accuracy,
             recommendations,
             rejectionReasons,
@@ -247,33 +219,26 @@ export class CreditScoringService {
      * Get grade from score
      */
     private getGrade(score: number): string {
-        if (score >= 750) return 'A+';
         if (score >= 700) return 'A';
-        if (score >= 650) return 'B+';
-        if (score >= 600) return 'B';
-        if (score >= 550) return 'C+';
-        if (score >= 500) return 'C';
-        if (score >= 450) return 'D';
-        return 'F';
+        if (score >= 500) return 'B';
+        return 'C';
     }
 
     /**
      * Get risk level from score
      */
-    private getRiskLevel(score: number): 'low' | 'medium' | 'high' | 'very_high' {
+    private getRiskLevel(score: number): 'low' | 'medium' | 'high' {
         if (score >= 700) return 'low';
-        if (score >= 550) return 'medium';
-        if (score >= 450) return 'high';
-        return 'very_high';
+        if (score >= 500) return 'medium';
+        return 'high';
     }
 
     /**
      * Normalize risk level from Fineract
      */
-    private normalizeRiskLevel(risk: string): 'low' | 'medium' | 'high' | 'very_high' {
-        const normalized = risk.toLowerCase().replace('_', '').replace('-', '');
+    private normalizeRiskLevel(risk: string): 'low' | 'medium' | 'high' {
+        const normalized = risk.toLowerCase();
         if (normalized.includes('low')) return 'low';
-        if (normalized.includes('high') && normalized.includes('very')) return 'very_high';
         if (normalized.includes('high')) return 'high';
         return 'medium';
     }
@@ -281,23 +246,14 @@ export class CreditScoringService {
     /**
      * Generate recommendations
      */
-    private generateRecommendations(score: number, isApproved: boolean): string[] {
-        if (score >= 750) {
-            return ['✅ Tín dụng xuất sắc! Đủ điều kiện vay với lãi suất ưu đãi.'];
+    private generateRecommendations(score: number, riskLevel: string): string[] {
+        if (riskLevel === 'low') {
+            return ['✅ Tín dụng tốt. Đủ điều kiện vay.'];
         }
-
-        const recommendations: string[] = [];
-
-        if (!isApproved) {
-            recommendations.push('⚠️ Cần cải thiện điểm tín dụng trước khi vay.');
+        if (riskLevel === 'medium') {
+            return ['⚠️ Điểm trung bình. Có thể cần điều chỉnh hạn mức.'];
         }
-
-        if (score < 600) {
-            recommendations.push('📍 Cấp quyền vị trí để tăng độ tin cậy');
-            recommendations.push('⏰ Gửi yêu cầu trong giờ làm việc (8h-18h)');
-        }
-
-        return recommendations.length > 0 ? recommendations : ['Tiếp tục sử dụng dịch vụ để cải thiện điểm.'];
+        return ['❌ Rủi ro cao. Cần cải thiện hồ sơ thiết bị (Vị trí, Pin, Giờ gửi).'];
     }
 
     /**
@@ -358,6 +314,116 @@ export class CreditScoringService {
             this.logger.error(`[CreditScoring] Error fetching history: ${error.message}`);
             throw error;
         }
+    }
+
+    /**
+     * Pre-Loan Credit Assessment (before loan creation)
+     * 
+     * Chấm điểm tín dụng TRƯỚC khi tạo khoản vay bằng Fineract API.
+     * Gọi endpoint: POST /creditScorecard/predict
+     * 
+     * Nếu HIGH_RISK hoặc VERY_HIGH_RISK → Từ chối ngay
+     * Nếu LOW hoặc MEDIUM → Cho phép tạo khoản vay
+     * 
+     * @param footprint - Digital footprint data from client
+     * @param loanAmount - Requested loan amount
+     * @param periodMonths - Loan term in months
+     * @param userProfile - Optional user profile data (income, dti, etc.)
+     * @returns CreditAssessment with approval decision
+     */
+    async assessPreLoan(
+        footprint: DigitalFootprintData,
+        loanAmount: number,
+        periodMonths: number,
+        userProfile?: { income?: number; dti?: number; age?: number; occupation?: string },
+    ): Promise<CreditAssessment & { canProceed: boolean; rejectionMessage?: string }> {
+        this.logger.log(`[PreLoanAssess] Amount: ${loanAmount}, Term: ${periodMonths} months`);
+        this.logger.log(`[PreLoanAssess] Digital Footprint: ${JSON.stringify(footprint)}`);
+
+        // Call Fineract Credit Scorecard /predict API (Pre-loan scoring)
+        const headers = await this.getHeaders();
+        const url = `${this.baseUrl}/fineract-provider/api/v1/creditScorecard/predict`;
+
+        // Build prediction request body (matching reference p2p project)
+        const predictionBody = {
+            // Required Vietnam model fields
+            loan_amnt: loanAmount,
+            annual_inc: userProfile?.income || 120000000, // Default 10M/month
+            dti: userProfile?.dti || 30,
+            purpose: 'other',
+            // Recommended fields
+            term: `${periodMonths} months`,
+            emp_length: '1 year',
+            home_ownership: 'RENT',
+            delinq_2yrs: 0,
+            verification_status: 'Not Verified',
+            // Optional V3 fields
+            age: userProfile?.age || 30,
+            gender: 'male',
+            occupation: userProfile?.occupation || 'Nhân viên văn phòng',
+            monthly_ir: (userProfile?.income || 120000000) / 12,
+            balance: 50000000,
+            // Digital footprint data
+            battery_level: footprint.battery_level ?? 50,
+            submission_hour: footprint.submission_hour ?? new Date().getHours(),
+            connection_type: footprint.connection_type ?? 'unknown',
+            location_match: footprint.location_match ?? 'false',
+            device_score: footprint.device_score ?? 50,
+        };
+
+        this.logger.log(`[PreLoanAssess] Calling Fineract: ${url}`);
+        this.logger.log(`[PreLoanAssess] Request Body: ${JSON.stringify(predictionBody)}`);
+
+        const response = await firstValueFrom(
+            this.httpService.post(url, predictionBody, { headers, timeout: 30000 }),
+        );
+
+        const result = response.data;
+        this.logger.log(`[PreLoanAssess] Fineract response: ${JSON.stringify(result)}`);
+
+        // Parse response (format from Fineract /predict)
+        let predictedRisk = result.predictedRisk || result.label || result.mlScorecard?.predictedRisk || 'medium';
+        let creditScore = result.creditScore || result.score || result.mlScorecard?.creditScore;
+        const accuracy = result.accuracy || result.probability || result.mlScorecard?.accuracy;
+
+        // Normalize risk label
+        if (predictedRisk === 'low_risk') predictedRisk = 'low';
+        if (predictedRisk === 'high_risk') predictedRisk = 'high';
+
+        // Score mapping if Fineract returns default 500
+        const SCORE_MAP: Record<string, number> = { low: 750, medium: 600, high: 400 };
+        if (!creditScore || creditScore === 500) {
+            creditScore = SCORE_MAP[predictedRisk] || 600;
+            this.logger.log(`[PreLoanAssess] Score mapped: Risk "${predictedRisk}" → Score ${creditScore}`);
+        }
+
+        // Build assessment result
+        const riskLevel = this.normalizeRiskLevel(predictedRisk);
+        const grade = this.getGrade(creditScore);
+        const isApproved = riskLevel !== 'high';
+        const canProceed = isApproved;
+
+        let rejectionMessage: string | undefined;
+        if (!canProceed) {
+            rejectionMessage = 'Hồ sơ của bạn được đánh giá là CÓ RỦI RO CAO. ' +
+                'Hiện tại chúng tôi chưa thể phê duyệt khoản vay dựa trên dữ liệu thiết bị này.';
+        }
+
+        this.logger.log(`[PreLoanAssess] Score: ${creditScore}, Risk: ${riskLevel}, CanProceed: ${canProceed}`);
+
+        return {
+            score: creditScore,
+            grade,
+            riskLevel,
+            isApproved,
+            source: 'fineract_scorecard',
+            predictedRisk: riskLevel,
+            accuracy,
+            recommendations: this.generateRecommendations(creditScore, riskLevel),
+            rejectionReasons: isApproved ? undefined : this.getRejectionReasons(creditScore),
+            canProceed,
+            rejectionMessage,
+        };
     }
 }
 
