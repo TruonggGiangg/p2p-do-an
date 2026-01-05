@@ -278,18 +278,35 @@ export class RepaymentService {
                 interestShare = currentPeriod.interest;
                 this.logger.log(`[FD Distribution] Using SCHEDULE for ${investment._id}: Period ${currentPeriod.period}, P=${principalShare}, I=${interestShare}`);
 
-                // ✅ PREPAYMENT OVERRIDE: Use proportional interest based on actual borrower interest
-                // Schedule Period 1 interest ≠ actual prepayment interest
-                // Lender should receive: borrowerInterest × (lenderRate / borrowerRate) × investmentRatio
-                if (isFinalPayment && interestPortion != null && interestPortion > 0) {
-                    const lenderAnnualRate = fullInvestment?.fixedDepositInterestRate || 15.0;
-                    const ratio = investment.amount / totalCapital;
-                    // Proportional interest: borrowerInterest × (lenderRate / borrowerRate) × ratio
-                    const proportionalInterest = Math.floor((interestPortion * (lenderAnnualRate / borrowerRate) * ratio) / 1000) * 1000;
-                    this.logger.log(`[Prepayment] OVERRIDE interest: Schedule=${interestShare} → Proportional=${proportionalInterest} (ratio=${ratio.toFixed(2)}, lenderRate=${lenderAnnualRate}%, borrowerRate=${borrowerRate}%)`);
-                    interestShare = proportionalInterest;
-                    // Also override principal for prepayment: full investment amount
-                    principalShare = investment.amount;
+                // ✅ PREPAYMENT: Sum ALL pending periods from lenderSchedule
+                // Principal = tổng gốc của các kỳ chưa trả
+                // Interest = lãi tỷ lệ dựa trên interestPortion từ Fineract hoặc tổng lãi schedule
+                if (isFinalPayment) {
+                    const pendingTotals = this.sumPendingPeriodsFromSchedule(fullInvestment?.lenderSchedule);
+
+                    if (pendingTotals.pendingCount > 0) {
+                        // Use remaining principal from pending periods
+                        principalShare = pendingTotals.principal;
+
+                        // Calculate proportional interest from actual borrower interest
+                        if (interestPortion != null && interestPortion > 0) {
+                            const lenderAnnualRate = fullInvestment?.fixedDepositInterestRate || 15.0;
+                            const ratio = investment.amount / totalCapital;
+                            interestShare = Math.floor((interestPortion * (lenderAnnualRate / borrowerRate) * ratio) / 1000) * 1000;
+                        } else {
+                            // Fallback: Use total interest from pending schedule periods
+                            interestShare = pendingTotals.interest;
+                        }
+
+                        this.logger.log(`[Prepayment] Using PENDING PERIODS: ${pendingTotals.pendingCount} periods remaining`);
+                        this.logger.log(`[Prepayment] → Remaining Principal: ${principalShare}, Interest: ${interestShare}`);
+                    } else {
+                        // All periods already paid, just close FD
+                        principalShare = 0;
+                        interestShare = interestPortion && interestPortion > 0 ?
+                            Math.floor((interestPortion * (investment.amount / totalCapital)) / 1000) * 1000 : 0;
+                        this.logger.log(`[Prepayment] All periods already paid, only interest remaining: ${interestShare}`);
+                    }
                 }
             } else {
                 // Fallback: Calculate if no schedule (legacy investments)
@@ -362,10 +379,13 @@ export class RepaymentService {
                     // 2. CLOSE FD TO ADMIN (REIMBURSEMENT)
                     // Lender has already received principal through direct distribution
                     // FD proceeds must return to Admin/Escrow to cover those advanced payments
-                    const adminSavingsAccount = await this.fineractService.getClientSavingsAccount(this.escrowService['adminClientId']);
-                    const adminSavingsId = adminSavingsAccount?.id as number;
+                    // Use adminEscrowAccountId directly (getClientSavingsAccount filters by WALLET_ prefix)
+                    const adminSavingsId = this.escrowService['adminEscrowAccountId'] as number;
+                    if (!adminSavingsId) {
+                        throw new Error('Admin Escrow Account ID not configured');
+                    }
 
-                    this.logger.log(`[FD Closure] Closing FD ${fdAccountIdNum} to ADMIN ${this.escrowService['adminClientId']} (Account ${adminSavingsId}) for REIMBURSEMENT`);
+                    this.logger.log(`[FD Closure] Closing FD ${fdAccountIdNum} to ADMIN (Account ${adminSavingsId}) for REIMBURSEMENT`);
                     const closureResult = await this.fdService.closeFixedDepositAccount(fdAccountIdNum, adminSavingsId, `REIMBURSEMENT for loan ${loan.contractId}`);
                     this.logger.log(`✓ Closed FD ${fdAccountIdNum}, Reimbursement amount: ${closureResult.closureAmount}`);
 
@@ -379,35 +399,36 @@ export class RepaymentService {
                         fineractTransactionId: closureResult.transactionId
                     });
 
-                    // 4. Transfer final interest from Escrow → Lender Main Savings
-                    if (interestShare > 0) {
-                        this.logger.log(`[Interest Transfer] Transferring final interest ${interestShare} from Escrow to Lender ${investment.lender}`);
+                    // 4. Transfer FULL remaining (P+I) from Escrow → Lender Main Savings
+                    const totalRemaining = principalShare + interestShare;
+                    if (totalRemaining > 0) {
+                        this.logger.log(`[Prepayment] Transferring FULL remaining: ${totalRemaining} (P: ${principalShare}, I: ${interestShare}) from Escrow to Lender ${investment.lender}`);
 
-                        const interestTransferId = await this.transferFromEscrowToLender(
+                        const transferId = await this.transferFromEscrowToLender(
                             String(lenderFineractClientId),
                             lenderMainSavingsId,
-                            interestShare,
+                            totalRemaining,
                             loan.contractId || loanId
                         );
 
-                        this.logger.log(`✓ Final interest transferred from Escrow: ${interestShare}, txId: ${interestTransferId}`);
+                        this.logger.log(`✓ Prepayment distribution completed: ${totalRemaining}, txId: ${transferId}`);
 
-                        // 5. LOG INTEREST DISTRIBUTION
+                        // 5. LOG PREPAYMENT DISTRIBUTION
                         await this.transactionLogService.logDistribution({
                             loanId,
                             lenderId: investment.lender,
-                            amount: interestShare,
-                            type: 'INTEREST',
-                            fineractTransactionId: interestTransferId
+                            amount: totalRemaining,
+                            type: 'BOTH', // Prepayment: Principal + Interest
+                            fineractTransactionId: transferId
                         });
                     }
 
-                    this.logger.log(`[Final Payment] Lender received interest: ${interestShare}. FD Principal ${closureResult.closureAmount} returned to Admin.`);
+                    this.logger.log(`[Final Payment] Lender received: P=${principalShare}, I=${interestShare}. FD ${closureResult.closureAmount} returned to Admin.`);
 
                     withdrawalResult = {
                         transactionId: closureResult.transactionId,
                         remainingBalance: 0,
-                        note: `FD closed for reimbursement: ${closureResult.closureAmount}, Interest from Escrow: ${interestShare}`
+                        note: `FD closed for reimbursement: ${closureResult.closureAmount}, Lender received: ${totalRemaining}`
                     };
                 } else {
                     // REGULAR REPAYMENT: Distribute FULL (P+I) from Escrow → Lender
@@ -548,6 +569,26 @@ export class RepaymentService {
             };
         }
         return null;
+    }
+
+    /**
+     * Sum all pending (unpaid) periods from lenderSchedule
+     * Used for prepayment to calculate total remaining principal and interest
+     */
+    private sumPendingPeriodsFromSchedule(schedule: any[] | undefined): { principal: number; interest: number; pendingCount: number } {
+        if (!schedule || schedule.length === 0) {
+            return { principal: 0, interest: 0, pendingCount: 0 };
+        }
+
+        const pendingPeriods = schedule.filter(p => p.status !== 'paid');
+        const totalPrincipal = pendingPeriods.reduce((sum, p) => sum + (p.principal || 0), 0);
+        const totalInterest = pendingPeriods.reduce((sum, p) => sum + (p.interest || 0), 0);
+
+        return {
+            principal: totalPrincipal,
+            interest: totalInterest,
+            pendingCount: pendingPeriods.length
+        };
     }
 
     /**
