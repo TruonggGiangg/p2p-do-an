@@ -1,142 +1,23 @@
 /**
- * Homepage Styles - Professional Fintech Design
+ * CSS files with the .module.css suffix will be treated as CSS modules
+ * and scoped locally.
  */
 
 .heroBanner {
-  padding: 8rem 0 6rem;
+  padding: 4rem 0;
   text-align: center;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a1a2e 100%);
 }
 
-.heroBanner::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(circle at 20% 80%, rgba(0, 102, 255, 0.15) 0%, transparent 50%),
-              radial-gradient(circle at 80% 20%, rgba(0, 196, 140, 0.15) 0%, transparent 50%);
-  pointer-events: none;
-}
-
-/* Hero Title - Make it visible */
-.heroBanner h1 {
-  font-size: 3rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #0066FF 0%, #00C48C 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem;
+  }
 }
 
 .buttons {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 2rem;
-}
-
-.buttons .button {
-  padding: 14px 28px;
-  font-size: 1rem;
-  font-weight: 600;
-  border-radius: 10px;
-  transition: all 0.3s ease;
-}
-
-.buttons .button--primary {
-  background: linear-gradient(135deg, #0066FF 0%, #00C48C 100%);
-  border: none;
-  color: white;
-}
-
-.buttons .button--primary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.3);
-}
-
-.buttons .button--outline {
-  background: transparent;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  color: white;
-}
-
-.buttons .button--outline:hover {
-  border-color: #00C48C;
-  background: rgba(0, 196, 140, 0.1);
-}
-
-/* Features Section */
-.features {
-  padding: 5rem 0;
-  background: var(--ifm-background-color);
-}
-
-.featureCard {
-  padding: 2rem;
-  border-radius: 16px;
-  background: var(--ifm-background-surface-color);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 2rem;
-  transition: all 0.3s ease;
-  text-align: center;
-  height: 100%;
-}
-
-.featureCard:hover {
-  transform: translateY(-8px);
-  border-color: var(--ifm-color-primary);
-  box-shadow: 0 12px 40px rgba(0, 102, 255, 0.15);
-}
-
-[data-theme='dark'] .featureCard:hover {
-  box-shadow: 0 12px 40px rgba(0, 196, 140, 0.15);
-}
-
-.featureIcon {
-  width: 70px;
-  height: 70px;
-  margin: 0 auto 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #0066FF 0%, #00C48C 100%);
-  font-size: 1.75rem;
-  color: white;
-}
-
-.featureCard h3 {
-  font-size: 1.25rem;
-  margin-bottom: 0.75rem;
-  color: var(--ifm-heading-color);
-}
-
-.featureCard p {
-  color: var(--ifm-color-content-secondary);
-  line-height: 1.6;
-  font-size: 0.95rem;
-}
-
-/* Responsive */
-@media (max-width: 996px) {
-  .heroBanner {
-    padding: 4rem 0;
-  }
-
-  .buttons {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .buttons .button {
-    width: 100%;
-    max-width: 280px;
-    margin-left: 0 !important;
-  }
 }

@@ -4,93 +4,27 @@
  * work well for content-centric websites.
  */
 
-/* Professional Table Styles - Stripe / Fintech Inspired */
-.markdown table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin: 2rem 0;
-
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--ifm-color-emphasis-200);
-}
-
-.markdown table thead tr {
-  background-color: var(--ifm-color-primary-lightest);
-  border-bottom: 2px solid var(--ifm-color-primary);
-}
-
-.markdown table th {
-  padding: 16px;
-  text-align: left;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.85rem;
-  letter-spacing: 0.5px;
-  color: var(--ifm-color-primary-dark);
-}
-
-.markdown table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
-  font-size: 0.95rem;
-  vertical-align: middle;
-}
-
-.markdown table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.markdown table tbody tr:nth-child(even) {
-  background-color: var(--ifm-background-color);
-}
-
-.markdown table tbody tr:hover {
-  background-color: var(--ifm-color-emphasis-100);
-  transition: background-color 0.2s ease;
-}
-
-/* Dark Mode Table overrides */
-[data-theme='dark'] .markdown table {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border-color: var(--ifm-color-emphasis-100);
-}
-
-[data-theme='dark'] .markdown table thead tr {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-/* Mermaid Diagram Styles */
-.docusaurus-mermaid-container {
-  display: flex;
-  justify-content: center;
-  margin: 2.5rem 0;
-  padding: 2rem;
-  background: var(--ifm-background-surface-color);
-  border-radius: 16px;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
-}
-
-[data-theme='dark'] .docusaurus-mermaid-container {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
-}
-
-/* Quote/Tip Styles Upgrade */
-.alert {
-  border-radius: 12px;
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
 /* You can override the default Infima variables here. */
 :root {
+  --ifm-color-primary: #2e8555;
+  --ifm-color-primary-dark: #29784c;
+  --ifm-color-primary-darker: #277148;
+  --ifm-color-primary-darkest: #205d3b;
+  --ifm-color-primary-light: #33925d;
+  --ifm-color-primary-lighter: #359962;
+  --ifm-color-primary-lightest: #3cad6e;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
+/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
+  --ifm-color-primary: #25c2a0;
+  --ifm-color-primary-dark: #21af90;
+  --ifm-color-primary-darker: #1fa588;
+  --ifm-color-primary-darkest: #1a8870;
+  --ifm-color-primary-light: #29d5b0;
+  --ifm-color-primary-lighter: #32d8b4;
+  --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }

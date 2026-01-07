@@ -7,27 +7,26 @@ const config: Config = {
   tagline: 'Nền tảng cho vay ngang hàng với Blockchain & Fineract',
   favicon: 'img/favicon.ico',
 
-  future: {
-    v4: true,
-  },
-
-  clientModules: [
-    require.resolve('./src/modules/mermaid-zoom.js'),
-  ],
-
   // ✅ Enable Mermaid diagrams
   markdown: {
     mermaid: true,
   },
-  themes: ['@docusaurus/theme-mermaid'],
+  onBrokenMarkdownLinks: 'warn',
 
   url: 'https://p2p-lending.example.com',
   baseUrl: '/',
 
-  organizationName: 'TruonggGiangg',
-  projectName: 'p2p-iuh-vlu',
+  organizationName: 'trungtoan46',
+  projectName: 'p2p',
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
+  // onBrokenMarkdownLinks: 'warn', // Deprecated
+  themes: ['@docusaurus/theme-mermaid'],
+
+  // ✅ Enable diagram zoom
+  clientModules: [
+    require.resolve('./src/modules/mermaid-zoom.js'),
+  ],
 
   i18n: {
     defaultLocale: 'vi',
@@ -40,7 +39,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/TruonggGiangg/p2p-iuh-vlu/tree/main/docs/',
+          editUrl: 'https://github.com/trungtoan46/p2p/tree/main/doc_server/',
         },
         blog: {
           showReadingTime: true,
@@ -48,7 +47,7 @@ const config: Config = {
             type: ['rss', 'atom'],
             xslt: true,
           },
-          editUrl: 'https://github.com/TruonggGiangg/p2p-iuh-vlu/tree/main/docs/',
+          editUrl: 'https://github.com/trungtoan46/p2p/tree/main/doc_server/',
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
           onUntruncatedBlogPosts: 'warn',
@@ -77,16 +76,16 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'docs',
           position: 'left',
-          label: 'Documentation',
+          label: 'Tài liệu',
         },
         {
-          to: '/docs/api/loan-api',
+          to: '/docs/05-api-reference/rest-api',
           label: 'API',
           position: 'left',
         },
         { to: '/blog', label: 'Changelog', position: 'left' },
         {
-          href: 'https://github.com/TruonggGiangg/p2p-iuh-vlu',
+          href: 'https://github.com/trungtoan46/p2p',
           label: 'GitHub',
           position: 'right',
         },
@@ -100,11 +99,28 @@ const config: Config = {
           items: [
             {
               label: 'Bắt đầu',
-              to: '/docs/intro',
+              to: '/docs/getting-started/introduction',
             },
             {
               label: 'Kiến trúc',
-              to: '/docs/concepts/overview',
+              to: '/docs/architecture/high-level-design',
+            },
+          ],
+        },
+        {
+          title: 'Công nghệ',
+          items: [
+            {
+              label: 'Apache Fineract',
+              href: 'https://fineract.apache.org/',
+            },
+            {
+              label: 'Hyperledger Fabric',
+              href: 'https://www.hyperledger.org/projects/fabric',
+            },
+            {
+              label: 'Keycloak',
+              href: 'https://www.keycloak.org/',
             },
           ],
         },
@@ -113,20 +129,12 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/TruonggGiangg/p2p-iuh-vlu',
-            },
-            {
-              label: 'Fineract',
-              href: 'https://fineract.apache.org/',
-            },
-            {
-              label: 'Hyperledger Fabric',
-              href: 'https://www.hyperledger.org/projects/fabric',
+              href: 'https://github.com/trungtoan46/p2p',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} P2P Lending Platform - IUH/VLU. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} P2P Lending Platform. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

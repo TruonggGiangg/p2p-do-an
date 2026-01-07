@@ -1,12 +1,3 @@
-admin:
-  name: P2P Admin Team
-  title: Platform Maintainers
-  url: https://github.com/TruonggGiangg
-  image_url: https://github.com/TruonggGiangg.png
-  page: true
-  socials:
-    github: TruonggGiangg
-
 yangshun:
   name: Yangshun Tay
   title: Ex-Meta Staff Engineer, Co-founder GreatFrontEnd
@@ -26,7 +17,7 @@ slorber:
   image_url: https://github.com/slorber.png
   page:
     # customize the url of the author page at /blog/authors/<permalink>
-    permalink: "/all-sebastien-lorber-articles"
+    permalink: '/all-sebastien-lorber-articles'
   socials:
     x: sebastienlorber
     linkedin: sebastienlorber

@@ -28,13 +28,13 @@ if (ExecutionEnvironment.canUseDOM) {
     height: '90vh',
     overflow: 'auto', // Enable scrolling
     borderRadius: '8px',
-    backgroundColor: '#1b1b1d', // Dark background as requested (using Docusaurus dark surface tone or just black)
+    backgroundColor: '#ffffff', // Light background for diagrams
     padding: '20px',
     paddingTop: '50px', // Space for close button
     boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5)',
     display: 'block', 
     textAlign: 'center', 
-    border: '1px solid #444',
+    border: '1px solid #ddd',
     cursor: 'grab', // Indicate draggable
   });
 
