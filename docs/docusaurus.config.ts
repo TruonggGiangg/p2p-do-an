@@ -141,6 +141,14 @@ const config: Config = {
       darkTheme: prismThemes.dracula,
       additionalLanguages: ['bash', 'json', 'typescript'],
     },
+    // Mermaid theme configuration - auto switch with colorMode
+    mermaid: {
+      theme: { light: 'default', dark: 'dark' },
+      options: {
+        securityLevel: 'loose',
+        startOnLoad: true,
+      },
+    },
   } satisfies Preset.ThemeConfig,
 };
 

@@ -32,8 +32,8 @@ if (ExecutionEnvironment.canUseDOM) {
     padding: '20px',
     paddingTop: '50px', // Space for close button
     boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5)',
-    display: 'block', 
-    textAlign: 'center', 
+    display: 'block',
+    textAlign: 'center',
     border: '1px solid #ddd',
     cursor: 'grab', // Indicate draggable
   });
@@ -45,7 +45,7 @@ if (ExecutionEnvironment.canUseDOM) {
   const mouseDownHandler = (e) => {
     // Ignore clicks on buttons/toolbar/closeBtn
     if (e.target.tagName === 'BUTTON') return;
-    
+
     isDragging = true;
     contentContainer.style.cursor = 'grabbing';
     contentContainer.style.userSelect = 'none';
@@ -64,7 +64,7 @@ if (ExecutionEnvironment.canUseDOM) {
 
   const mouseMoveHandler = (e) => {
     if (!isDragging) return;
-    e.preventDefault(); 
+    e.preventDefault();
     // How far the mouse has been moved
     const dx = e.clientX - pos.x;
     const dy = e.clientY - pos.y;
@@ -84,7 +84,7 @@ if (ExecutionEnvironment.canUseDOM) {
   };
 
   contentContainer.addEventListener('mousedown', mouseDownHandler);
-  
+
   // Close Button
   const closeBtn = document.createElement('button');
   closeBtn.innerText = '✕';
@@ -127,7 +127,7 @@ if (ExecutionEnvironment.canUseDOM) {
     backdropFilter: 'blur(4px)',
     border: '1px solid rgba(255,255,255,0.1)',
   });
-  
+
   // Helper to create buttons
   const createBtn = (text, onClick) => {
     const btn = document.createElement('button');
@@ -153,7 +153,7 @@ if (ExecutionEnvironment.canUseDOM) {
   };
 
   let currentScale = 100;
-  
+
   const updateZoom = () => {
     const svg = contentContainer.querySelector('svg');
     if (svg) {
@@ -166,7 +166,7 @@ if (ExecutionEnvironment.canUseDOM) {
     currentScale = Math.max(50, currentScale - 25);
     updateZoom();
   });
-  
+
   const btnReset = createBtn('⟲', () => {
     currentScale = 100;
     updateZoom();
@@ -183,12 +183,12 @@ if (ExecutionEnvironment.canUseDOM) {
   contentContainer.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey || true) { // Always zoom on wheel in lightbox
-        if (e.deltaY < 0) {
-            currentScale = Math.min(500, currentScale + 10);
-        } else {
-            currentScale = Math.max(50, currentScale - 10);
-        }
-        updateZoom();
+      if (e.deltaY < 0) {
+        currentScale = Math.min(500, currentScale + 10);
+      } else {
+        currentScale = Math.max(50, currentScale - 10);
+      }
+      updateZoom();
     }
   }, { passive: false });
 
@@ -216,11 +216,11 @@ if (ExecutionEnvironment.canUseDOM) {
   // Function to attach zoom behavior
   const attachZoomBehavior = () => {
     const containers = document.querySelectorAll('.docusaurus-mermaid-container');
-    
+
     containers.forEach(container => {
       if (container.dataset.zoomAttached) return;
       container.dataset.zoomAttached = 'true';
-      
+
       const svg = container.querySelector('svg');
       if (!svg) return;
 
@@ -230,14 +230,23 @@ if (ExecutionEnvironment.canUseDOM) {
       });
 
       container.addEventListener('click', (e) => {
-        if(e.target.tagName === 'BUTTON') return;
+        if (e.target.tagName === 'BUTTON') return;
 
-        while(contentContainer.childNodes.length > 1) { // Keep close button
-            if(contentContainer.lastChild !== closeBtn) {
-                 contentContainer.removeChild(contentContainer.lastChild);
-            } else {
-                 break; 
-            }
+        // Detect dark mode
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        const bgColor = isDarkMode ? '#1a1a2e' : '#ffffff';
+        const borderColor = isDarkMode ? '#4ecca3' : '#ddd';
+
+        // Update container background for current theme
+        contentContainer.style.backgroundColor = bgColor;
+        contentContainer.style.border = `1px solid ${borderColor}`;
+
+        while (contentContainer.childNodes.length > 1) { // Keep close button
+          if (contentContainer.lastChild !== closeBtn) {
+            contentContainer.removeChild(contentContainer.lastChild);
+          } else {
+            break;
+          }
         }
         // Actually slightly cleaner to just clear innerHTML and re-add closeBtn? 
         // Let's stick to cleaning children to avoid recreating closeBtn logic every time or handle it simpler
@@ -247,7 +256,7 @@ if (ExecutionEnvironment.canUseDOM) {
 
         const clonedSvg = svg.cloneNode(true);
         currentScale = 100; // Reset zoom on open
-        
+
         Object.assign(clonedSvg.style, {
           width: '100%',
           height: 'auto',
@@ -257,11 +266,33 @@ if (ExecutionEnvironment.canUseDOM) {
           transform: 'none',
           display: 'block',
           margin: '0 auto', // Center horizontally
+          backgroundColor: bgColor, // Match container background
         });
-        
+
         clonedSvg.removeAttribute('height');
         clonedSvg.removeAttribute('width');
         clonedSvg.style.color = getComputedStyle(svg).color;
+
+        // Fix text colors for dark mode in cloned SVG
+        if (isDarkMode) {
+          clonedSvg.querySelectorAll('text, tspan').forEach(el => {
+            el.setAttribute('fill', '#ffffff');
+          });
+          clonedSvg.querySelectorAll('.messageText, .labelText, .noteText, .loopText').forEach(el => {
+            el.setAttribute('fill', '#ffffff');
+          });
+          clonedSvg.querySelectorAll('line, path.path').forEach(el => {
+            el.setAttribute('stroke', '#aaaaaa');
+          });
+          clonedSvg.querySelectorAll('.actor').forEach(el => {
+            el.setAttribute('fill', '#16213e');
+            el.setAttribute('stroke', '#4ecca3');
+          });
+          clonedSvg.querySelectorAll('.note').forEach(el => {
+            el.setAttribute('fill', '#2d4a3e');
+            el.setAttribute('stroke', '#4ecca3');
+          });
+        }
 
         contentContainer.appendChild(clonedSvg);
 
@@ -280,13 +311,13 @@ if (ExecutionEnvironment.canUseDOM) {
       if (mutation.type === 'childList') {
         mutation.addedNodes.forEach(node => {
           if (node.nodeType === 1) {
-             if (node.classList && node.classList.contains('docusaurus-mermaid-container')) {
-                shouldAttach = true;
-             }
-             // Also check inside added nodes
-             if (node.querySelector && node.querySelector('.docusaurus-mermaid-container')) {
-                shouldAttach = true;
-             }
+            if (node.classList && node.classList.contains('docusaurus-mermaid-container')) {
+              shouldAttach = true;
+            }
+            // Also check inside added nodes
+            if (node.querySelector && node.querySelector('.docusaurus-mermaid-container')) {
+              shouldAttach = true;
+            }
           }
         });
       }
@@ -301,13 +332,13 @@ if (ExecutionEnvironment.canUseDOM) {
 
   // Run once on load in case we landed on a page with diagrams
   window.addEventListener('load', () => setTimeout(attachZoomBehavior, 1000));
-  
+
   // Also run on route updates (Docusaurus specific event)
   if (window) {
-     const originalPushState = window.history.pushState;
-     window.history.pushState = function() {
-        originalPushState.apply(this, arguments);
-        setTimeout(attachZoomBehavior, 500);
-     };
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function () {
+      originalPushState.apply(this, arguments);
+      setTimeout(attachZoomBehavior, 500);
+    };
   }
 }

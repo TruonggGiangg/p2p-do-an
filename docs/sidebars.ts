@@ -46,6 +46,8 @@ const sidebars: SidebarsConfig = {
           items: [
             'backend-services/service-loan/overview',
             'backend-services/service-loan/loan-creation-flow',
+            'backend-services/service-loan/loan-life-cycle',
+            'backend-services/service-loan/matching-flow',
             'backend-services/service-loan/loan-status',
           ]
         },
