@@ -133,8 +133,10 @@ loan.waitingRooms.push(roomId);
 const newInvestedNotes = currentInvestedNotes + investNotes;
 loanContract.investedNotes = newInvestedNotes;
 
-// 2. Update matchedAmount
-const actualInvestAmount = investNotes * baseUnitPrice;
+// 2. Update matchedAmount - tích lũy số tiền đầu tư thực tế
+const actualInvestAmount = investmentCapital > 0 
+    ? investmentCapital  // Nếu có truyền capital trực tiếp
+    : (investNotes * baseUnitPrice);  // Ngược lại tính từ số nodes
 const newMatchedAmount = currentMatchedAmount + actualInvestAmount;
 loanContract.matchedAmount = newMatchedAmount;
 
