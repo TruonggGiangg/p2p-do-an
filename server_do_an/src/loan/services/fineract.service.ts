@@ -119,9 +119,9 @@ export class FineractService {
         this.password = this.configService.get<string>('FINERACT_PASSWORD') || 'password';
         this.loanProductId = this.configService.get<number>('FINERACT_P2P_LOAN_PRODUCT_ID') || 1;
         this.oauthClientId = this.configService.get<string>('FINERACT_OAUTH_CLIENT_ID') || 'community-app';
-        this.oauthClientSecret = this.configService.get<string>('FINERACT_OAUTH_CLIENT_SECRET') || '123';
+        this.oauthClientSecret = this.configService.getOrThrow<string>('FINERACT_OAUTH_CLIENT_SECRET');
         // Keycloak URL for OAuth2 token
-        this.keycloakUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://118.69.41.95:9000';
+        this.keycloakUrl = this.configService.getOrThrow<string>('KEYCLOAK_BASE_URL');
         // Admin/Escrow config for transfers
         this.adminClientId = this.configService.get<number>('FINERACT_ADMIN_CLIENT_ID') || 1;
         this.escrowAccountId = this.configService.get<number>('FINERACT_ESCROW_ACCOUNT_ID') || 1;

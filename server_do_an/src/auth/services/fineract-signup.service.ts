@@ -82,9 +82,9 @@ export class FineractSignupService {
             const params = new URLSearchParams();
             params.append('grant_type', 'password');
             params.append('client_id', this.configService.get('FINERACT_OAUTH_CLIENT_ID') || 'community-app');
-            params.append('client_secret', this.configService.get('FINERACT_OAUTH_CLIENT_SECRET') || '123');
+            params.append('client_secret', this.configService.getOrThrow('FINERACT_OAUTH_CLIENT_SECRET'));
             params.append('username', this.configService.get('FINERACT_USERNAME') || 'mifos');
-            params.append('password', this.configService.get('FINERACT_PASSWORD') || 'password');
+            params.append('password', this.configService.getOrThrow('FINERACT_PASSWORD'));
 
             const response = await firstValueFrom(
                 this.httpService.post(tokenUrl, params.toString(), {

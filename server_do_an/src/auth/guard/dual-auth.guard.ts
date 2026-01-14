@@ -72,7 +72,7 @@ export class DualAuthGuard implements CanActivate {
      * Validate Keycloak JWT token (RS256)
      */
     private async validateKeycloakToken(token: string): Promise<any> {
-        const baseUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://118.69.41.95:9000';
+        const baseUrl = this.configService.getOrThrow<string>('KEYCLOAK_BASE_URL');
         const realm = this.configService.get<string>('KEYCLOAK_REALM') || 'fineract';
 
         // Decode header to get kid

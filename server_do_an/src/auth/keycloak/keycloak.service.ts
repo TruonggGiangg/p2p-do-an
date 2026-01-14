@@ -21,7 +21,7 @@ export class KeycloakService {
     private readonly httpClient: AxiosInstance;
 
     constructor(private readonly configService: ConfigService) {
-        this.baseUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://118.69.41.95:9000';
+        this.baseUrl = this.configService.getOrThrow<string>('KEYCLOAK_BASE_URL');
         this.realm = this.configService.get<string>('KEYCLOAK_REALM') || 'fineract';
 
         // Security: Throw error if admin credentials not set (no defaults)

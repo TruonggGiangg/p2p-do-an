@@ -86,7 +86,7 @@ export class AuthService {
 
   private async createRefreshToken(payload: any): Promise<string> {
     return this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_REFRESH_SECRET') || 'REFRESHSECRET',
+      secret: this.configService.getOrThrow('JWT_REFRESH_SECRET'),
       expiresIn: this.configService.get('JWT_REFRESH_EXPIRE') || '7d',
     });
   }

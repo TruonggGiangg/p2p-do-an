@@ -63,11 +63,11 @@ export class CreditScoringService {
     ) {
         this.baseUrl = this.configService.get<string>('FINERACT_BASE_URL') || 'http://localhost:8080';
         this.tenantId = this.configService.get<string>('FINERACT_TENANT_ID') || 'default';
-        this.keycloakUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://localhost:9000';
+        this.keycloakUrl = this.configService.getOrThrow<string>('KEYCLOAK_BASE_URL');
         this.username = this.configService.get<string>('FINERACT_USERNAME') || 'mifos';
         this.password = this.configService.get<string>('FINERACT_PASSWORD') || 'password';
         this.oauthClientId = this.configService.get<string>('FINERACT_OAUTH_CLIENT_ID') || 'community-app';
-        this.oauthClientSecret = this.configService.get<string>('FINERACT_OAUTH_CLIENT_SECRET') || '123';
+        this.oauthClientSecret = this.configService.getOrThrow<string>('FINERACT_OAUTH_CLIENT_SECRET');
     }
 
     /**

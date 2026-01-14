@@ -17,7 +17,7 @@ import { LoanModule } from '../loan/loan.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'JUSTSECRET',
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: { expiresIn: (configService.get<string>('JWT_EXPIRE') || '15m') as any },
       }),
       inject: [ConfigService],

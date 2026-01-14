@@ -60,8 +60,8 @@ export class EkycService {
         this.username = this.configService.get<string>('FINERACT_USERNAME') || 'mifos';
         this.password = this.configService.get<string>('FINERACT_PASSWORD') || 'password';
         this.oauthClientId = this.configService.get<string>('FINERACT_OAUTH_CLIENT_ID') || 'community-app';
-        this.oauthClientSecret = this.configService.get<string>('FINERACT_OAUTH_CLIENT_SECRET') || '123';
-        this.keycloakUrl = this.configService.get<string>('KEYCLOAK_BASE_URL') || 'http://118.69.41.95:9000';
+        this.oauthClientSecret = this.configService.getOrThrow<string>('FINERACT_OAUTH_CLIENT_SECRET');
+        this.keycloakUrl = this.configService.getOrThrow<string>('KEYCLOAK_BASE_URL');
 
         // eKYC Python service - chung với p2p project
         this.ekycServiceUrl = this.configService.get<string>('EKYC_SERVICE_URL') || 'http://10.10.3.114:8000';
