@@ -17,19 +17,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
                 ? exceptionResponse
                 : (exceptionResponse as any).message || 'Internal server error';
 
-        const errorResponse = {
+        const responseBody = {
+            success: false,
             statusCode: status,
-            timestamp: new Date().toISOString(),
+            message: typeof message === 'string' ? message : (message as any).message || 'Đã có lỗi xảy ra',
+            error: typeof message === 'object' ? (message as any).error || 'Internal Server Error' : 'Error',
             path: request.url,
-            method: request.method,
-            message,
-            error: (exceptionResponse as any).error || exception.name,
+            timestamp: new Date().toISOString(),
         };
 
         this.logger.error(
             `${request.method} ${request.url} ${status} - ${JSON.stringify(message)}`,
         );
 
-        response.status(status).json(errorResponse);
+        response.status(status).json(responseBody);
     }
 }

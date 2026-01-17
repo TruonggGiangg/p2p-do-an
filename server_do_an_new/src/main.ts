@@ -49,8 +49,8 @@ async function bootstrap() {
 
   // Global exception filters (order matters: specific first, general last)
   app.useGlobalFilters(
-    new AllExceptionsFilter(),
     new HttpExceptionFilter(),
+    new AllExceptionsFilter(),
   );
 
   // Global interceptors

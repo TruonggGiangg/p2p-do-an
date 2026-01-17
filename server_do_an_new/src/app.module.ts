@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
@@ -19,16 +19,26 @@ import { validate } from './config/validation';
       cache: true,
     }),
     // Rate limiting configuration
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 60 seconds
-      limit: 10,  // 10 requests per 60 seconds
-    }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          ttl: config.get<number>('security.rateLimitTtl') || 60000,
+          limit: config.get<number>('security.rateLimitMax') || 100,
+        },
+      ],
+    }),
     AuthModule,
     HealthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // Apply ThrottlerGuard globally for rate limiting
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     // Apply JwtAuthGuard globally to all routes
     {
       provide: APP_GUARD,

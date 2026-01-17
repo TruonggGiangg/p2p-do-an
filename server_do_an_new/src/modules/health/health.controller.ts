@@ -7,8 +7,9 @@ import { Public } from '../../common/decorators/public.decorator';
 export class HealthController {
     @Public()
     @Get()
-    @ApiOperation({ summary: 'Check application health status' })
+    @ApiOperation({ summary: 'Check application health status', description: 'Subject to global rate limit (10/min).' })
     @ApiResponse({ status: 200, description: 'Application is healthy' })
+    @ApiResponse({ status: 429, description: 'Too many requests - Global rate limit exceeded' })
     check() {
         return {
             statusCode: 200,
@@ -29,8 +30,9 @@ export class HealthController {
 
     @Public()
     @Get('ready')
-    @ApiOperation({ summary: 'Check if application is ready to accept traffic' })
+    @ApiOperation({ summary: 'Check if application is ready to accept traffic', description: 'Subject to global rate limit (10/min).' })
     @ApiResponse({ status: 200, description: 'Application is ready' })
+    @ApiResponse({ status: 429, description: 'Too many requests - Global rate limit exceeded' })
     ready() {
         return {
             statusCode: 200,

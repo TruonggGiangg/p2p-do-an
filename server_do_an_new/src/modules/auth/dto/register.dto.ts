@@ -19,7 +19,7 @@ export class RegisterDto {
     phoneNumber: string;
 
     @ApiPropertyOptional({ example: 'user@example.com', description: 'Email address' })
-    @IsEmail()
+    @IsString()
     @IsOptional()
     email?: string;
 

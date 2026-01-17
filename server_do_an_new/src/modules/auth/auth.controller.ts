@@ -16,7 +16,7 @@ import { AuthService } from './auth.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, RefreshTokenDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { KeycloakUser, KeycloakTokenPayload } from './interfaces/auth.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -35,10 +35,13 @@ export class AuthController {
     @Post('register')
     @HttpCode(HttpStatus.CREATED)
     @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 registrations per minute
-    @ApiOperation({ summary: 'Register new user', description: 'Create Keycloak user + Fineract client + Savings account' })
+    @ApiOperation({
+        summary: 'Register new user',
+        description: 'Create Keycloak user + Fineract client + Savings account. Limit: 3 requests per minute.'
+    })
     @ApiResponse({ status: 201, description: 'User registered successfully' })
     @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
-    @ApiResponse({ status: 429, description: 'Too many requests' })
+    @ApiResponse({ status: 429, description: 'Too many requests - Rate limit exceeded (3/min)' })
     @ApiResponse({ status: 500, description: 'Internal server error' })
     async register(@Body() body: RegisterDto) {
         const result = await this.fineractSignupService.signup({
@@ -63,11 +66,11 @@ export class AuthController {
     @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 login attempts per minute
     @ApiOperation({
         summary: 'Login user',
-        description: 'Authenticate with username/password, returns JWT access token and sets refresh token cookie',
+        description: 'Authenticate with username/password, returns JWT access token and sets refresh token cookie. Limit: 5 requests per minute.',
     })
     @ApiResponse({ status: 200, description: 'Login successful' })
     @ApiResponse({ status: 401, description: 'Invalid credentials' })
-    @ApiResponse({ status: 429, description: 'Too many requests' })
+    @ApiResponse({ status: 429, description: 'Too many requests - Rate limit exceeded (5/min)' })
     async login(@Body() body: LoginDto, @Res() res: Response) {
         const { username, password } = body;
 
@@ -106,17 +109,18 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Refresh access token',
-        description: 'Get new access token using refresh token from body (mobile) or cookie (web)'
+        description: 'Get new access token using refresh token from body (mobile) or cookie (web). Subject to global rate limit (10/min).'
     })
     @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
     @ApiResponse({ status: 401, description: 'Invalid or missing refresh token' })
+    @ApiResponse({ status: 429, description: 'Too many requests - Global rate limit exceeded' })
     async refresh(
-        @Body() body: { refreshToken?: string },
+        @Body() body: RefreshTokenDto,
         @Req() req: Request,
         @Res() res: Response
     ) {
         // Accept refresh token from body (mobile) or cookie (web)
-        const refreshToken = body.refreshToken || req.cookies['refreshToken'];
+        const refreshToken = body?.refreshToken || req.cookies?.['refreshToken'];
 
         if (!refreshToken) {
             throw new UnauthorizedException('Refresh token không tồn tại');
