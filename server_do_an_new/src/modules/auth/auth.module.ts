@@ -4,10 +4,9 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { KeycloakService } from './services/keycloak.service';
-import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
+
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -31,12 +30,11 @@ import { WalletsModule } from '../wallets/wallets.module';
     controllers: [AuthController],
     providers: [
         AuthService,
-        KeycloakService,
-        KeycloakAuthService,
         FineractSignupService,
         UserSyncService,
         JwtStrategy,
     ],
+
     exports: [AuthService, JwtStrategy, FineractSignupService],
 })
 export class AuthModule { }

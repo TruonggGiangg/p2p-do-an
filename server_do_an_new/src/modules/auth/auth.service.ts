@@ -30,13 +30,14 @@ export class AuthService {
         const refreshToken = await this.createRefreshToken(payload);
 
         // Set refresh token in httpOnly cookie
-        const refreshExpire = this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d';
+        const refreshExpire = this.configService.get<string>('jwt.refreshExpiresIn');
         res.cookie('refreshToken', refreshToken, {
             httpOnly: true,
-            secure: this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
+            secure: this.configService.get<string>('nodeEnv') === 'production',
+            sameSite: this.configService.get<any>('security.cookieSameSite'),
             maxAge: ms(refreshExpire as ms.StringValue),
         });
+
 
         return {
             accessToken,
@@ -56,8 +57,9 @@ export class AuthService {
         let decoded: any;
         try {
             decoded = this.jwtService.verify(token, {
-                secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+                secret: this.configService.get<string>('jwt.refreshSecret'),
             });
+
         } catch (err: any) {
             throw new UnauthorizedException(
                 err.name === 'TokenExpiredError' ? 'Token đã hết hạn' : 'Token không hợp lệ',
@@ -78,13 +80,14 @@ export class AuthService {
         const newRefreshToken = await this.createRefreshToken(payload);
 
         // Update refresh token cookie
-        const refreshExpire = this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d';
+        const refreshExpire = this.configService.get<string>('jwt.refreshExpiresIn');
         res.cookie('refreshToken', newRefreshToken, {
             httpOnly: true,
-            secure: this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
+            secure: this.configService.get<string>('nodeEnv') === 'production',
+            sameSite: this.configService.get<any>('security.cookieSameSite'),
             maxAge: ms(refreshExpire as ms.StringValue),
         });
+
 
         return {
             accessToken,
@@ -104,8 +107,9 @@ export class AuthService {
      */
     private async createRefreshToken(payload: any): Promise<string> {
         return this.jwtService.sign(payload, {
-            secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
-            expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRE') || '7d') as any,
+            secret: this.configService.getOrThrow<string>('jwt.refreshSecret'),
+            expiresIn: this.configService.get<string>('jwt.refreshExpiresIn') as any,
         });
     }
+
 }

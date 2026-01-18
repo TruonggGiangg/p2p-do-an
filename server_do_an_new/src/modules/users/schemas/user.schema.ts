@@ -9,14 +9,16 @@ export enum UserStatus {
 
 @Schema({ timestamps: true, collection: 'users' })
 export class User extends Document {
-    @Prop({ required: true, unique: true, index: true })
+    @Prop({ required: true, unique: true })
     keycloakId: string;
+
 
     @Prop({ required: false, index: true })
     fineractClientId: string;
 
-    @Prop({ required: true, unique: true, index: true })
+    @Prop({ required: true, unique: true })
     username: string; // Phone number
+
 
     @Prop({ required: false })
     email: string;
@@ -47,8 +49,3 @@ export class User extends Document {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
-// Ensure indexes
-UserSchema.index({ keycloakId: 1 }, { unique: true });
-UserSchema.index({ username: 1 }, { unique: true });
-UserSchema.index({ fineractClientId: 1 });

@@ -20,12 +20,13 @@ export class KeycloakAuthService {
     private httpClient: AxiosInstance;
 
     constructor(private configService: ConfigService) {
-        this.keycloakUrl = this.configService.getOrThrow<string>('KEYCLOAK_URL');
-        this.realm = this.configService.get<string>('KEYCLOAK_REALM') || 'fineract';
-        this.clientId = this.configService.get<string>('KEYCLOAK_CLIENT_ID') || 'community-app';
-        this.clientSecret = this.configService.get<string>('KEYCLOAK_CLIENT_SECRET') || 'real-client-secret-123';
+        this.keycloakUrl = this.configService.getOrThrow<string>('keycloak.url');
+        this.realm = this.configService.getOrThrow<string>('keycloak.realm');
+        this.clientId = this.configService.getOrThrow<string>('keycloak.clientId');
+        this.clientSecret = this.configService.getOrThrow<string>('keycloak.clientSecret');
 
         this.httpClient = axios.create({
+
             baseURL: this.keycloakUrl,
             timeout: 10000,
         });
@@ -95,8 +96,9 @@ export class KeycloakAuthService {
      */
     async getClientToken(): Promise<string> {
         try {
-            const username = this.configService.get<string>('FINERACT_USERNAME') || 'mifos';
-            const password = this.configService.get<string>('FINERACT_PASSWORD') || 'password';
+            const username = this.configService.getOrThrow<string>('fineract.username');
+            const password = this.configService.getOrThrow<string>('fineract.password');
+
 
             const response = await this.httpClient.post<KeycloakTokenResponse>(
                 `/realms/${this.realm}/protocol/openid-connect/token`,

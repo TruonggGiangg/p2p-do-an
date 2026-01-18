@@ -4,12 +4,12 @@ import {
     Post,
     Param,
     UseGuards,
-    Request,
     HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletsService } from './wallets.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('wallets')
 @ApiBearerAuth()
@@ -21,8 +21,8 @@ export class WalletsController {
     @Get()
     @ApiOperation({ summary: 'Get all wallets for current user' })
     @ApiResponse({ status: 200, description: 'Returns list of wallets' })
-    async getWallets(@Request() req: any) {
-        const userId = req.user._id || req.user.sub;
+    async getWallets(@CurrentUser() user: any) {
+        const userId = user._id;
         const wallets = await this.walletsService.getWalletsByUserId(userId);
         const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
@@ -39,20 +39,18 @@ export class WalletsController {
     @Post()
     @ApiOperation({ summary: 'Create new wallet (placeholder)' })
     @ApiResponse({ status: 501, description: 'Not implemented - wallets are created via Fineract' })
-    async createWallet(@Request() req: any) {
+    async createWallet() {
         return {
             statusCode: HttpStatus.NOT_IMPLEMENTED,
             message: 'Tạo ví mới phải thông qua Fineract. Vui lòng sử dụng POST /api/wallets/sync để đồng bộ ví.',
         };
     }
 
-
     @Get('balance')
     @ApiOperation({ summary: 'Get total balance across all wallets' })
     @ApiResponse({ status: 200, description: 'Returns total balance' })
-    async getTotalBalance(@Request() req: any) {
-        const userId = req.user._id || req.user.sub;
-        const balance = await this.walletsService.getTotalBalance(userId);
+    async getTotalBalance(@CurrentUser() user: any) {
+        const balance = await this.walletsService.getTotalBalance(user._id);
 
         return {
             statusCode: HttpStatus.OK,
@@ -75,9 +73,8 @@ export class WalletsController {
     @Post('sync')
     @ApiOperation({ summary: 'Sync wallets from Fineract' })
     @ApiResponse({ status: 200, description: 'Wallets synced successfully' })
-    async syncWallets(@Request() req: any) {
-        const userId = req.user._id || req.user.sub;
-        const result = await this.walletsService.syncWalletsFromFineract(userId);
+    async syncWallets(@CurrentUser() user: any) {
+        const result = await this.walletsService.syncWalletsFromFineract(user._id);
 
         return {
             statusCode: HttpStatus.OK,

@@ -11,14 +11,15 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RegisterDto, RefreshTokenDto } from './dto/register.dto';
+import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/register.dto';
 import { KeycloakUser, KeycloakTokenPayload } from './interfaces/auth.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -31,158 +32,87 @@ export class AuthController {
         private readonly keycloakAuthService: KeycloakAuthService,
         private readonly fineractSignupService: FineractSignupService,
         private readonly userSyncService: UserSyncService,
+        private readonly jwtService: JwtService,
     ) { }
 
     @Public()
     @Post('register')
     @HttpCode(HttpStatus.CREATED)
-    @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 registrations per minute
-    @ApiOperation({
-        summary: 'Register new user',
-        description: 'Create Keycloak user + Fineract client + Savings account. Limit: 3 requests per minute.'
-    })
-    @ApiResponse({ status: 201, description: 'User registered successfully' })
-    @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
-    @ApiResponse({ status: 429, description: 'Too many requests - Rate limit exceeded (3/min)' })
-    @ApiResponse({ status: 500, description: 'Internal server error' })
+    @Throttle({ default: { limit: 3, ttl: 60000 } })
+    @ApiOperation({ summary: 'Register new user' })
     async register(@Body() body: RegisterDto) {
-        const result = await this.fineractSignupService.signup({
-            firstName: body.firstName,
-            lastName: body.lastName,
-            phoneNumber: body.phoneNumber,
-            email: body.email,
-            password: body.password,
-            userType: body.userType,
-        });
-
-        return {
-            statusCode: HttpStatus.CREATED,
-            message: 'Đăng ký thành công',
-            data: result,
-        };
+        const result = await this.fineractSignupService.signup(body);
+        return { message: 'Đăng ký thành công', data: result };
     }
 
     @Public()
     @Post('login')
     @HttpCode(HttpStatus.OK)
-    @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 login attempts per minute
-    @ApiOperation({
-        summary: 'Login user',
-        description: 'Authenticate with username/password, returns JWT access token and sets refresh token cookie. Limit: 5 requests per minute.',
-    })
-    @ApiResponse({ status: 200, description: 'Login successful' })
-    @ApiResponse({ status: 401, description: 'Invalid credentials' })
-    @ApiResponse({ status: 429, description: 'Too many requests - Rate limit exceeded (5/min)' })
+    @Throttle({ default: { limit: 5, ttl: 60000 } })
+    @ApiOperation({ summary: 'Login user' })
     async login(@Body() body: LoginDto, @Res() res: Response) {
         const { username, password } = body;
 
-        // Proxy to Keycloak OAuth (client secret hidden from client)
-        const keycloakTokens = await this.keycloakAuthService.loginWithPassword(
-            username,
-            password,
-        );
+        // 1. Authenticate with Keycloak
+        const keycloakTokens = await this.keycloakAuthService.loginWithPassword(username, password);
 
-        // Decode Keycloak token to extract user info
-        const tokenPayload = this.decodeKeycloakToken(keycloakTokens.access_token);
+        // 2. Extract and format user info
+        const payload = this.jwtService.decode(keycloakTokens.access_token) as KeycloakTokenPayload;
+        if (!payload) throw new UnauthorizedException('Token Keycloak không hợp lệ');
 
         const keycloakUser: KeycloakUser = {
-            keycloakUserId: tokenPayload.sub,
-            username: tokenPayload.preferred_username,
-            email: tokenPayload.email,
-            name: tokenPayload.name,
-            roles: tokenPayload.realm_access?.roles || [],
+            keycloakUserId: payload.sub,
+            username: payload.preferred_username,
+            email: payload.email,
+            name: payload.name,
+            roles: payload.realm_access?.roles || [],
         };
 
-        // NEW: Sync with MongoDB (ensure user exists in local DB)
+        // 3. Sync with Local Database & Fineract
         const mongoUser = await this.userSyncService.syncUser(keycloakUser);
 
-        // Prepare final user payload with MongoDB ID and Fineract IDs
-        const user = {
+        // 4. Generate Internal Session
+        const userSession = {
             ...keycloakUser,
             _id: mongoUser._id.toString(),
             fineractClientId: mongoUser.fineractClientId,
         };
 
-        // Generate internal JWT & set refresh token cookie
-        const loginResult = await this.authService.login(user, res);
+        const tokens = await this.authService.login(userSession, res);
 
-        return res.status(HttpStatus.OK).json({
-            statusCode: HttpStatus.OK,
+        return res.json({
             message: 'Đăng nhập thành công',
-            data: user,
-            accessToken: loginResult.accessToken,
-            refreshToken: loginResult.refreshToken,
+            data: userSession,
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
         });
     }
 
     @Public()
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({
-        summary: 'Refresh access token',
-        description: 'Get new access token using refresh token from body (mobile) or cookie (web). Subject to global rate limit (10/min).'
-    })
-    @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
-    @ApiResponse({ status: 401, description: 'Invalid or missing refresh token' })
-    @ApiResponse({ status: 429, description: 'Too many requests - Global rate limit exceeded' })
-    async refresh(
-        @Body() body: RefreshTokenDto,
-        @Req() req: Request,
-        @Res() res: Response
-    ) {
-        // Accept refresh token from body (mobile) or cookie (web)
+    @ApiOperation({ summary: 'Refresh access token' })
+    async refresh(@Body() body: RefreshTokenDto, @Req() req: Request, @Res() res: Response) {
         const refreshToken = body?.refreshToken || req.cookies?.['refreshToken'];
-
-        if (!refreshToken) {
-            throw new UnauthorizedException('Refresh token không tồn tại');
-        }
+        if (!refreshToken) throw new UnauthorizedException('Refresh token không tồn tại');
 
         const result = await this.authService.refreshToken(refreshToken, res);
-
-        return res.status(HttpStatus.OK).json({
-            statusCode: HttpStatus.OK,
-            message: 'Token đã được làm mới',
-            data: result,
-        });
+        return res.json({ message: 'Token đã được làm mới', data: result });
     }
 
     @Get('me')
     @ApiBearerAuth('access-token')
-    @ApiOperation({ summary: 'Get current user profile', description: 'Returns authenticated user information' })
-    @ApiResponse({ status: 200, description: 'User profile retrieved' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - invalid or missing token' })
+    @ApiOperation({ summary: 'Get current profile' })
     async getProfile(@CurrentUser() user: any) {
-        return {
-            statusCode: HttpStatus.OK,
-            message: 'Thông tin người dùng',
-            data: user,
-        };
+        return { data: user };
     }
 
     @Public()
     @Post('logout')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Logout user', description: 'Clear refresh token cookie' })
-    @ApiResponse({ status: 200, description: 'Logout successful' })
+    @ApiOperation({ summary: 'Logout' })
     async logout(@Res() res: Response) {
-        res.clearCookie('refreshToken');
-
-        return res.status(HttpStatus.OK).json({
-            statusCode: HttpStatus.OK,
-            message: 'Đăng xuất thành công',
-        });
-    }
-
-    /**
-     * Helper: Decode Keycloak JWT token
-     */
-    private decodeKeycloakToken(token: string): KeycloakTokenPayload {
-        const parts = token.split('.');
-        if (parts.length !== 3) {
-            throw new UnauthorizedException('Invalid token format');
-        }
-
-        const payload = Buffer.from(parts[1], 'base64').toString('utf-8');
-        return JSON.parse(payload) as KeycloakTokenPayload;
+        await this.authService.logout(res);
+        return res.json({ message: 'Đăng xuất thành công' });
     }
 }

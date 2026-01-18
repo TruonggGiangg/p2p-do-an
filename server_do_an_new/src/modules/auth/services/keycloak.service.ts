@@ -34,12 +34,13 @@ export class KeycloakService {
     private httpClient: AxiosInstance;
 
     constructor(private configService: ConfigService) {
-        this.keycloakUrl = this.configService.getOrThrow<string>('KEYCLOAK_URL');
-        this.realm = this.configService.get<string>('KEYCLOAK_REALM') || 'fineract';
-        this.adminUsername = this.configService.get<string>('KEYCLOAK_ADMIN_USERNAME') || 'admin';
-        this.adminPassword = this.configService.get<string>('KEYCLOAK_ADMIN_PASSWORD') || 'admin';
+        this.keycloakUrl = this.configService.getOrThrow<string>('keycloak.url');
+        this.realm = this.configService.getOrThrow<string>('keycloak.realm');
+        this.adminUsername = this.configService.getOrThrow<string>('keycloak.adminUsername');
+        this.adminPassword = this.configService.getOrThrow<string>('keycloak.adminPassword');
 
         this.httpClient = axios.create({
+
             baseURL: this.keycloakUrl,
             timeout: 10000,
         });
@@ -50,14 +51,18 @@ export class KeycloakService {
      */
     private async getAdminToken(): Promise<string> {
         try {
+            const adminRealm = this.configService.get<string>('keycloak.adminRealm');
+            const adminClientId = this.configService.get<string>('keycloak.adminClientId');
+
             const response = await this.httpClient.post<KeycloakAdminTokenResponse>(
-                '/realms/master/protocol/openid-connect/token',
+                `/realms/${adminRealm}/protocol/openid-connect/token`,
                 new URLSearchParams({
                     username: this.adminUsername,
                     password: this.adminPassword,
-                    client_id: 'admin-cli',
+                    client_id: adminClientId as string,
                     grant_type: 'password',
                 }),
+
                 {
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 },

@@ -24,6 +24,7 @@ export default () => ({
         adminClientId: process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'admin-cli',
     },
 
+
     fineract: {
         apiUrl: process.env.FINERACT_API_URL,
         tenant: process.env.FINERACT_TENANT,
@@ -36,9 +37,13 @@ export default () => ({
         legalFormId: parseInt(process.env.DEFAULT_LEGAL_FORM_ID || '1', 10),
         locale: process.env.DEFAULT_LOCALE || 'en',
         dateFormat: process.env.DEFAULT_DATE_FORMAT || 'dd MMMM yyyy',
+        creditWalletProductId: parseInt(process.env.DEFAULT_CREDIT_WALLET_PRODUCT_ID || '1', 10),
+        ewalletProductId: parseInt(process.env.DEFAULT_EWALLET_PRODUCT_ID || '3', 10),
         creditWalletProduct: process.env.DEFAULT_CREDIT_WALLET_PRODUCT || 'CW01',
-        ewalletProduct: process.env.DEFAULT_EWALLET_PRODUCT || 'EWALLET',
+        ewalletProduct: process.env.DEFAULT_EWALLET_PRODUCT || 'VDT',
+        emailDomain: process.env.DEFAULT_EMAIL_DOMAIN || 'p2p.com',
     },
+
 
     security: {
         corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['*'],

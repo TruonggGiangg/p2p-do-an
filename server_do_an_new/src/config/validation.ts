@@ -57,7 +57,16 @@ class EnvironmentVariables {
     @IsString()
     KEYCLOAK_ADMIN_PASSWORD: string;
 
+    @IsOptional()
+    @IsString()
+    KEYCLOAK_ADMIN_REALM: string;
+
+    @IsOptional()
+    @IsString()
+    KEYCLOAK_ADMIN_CLIENT_ID: string;
+
     // Fineract
+
     @IsUrl({ require_tld: false })
     FINERACT_API_URL: string;
 
@@ -78,7 +87,12 @@ class EnvironmentVariables {
     @IsOptional()
     @IsString()
     CORS_ORIGINS: string;
+
+    @IsOptional()
+    @IsString()
+    DEFAULT_EMAIL_DOMAIN: string;
 }
+
 
 export function validate(config: Record<string, unknown>) {
     const validatedConfig = plainToInstance(EnvironmentVariables, config, {
