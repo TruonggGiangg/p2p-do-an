@@ -40,10 +40,7 @@ import { validate } from './config/validation';
     AuthModule,
     HealthModule,
     WalletsModule,
-
   ],
-
-
   controllers: [AppController],
   providers: [
     AppService,
@@ -60,3 +57,4 @@ import { validate } from './config/validation';
   ],
 })
 export class AppModule { }
+
