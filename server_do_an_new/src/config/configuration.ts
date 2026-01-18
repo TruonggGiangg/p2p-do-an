@@ -39,10 +39,12 @@ export default () => ({
         dateFormat: process.env.DEFAULT_DATE_FORMAT || 'dd MMMM yyyy',
         creditWalletProductId: parseInt(process.env.DEFAULT_CREDIT_WALLET_PRODUCT_ID || '1', 10),
         ewalletProductId: parseInt(process.env.DEFAULT_EWALLET_PRODUCT_ID || '3', 10),
-        creditWalletProduct: process.env.DEFAULT_CREDIT_WALLET_PRODUCT || 'CW01',
-        ewalletProduct: process.env.DEFAULT_EWALLET_PRODUCT || 'VDT',
         emailDomain: process.env.DEFAULT_EMAIL_DOMAIN || 'p2p.com',
+
+        bnplLoanProductId: parseInt(process.env.DEFAULT_BNPL_LOAN_PRODUCT_ID || '4', 10),
+        bnplCreditLimit: parseInt(process.env.DEFAULT_BNPL_CREDIT_LIMIT || '5000000', 10),
     },
+
 
 
     security: {

@@ -129,16 +129,9 @@ export class FineractService {
         if (productId && productId === configCreditId) return 'credit_wallet';
         if (productId && productId === configEwalletId) return 'e_wallet';
 
-        // fallback to name matching
-        const productName = (savingsData.savingsProductName || savingsData.productName || '').toLowerCase();
-        const shortName = (savingsData.shortProductName || '').toUpperCase();
-
-        if (productName.includes('trả sau') || productName.includes('credit') || shortName === 'CW01') {
-            return 'credit_wallet';
-        }
-
         return 'e_wallet';
     }
+
 
     /**
      * Common error handler for senior-level logging and exceptions

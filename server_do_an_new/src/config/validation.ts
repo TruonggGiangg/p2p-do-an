@@ -91,7 +91,16 @@ class EnvironmentVariables {
     @IsOptional()
     @IsString()
     DEFAULT_EMAIL_DOMAIN: string;
+
+    @IsOptional()
+    @IsNumber()
+    DEFAULT_BNPL_LOAN_PRODUCT_ID: number;
+
+    @IsOptional()
+    @IsNumber()
+    DEFAULT_BNPL_CREDIT_LIMIT: number;
 }
+
 
 
 export function validate(config: Record<string, unknown>) {

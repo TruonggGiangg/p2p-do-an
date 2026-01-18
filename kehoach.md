@@ -40,6 +40,10 @@
     - [x] Tập trung hóa Axios Client với Interceptor tự động xử lý Token.
     - [x] Loại bỏ trùng lặp mã nguồn (DRY) trong các service Auth, Wallets, Sync.
     - [x] Sử dụng Decorator `@CurrentUser` và tinh gọn Controller.
+- [x] **Quản lý cấu hình (Configuration Cleanup)**:
+    - [x] Externalize toàn bộ các key cứng (`.env`) và cấu trúc hóa qua `ConfigService`.
+    - [x] Triển khai Environment Validation (class-validator) cho toàn bộ biến môi trường.
+    - [x] Chuẩn hóa lại cấu trúc tệp `.env` theo nhóm chức năng chuyên nghiệp.
 - [x] Tài liệu kỹ thuật: Class Diagram & Sequence Diagrams chi tiết.
 
 ### Frontend (Expo Mobile)
@@ -53,10 +57,12 @@
 
 ## ⏳ Chưa Làm Được & Kế Hoạch Tiếp Theo (Pending)
 
-### 🚀 Giai Đoạn 1: BNPL (Buy Now Pay Later) 2.0
-- [ ] Thực hiện logic mua hàng trả sau: Mỗi đơn hàng tạo 1 khoản vay (Loan Account) mới trên Fineract.
-- [ ] Logic phê duyệt khoản vay tự động dựa trên hạn mức.
-- [ ] Màn hình "Ví Trả Sau" chi tiết hiển thị các khoản nợ hiện tại.
+### 🚀 Giai Đoạn 1: BNPL (Buy Now Pay Later) 2.0 - Virtual Credit Wallet
+- [ ] **Technical Architecture**: Mapping 1-N (1 Ví trả sau trên App ↔ Nhiều khoản vay trên Fineract).
+- [ ] **Mô phỏng hạn mức (Credit Limit)**: Logic tính toán hạn mức khả dụng bằng cách trừ dư nợ các khoản vay BNPL đang active.
+- [ ] **Auto Checkout**: API thanh toán đơn hàng bằng BNPL (Tạo Loan -> Approve -> Disburse tự động).
+- [ ] **Thống kê dư nợ**: Màn hình hiển thị danh sách các đơn hàng vay trả sau và ngày thanh toán dự kiến (0% lãi).
+
 
 ### 💰 Giai Đoạn 2: Giao Dịch Tài Chính
 - [ ] Nạp tiền (Deposit) vào Ví điện tử.
