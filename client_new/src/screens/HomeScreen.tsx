@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -8,14 +8,47 @@ import {
     ScrollView,
     Alert,
     ActivityIndicator,
+    RefreshControl,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { authAPI, healthAPI } from '../services/endpoints.api';
+import { walletAPI } from '../services/wallet.api';
+import { WalletCard } from '../components/WalletCard';
+import { SyncStatusBadge } from '../components/SyncStatusBadge';
+import { RoleBadges } from '../components/RoleBadge';
+import type { Wallet } from '../types/auth.types';
 
 export default function HomeScreen() {
-    const { user, logout, isLoading: authLoading } = useAuth();
+    const { user, logout, refreshUser, isLoading: authLoading } = useAuth();
     const [testing, setTesting] = useState<string | null>(null);
     const [testResults, setTestResults] = useState<{ [key: string]: any }>({});
+    const [wallets, setWallets] = useState<Wallet[]>([]);
+    const [walletsLoading, setWalletsLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Fetch wallets on mount
+    useEffect(() => {
+        fetchWallets();
+    }, []);
+
+    const fetchWallets = async () => {
+        setWalletsLoading(true);
+        try {
+            const response = await walletAPI.getWallets();
+            setWallets(response.data?.wallets || response.wallets || []);
+        } catch (error: any) {
+            console.log('Failed to fetch wallets:', error.message);
+            // Don't show error - wallets may not exist yet
+        } finally {
+            setWalletsLoading(false);
+        }
+    };
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await Promise.all([refreshUser(), fetchWallets()]);
+        setRefreshing(false);
+    }, [refreshUser]);
 
     const runTest = async (testName: string, testFn: () => Promise<any>) => {
         setTesting(testName);
@@ -25,7 +58,7 @@ export default function HomeScreen() {
                 ...prev,
                 [testName]: { success: true, data: result },
             }));
-            Alert.alert('✅ Thành công', `Test "${testName}" hoàn tất!\n\nKết quả: ${JSON.stringify(result, null, 2).substring(0, 200)}...`);
+            Alert.alert('✅ Thành công', `Test "${testName}" hoàn tất!\n\n${JSON.stringify(result, null, 2).substring(0, 300)}...`);
         } catch (error: any) {
             setTestResults((prev) => ({
                 ...prev,
@@ -41,29 +74,100 @@ export default function HomeScreen() {
         await logout();
     };
 
+    const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
+
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+                }
+            >
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.title}>🧪 API Testing Dashboard</Text>
+                    <Text style={styles.title}>🧪 Testing Dashboard</Text>
                     <Text style={styles.subtitle}>{user?.name || user?.username}</Text>
                 </View>
 
                 {/* User Info Card */}
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>👤 Thông tin Người dùng</Text>
+
                     <InfoRow label="Số điện thoại" value={user?.username || ''} />
                     <InfoRow label="Email" value={user?.email || 'Chưa cập nhật'} />
-                    <InfoRow label="Vai trò" value={user?.roles?.join(', ') || 'Người dùng'} />
-                    {user?.fineractClientId && (
-                        <InfoRow label="Fineract Client ID" value={String(user.fineractClientId)} />
+
+                    <View style={styles.rolesRow}>
+                        <Text style={styles.infoLabel}>Vai trò:</Text>
+                        <RoleBadges roles={user?.roles} size="small" />
+                    </View>
+
+                    <InfoRow label="MongoDB ID" value={user?._id || 'N/A'} />
+                    <InfoRow label="Keycloak ID" value={user?.keycloakUserId || 'N/A'} />
+                    <InfoRow label="Fineract Client ID" value={String(user?.fineractClientId || 'Chưa liên kết')} />
+                </View>
+
+                {/* Sync Status Card */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>🔄 Trạng thái Đồng bộ</Text>
+                    <SyncStatusBadge
+                        status={user?.metadata?.syncStatus}
+                        lastSyncAt={user?.metadata?.lastSyncAt}
+                        error={user?.metadata?.syncError}
+                    />
+
+                    <TouchableOpacity
+                        style={styles.syncButton}
+                        onPress={() => runTest('Force Sync Wallets', async () => {
+                            await walletAPI.syncWallets();
+                            await fetchWallets();
+                            await refreshUser();
+                            return { message: 'Sync completed' };
+                        })}
+                        disabled={testing === 'Force Sync Wallets'}
+                    >
+                        {testing === 'Force Sync Wallets' ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                            <Text style={styles.syncButtonText}>🔄 Đồng bộ lại</Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                {/* Wallets Card */}
+                <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                        <Text style={styles.cardTitle}>💰 Ví của bạn</Text>
+                        <Text style={styles.walletCount}>{wallets.length} ví</Text>
+                    </View>
+
+                    {walletsLoading ? (
+                        <ActivityIndicator color="#3b82f6" style={styles.loader} />
+                    ) : wallets.length > 0 ? (
+                        <>
+                            <View style={styles.totalBalance}>
+                                <Text style={styles.totalBalanceLabel}>Tổng số dư</Text>
+                                <Text style={styles.totalBalanceAmount}>
+                                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(totalBalance)}
+                                </Text>
+                            </View>
+                            {wallets.map((wallet, index) => (
+                                <WalletCard key={wallet._id || index} wallet={wallet} />
+                            ))}
+                        </>
+                    ) : (
+                        <View style={styles.emptyWallets}>
+                            <Text style={styles.emptyIcon}>💼</Text>
+                            <Text style={styles.emptyText}>Bạn chưa có ví nào</Text>
+                            <Text style={styles.emptyHint}>Ví sẽ được tạo khi bạn thực hiện giao dịch đầu tiên</Text>
+                        </View>
                     )}
                 </View>
 
-                {/* API Tests */}
+                {/* API Tests - Auth */}
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>🔍 Auth API Tests</Text>
+                    <Text style={styles.cardTitle}>🔐 Auth API Tests</Text>
 
                     <TestButton
                         title="GET /api/auth/me"
@@ -80,6 +184,45 @@ export default function HomeScreen() {
                     />
                 </View>
 
+                {/* API Tests - Wallet */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>💳 Wallet API Tests</Text>
+
+                    <TestButton
+                        title="GET /api/wallets"
+                        onPress={() => runTest('Get Wallets', async () => {
+                            const result = await walletAPI.getWallets();
+                            await fetchWallets();
+                            return result;
+                        })}
+                        testing={testing === 'Get Wallets'}
+                        result={testResults['Get Wallets']}
+                    />
+
+                    <TestButton
+                        title="POST /api/wallets (Create)"
+                        onPress={() => runTest('Create Wallet', async () => {
+                            const result = await walletAPI.createWallet();
+                            await fetchWallets();
+                            return result;
+                        })}
+                        testing={testing === 'Create Wallet'}
+                        result={testResults['Create Wallet']}
+                    />
+
+                    <TestButton
+                        title="POST /api/wallets/sync"
+                        onPress={() => runTest('Sync Wallets', async () => {
+                            const result = await walletAPI.syncWallets();
+                            await fetchWallets();
+                            return result;
+                        })}
+                        testing={testing === 'Sync Wallets'}
+                        result={testResults['Sync Wallets']}
+                    />
+                </View>
+
+                {/* API Tests - Health */}
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>🏥 Health API Tests</Text>
 
@@ -109,10 +252,10 @@ export default function HomeScreen() {
                     </Text>
                 </TouchableOpacity>
 
-                {/* Footer Note */}
+                {/* Footer */}
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>
-                        💡 Tip: Nhấn vào các nút test để kiểm tra API endpoints
+                        💡 Kéo xuống để làm mới dữ liệu
                     </Text>
                 </View>
             </ScrollView>
@@ -130,7 +273,7 @@ interface InfoRowProps {
 const InfoRow: React.FC<InfoRowProps> = ({ label, value }) => (
     <View style={styles.infoRow}>
         <Text style={styles.infoLabel}>{label}:</Text>
-        <Text style={styles.infoValue}>{value}</Text>
+        <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
     </View>
 );
 
@@ -182,94 +325,161 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        padding: 20,
+        padding: 16,
         paddingBottom: 40,
     },
     header: {
-        marginBottom: 24,
+        marginBottom: 20,
         alignItems: 'center',
     },
     title: {
-        fontSize: 28,
+        fontSize: 26,
         fontWeight: 'bold',
         color: '#fff',
-        marginBottom: 8,
-        textAlign: 'center',
+        marginBottom: 6,
     },
     subtitle: {
-        fontSize: 16,
-        color: '#a0aec0',
+        fontSize: 15,
+        color: '#9ca3af',
     },
     card: {
         backgroundColor: '#1a1f3a',
         borderRadius: 16,
-        padding: 20,
-        marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        padding: 16,
+        marginBottom: 14,
         borderWidth: 1,
         borderColor: '#2d3748',
     },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
     cardTitle: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '700',
         color: '#fff',
-        marginBottom: 16,
+        marginBottom: 12,
+    },
+    walletCount: {
+        fontSize: 13,
+        color: '#9ca3af',
+        backgroundColor: '#374151',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
     },
     infoRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingVertical: 10,
+        paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: '#2d3748',
     },
+    rolesRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#2d3748',
+        gap: 12,
+    },
     infoLabel: {
-        fontSize: 14,
-        color: '#a0aec0',
+        fontSize: 13,
+        color: '#9ca3af',
         fontWeight: '600',
     },
     infoValue: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#fff',
         fontWeight: '500',
         flexShrink: 1,
         textAlign: 'right',
         marginLeft: 12,
+        maxWidth: '60%',
+    },
+    syncButton: {
+        backgroundColor: '#3b82f6',
+        borderRadius: 10,
+        padding: 14,
+        alignItems: 'center',
+        marginTop: 14,
+    },
+    syncButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    totalBalance: {
+        backgroundColor: '#0f172a',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 14,
+        alignItems: 'center',
+    },
+    totalBalanceLabel: {
+        fontSize: 12,
+        color: '#9ca3af',
+        marginBottom: 4,
+    },
+    totalBalanceAmount: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: '#10b981',
+    },
+    emptyWallets: {
+        alignItems: 'center',
+        paddingVertical: 24,
+    },
+    emptyIcon: {
+        fontSize: 48,
+        marginBottom: 12,
+    },
+    emptyText: {
+        fontSize: 16,
+        color: '#9ca3af',
+        marginBottom: 6,
+    },
+    emptyHint: {
+        fontSize: 13,
+        color: '#6b7280',
+        textAlign: 'center',
+    },
+    loader: {
+        marginVertical: 24,
     },
     testButton: {
         backgroundColor: '#4a5568',
-        borderRadius: 12,
-        padding: 14,
-        marginBottom: 10,
-        borderWidth: 2,
-        borderColor: '#718096',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: '#6b7280',
     },
     testButtonTesting: {
-        backgroundColor: '#fbbf24',
+        backgroundColor: '#d97706',
         borderColor: '#f59e0b',
     },
     testButtonSuccess: {
-        backgroundColor: '#10b981',
-        borderColor: '#059669',
+        backgroundColor: '#059669',
+        borderColor: '#10b981',
     },
     testButtonError: {
-        backgroundColor: '#ef4444',
-        borderColor: '#dc2626',
+        backgroundColor: '#dc2626',
+        borderColor: '#ef4444',
     },
     testButtonContent: {
         flexDirection: 'row',
         alignItems: 'center',
     },
     testButtonIcon: {
-        fontSize: 18,
-        marginRight: 12,
+        fontSize: 16,
+        marginRight: 10,
     },
     testButtonText: {
         color: '#fff',
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
         flex: 1,
     },
@@ -277,36 +487,30 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     logoutButton: {
-        backgroundColor: '#ef4444',
+        backgroundColor: '#dc2626',
         borderRadius: 12,
-        padding: 18,
+        padding: 16,
         alignItems: 'center',
-        marginTop: 8,
-        shadowColor: '#ef4444',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-        elevation: 6,
-        borderWidth: 2,
-        borderColor: '#dc2626',
+        marginTop: 6,
+        borderWidth: 1,
+        borderColor: '#ef4444',
     },
     logoutButtonText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '700',
     },
     footer: {
-        marginTop: 24,
-        padding: 16,
+        marginTop: 20,
+        padding: 14,
         backgroundColor: '#1a1f3a',
-        borderRadius: 12,
+        borderRadius: 10,
         borderWidth: 1,
         borderColor: '#2d3748',
     },
     footerText: {
-        color: '#a0aec0',
-        fontSize: 13,
+        color: '#9ca3af',
+        fontSize: 12,
         textAlign: 'center',
-        lineHeight: 20,
     },
 });

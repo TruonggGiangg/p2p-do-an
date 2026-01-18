@@ -1,12 +1,57 @@
+// ==================== USER TYPES ====================
+
+export interface UserProfile {
+    firstName: string;
+    lastName: string;
+    avatar?: string;
+}
+
+export interface UserMetadata {
+    syncStatus?: 'registered' | 'synced' | 'no_fineract_client' | 'no_wallets' | 'complete' | 'incomplete' | 'partial';
+    syncError?: string;
+    lastSyncAt?: string;
+    userType?: 'borrower' | 'lender';
+    registeredAt?: string;
+}
+
 export interface User {
     _id?: string;
+    keycloakUserId?: string;
+    fineractClientId?: string | number;
     username: string;
     email?: string;
     name?: string;
     roles?: string[];
-    keycloakUserId?: string;
-    fineractClientId?: string | number;
+    profile?: UserProfile;
+    metadata?: UserMetadata;
+    status?: 'active' | 'inactive' | 'suspended';
+    createdAt?: string;
+    updatedAt?: string;
 }
+
+// ==================== WALLET TYPES ====================
+
+export type WalletType = 'credit_wallet' | 'e_wallet';
+export type WalletStatus = 'active' | 'locked';
+
+export interface Wallet {
+    _id: string;
+    userId: string;
+    fineractSavingsId: string;
+    type: WalletType;
+    currency: string;
+    balance: number;
+    status: WalletStatus;
+    metadata?: {
+        productName?: string;
+        accountNo?: string;
+        syncedFromFineract?: boolean;
+    };
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+// ==================== AUTH TYPES ====================
 
 export interface AuthTokens {
     accessToken: string;
@@ -40,8 +85,8 @@ export interface RegisterResponse {
     message: string;
     data: {
         username: string;
-        clientId: number;
-        savingsId: number;
+        keycloakUserId: string;
+        fineractClientId: number;
     };
 }
 
@@ -50,4 +95,17 @@ export interface RefreshResponse {
     data: {
         accessToken: string;
     } & User;
+}
+
+// ==================== API RESPONSE TYPES ====================
+
+export interface ApiResponse<T> {
+    statusCode: number;
+    message: string;
+    data: T;
+}
+
+export interface WalletsResponse {
+    wallets: Wallet[];
+    totalBalance: number;
 }

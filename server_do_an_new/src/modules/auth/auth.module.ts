@@ -7,11 +7,16 @@ import { AuthService } from './auth.service';
 import { KeycloakService } from './services/keycloak.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
+import { UserSyncService } from './services/user-sync.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { UsersModule } from '../users/users.module';
+import { WalletsModule } from '../wallets/wallets.module';
 
 @Module({
     imports: [
         PassportModule,
+        UsersModule,
+        WalletsModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
@@ -29,8 +34,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         KeycloakService,
         KeycloakAuthService,
         FineractSignupService,
+        UserSyncService,
         JwtStrategy,
     ],
-    exports: [AuthService, JwtStrategy],
+    exports: [AuthService, JwtStrategy, FineractSignupService],
 })
 export class AuthModule { }
+

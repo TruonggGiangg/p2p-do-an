@@ -15,6 +15,7 @@ import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
+import { UserSyncService } from './services/user-sync.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RegisterDto, RefreshTokenDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -29,6 +30,7 @@ export class AuthController {
         private readonly authService: AuthService,
         private readonly keycloakAuthService: KeycloakAuthService,
         private readonly fineractSignupService: FineractSignupService,
+        private readonly userSyncService: UserSyncService,
     ) { }
 
     @Public()
@@ -83,13 +85,22 @@ export class AuthController {
         // Decode Keycloak token to extract user info
         const tokenPayload = this.decodeKeycloakToken(keycloakTokens.access_token);
 
-        const user: KeycloakUser = {
-            _id: tokenPayload.sub,
+        const keycloakUser: KeycloakUser = {
+            keycloakUserId: tokenPayload.sub,
             username: tokenPayload.preferred_username,
             email: tokenPayload.email,
             name: tokenPayload.name,
             roles: tokenPayload.realm_access?.roles || [],
-            keycloakUserId: tokenPayload.sub,
+        };
+
+        // NEW: Sync with MongoDB (ensure user exists in local DB)
+        const mongoUser = await this.userSyncService.syncUser(keycloakUser);
+
+        // Prepare final user payload with MongoDB ID and Fineract IDs
+        const user = {
+            ...keycloakUser,
+            _id: mongoUser._id.toString(),
+            fineractClientId: mongoUser.fineractClientId,
         };
 
         // Generate internal JWT & set refresh token cookie

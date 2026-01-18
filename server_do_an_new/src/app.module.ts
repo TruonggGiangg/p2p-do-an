@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
 import { validate } from './config/validation';
@@ -17,6 +19,12 @@ import { validate } from './config/validation';
       load: [configuration],
       validate,
       cache: true,
+    }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.get<string>('database.uri'),
+      }),
     }),
     // Rate limiting configuration
     ThrottlerModule.forRootAsync({
@@ -30,7 +38,9 @@ import { validate } from './config/validation';
     }),
     AuthModule,
     HealthModule,
+    WalletsModule,
   ],
+
   controllers: [AppController],
   providers: [
     AppService,

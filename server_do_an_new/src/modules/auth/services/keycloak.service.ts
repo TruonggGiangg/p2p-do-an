@@ -21,6 +21,7 @@ interface CreateUserData {
         value: string;
         temporary: boolean;
     }>;
+    attributes?: Record<string, string[]>;
 }
 
 @Injectable()
@@ -112,8 +113,12 @@ export class KeycloakService {
             if (error.response?.status === 409) {
                 throw new Error(`Tài khoản ${data.username} đã tồn tại`);
             }
-            this.logger.error('Failed to create Keycloak user', error.message);
-            throw new InternalServerErrorException('Không thể tạo tài khoản Keycloak');
+            this.logger.error('Failed to create Keycloak user', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
+            throw new InternalServerErrorException(error.response?.data?.errorMessage || 'Không thể tạo tài khoản Keycloak');
         }
     }
 
