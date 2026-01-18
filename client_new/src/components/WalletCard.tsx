@@ -3,7 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import type { Wallet } from '../types/auth.types';
 
 interface WalletCardProps {
-    wallet: Wallet;
+    wallet: Wallet & {
+        productName?: string;
+        shortProductName?: string;
+        accountNo?: string;
+    };
 }
 
 const formatCurrency = (amount: number, currency: string = 'VND'): string => {
@@ -14,7 +18,12 @@ const formatCurrency = (amount: number, currency: string = 'VND'): string => {
     }).format(amount);
 };
 
-const getWalletIcon = (type: string): string => {
+const getWalletIcon = (type: string, productName?: string): string => {
+    // Check product name first for more accuracy
+    const pn = (productName || '').toLowerCase();
+    if (pn.includes('trả sau') || pn.includes('credit')) return '💳';
+    if (pn.includes('điện tử') || pn.includes('vdt')) return '📱';
+
     switch (type) {
         case 'credit_wallet':
             return '💳';
@@ -25,10 +34,13 @@ const getWalletIcon = (type: string): string => {
     }
 };
 
-const getWalletLabel = (type: string): string => {
+const getWalletLabel = (type: string, productName?: string): string => {
+    // Use product name from Fineract if available
+    if (productName) return productName;
+
     switch (type) {
         case 'credit_wallet':
-            return 'Ví tín dụng';
+            return 'Ví Trả Sau';
         case 'e_wallet':
             return 'Ví điện tử';
         default:
@@ -37,34 +49,37 @@ const getWalletLabel = (type: string): string => {
 };
 
 export const WalletCard: React.FC<WalletCardProps> = ({ wallet }) => {
-    const isActive = wallet.status === 'active';
+    // Status from Fineract API can be 'Active', 'Inactive', or 'active', 'locked'
+    const isActive = wallet.status?.toLowerCase() === 'active';
+    const productName = wallet.productName || wallet.metadata?.productName || '';
+    const accountNo = wallet.accountNo || wallet.metadata?.accountNo || wallet.fineractSavingsId;
 
     return (
         <View style={[styles.container, !isActive && styles.containerLocked]}>
             <View style={styles.header}>
-                <Text style={styles.icon}>{getWalletIcon(wallet.type)}</Text>
+                <Text style={styles.icon}>{getWalletIcon(wallet.type, productName)}</Text>
                 <View style={styles.headerInfo}>
-                    <Text style={styles.walletType}>{getWalletLabel(wallet.type)}</Text>
+                    <Text style={styles.walletType}>{getWalletLabel(wallet.type, productName)}</Text>
                     <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusLocked]}>
-                        <Text style={styles.statusText}>{isActive ? 'Hoạt động' : 'Đã khóa'}</Text>
+                        <Text style={styles.statusText}>{isActive ? 'Hoạt động' : wallet.status || 'Đã khóa'}</Text>
                     </View>
                 </View>
             </View>
 
             <View style={styles.balanceContainer}>
                 <Text style={styles.balanceLabel}>Số dư</Text>
-                <Text style={styles.balanceAmount}>{formatCurrency(wallet.balance, wallet.currency)}</Text>
+                <Text style={styles.balanceAmount}>{formatCurrency(wallet.balance || 0, wallet.currency)}</Text>
             </View>
 
             <View style={styles.details}>
                 <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Mã tài khoản</Text>
-                    <Text style={styles.detailValue}>{wallet.metadata?.accountNo || wallet.fineractSavingsId}</Text>
+                    <Text style={styles.detailValue}>{accountNo}</Text>
                 </View>
-                {wallet.metadata?.productName && (
+                {wallet.shortProductName && (
                     <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Sản phẩm</Text>
-                        <Text style={styles.detailValue}>{wallet.metadata.productName}</Text>
+                        <Text style={styles.detailLabel}>Mã sản phẩm</Text>
+                        <Text style={styles.detailValue}>{wallet.shortProductName}</Text>
                     </View>
                 )}
             </View>

@@ -127,11 +127,15 @@ export class WalletsService {
      */
     private getWalletType(savingsData: any): 'credit_wallet' | 'e_wallet' {
         const productName = (savingsData.savingsProductName || savingsData.productName || '').toLowerCase();
-        const shortName = savingsData.shortProductName || '';
+        const shortName = (savingsData.shortProductName || '').toUpperCase();
 
-        if (productName.includes('credit') || shortName === 'CW01') {
+        // Credit Wallet patterns: Ví Trả Sau, Credit, CW01
+        if (productName.includes('trả sau') ||
+            productName.includes('credit') ||
+            shortName === 'CW01') {
             return 'credit_wallet';
         }
+
         return 'e_wallet';
     }
 
