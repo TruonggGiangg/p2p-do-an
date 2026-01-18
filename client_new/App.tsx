@@ -6,6 +6,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import MainTabNavigator from './src/navigation/MainTabNavigator';
 
 const Stack = createNativeStackNavigator();
 
@@ -36,9 +37,9 @@ function Navigation() {
         {user ? (
           // Authenticated stack
           <Stack.Screen
-            name="Home"
-            component={HomeScreen}
-            options={{ title: 'Trang chủ' }}
+            name="MainTabs"
+            component={MainTabNavigator}
+            options={{ headerShown: false }}
           />
         ) : (
           // Auth stack

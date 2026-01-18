@@ -95,6 +95,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsLoading(true);
         try {
             await authApi.logout();
+            await secureStorageService.clearAll();
             setUser(null);
         } catch (error) {
             console.error('Logout failed:', error);

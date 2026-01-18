@@ -74,20 +74,45 @@ export class UserSyncService {
         const phoneNumber = kcFullUser?.attributes?.phoneNumber?.[0] || username;
 
         // Try to find existing Fineract client
-        let fineractClient = await this.fineractService.findClientByExternalId(username);
+        let fineractClientId: string | undefined;
+        // Priority: KEYCLOAK_username -> username
+        let fineractClient = await this.fineractService.findClientByExternalId(`KEYCLOAK_${username}`);
+
+        // Priority 2: Heuristic Seed Data (borrower1 -> BORROWER_1)
+        if (!fineractClient) {
+            const heuristicId = username.toUpperCase().replace(/(\D+)(\d+)/, '$1_$2');
+            if (heuristicId !== username.toUpperCase()) {
+                this.logger.log(`[SYNC] Trying heuristic externalId: ${heuristicId}`);
+                fineractClient = await this.fineractService.findClientByExternalId(heuristicId);
+            }
+        }
+
+        if (!fineractClient) {
+            fineractClient = await this.fineractService.findClientByExternalId(username);
+        }
+
         if (!fineractClient && phoneNumber !== username) {
             fineractClient = await this.fineractService.findClientByExternalId(phoneNumber);
         }
 
+        if (fineractClient) {
+            const isClaimed = await this.isFineractClientClaimed(fineractClient.id);
+            if (!isClaimed) {
+                fineractClientId = fineractClient.id.toString();
+            } else {
+                this.logger.warn(`[SYNC] Fineract Client ${fineractClient.id} is already claimed by another user. Not linking to ${username}.`);
+            }
+        }
+
         const mongoUser = await this.userModel.create({
             keycloakId: keycloakUserId,
-            fineractClientId: fineractClient?.id?.toString(),
+            fineractClientId,
             username,
             email: email || kcFullUser?.email || `${username}@p2p.com`,
             profile: { firstName, lastName },
             status: UserStatus.ACTIVE,
             metadata: {
-                syncStatus: fineractClient ? 'synced' : 'no_fineract_client',
+                syncStatus: fineractClientId ? 'synced' : 'no_fineract_client',
                 lastSyncAt: new Date(),
             },
         });
@@ -107,7 +132,20 @@ export class UserSyncService {
         const phoneNumber = kcFullUser?.attributes?.phoneNumber?.[0];
         const emailAddr = kcFullUser?.email;
 
-        let fineractClient = await this.fineractService.findClientByExternalId(username);
+        let fineractClient = await this.fineractService.findClientByExternalId(`KEYCLOAK_${username}`);
+
+        // Priority 2: Heuristic Seed Data (borrower1 -> BORROWER_1)
+        if (!fineractClient) {
+            const heuristicId = username.toUpperCase().replace(/(\D+)(\d+)/, '$1_$2');
+            if (heuristicId !== username.toUpperCase()) {
+                this.logger.log(`[SYNC] Trying heuristic externalId: ${heuristicId}`);
+                fineractClient = await this.fineractService.findClientByExternalId(heuristicId);
+            }
+        }
+
+        if (!fineractClient) {
+            fineractClient = await this.fineractService.findClientByExternalId(username);
+        }
 
         if (!fineractClient && phoneNumber) {
             fineractClient = await this.fineractService.findClientByExternalId(phoneNumber);
@@ -118,6 +156,12 @@ export class UserSyncService {
         }
 
         if (fineractClient) {
+            const isClaimed = await this.isFineractClientClaimed(fineractClient.id);
+            if (isClaimed) {
+                this.logger.warn(`[SYNC] Fineract Client ${fineractClient.id} is already claimed. Skipping link for ${username}.`);
+                return;
+            }
+
             mongoUser.fineractClientId = fineractClient.id.toString();
             mongoUser.metadata = { ...mongoUser.metadata, syncStatus: 'synced', lastSyncAt: new Date() };
             await mongoUser.save();
@@ -130,10 +174,20 @@ export class UserSyncService {
     }
 
     /**
+     * Check if a Fineract Client ID is already assigned to a MongoDB User
+     */
+    private async isFineractClientClaimed(fineractId: number): Promise<boolean> {
+        const existingUser = await this.userModel.findOne({ fineractClientId: fineractId.toString() }).exec();
+        return !!existingUser;
+    }
+
+    /**
      * Sync wallets from Fineract to MongoDB
      */
     private async syncWallets(mongoUser: any, fineractClientId: number, username: string): Promise<void> {
         const savingsAccounts = await this.fineractService.findSavingsAccountsByClientId(fineractClientId);
+
+        this.logger.log(`[SYNC] Found ${savingsAccounts.length} savings accounts for ${username}: ${savingsAccounts.map(a => `${a.id} (${a.status?.value})`).join(', ')}`);
 
         if (savingsAccounts.length === 0) {
             this.logger.warn(`[SYNC] User ${username} has no wallets in Fineract`);

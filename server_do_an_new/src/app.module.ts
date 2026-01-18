@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
+
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
 import { validate } from './config/validation';
@@ -39,7 +40,9 @@ import { validate } from './config/validation';
     AuthModule,
     HealthModule,
     WalletsModule,
+
   ],
+
 
   controllers: [AppController],
   providers: [

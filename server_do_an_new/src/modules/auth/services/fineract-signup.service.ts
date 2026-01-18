@@ -157,17 +157,29 @@ export class FineractSignupService {
             // 1. Search by externalId
             const response = await this.fineractClient.get('/clients', { params: { externalId: identifier } });
             const clients = response.data?.pageItems || response.data || [];
-            if (clients.length > 0) return clients[0];
+            // STRICT CHECK: Ensure externalId actually matches
+            const matchedByExtId = clients.find((c: any) => c.externalId === identifier);
+            if (matchedByExtId) return matchedByExtId;
 
-            // 2. Search by displayName
+            // 2. Search by displayName (Fuzzy or exact? Let's check exact to avoid wrong links)
             const searchResponse = await this.fineractClient.get('/clients', { params: { displayName: identifier } });
             const searchClients = searchResponse.data?.pageItems || searchResponse.data || [];
-            if (searchClients.length > 0) return searchClients[0];
+            const matchedByName = searchClients.find((c: any) => c.displayName === identifier);
+            if (matchedByName) return matchedByName;
 
-            // 3. Search by mobileNo
+            // 3. Search by mobileNo (CRITICAL FIX: Fineract might return all clients if param ignored)
             const mobileResponse = await this.fineractClient.get('/clients', { params: { mobileNo: identifier } });
             const mobileClients = mobileResponse.data?.pageItems || mobileResponse.data || [];
-            if (mobileClients.length > 0) return mobileClients[0];
+
+            // Normalize identifier for phone comparison (remove non-digits)
+            const searchPhone = identifier.replace(/\D/g, '');
+
+            const matchedByPhone = mobileClients.find((c: any) => {
+                const clientPhone = (c.mobileNo || '').replace(/\D/g, '');
+                return clientPhone === searchPhone && clientPhone.length > 0;
+            });
+
+            if (matchedByPhone) return matchedByPhone;
 
             return null;
         } catch (error: any) {
