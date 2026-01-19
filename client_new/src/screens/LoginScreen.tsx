@@ -11,9 +11,11 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen() {
+    const navigation = useNavigation();
     const { login, isLoading } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');

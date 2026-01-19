@@ -96,7 +96,12 @@ export default function BNPLScreen() {
             setSchedule(scheduleData.schedule);
             setScheduleSummary(scheduleData.summary);
         } catch (error: any) {
-            console.log('Failed to fetch BNPL data:', error.message);
+            console.error('Failed to fetch BNPL data:', error);
+            // Only show error for critical failures, not for individual API failures
+            // Auth errors are handled by interceptor
+            if (error.response?.status && error.response.status >= 500) {
+                Alert.alert('Lỗi', 'Không thể tải dữ liệu. Vui lòng thử lại sau.');
+            }
         } finally {
             setLoading(false);
         }
@@ -111,6 +116,8 @@ export default function BNPLScreen() {
     // ==================== PREVIEW HANDLER ====================
     const handlePreview = useCallback(async () => {
         const amount = parseInt(amountRaw) || 0;
+        
+        // Client-side validation (server will also validate)
         if (!amount || amount < 500000) {
             Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
             return;
@@ -118,6 +125,15 @@ export default function BNPLScreen() {
 
         if (amount > 50000000) {
             Alert.alert('Lỗi', 'Số tiền vay tối đa là 50,000,000 đ');
+            return;
+        }
+
+        // Check available credit before preview (business logic validation)
+        if (wallet && amount > wallet.availableCredit) {
+            Alert.alert(
+                'Vượt hạn mức',
+                `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}`
+            );
             return;
         }
 
@@ -136,11 +152,13 @@ export default function BNPLScreen() {
                 useNativeDriver: true,
             }).start();
         } catch (error: any) {
-            Alert.alert('Lỗi', error.response?.data?.message || 'Không thể xem trước khoản vay');
+            const errorMessage = error.response?.data?.message || 'Không thể xem trước khoản vay';
+            Alert.alert('Lỗi', errorMessage);
+            setPreview(null);
         } finally {
             setLoadingPreview(false);
         }
-    }, [amountRaw, numberOfRepayments]);
+    }, [amountRaw, numberOfRepayments, wallet]);
 
     // ==================== CREATE HANDLER ====================
     const handleCreateLoan = useCallback(async () => {
@@ -151,8 +169,15 @@ export default function BNPLScreen() {
 
         const amount = parseInt(amountRaw) || 0;
 
+        // Re-validate credit limit (may have changed since preview)
+        // Server will also validate, but this provides immediate feedback
         if (wallet && amount > wallet.availableCredit) {
-            Alert.alert('Lỗi', `Vượt quá hạn mức. Còn lại: ${formatCurrency(wallet.availableCredit)}`);
+            Alert.alert(
+                'Vượt hạn mức',
+                `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}\n\nVui lòng làm mới dữ liệu để kiểm tra lại.`
+            );
+            // Refresh wallet data
+            await fetchData();
             return;
         }
 
@@ -166,17 +191,31 @@ export default function BNPLScreen() {
 
             Alert.alert(
                 '✅ Thành công',
-                `Đã tạo khoản vay ${formatCurrency(loan.principal)}\nTổng phải trả: ${formatCurrency(loan.totalRepayment)}`
+                `Đã tạo khoản vay ${formatCurrency(loan.principal)}\nTổng phải trả: ${formatCurrency(loan.totalRepayment)}`,
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            setCreateModalVisible(false);
+                            setAmountRaw('5000000');
+                            setLoanDescription('');
+                            setNumberOfRepayments(3);
+                            setPreview(null);
+                        },
+                    },
+                ]
             );
 
-            setCreateModalVisible(false);
-            setAmountRaw('5000000');
-            setLoanDescription('');
-            setNumberOfRepayments(3);
-            setPreview(null);
+            // Refresh all data after successful creation
             await fetchData();
         } catch (error: any) {
-            Alert.alert('❌ Lỗi', error.response?.data?.message || error.message);
+            const errorMessage = error.response?.data?.message || error.message || 'Không thể tạo khoản vay';
+            Alert.alert('❌ Lỗi', errorMessage);
+            
+            // If credit limit error, refresh wallet data
+            if (error.response?.status === 400 && errorMessage.includes('hạn mức')) {
+                await fetchData();
+            }
         } finally {
             setCreating(false);
         }

@@ -46,4 +46,19 @@ export const walletAPI = {
         const response = await api.get('/api/wallets/balance');
         return response.data;
     },
+
+    /**
+     * GET /api/wallets/transactions - Get wallet transaction history
+     * @param limit - Number of transactions to return
+     * @param offset - Number of transactions to skip
+     * @param walletId - Optional: Fineract Savings ID to filter transactions for a specific wallet
+     */
+    getTransactions: async (limit: number = 20, offset: number = 0, walletId?: string) => {
+        const params: any = { limit, offset };
+        if (walletId) {
+            params.walletId = walletId; // Fineract Savings ID, not MongoDB ID
+        }
+        const response = await api.get('/api/wallets/transactions', { params });
+        return response.data;
+    },
 };

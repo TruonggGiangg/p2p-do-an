@@ -8,27 +8,30 @@ import {
     Alert,
     ActivityIndicator,
     RefreshControl,
-    Dimensions,
+    Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { walletAPI } from '../services/wallet.api';
-import { WalletCard } from '../components/WalletCard';
+import { bnplAPI } from '../services/bnpl.api';
+import { WalletCard, GradientBackground, GlassCard, QuickAction, TransferModal, QRCodeDisplay } from '../components';
+import { GlassTokens, Gradients } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { Wallet } from '../types/auth.types';
 
-const { width } = Dimensions.get('window');
-
-export default function HomeScreen({ navigation }: any) {
+export default function HomeScreen() {
+    const navigation = useNavigation();
     const { user, logout, refreshUser, isLoading: authLoading } = useAuth();
     const [wallets, setWallets] = useState<Wallet[]>([]);
     const [walletsLoading, setWalletsLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-
-    // Fetch wallets on mount
-    useEffect(() => {
-        fetchWallets();
-    }, []);
+    const [transferModalVisible, setTransferModalVisible] = useState(false);
+    const [qrCodeVisible, setQrCodeVisible] = useState(false);
+    const [bnplAvailableCredit, setBnplAvailableCredit] = useState<number | null>(null);
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [transactionsLoading, setTransactionsLoading] = useState(false);
+    const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
     const fetchWallets = async () => {
         setWalletsLoading(true);
@@ -36,19 +39,97 @@ export default function HomeScreen({ navigation }: any) {
             const response = await walletAPI.getWallets();
             // The response structure should match WalletsResponse from types
             const walletData = response.data?.wallets || response.wallets || [];
-            setWallets(walletData);
+            // Filter out BNPL wallets (credit_wallet) - only show e_wallet
+            const eWallets = walletData.filter((w: Wallet) => w.type === 'e_wallet');
+            setWallets(eWallets);
+
+            // Log for debugging
+            console.log(`[HomeScreen] Loaded ${eWallets.length} e-wallets:`, eWallets.map((w: Wallet) => ({
+                fineractId: w.fineractId,
+                accountNo: w.accountNo,
+                productName: w.productName,
+                balance: w.balance,
+            })));
         } catch (error: any) {
-            console.log('Failed to fetch wallets:', error.message);
+            console.error('Failed to fetch wallets:', error);
+            // Only show error if it's not a network error or auth error
+            // Auth errors are handled by interceptor
+            if (error.response?.status && error.response.status >= 500) {
+                Alert.alert('Lỗi', 'Không thể tải danh sách ví. Vui lòng thử lại sau.');
+            }
         } finally {
             setWalletsLoading(false);
         }
     };
 
+    const fetchBnplInfo = async () => {
+        try {
+            const walletInfo = await bnplAPI.getWallet();
+            setBnplAvailableCredit(walletInfo.availableCredit);
+        } catch (error: any) {
+            // BNPL wallet might not exist yet, silently fail
+            console.log('BNPL wallet not available:', error.message);
+            setBnplAvailableCredit(null);
+        }
+    };
+
+    // Fetch wallets and BNPL info on mount
+    useEffect(() => {
+        fetchWallets();
+        fetchBnplInfo();
+    }, []);
+
+    // When wallets change, set default selected wallet
+    useEffect(() => {
+        if (wallets.length > 0) {
+            const defaultWallet = wallets[0];
+            const defaultWalletId =
+                defaultWallet.fineractId || defaultWallet.accountNo || defaultWallet.id || defaultWallet._id || null;
+
+            if (defaultWalletId && !selectedWalletId) {
+                setSelectedWalletId(defaultWalletId);
+            }
+        }
+    }, [wallets, selectedWalletId]);
+
+    // When selectedWalletId changes, fetch transactions for that wallet
+    useEffect(() => {
+        if (selectedWalletId) {
+            void fetchTransactions(selectedWalletId);
+        } else {
+            // Fallback: fetch default transactions (first active e-wallet) if no specific wallet selected
+            void fetchTransactions();
+        }
+    }, [selectedWalletId]);
+
+    const fetchTransactions = async (walletId?: string) => {
+        setTransactionsLoading(true);
+        try {
+            // walletId is Fineract Savings ID (not MongoDB ID)
+            const response = await walletAPI.getTransactions(10, 0, walletId);
+            const transactionData = response.data?.transactions || [];
+            setTransactions(transactionData);
+            console.log(`[HomeScreen] Loaded ${transactionData.length} transactions for walletId=${walletId || 'default'}`);
+        } catch (error: any) {
+            console.error('Failed to fetch transactions:', error);
+            // Silently fail - transactions are not critical
+            setTransactions([]);
+        } finally {
+            setTransactionsLoading(false);
+        }
+    };
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await Promise.all([refreshUser(), fetchWallets()]);
+        await Promise.all([refreshUser(), fetchWallets(), fetchBnplInfo()]);
+        // Transactions will be fetched automatically when selectedWalletId is set
+        if (selectedWalletId) {
+            await fetchTransactions(selectedWalletId);
+        } else {
+            await fetchTransactions();
+        }
         setRefreshing(false);
-    }, [refreshUser]);
+    }, [refreshUser, selectedWalletId]);
 
     const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
@@ -57,12 +138,12 @@ export default function HomeScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <GradientBackground>
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GlassTokens.colors.primary} />
                 }
             >
                 {/* User Header */}
@@ -80,31 +161,75 @@ export default function HomeScreen({ navigation }: any) {
                 </View>
 
                 {/* Total Balance Card */}
-                <View style={styles.balanceCard}>
+                <LinearGradient
+                    colors={Gradients.primary as any}
+                    style={styles.balanceCard}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                >
                     <Text style={styles.balanceLabel}>Tổng số dư khả dụng</Text>
                     <Text style={styles.balanceAmount}>{formatCurrency(totalBalance)}</Text>
                     <View style={styles.balanceActions}>
-                        <TouchableOpacity style={styles.balanceActionBtn}>
-                            <Ionicons name="add-circle-outline" size={22} color="#fff" />
-                            <Text style={styles.balanceActionText}>Nạp tiền</Text>
+                        <TouchableOpacity style={styles.balanceActionBtn} onPress={() => setQrCodeVisible(true)}>
+                            <Ionicons name="qr-code-outline" size={22} color="#fff" />
+                            <Text style={styles.balanceActionText}>Mã QR</Text>
                         </TouchableOpacity>
                         <View style={styles.balanceDivider} />
-                        <TouchableOpacity style={styles.balanceActionBtn}>
+                        <TouchableOpacity
+                            style={styles.balanceActionBtn}
+                            onPress={() => setTransferModalVisible(true)}
+                            disabled={wallets.filter((w) => w.type === 'e_wallet').length === 0}
+                        >
                             <Ionicons name="arrow-forward-circle-outline" size={22} color="#fff" />
                             <Text style={styles.balanceActionText}>Chuyển tiền</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
+                </LinearGradient>
 
                 {/* Quick Actions */}
                 <View style={styles.quickActions}>
                     {[
-                        { id: 'qr', icon: 'qr-code-outline', label: 'Quét mã', color: '#8b5cf6' },
-                        { id: 'bnpl', icon: 'card-outline', label: 'Ví Trả Sau', color: '#ec4899', onPress: () => navigation.navigate('BNPL') },
-                        { id: 'phone', icon: 'phone-portrait-outline', label: 'Nạp ĐT', color: '#3b82f6' },
-                        { id: 'grid', icon: 'grid-outline', label: 'Tất cả', color: '#10b981' },
+                        {
+                            key: 'scan-qr',
+                            icon: 'qr-code-outline',
+                            label: 'Quét mã',
+                            colors: ['#8b5cf6', '#7c3aed'] as const,
+                            onPress: () => {
+                                setTransferModalVisible(true);
+                            },
+                        },
+                        {
+                            key: 'bnpl',
+                            icon: 'card-outline',
+                            label: bnplAvailableCredit !== null ? `Hạn mức: ${formatCurrency(bnplAvailableCredit)}` : 'Hạn mức vay tiêu dùng',
+                            colors: Gradients.bnpl,
+                            onPress: () => {
+                                // @ts-ignore - navigation type is complex
+                                navigation.navigate('BNPL');
+                            },
+                        },
+                        {
+                            key: 'topup-phone',
+                            icon: 'phone-portrait-outline',
+                            label: 'Nạp ĐT',
+                            colors: Gradients.primary,
+                            onPress: () => Alert.alert('Nạp tiền điện thoại', 'Tính năng đang phát triển'),
+                        },
+                        {
+                            key: 'all',
+                            icon: 'grid-outline',
+                            label: 'Tất cả',
+                            colors: Gradients.success,
+                            onPress: () => Alert.alert('Tất cả', 'Tính năng đang phát triển'),
+                        },
                     ].map((action) => (
-                        <QuickAction key={action.id} icon={action.icon} label={action.label} color={action.color} onPress={action.onPress} />
+                        <QuickAction
+                            key={action.key}
+                            icon={action.icon}
+                            label={action.label}
+                            colors={action.colors}
+                            onPress={action.onPress}
+                        />
                     ))}
                 </View>
 
@@ -117,15 +242,17 @@ export default function HomeScreen({ navigation }: any) {
                 </View>
 
                 {walletsLoading ? (
-                    <ActivityIndicator color="#3b82f6" style={styles.loader} />
+                    <ActivityIndicator key="wallets-loading" color="#3b82f6" style={styles.loader} />
                 ) : wallets.length > 0 ? (
-                    <>
-                        {wallets.map((wallet) => (
-                            <WalletCard key={wallet._id} wallet={wallet} />
-                        ))}
-                    </>
+                    <View key="wallets-list">
+                        {wallets.map((wallet, index) => {
+                            // Use fineractId or accountNo as key instead of MongoDB ID
+                            const walletKey = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id || String(index);
+                            return <WalletCard key={walletKey} wallet={wallet} />;
+                        })}
+                    </View>
                 ) : (
-                    <View style={styles.emptyCard}>
+                    <View key="wallets-empty" style={styles.emptyCard}>
                         <Text style={styles.emptyText}>Chưa có thông tin ví điện tử</Text>
                         <TouchableOpacity style={styles.syncBtn} onPress={() => walletAPI.syncWallets().then(onRefresh)}>
                             <Text style={styles.syncBtnText}>Đồng bộ ngay</Text>
@@ -133,106 +260,153 @@ export default function HomeScreen({ navigation }: any) {
                     </View>
                 )}
 
-                {/* Recent Transactions Section (Mockup) */}
+                {/* Recent Transactions Section */}
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
-                    <TouchableOpacity>
-                        <Text style={styles.seeMore}>Tất cả</Text>
-                    </TouchableOpacity>
+                    {transactions.length > 0 && selectedWalletId && (
+                        <TouchableOpacity onPress={() => fetchTransactions(selectedWalletId)}>
+                            <Text style={styles.seeMore}>Làm mới</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
-                <View style={styles.transactionsCard}>
-                    <TransactionItem key="tx1" type="income" title="Nạp tiền từ ngân hàng" date="19 Jan 2026" amount="+5.000.000 ₫" />
-                    <TransactionItem key="tx2" type="expense" title="Thanh toán Ví Trả Sau" date="18 Jan 2026" amount="-1.250.000 ₫" />
-                    <TransactionItem key="tx3" type="expense" title="Nạp tiền điện thoại" date="15 Jan 2026" amount="-100.000 ₫" />
-                </View>
+                {/* Wallet selector for transaction history */}
+                {wallets.length > 1 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.walletChipContainer}>
+                        {wallets.map((wallet) => {
+                            const wId = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id;
+                            if (!wId) return null;
+                            const isSelected = selectedWalletId === wId;
+                            const label = wallet.productName || wallet.metadata?.productName || wallet.accountNo || 'Ví';
+                            return (
+                                <TouchableOpacity
+                                    key={wId}
+                                    style={[styles.walletChip, isSelected && styles.walletChipSelected]}
+                                    onPress={() => setSelectedWalletId(wId)}
+                                >
+                                    <Text style={isSelected ? styles.walletChipTextSelected : styles.walletChipText}>{label}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                )}
 
-                {/* System Info Section (Restoring old functions) */}
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>⚙️ Hệ thống & Đồng bộ</Text>
-                </View>
-
-                <View style={styles.systemCard}>
-                    <View key="sync-status" style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Trạng thái đồng bộ:</Text>
-                        <Text style={[styles.infoValue, { color: user?.metadata?.syncStatus === 'complete' ? '#10b981' : '#f59e0b' }]}>
-                            {user?.metadata?.syncStatus || 'Chưa rõ'}
-                        </Text>
-                    </View>
-                    <View key="client-id" style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Fineract Client ID:</Text>
-                        <Text style={styles.infoValue}>{String(user?.fineractClientId || 'N/A')}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                        style={styles.syncBtnSmall}
-                        onPress={() => {
-                            Alert.alert('Đang đồng bộ', 'Hệ thống đang đồng bộ lại dữ liệu từ Fineract...');
-                            walletAPI.syncWallets().then(onRefresh);
-                        }}
-                    >
-                        <Ionicons name="sync-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                        <Text style={styles.syncBtnTextSmall}>Đồng bộ thủ công</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Logout Button */}
-                <TouchableOpacity
-                    style={styles.logoutButton}
-                    onPress={logout}
-                    disabled={authLoading}
-                >
-                    <Text style={styles.logoutButtonText}>
-                        {authLoading ? 'Đang đăng xuất...' : '🚪 Đăng xuất'}
-                    </Text>
-                </TouchableOpacity>
+                {transactionsLoading ? (
+                    <GlassCard style={styles.transactionsCard}>
+                        <ActivityIndicator color={GlassTokens.colors.primary} style={styles.loader} />
+                    </GlassCard>
+                ) : transactions.length > 0 ? (
+                    <GlassCard style={styles.transactionsCard}>
+                        {transactions.map((tx, index) => {
+                            const txKey = tx.id || `${tx.type}-${tx.date}-${index}`;
+                            return (
+                                <TransactionItem
+                                    key={txKey}
+                                    type={tx.type}
+                                    title={tx.description}
+                                    date={tx.date}
+                                    amount={tx.amount}
+                                />
+                            );
+                        })}
+                    </GlassCard>
+                ) : (
+                    <GlassCard style={styles.transactionsCard}>
+                        <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
+                    </GlassCard>
+                )}
             </ScrollView>
-        </SafeAreaView>
+
+            {/* Transfer Modal */}
+            <TransferModal
+                visible={transferModalVisible}
+                onClose={() => setTransferModalVisible(false)}
+                wallets={wallets}
+                onSuccess={() => {
+                    fetchWallets();
+                    if (selectedWalletId) {
+                        void fetchTransactions(selectedWalletId);
+                    } else {
+                        void fetchTransactions();
+                    }
+                }}
+            />
+
+            {/* QR Code Display Modal */}
+            <Modal visible={qrCodeVisible} animationType="slide" transparent onRequestClose={() => setQrCodeVisible(false)}>
+                <GradientBackground>
+                    <QRCodeDisplay phone={user?.username || user?.metadata?.phone || ''} name={user?.name} onClose={() => setQrCodeVisible(false)} />
+                </GradientBackground>
+            </Modal>
+        </GradientBackground>
     );
 }
 
 // ==================== SUB-COMPONENTS ====================
 
-const QuickAction = ({ icon, label, color, onPress }: any) => (
-    <TouchableOpacity style={styles.actionItem} onPress={onPress}>
-        <View style={[styles.actionIcon, { backgroundColor: color }]}>
-            <Ionicons name={icon} size={24} color="#fff" />
-        </View>
-        <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
-);
+const TransactionItem = ({ type, title, date, amount }: any) => {
+    // Determine if transaction is income or expense based on type
+    const isIncome = type === 'deposit' || type === 'transfer_in';
+    const isExpense = type === 'withdrawal' || type === 'transfer_out';
 
-const TransactionItem = ({ type, title, date, amount }: any) => (
-    <View style={styles.transactionRow}>
-        <View style={[styles.transIcon, { backgroundColor: type === 'income' ? '#d1fae5' : '#fee2e2' }]}>
-            <Ionicons
-                name={type === 'income' ? 'arrow-down' : 'arrow-up'}
-                size={18}
-                color={type === 'income' ? '#059669' : '#dc2626'}
-            />
+    // Format date
+    const formatDate = (dateString: string) => {
+        try {
+            const date = new Date(dateString);
+            const day = date.getDate();
+            const month = date.toLocaleDateString('vi-VN', { month: 'short' });
+            const year = date.getFullYear();
+            return `${day} ${month} ${year}`;
+        } catch {
+            return dateString;
+        }
+    };
+
+    // Format amount
+    const formatAmount = (amt: number) => {
+        const formatted = new Intl.NumberFormat('vi-VN', {
+            style: 'currency',
+            currency: 'VND',
+            minimumFractionDigits: 0,
+        }).format(Math.abs(amt));
+        return isIncome ? `+${formatted}` : `-${formatted}`;
+    };
+
+    return (
+        <View style={styles.transactionRow}>
+            <View
+                style={[
+                    styles.transIcon,
+                    {
+                        backgroundColor: isIncome ? 'rgba(16, 185, 129, 0.2)' : 'rgba(220, 38, 38, 0.2)',
+                    },
+                ]}
+            >
+                <Ionicons
+                    name={isIncome ? 'arrow-down' : 'arrow-up'}
+                    size={18}
+                    color={isIncome ? '#10b981' : '#dc2626'}
+                />
+            </View>
+            <View style={styles.transContent}>
+                <Text style={styles.transTitle}>{title || 'Giao dịch ví'}</Text>
+                <Text style={styles.transDate}>{formatDate(date)}</Text>
+            </View>
+            <Text style={[styles.transAmount, { color: isIncome ? '#10b981' : '#fff' }]}>
+                {formatAmount(amount)}
+            </Text>
         </View>
-        <View style={styles.transContent}>
-            <Text style={styles.transTitle}>{title}</Text>
-            <Text style={styles.transDate}>{date}</Text>
-        </View>
-        <Text style={[styles.transAmount, { color: type === 'income' ? '#10b981' : '#fff' }]}>
-            {amount}
-        </Text>
-    </View>
-);
+    );
+};
 
 // ==================== STYLES ====================
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#0a0e27',
-    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        padding: 16,
+        padding: GlassTokens.spacing.md,
         paddingBottom: 40,
     },
     header: {
@@ -260,15 +434,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     balanceCard: {
-        backgroundColor: '#3b82f6',
-        borderRadius: 24,
-        padding: 24,
-        marginBottom: 24,
-        elevation: 8,
-        shadowColor: '#3b82f6',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
+        borderRadius: GlassTokens.radius.xxl,
+        padding: GlassTokens.spacing.lg,
+        marginBottom: GlassTokens.spacing.lg,
+        ...GlassTokens.shadows.glow,
     },
     balanceLabel: {
         fontSize: 14,
@@ -309,24 +478,7 @@ const styles = StyleSheet.create({
     quickActions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 32,
-    },
-    actionItem: {
-        alignItems: 'center',
-        width: (width - 64) / 4,
-    },
-    actionIcon: {
-        width: 54,
-        height: 54,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    actionLabel: {
-        fontSize: 12,
-        color: '#9ca3af',
-        fontWeight: '500',
+        marginBottom: GlassTokens.spacing.xl,
     },
     sectionHeader: {
         flexDirection: 'row',
@@ -344,35 +496,60 @@ const styles = StyleSheet.create({
         color: '#3b82f6',
         fontWeight: '600',
     },
-    loader: {
-        marginVertical: 20,
-    },
     emptyCard: {
-        backgroundColor: '#1a1f3a',
-        borderRadius: 16,
-        padding: 24,
+        backgroundColor: GlassTokens.colors.backgroundSecondary,
+        borderRadius: GlassTokens.radius.lg,
+        padding: GlassTokens.spacing.lg,
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: GlassTokens.spacing.lg,
     },
     emptyText: {
         color: '#9ca3af',
         marginBottom: 16,
     },
     syncBtn: {
-        backgroundColor: '#3b82f6',
+        backgroundColor: GlassTokens.colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 10,
-        borderRadius: 10,
+        borderRadius: GlassTokens.radius.md,
     },
     syncBtnText: {
         color: '#fff',
         fontWeight: '600',
     },
+    loader: {
+        marginVertical: GlassTokens.spacing.md,
+    },
     transactionsCard: {
-        backgroundColor: '#1a1f3a',
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 24,
+        padding: GlassTokens.spacing.md,
+        marginBottom: GlassTokens.spacing.xl,
+    },
+    walletChipContainer: {
+        marginBottom: GlassTokens.spacing.md,
+        paddingHorizontal: GlassTokens.spacing.sm,
+    },
+    walletChip: {
+        paddingHorizontal: GlassTokens.spacing.md,
+        paddingVertical: GlassTokens.spacing.sm,
+        borderRadius: GlassTokens.radius.full,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginRight: GlassTokens.spacing.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+    },
+    walletChipSelected: {
+        backgroundColor: GlassTokens.colors.primary,
+        borderColor: GlassTokens.colors.primary,
+    },
+    walletChipText: {
+        color: GlassTokens.colors.textSecondary,
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    walletChipTextSelected: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '600',
     },
     transactionRow: {
         flexDirection: 'row',

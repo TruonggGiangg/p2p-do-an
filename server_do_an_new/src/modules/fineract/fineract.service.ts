@@ -469,6 +469,145 @@ export class FineractService {
   }
 
   /**
+   * Transfer funds between two savings accounts
+   */
+  async transferFunds(
+    fromClientId: number,
+    toClientId: number,
+    fromAccountId: number,
+    toAccountId: number,
+    amount: number,
+    note: string = 'Transfer via P2P',
+  ): Promise<any> {
+    const today = new Date().toISOString().split('T')[0];
+
+    this.logger.log(`[transferFunds] Transferring ${amount} VND from Client ${fromClientId}:Account ${fromAccountId} to Client ${toClientId}:Account ${toAccountId}`);
+
+    try {
+      const response = await this.client.post('/accounttransfers', {
+        fromOfficeId: this.configService.getOrThrow<number>('defaults.officeId'),
+        fromClientId,
+        fromAccountType: 2, // Savings
+        fromAccountId,
+        toOfficeId: this.configService.getOrThrow<number>('defaults.officeId'),
+        toClientId,
+        toAccountType: 2, // Savings
+        toAccountId,
+        dateFormat: 'yyyy-MM-dd',
+        locale: 'en',
+        transferDate: today,
+        transferAmount: amount,
+        transferDescription: note,
+      });
+
+      this.logger.log(`✓ Transfer SUCCESS: resourceId=${response.data.resourceId}`);
+      return {
+        success: true,
+        resourceId: response.data.resourceId,
+        savingsId: response.data.savingsId,
+      };
+    } catch (error: any) {
+      this.handleError(error, `Failed to transfer funds: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Get active e-wallet savings account for a client
+   */
+  async getActiveEWalletAccount(clientId: number): Promise<any | null> {
+    const accounts = await this.getSavingsAccounts(clientId);
+    return (
+      accounts.find((acc: any) => {
+        const isActive = acc.status?.value === 'Active';
+        const isEWallet = this.getWalletType(acc) === 'e_wallet';
+        return isActive && isEWallet;
+      }) || null
+    );
+  }
+
+  /**
+   * Get Savings Account Transactions
+   * Fetches transaction history for a savings account with pagination
+   */
+  async getSavingsAccountTransactions(
+    savingsAccountId: number,
+    limit: number = 200,
+    offset: number = 0,
+  ): Promise<{ pageItems: any[]; totalFilteredRecords: number }> {
+    try {
+      this.logger.log(
+        `[getSavingsTransactions] Fetching transactions for savings account ${savingsAccountId} (limit=${limit}, offset=${offset})`,
+      );
+
+      const response = await this.client.get(`/savingsaccounts/${savingsAccountId}/transactions`, {
+        params: {
+          limit: Math.min(limit, 200),
+          offset: offset,
+        },
+      });
+
+      // Fineract returns transactions in pageItems, already sorted by Fineract
+      const txns = response.data?.pageItems || [];
+      this.logger.log(
+        `[getSavingsTransactions] Found ${txns.length} transactions (total: ${response.data?.totalFilteredRecords || txns.length})`,
+      );
+
+      // Log first transaction for debugging
+      if (txns.length > 0) {
+        const firstTxn = txns[0];
+        this.logger.debug(
+          `[getSavingsTransactions] First transaction: id=${firstTxn.id}, amount=${firstTxn.amount}, type=${firstTxn.transactionType?.value}`,
+        );
+      }
+
+      return {
+        pageItems: txns,
+        totalFilteredRecords: response.data?.totalFilteredRecords || txns.length,
+      };
+    } catch (error: any) {
+      // Fallback to associations=all if /transactions returns 405
+      if (error.response?.status === 405) {
+        this.logger.warn(
+          `[getSavingsTransactions] /transactions endpoint returned 405, falling back to associations=all`,
+        );
+        return this.getSavingsAccountTransactionsFallback(savingsAccountId);
+      }
+
+      this.logger.error(`Failed to get savings transactions for ${savingsAccountId}: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`);
+      }
+      return { pageItems: [], totalFilteredRecords: 0 };
+    }
+  }
+
+  /**
+   * Fallback: Get transactions via associations=all
+   */
+  private async getSavingsAccountTransactionsFallback(
+    savingsAccountId: number,
+  ): Promise<{ pageItems: any[]; totalFilteredRecords: number }> {
+    try {
+      const response = await this.client.get(`/savingsaccounts/${savingsAccountId}`, {
+        params: {
+          associations: 'all',
+        },
+      });
+
+      const txns = response.data.transactions || [];
+      this.logger.log(`[getSavingsTransactions-Fallback] Found ${txns.length} transactions`);
+
+      return {
+        pageItems: txns,
+        totalFilteredRecords: txns.length,
+      };
+    } catch (error: any) {
+      this.logger.error(`Fallback also failed for ${savingsAccountId}: ${error.message}`);
+      return { pageItems: [], totalFilteredRecords: 0 };
+    }
+  }
+
+  /**
    * Common error handler for senior-level logging and exceptions
    */
   private handleError(error: any, context: string): never {

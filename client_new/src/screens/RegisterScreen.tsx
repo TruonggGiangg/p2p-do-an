@@ -11,9 +11,11 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function RegisterScreen({ navigation }: any) {
+export default function RegisterScreen() {
+    const navigation = useNavigation();
     const { register, isLoading } = useAuth();
     const [formData, setFormData] = useState({
         firstName: '',

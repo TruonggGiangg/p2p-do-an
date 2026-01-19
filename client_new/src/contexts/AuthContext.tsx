@@ -44,20 +44,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             const authData = await secureStorageService.getAuthData();
 
-            if (authData) {
+            if (authData && authData.accessToken) {
+                // Set user from storage immediately for faster UI
                 setUser(authData.user);
+
+                // Verify token is still valid by fetching current user
+                // This ensures data is fresh and token hasn't expired
+                try {
+                    const currentUser = await authApi.getMe();
+                    setUser(currentUser);
+                } catch (error) {
+                    // Token expired or invalid - clear stored data
+                    console.log('Stored token invalid, clearing auth data');
+                    await secureStorageService.clearAll();
+                    setUser(null);
+                }
             }
         } catch (error) {
             console.error('Failed to load auth data:', error);
+            // Clear potentially corrupted data
+            await secureStorageService.clearAll();
+            setUser(null);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleSessionExpired = () => {
+    const handleSessionExpired = async () => {
         console.log('Session expired - clearing user');
+        await secureStorageService.clearAll();
         setUser(null);
-        // TODO: Navigate to login screen
+        // Navigation will be handled by App.tsx based on auth state
     };
 
     const handleLogout = () => {
@@ -111,8 +128,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             const userData = await authApi.getMe();
             setUser(userData);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to refresh user:', error);
+            // If refresh fails due to auth error, clear user
+            if (error.response?.status === 401) {
+                await secureStorageService.clearAll();
+                setUser(null);
+            }
+            // Re-throw to allow caller to handle
+            throw error;
         }
     };
 

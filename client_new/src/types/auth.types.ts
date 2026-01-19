@@ -12,6 +12,8 @@ export interface UserMetadata {
     lastSyncAt?: string;
     userType?: 'borrower' | 'lender';
     registeredAt?: string;
+  // Phone number is the external ID across systems (Keycloak username, Fineract externalId/mobileNo)
+  phone?: string;
 }
 
 export interface User {
@@ -35,9 +37,14 @@ export type WalletType = 'credit_wallet' | 'e_wallet';
 export type WalletStatus = 'active' | 'locked';
 
 export interface Wallet {
-    _id: string;
-    userId: string;
-    fineractSavingsId: string;
+    _id?: string; // MongoDB _id (from client type)
+    id?: string; // Server returns 'id' field
+    userId?: string;
+    fineractSavingsId?: string;
+    fineractId?: string; // Server returns 'fineractId' field
+    accountNo?: string; // Server returns 'accountNo' field
+    productId?: number; // Server returns 'productId' field
+    productName?: string; // Server returns 'productName' field
     type: WalletType;
     currency: string;
     balance: number;
