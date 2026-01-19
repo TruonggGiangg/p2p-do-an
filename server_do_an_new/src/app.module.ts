@@ -4,15 +4,12 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { FineractModule } from './modules/fineract/fineract.module';
 import { KeycloakModule } from './modules/auth/keycloak.module';
 import { BnplModule } from './modules/bnpl/bnpl.module';
-
-
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -50,11 +47,8 @@ import { validate } from './config/validation';
     BnplModule,
   ],
 
-
-
   controllers: [AppController],
   providers: [
-    AppService,
     // Apply ThrottlerGuard globally for rate limiting
     {
       provide: APP_GUARD,
@@ -67,5 +61,4 @@ import { validate } from './config/validation';
     },
   ],
 })
-export class AppModule { }
-
+export class AppModule {}

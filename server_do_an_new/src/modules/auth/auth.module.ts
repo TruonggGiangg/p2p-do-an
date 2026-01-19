@@ -12,30 +12,24 @@ import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
 
 @Module({
-    imports: [
-        PassportModule,
-        UsersModule,
-        WalletsModule,
-        JwtModule.registerAsync({
-            imports: [ConfigModule],
-            useFactory: async (configService: ConfigService) => ({
-                secret: configService.get<string>('JWT_SECRET'),
-                signOptions: {
-                    expiresIn: (configService.get<string>('JWT_EXPIRE') || '1h') as any,
-                },
-            }),
-            inject: [ConfigService],
-        }),
-    ],
-    controllers: [AuthController],
-    providers: [
-        AuthService,
-        FineractSignupService,
-        UserSyncService,
-        JwtStrategy,
-    ],
+  imports: [
+    PassportModule,
+    UsersModule,
+    WalletsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn: (configService.get<string>('JWT_EXPIRE') || '1h') as any,
+        },
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, FineractSignupService, UserSyncService, JwtStrategy],
 
-    exports: [AuthService, JwtStrategy, FineractSignupService],
+  exports: [AuthService, JwtStrategy, FineractSignupService],
 })
-export class AuthModule { }
-
+export class AuthModule {}

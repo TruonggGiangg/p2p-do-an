@@ -26,10 +26,13 @@ async function bootstrap() {
   // Cookie parser
   app.use(cookieParser());
 
-  // CORS
+  // CORS - Configure based on environment
+  const corsConfig = corsOrigins.includes('*')
+    ? { origin: true, credentials: true }
+    : { origin: corsOrigins, credentials: true };
+
   app.enableCors({
-    origin: true, // Allow any origin
-    credentials: true,
+    ...corsConfig,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   });
@@ -48,17 +51,10 @@ async function bootstrap() {
   );
 
   // Global exception filters (order matters: specific first, general last)
-  app.useGlobalFilters(
-    new HttpExceptionFilter(),
-    new AllExceptionsFilter(),
-  );
+  app.useGlobalFilters(new HttpExceptionFilter(), new AllExceptionsFilter());
 
   // Global interceptors
-  app.useGlobalInterceptors(
-    new LoggingInterceptor(),
-    new TimeoutInterceptor(),
-    new TransformInterceptor(),
-  );
+  app.useGlobalInterceptors(new LoggingInterceptor(), new TimeoutInterceptor(), new TransformInterceptor());
 
   // Swagger documentation (only in non-production)
   if (nodeEnv !== 'production') {
@@ -72,7 +68,9 @@ async function bootstrap() {
 
   logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`);
   logger.log(`🌍 Environment: ${nodeEnv}`);
-  logger.log(`🔒 CORS: Disabled (Allow All)`);
+  logger.log(
+    `🔒 CORS: ${corsOrigins.includes('*') ? 'Enabled (Allow All)' : `Enabled (${corsOrigins.length} origin(s))`}`,
+  );
 }
 
-bootstrap();
+void bootstrap();

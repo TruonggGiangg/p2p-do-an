@@ -8,16 +8,16 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { FineractModule } from '../fineract/fineract.module';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([
-            { name: BnplWallet.name, schema: BnplWalletSchema },
-            { name: BnplLoan.name, schema: BnplLoanSchema },
-            { name: User.name, schema: UserSchema },
-        ]),
-        FineractModule,
-    ],
-    controllers: [BnplController],
-    providers: [BnplService],
-    exports: [BnplService],
+  imports: [
+    MongooseModule.forFeature([
+      { name: BnplWallet.name, schema: BnplWalletSchema },
+      { name: BnplLoan.name, schema: BnplLoanSchema },
+      { name: User.name, schema: UserSchema },
+    ]),
+    FineractModule,
+  ],
+  controllers: [BnplController],
+  providers: [BnplService],
+  exports: [BnplService],
 })
-export class BnplModule { }
+export class BnplModule {}

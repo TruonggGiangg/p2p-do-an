@@ -5,8 +5,8 @@ import { KeycloakAuthService } from './services/keycloak-auth.service';
 
 @Global()
 @Module({
-    imports: [ConfigModule],
-    providers: [KeycloakService, KeycloakAuthService],
-    exports: [KeycloakService, KeycloakAuthService],
+  imports: [ConfigModule],
+  providers: [KeycloakService, KeycloakAuthService],
+  exports: [KeycloakService, KeycloakAuthService],
 })
-export class KeycloakModule { }
+export class KeycloakModule {}
