@@ -10,6 +10,7 @@ import { HealthModule } from './modules/health/health.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { FineractModule } from './modules/fineract/fineract.module';
 import { KeycloakModule } from './modules/auth/keycloak.module';
+import { BnplModule } from './modules/bnpl/bnpl.module';
 
 
 
@@ -46,6 +47,7 @@ import { validate } from './config/validation';
     AuthModule,
     HealthModule,
     WalletsModule,
+    BnplModule,
   ],
 
 

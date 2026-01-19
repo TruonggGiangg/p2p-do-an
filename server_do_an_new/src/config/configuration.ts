@@ -45,6 +45,13 @@ export default () => ({
         bnplCreditLimit: parseInt(process.env.DEFAULT_BNPL_CREDIT_LIMIT || '5000000', 10),
     },
 
+    // BNPL Pay Later Wallet Configuration
+    bnpl: {
+        loanProductId: parseInt(process.env.DEFAULT_BNPL_LOAN_PRODUCT_ID || '1', 10),
+        creditLimit: parseInt(process.env.DEFAULT_BNPL_CREDIT_LIMIT || '5000000', 10),
+        defaultRepayments: 3,
+        interestRatePerMonth: 1.5,
+    },
 
 
     security: {

@@ -4,7 +4,8 @@ import { secureStorageService } from './secure-storage.service';
 import { authEvents } from './authEvents';
 
 // Get API URL from environment
-const API_URL = Constants.expoConfig?.extra?.apiUrl || process.env.API_URL || 'http://localhost:3001';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+console.log('Final API_URL:', API_URL);
 
 // Create axios instance
 const api: AxiosInstance = axios.create({

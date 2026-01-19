@@ -28,10 +28,10 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: corsOrigins,
+    origin: true, // Allow any origin
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   });
 
   // Global validation pipe
@@ -67,11 +67,12 @@ async function bootstrap() {
   }
 
   // Start server
-  await app.listen(port);
+  // Bind to 0.0.0.0 to allow access from local network (iPhone)
+  await app.listen(port, '0.0.0.0');
 
-  logger.log(`🚀 Server running on: http://localhost:${port}/api`);
+  logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`);
   logger.log(`🌍 Environment: ${nodeEnv}`);
-  logger.log(`🔒 CORS origins: ${corsOrigins.join(', ')}`);
+  logger.log(`🔒 CORS: Disabled (Allow All)`);
 }
 
 bootstrap();
