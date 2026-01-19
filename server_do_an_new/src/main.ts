@@ -18,7 +18,11 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port')!;
   const nodeEnv = configService.get<string>('nodeEnv')!;
-  const corsOrigins = configService.get<string[]>('security.corsOrigins') || ['*'];
+  const rawCorsOrigins = configService.get<string[] | string>('security.corsOrigins') ?? ['*'];
+  const corsOrigins = (Array.isArray(rawCorsOrigins) ? rawCorsOrigins : rawCorsOrigins.split(','))
+    .map(o => o.trim())
+    .filter(Boolean);
+  const allowAllCors = corsOrigins.length === 0 || corsOrigins.includes('*');
 
   // Global prefix
   app.setGlobalPrefix('api');
@@ -27,14 +31,13 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // CORS - Configure based on environment
-  const corsConfig = corsOrigins.includes('*')
-    ? { origin: true, credentials: true }
-    : { origin: corsOrigins, credentials: true };
+  const corsConfig = allowAllCors ? { origin: true, credentials: true } : { origin: corsOrigins, credentials: true };
 
   app.enableCors({
     ...corsConfig,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    // Let CORS reflect request headers (avoid blocking custom headers)
+    optionsSuccessStatus: 204,
   });
 
   // Global validation pipe
@@ -68,9 +71,7 @@ async function bootstrap() {
 
   logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`);
   logger.log(`🌍 Environment: ${nodeEnv}`);
-  logger.log(
-    `🔒 CORS: ${corsOrigins.includes('*') ? 'Enabled (Allow All)' : `Enabled (${corsOrigins.length} origin(s))`}`,
-  );
+  logger.log(`🔒 CORS: ${allowAllCors ? 'Enabled (Allow All)' : `Enabled (${corsOrigins.length} origin(s))`}`);
 }
 
 void bootstrap();
