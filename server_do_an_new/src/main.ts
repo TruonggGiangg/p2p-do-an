@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
+import * as dns from 'node:dns';
 import { AppModule } from './app.module';
 import { setupSwagger } from './config/swagger.config';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -12,6 +13,26 @@ import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // Fix MongoDB Atlas SRV DNS lookup issues on some Windows setups where Node
+  // ends up using a non-running local DNS server (e.g., 127.0.0.1).
+  // - If DNS_SERVERS is provided, use it (comma-separated).
+  // - Else, if Node only has localhost DNS, fall back to public resolvers.
+  const envDnsServers = process.env.DNS_SERVERS?.split(',').map(s => s.trim()).filter(Boolean);
+  if (envDnsServers?.length) {
+    dns.setServers(envDnsServers);
+    logger.log(`DNS servers (from DNS_SERVERS): ${envDnsServers.join(', ')}`);
+  } else {
+    const current = dns.getServers();
+    const onlyLocalhost =
+      current.length === 1 && (current[0] === '127.0.0.1' || current[0] === '::1' || current[0].startsWith('127.'));
+    if (onlyLocalhost) {
+      const fallback = ['1.1.1.1', '8.8.8.8'];
+      dns.setServers(fallback);
+      logger.warn(`DNS servers were ${current.join(', ')}; switched to ${fallback.join(', ')} for SRV lookups.`);
+    }
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // Get config service
