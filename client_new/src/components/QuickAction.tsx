@@ -1,8 +1,8 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { GlassTokens } from '../theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface QuickActionProps {
     icon: string;
@@ -24,12 +24,24 @@ export const QuickAction: React.FC<QuickActionProps> = ({
     style,
     disabled = false,
 }) => {
+    const { theme } = useTheme();
     return (
         <TouchableOpacity style={[styles.container, style]} onPress={onPress} activeOpacity={0.8} disabled={disabled}>
-            <LinearGradient colors={colors} style={styles.iconCircle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                <Ionicons name={icon as any} size={iconSize} color="white" />
+            <LinearGradient
+                colors={colors as any}
+                style={[
+                    styles.iconCircle,
+                    {
+                        borderRadius: theme.radius.lg,
+                        ...theme.shadows.card,
+                    },
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+            >
+                <MaterialCommunityIcons name={icon as any} size={iconSize} color="white" />
             </LinearGradient>
-            <Text style={styles.label} numberOfLines={2}>
+            <Text style={[styles.label, { color: theme.colors.textSecondary }]} numberOfLines={2}>
                 {label}
             </Text>
         </TouchableOpacity>
@@ -39,28 +51,23 @@ export const QuickAction: React.FC<QuickActionProps> = ({
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
-        gap: 8,
+        gap: 10,
+        flex: 1,
     },
     iconCircle: {
-        width: 56,
-        height: 56,
-        borderRadius: 20,
+        width: 60,
+        height: 60,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: 'white',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     label: {
-        fontSize: 11,
-        color: GlassTokens.colors.textSecondary,
-        fontWeight: '500',
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
         textAlign: 'center',
-        maxWidth: 80,
+        maxWidth: 85,
+        flexShrink: 1,
     },
 });
 

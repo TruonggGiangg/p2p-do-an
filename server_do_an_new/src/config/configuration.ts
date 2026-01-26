@@ -36,8 +36,7 @@ export default () => ({
     legalFormId: parseInt(process.env.DEFAULT_LEGAL_FORM_ID || '1', 10),
     locale: process.env.DEFAULT_LOCALE || 'en',
     dateFormat: process.env.DEFAULT_DATE_FORMAT || 'dd MMMM yyyy',
-    creditWalletProductId: parseInt(process.env.DEFAULT_CREDIT_WALLET_PRODUCT_ID || '1', 10),
-    ewalletProductId: parseInt(process.env.DEFAULT_EWALLET_PRODUCT_ID || '3', 10),
+    ewalletProductId: parseInt(process.env.DEFAULT_EWALLET_PRODUCT_ID || '1', 10),
     emailDomain: process.env.DEFAULT_EMAIL_DOMAIN || 'p2p.com',
   },
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserStatus } from '../../users/schemas/user.schema';
+import { Wallet } from '../../wallets/schemas/wallet.schema';
 import { KeycloakService } from './keycloak.service';
 import { FineractService } from '../../fineract/fineract.service';
 
@@ -30,6 +31,7 @@ export class FineractSignupService {
     private readonly configService: ConfigService,
     private readonly fineractService: FineractService,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
   ) {}
 
   /**
@@ -72,8 +74,14 @@ export class FineractSignupService {
         email: data.email,
       });
 
-      // Step 4: Save to MongoDB
-      await this.userModel.create({
+      // Step 4: Create e-wallet (Digital Wallet) in Fineract
+      this.logger.log(`[SIGNUP] Creating e-wallet for client ${fineractClientId}`);
+      const ewalletProductId = this.configService.getOrThrow<number>('defaults.ewalletProductId');
+      const savingsAccountId = await this.fineractService.createSavingsAccount(fineractClientId, ewalletProductId);
+      this.logger.log(`[SIGNUP] Created e-wallet ${savingsAccountId} for client ${fineractClientId}`);
+
+      // Step 5: Save user to MongoDB
+      const mongoUser = await this.userModel.create({
         keycloakId: keycloakUserId,
         fineractClientId: fineractClientId.toString(),
         username,
@@ -87,7 +95,14 @@ export class FineractSignupService {
         },
       });
 
-      this.logger.log(`[SIGNUP] Completed for ${username}`);
+      // Step 6: Create wallet reference in MongoDB
+      await this.walletModel.create({
+        userId: mongoUser._id,
+        fineractSavingsId: savingsAccountId.toString(),
+      });
+      this.logger.log(`[SIGNUP] Created wallet reference in MongoDB for savings account ${savingsAccountId}`);
+
+      this.logger.log(`[SIGNUP] Completed for ${username} - Created client ${fineractClientId} and e-wallet ${savingsAccountId}`);
       return { username, keycloakUserId, fineractClientId };
     } catch (error: any) {
       this.logger.error(`[SIGNUP] Failed for ${username}: ${error.message}`);

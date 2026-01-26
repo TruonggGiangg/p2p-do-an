@@ -37,18 +37,18 @@ export type WalletType = 'credit_wallet' | 'e_wallet';
 export type WalletStatus = 'active' | 'locked';
 
 export interface Wallet {
-    _id?: string; // MongoDB _id (from client type)
-    id?: string; // Server returns 'id' field
+    _id?: string;
+    id?: string;
     userId?: string;
     fineractSavingsId?: string;
-    fineractId?: string; // Server returns 'fineractId' field
-    accountNo?: string; // Server returns 'accountNo' field
-    productId?: number; // Server returns 'productId' field
-    productName?: string; // Server returns 'productName' field
+    fineractId?: string;
+    accountNo?: string;
+    productId?: number;
+    productName?: string;
     type: WalletType;
-    currency: string;
+    currency?: string;
     balance: number;
-    status: WalletStatus;
+    status?: WalletStatus | string;
     metadata?: {
         productName?: string;
         accountNo?: string;

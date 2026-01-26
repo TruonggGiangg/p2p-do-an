@@ -32,19 +32,6 @@ export class WalletsController {
     };
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Create new wallet (placeholder)' })
-  @ApiResponse({
-    status: 501,
-    description: 'Not implemented - wallets are created via Fineract',
-  })
-  async createWallet() {
-    return {
-      statusCode: HttpStatus.NOT_IMPLEMENTED,
-      message: 'Tạo ví mới phải thông qua Fineract. Vui lòng sử dụng POST /api/wallets/sync để đồng bộ ví.',
-    };
-  }
-
   @Get('balance')
   @ApiOperation({ summary: 'Get total balance across all wallets' })
   @ApiResponse({ status: 200, description: 'Returns total balance' })

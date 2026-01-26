@@ -126,16 +126,11 @@ export class FineractService {
 
   /**
    * Determine wallet type based on Fineract account data
+   * Now only supports Digital Wallet (e_wallet)
    */
-  getWalletType(savingsData: any): 'credit_wallet' | 'e_wallet' {
-    // match by Product ID
-    const productId = savingsData.savingsProductId || savingsData.productId;
-    const configCreditId = this.configService.get<number>('defaults.creditWalletProductId');
-    const configEwalletId = this.configService.get<number>('defaults.ewalletProductId');
-
-    if (productId && productId === configCreditId) return 'credit_wallet';
-    if (productId && productId === configEwalletId) return 'e_wallet';
-
+  getWalletType(savingsData: any): 'e_wallet' {
+    // All savings accounts are Digital Wallets
+    // Product ID = 1 (Digital Wallet Product)
     return 'e_wallet';
   }
 
@@ -508,6 +503,87 @@ export class FineractService {
       };
     } catch (error: any) {
       this.handleError(error, `Failed to transfer funds: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Create a new savings account (e-wallet) for a client
+   */
+  async createSavingsAccount(clientId: number, productId?: number): Promise<number> {
+    const ewalletProductId = productId || this.configService.getOrThrow<number>('defaults.ewalletProductId');
+    const today = new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    try {
+      const response = await this.client.post('/savingsaccounts', {
+        clientId,
+        productId: ewalletProductId,
+        submittedOnDate: today,
+        locale: this.configService.get<string>('defaults.locale') || 'en',
+        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+      });
+
+      const savingsId = response.data.savingsId || response.data.resourceId;
+      this.logger.log(`Created savings account ${savingsId} for client ${clientId}`);
+
+      // Approve the account first
+      await this.approveSavingsAccount(savingsId);
+
+      // Then activate the account
+      await this.activateSavingsAccount(savingsId);
+
+      return savingsId;
+    } catch (error: any) {
+      this.handleError(error, 'Failed to create savings account');
+    }
+  }
+
+  /**
+   * Approve a savings account
+   */
+  async approveSavingsAccount(savingsId: number): Promise<void> {
+    const today = new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    try {
+      await this.client.post(`/savingsaccounts/${savingsId}?command=approve`, {
+        approvedOnDate: today,
+        locale: this.configService.get<string>('defaults.locale') || 'en',
+        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+      });
+
+      this.logger.log(`Approved savings account ${savingsId}`);
+    } catch (error: any) {
+      this.handleError(error, `Failed to approve savings account ${savingsId}`);
+    }
+  }
+
+  /**
+   * Activate a savings account
+   */
+  async activateSavingsAccount(savingsId: number): Promise<void> {
+    const today = new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    try {
+      await this.client.post(`/savingsaccounts/${savingsId}?command=activate`, {
+        activatedOnDate: today,
+        locale: this.configService.get<string>('defaults.locale') || 'en',
+        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+      });
+
+      this.logger.log(`Activated savings account ${savingsId}`);
+    } catch (error: any) {
+      this.handleError(error, `Failed to activate savings account ${savingsId}`);
     }
   }
 

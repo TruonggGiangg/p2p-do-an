@@ -14,11 +14,11 @@ import {
     TouchableWithoutFeedback,
     Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View as SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { transferAPI, TransferRequest } from '../services/transfer.api';
+import { walletAPI, TransferRequest } from '../features/wallet';
 import { QRScanner } from './QRScanner';
-import { GlassTokens } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
 import type { Wallet } from '../types/auth.types';
 
 interface TransferModalProps {
@@ -46,6 +46,7 @@ const parseNumber = (str: string): number => {
 };
 
 export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, wallets, onSuccess, initialRecipientPhone }) => {
+    const { theme } = useTheme();
     // Filter out BNPL wallets (credit_wallet) - only show e_wallet
     const availableWallets = wallets.filter((w) => w.type === 'e_wallet' && w.status?.toLowerCase() === 'active');
 
@@ -55,7 +56,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
             const firstWallet = availableWallets[0];
             // Use fineractId as primary identifier, fallback to accountNo, then MongoDB ID
             const walletId = firstWallet?.fineractId || firstWallet?.accountNo || firstWallet?.id || firstWallet?._id;
-            console.log('[TransferModal] Initial wallet ID:', walletId, 'from wallet:', firstWallet);
+            if (__DEV__) {
+                console.log('[TransferModal] Initial wallet ID:', walletId, 'from wallet:', firstWallet);
+            }
             return walletId || '';
         }
         return '';
@@ -74,12 +77,14 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
             // Use fineractId as primary identifier
             const walletId = firstWallet?.fineractId || firstWallet?.accountNo || firstWallet?.id || firstWallet?._id;
             
-            console.log('[TransferModal] Checking wallets:', {
-                count: availableWallets.length,
-                firstWallet,
-                walletId,
-                currentFromWalletId: fromWalletId,
-            });
+            if (__DEV__) {
+                console.log('[TransferModal] Checking wallets:', {
+                    count: availableWallets.length,
+                    firstWallet,
+                    walletId,
+                    currentFromWalletId: fromWalletId,
+                });
+            }
             
             // Check if current fromWalletId is still valid
             const currentWalletExists = fromWalletId && availableWallets.some((w) => {
@@ -89,14 +94,17 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
             
             if (!currentWalletExists && walletId) {
                 setFromWalletId(walletId);
-                console.log('[TransferModal] Set default wallet:', walletId, 'from', availableWallets.length, 'wallets');
-            } else if (!walletId) {
+                if (__DEV__) {
+                    console.log('[TransferModal] Set default wallet:', walletId, 'from', availableWallets.length, 'wallets');
+                }
+            } else if (!walletId && __DEV__) {
                 console.error('[TransferModal] Wallet has no fineractId, accountNo, id or _id field:', firstWallet);
             }
         } else if (visible && availableWallets.length === 0) {
-            // No wallets available - clear selection
             setFromWalletId('');
-            console.log('[TransferModal] No wallets available');
+            if (__DEV__) {
+                console.log('[TransferModal] No wallets available');
+            }
         }
     }, [visible, availableWallets.length]); // Only depend on visible and wallets count, not fromWalletId to avoid loops
 
@@ -206,10 +214,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                     amount,
                     description: description.trim() || undefined,
                 };
-                await transferAPI.transfer(transferData);
+                await walletAPI.transfer(transferData);
             } else {
                 // Phone transfer - use phone number API
-                await transferAPI.transferByPhone({
+                await walletAPI.transferByPhone({
                     fromWalletId,
                     recipientPhone: recipientPhone.replace(/\D/g, ''),
                     amount,
@@ -241,14 +249,18 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
     };
 
     const handleQRScan = (phone: string) => {
-        console.log('[TransferModal] QR scan received phone:', phone);
+        if (__DEV__) {
+            console.log('[TransferModal] QR scan received phone:', phone);
+        }
         // Clean phone number (remove non-digits)
         const cleanPhone = phone.replace(/\D/g, '');
         if (cleanPhone.length === 10) {
             setRecipientPhone(cleanPhone);
             setTransferMode('phone');
             setQrScannerVisible(false);
-            console.log('[TransferModal] Phone set to:', cleanPhone);
+            if (__DEV__) {
+                console.log('[TransferModal] Phone set to:', cleanPhone);
+            }
         } else {
             Alert.alert('Lỗi', 'Số điện thoại không hợp lệ. Phải có 10 chữ số.');
             setQrScannerVisible(false);
@@ -281,7 +293,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                         <Ionicons
                                             name="wallet-outline"
                                             size={18}
-                                            color={transferMode === 'wallet' ? '#fff' : GlassTokens.colors.textSecondary}
+                                            color={transferMode === 'wallet' ? '#fff' : theme.colors.textSecondary}
                                             style={{ marginRight: 8 }}
                                         />
                                         <Text style={[styles.modeButtonText, transferMode === 'wallet' && styles.modeButtonTextActive]}>
@@ -296,7 +308,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                         <Ionicons
                                             name="call-outline"
                                             size={18}
-                                            color={transferMode === 'phone' ? '#fff' : GlassTokens.colors.textSecondary}
+                                            color={transferMode === 'phone' ? '#fff' : theme.colors.textSecondary}
                                             style={{ marginRight: 8 }}
                                         />
                                         <Text style={[styles.modeButtonText, transferMode === 'phone' && styles.modeButtonTextActive]}>
@@ -319,7 +331,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                         <View style={styles.walletSelector}>
                                             {availableWallets.map((wallet) => {
                                                 // Use fineractId as primary identifier
-                                                const walletId = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id;
+                                                const walletId = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id || '';
+                                                if (!walletId) return null;
                                                 return (
                                                     <TouchableOpacity
                                                         key={walletId}
@@ -358,7 +371,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                                 })
                                                 .map((wallet) => {
                                                     // Use fineractId as primary identifier
-                                                    const walletId = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id;
+                                                    const walletId = wallet.fineractId || wallet.accountNo || wallet.id || wallet._id || '';
+                                                    if (!walletId) return null;
                                                     return (
                                                         <TouchableOpacity
                                                             key={walletId}
@@ -579,7 +593,7 @@ const styles = StyleSheet.create({
     modeButtonText: {
         fontSize: 14,
         fontWeight: '600',
-        color: GlassTokens.colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.7)',
     },
     modeButtonTextActive: {
         color: '#fff',
@@ -747,14 +761,14 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: GlassTokens.colors.primary,
+        backgroundColor: '#8b5cf6',
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 8,
     },
     phoneHint: {
         fontSize: 12,
-        color: GlassTokens.colors.textMuted,
+        color: 'rgba(255, 255, 255, 0.5)',
         marginTop: 8,
         textAlign: 'center',
     },

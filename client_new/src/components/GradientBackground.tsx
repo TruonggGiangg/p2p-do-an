@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Dimensions, StatusBar, ViewStyle, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 const ORB_SIZE = Math.max(width, height) * 1.4;
@@ -15,11 +16,13 @@ interface GradientBackgroundProps {
 
 export const GradientBackground: React.FC<GradientBackgroundProps> = ({
     children,
-    useSafeArea = true,
+    useSafeArea = false,
     style,
     seed,
 }) => {
-    const Container = useSafeArea ? SafeAreaView : View;
+    const { theme } = useTheme();
+    // Không dùng SafeAreaView ở đây vì CustomHeader sẽ tự xử lý safe area
+    const Container = View;
     const shiftAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -56,26 +59,36 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
 
     const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient);
 
-    return (
-        <View style={styles.wrapper}>
-            <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    const isDark = theme.mode === 'dark';
+    const backgroundGradient = theme.gradients.background;
+    const vignetteColors = isDark
+        ? ['transparent', 'rgba(10, 14, 39, 0.5)', 'rgba(10, 14, 39, 0.9)']
+        : ['transparent', 'rgba(248, 250, 252, 0.5)', 'rgba(248, 250, 252, 0.9)'];
 
-            {/* Deep Space Background */}
+    return (
+        <View style={[styles.wrapper, { backgroundColor: theme.colors.background }]}>
+            <StatusBar
+                barStyle={isDark ? 'light-content' : 'dark-content'}
+                backgroundColor="transparent"
+                translucent
+            />
+
+            {/* Background Gradient */}
             <LinearGradient
-                colors={['#0a0e27', '#000000']}
+                colors={backgroundGradient as any}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
             />
 
-            {/* Primary Nebula (Blue) */}
+            {/* Primary Nebula (Smooth Purple/Blue Gradient) */}
             <AnimatedGradient
-                colors={['#3b82f6', 'rgba(59, 130, 246, 0.1)', 'transparent']}
+                colors={['#8b5cf6', 'rgba(139, 92, 246, 0.15)', 'rgba(99, 102, 241, 0.1)', 'transparent']}
                 style={[
                     styles.orb,
                     styles.orbPrimary,
                     {
-                        opacity: 0.6,
+                        opacity: isDark ? 0.65 : 0.35,
                         transform: [{ scale: 1.2 }, { translateX: transX1 }, { translateY: transY1 }, { rotate: rotate1 }],
                     },
                 ]}
@@ -83,14 +96,14 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
                 end={{ x: 0.8, y: 0.8 }}
             />
 
-            {/* Secondary Nebula (Purple) */}
+            {/* Secondary Nebula (Smooth Blue/Purple Gradient) */}
             <AnimatedGradient
-                colors={['#8b5cf6', 'rgba(139, 92, 246, 0.1)', 'transparent']}
+                colors={['#6366f1', 'rgba(99, 102, 241, 0.15)', 'rgba(139, 92, 246, 0.1)', 'transparent']}
                 style={[
                     styles.orb,
                     styles.orbSecondary,
                     {
-                        opacity: 0.5,
+                        opacity: isDark ? 0.55 : 0.3,
                         transform: [{ scale: 1.2 }, { translateX: Animated.multiply(transX1, -0.8) }, { translateY: Animated.multiply(transY1, -0.5) }],
                     },
                 ]}
@@ -105,21 +118,21 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
                     styles.orb,
                     styles.orbCenter,
                     {
-                        opacity: 0.15,
+                        opacity: isDark ? 0.15 : 0.08,
                         transform: [{ scale: 1.5 }, { translateY: Animated.multiply(transY1, 0.3) }],
                     },
                 ]}
             />
 
-            {/* Vignette */}
+            {/* Vignette - Softer for light mode */}
             <LinearGradient
-                colors={['transparent', 'rgba(10, 14, 39, 0.5)', 'rgba(10, 14, 39, 0.9)']}
+                colors={vignetteColors as any}
                 locations={[0, 0.6, 1]}
-                style={StyleSheet.absoluteFill}
+                style={[StyleSheet.absoluteFill, { opacity: isDark ? 1 : 0.5 }]}
                 pointerEvents="none"
             />
 
-            <Container style={[styles.container, style]} edges={['top', 'left', 'right']}>
+            <Container style={[styles.container, style]}>
                 {children}
             </Container>
         </View>
@@ -129,12 +142,14 @@ export const GradientBackground: React.FC<GradientBackgroundProps> = ({
 const styles = StyleSheet.create({
     wrapper: {
         flex: 1,
-        backgroundColor: '#0a0e27',
         overflow: 'hidden',
     },
     container: {
         flex: 1,
         zIndex: 20,
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden',
     },
     orb: {
         position: 'absolute',

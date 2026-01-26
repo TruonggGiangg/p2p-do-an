@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal } from 'react-native';
 import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View as SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GradientBackground } from './GradientBackground';
 import { GlassCard } from './GlassCard';
-import { GlassTokens } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface QRScannerProps {
     visible: boolean;
@@ -14,6 +14,7 @@ interface QRScannerProps {
 }
 
 export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }) => {
+    const { theme } = useTheme();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const cameraRef = useRef<CameraView>(null);
@@ -28,7 +29,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
         if (scanned) return;
         setScanned(true);
 
-        console.log('[QRScanner] Scanned data:', data);
+        if (__DEV__) {
+            console.log('[QRScanner] Scanned data:', data);
+        }
 
         // Parse QR data - expect format: phone number or JSON with phone
         let phoneNumber: string | null = null;
@@ -55,7 +58,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
             const phoneRegex = /^[0-9]{10}$/;
 
             if (phoneRegex.test(cleanPhone)) {
-                console.log('[QRScanner] Valid phone number:', cleanPhone);
+                if (__DEV__) {
+                    console.log('[QRScanner] Valid phone number:', cleanPhone);
+                }
                 onScan(cleanPhone);
                 onClose();
             } else {
@@ -66,7 +71,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
             // Try to extract phone from plain text
             const cleanPhone = data.replace(/\D/g, '');
             if (cleanPhone.length === 10) {
-                console.log('[QRScanner] Extracted phone from text:', cleanPhone);
+                if (__DEV__) {
+                    console.log('[QRScanner] Extracted phone from text:', cleanPhone);
+                }
                 onScan(cleanPhone);
                 onClose();
             } else {
@@ -87,7 +94,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                 <GradientBackground>
                     <SafeAreaView style={styles.container}>
                         <View style={styles.permissionContainer}>
-                            <ActivityIndicator size="large" color={GlassTokens.colors.primary} />
+                            <ActivityIndicator size="large" color={theme.colors.primary} />
                             <Text style={styles.permissionText}>Đang kiểm tra quyền camera...</Text>
                         </View>
                     </SafeAreaView>
@@ -110,7 +117,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                         </View>
 
                         <View style={styles.permissionContainer}>
-                            <Ionicons name="camera-outline" size={64} color={GlassTokens.colors.textMuted} />
+                            <Ionicons name="camera-outline" size={64} color={theme.colors.textMuted} />
                             <Text style={styles.permissionTitle}>Cần quyền truy cập camera</Text>
                             <Text style={styles.permissionText}>
                                 Ứng dụng cần quyền truy cập camera để quét mã QR chuyển tiền
@@ -179,7 +186,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: GlassTokens.spacing.md,
+        padding: 16,
         paddingTop: 10,
     },
     closeBtn: {
@@ -197,8 +204,8 @@ const styles = StyleSheet.create({
     },
     cameraContainer: {
         flex: 1,
-        margin: GlassTokens.spacing.md,
-        borderRadius: GlassTokens.radius.lg,
+        margin: 16,
+        borderRadius: 16,
         overflow: 'hidden',
     },
     camera: {
@@ -219,7 +226,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         width: 30,
         height: 30,
-        borderColor: GlassTokens.colors.primary,
+        borderColor: '#8b5cf6',
         borderWidth: 3,
         borderRightWidth: 0,
         borderBottomWidth: 0,
@@ -245,17 +252,17 @@ const styles = StyleSheet.create({
         borderRightWidth: 3,
     },
     hintCard: {
-        marginTop: GlassTokens.spacing.xl,
-        padding: GlassTokens.spacing.md,
+        marginTop: 32,
+        padding: 16,
     },
     hintText: {
-        color: GlassTokens.colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.7)',
         fontSize: 14,
         textAlign: 'center',
         marginBottom: 4,
     },
     hintSubtext: {
-        color: GlassTokens.colors.textMuted,
+        color: 'rgba(255, 255, 255, 0.5)',
         fontSize: 12,
         textAlign: 'center',
     },
@@ -263,26 +270,26 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: GlassTokens.spacing.xl,
+        padding: 32,
     },
     permissionTitle: {
         fontSize: 20,
         fontWeight: '600',
         color: '#fff',
-        marginTop: GlassTokens.spacing.lg,
-        marginBottom: GlassTokens.spacing.md,
+        marginTop: 24,
+        marginBottom: 16,
     },
     permissionText: {
         fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.7)',
         textAlign: 'center',
-        marginBottom: GlassTokens.spacing.xl,
+        marginBottom: 32,
     },
     permissionButton: {
-        backgroundColor: GlassTokens.colors.primary,
-        paddingHorizontal: GlassTokens.spacing.xl,
-        paddingVertical: GlassTokens.spacing.md,
-        borderRadius: GlassTokens.radius.md,
+        backgroundColor: '#8b5cf6',
+        paddingHorizontal: 32,
+        paddingVertical: 16,
+        borderRadius: 12,
     },
     permissionButtonText: {
         color: '#fff',

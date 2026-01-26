@@ -1,7 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
-import { authApi } from '../services/auth.api';
-import { secureStorageService } from '../services/secure-storage.service';
-import { authEvents, AuthEvent } from '../services/authEvents';
+import { authStorage, authEvents, AuthEvent } from '../core';
+import { authAPI } from '../features/auth/api/auth.api';
 import type { User, LoginRequest, RegisterRequest } from '../types/auth.types';
 
 interface AuthContextData {
@@ -42,28 +41,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const loadStoredAuthData = async () => {
         try {
-            const authData = await secureStorageService.getAuthData();
+            const authData = await authStorage.getAuthData();
 
             if (authData && authData.accessToken) {
                 // Set user from storage immediately for faster UI
                 setUser(authData.user);
 
                 // Verify token is still valid by fetching current user
-                // This ensures data is fresh and token hasn't expired
                 try {
-                    const currentUser = await authApi.getMe();
+                    const currentUser = await authAPI.getMe();
                     setUser(currentUser);
-                } catch (error) {
-                    // Token expired or invalid - clear stored data
-                    console.log('Stored token invalid, clearing auth data');
-                    await secureStorageService.clearAll();
+                } catch {
+                    if (__DEV__) {
+                        console.log('Stored token invalid, clearing auth data');
+                    }
+                    await authStorage.clearAll();
                     setUser(null);
                 }
             }
         } catch (error) {
             console.error('Failed to load auth data:', error);
-            // Clear potentially corrupted data
-            await secureStorageService.clearAll();
+            await authStorage.clearAll();
             setUser(null);
         } finally {
             setIsLoading(false);
@@ -71,25 +69,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     const handleSessionExpired = async () => {
-        console.log('Session expired - clearing user');
-        await secureStorageService.clearAll();
+        if (__DEV__) {
+            console.log('Session expired - clearing user');
+        }
+        await authStorage.clearAll();
         setUser(null);
-        // Navigation will be handled by App.tsx based on auth state
     };
 
     const handleLogout = () => {
-        console.log('Logged out - clearing user');
+        if (__DEV__) {
+            console.log('Logged out - clearing user');
+        }
         setUser(null);
     };
 
     const login = async (credentials: LoginRequest) => {
         setIsLoading(true);
         try {
-            const userData = await authApi.login(credentials);
+            const userData = await authAPI.login(credentials);
             setUser(userData);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Login failed:', error);
-            throw new Error(error.response?.data?.message || 'Đăng nhập thất bại');
+            const err = error as { response?: { data?: { message?: string } } };
+            throw new Error(err.response?.data?.message || 'Đăng nhập thất bại');
         } finally {
             setIsLoading(false);
         }
@@ -98,11 +100,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const register = async (data: RegisterRequest) => {
         setIsLoading(true);
         try {
-            await authApi.register(data);
-            // After successful registration, user needs to login
-        } catch (error: any) {
+            await authAPI.register(data);
+        } catch (error: unknown) {
             console.error('Registration failed:', error);
-            throw new Error(error.response?.data?.message || 'Đăng ký thất bại');
+            const err = error as { response?: { data?: { message?: string } } };
+            throw new Error(err.response?.data?.message || 'Đăng ký thất bại');
         } finally {
             setIsLoading(false);
         }
@@ -111,13 +113,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const logout = async () => {
         setIsLoading(true);
         try {
-            await authApi.logout();
-            await secureStorageService.clearAll();
+            await authAPI.logout();
+            await authStorage.clearAll();
             setUser(null);
-        } catch (error) {
-            console.error('Logout failed:', error);
+        } catch {
             // Clear local data even if API call fails
-            await secureStorageService.clearAll();
+            await authStorage.clearAll();
             setUser(null);
         } finally {
             setIsLoading(false);
@@ -126,16 +127,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const refreshUser = async () => {
         try {
-            const userData = await authApi.getMe();
+            const userData = await authAPI.getMe();
             setUser(userData);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to refresh user:', error);
-            // If refresh fails due to auth error, clear user
-            if (error.response?.status === 401) {
-                await secureStorageService.clearAll();
+            const err = error as { response?: { status?: number } };
+            if (err.response?.status === 401) {
+                await authStorage.clearAll();
                 setUser(null);
             }
-            // Re-throw to allow caller to handle
             throw error;
         }
     };

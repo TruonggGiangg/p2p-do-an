@@ -11,7 +11,7 @@ export interface WalletInfo {
   accountNo: string;
   productId: number;
   productName: string;
-  type: 'credit_wallet' | 'e_wallet';
+  type: 'e_wallet'; // Digital Wallet only
   balance: number;
   currency: string;
   status: string;
@@ -29,7 +29,7 @@ export class WalletsService {
 
   /**
    * Get all wallets for a specific MongoDB User
-   * Returns all wallets (both e_wallet and credit_wallet) from Fineract
+   * Returns all Digital Wallets (e_wallet) from Fineract
    */
   async getWalletsByUserId(userId: string): Promise<WalletInfo[]> {
     this.logger.log(`[getWalletsByUserId] Fetching wallets for userId=${userId}`);

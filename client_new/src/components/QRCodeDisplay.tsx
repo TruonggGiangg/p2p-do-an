@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { GlassCard } from './GlassCard';
-import { GlassTokens } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface QRCodeDisplayProps {
@@ -12,6 +12,7 @@ interface QRCodeDisplayProps {
 }
 
 export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClose }) => {
+    const { theme } = useTheme();
     // Generate QR data as JSON for better parsing
     const qrData = phone ? JSON.stringify({
         phone: phone,
@@ -20,7 +21,7 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
 
     if (!phone) {
         return (
-            <SafeAreaView style={styles.container}>
+            <View style={styles.container}>
                 <GlassCard style={styles.card}>
                     <Text style={styles.title}>Lỗi</Text>
                     <Text style={styles.subtitle}>Không có số điện thoại để tạo QR code</Text>
@@ -30,12 +31,12 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
                         </TouchableOpacity>
                     )}
                 </GlassCard>
-            </SafeAreaView>
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             {onClose && (
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                     <Ionicons name="close" size={24} color="#fff" />
@@ -56,18 +57,18 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
 
                 <View style={styles.infoContainer}>
                     <View style={styles.infoRow}>
-                        <Ionicons name="person-outline" size={16} color={GlassTokens.colors.textSecondary} />
+                        <Ionicons name="person-outline" size={16} color={theme.colors.textSecondary} />
                         <Text style={styles.infoLabel}>Tên:</Text>
                         <Text style={styles.infoValue}>{name || 'Người dùng'}</Text>
                     </View>
                     <View style={styles.infoRow}>
-                        <Ionicons name="call-outline" size={16} color={GlassTokens.colors.textSecondary} />
+                        <Ionicons name="call-outline" size={16} color={theme.colors.textSecondary} />
                         <Text style={styles.infoLabel}>SĐT:</Text>
                         <Text style={styles.infoValue}>{phone}</Text>
                     </View>
                 </View>
             </GlassCard>
-        </SafeAreaView>
+        </View>
     );
 };
 
@@ -76,7 +77,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: GlassTokens.spacing.lg,
+        padding: 24,
     },
     closeBtn: {
         position: 'absolute',
@@ -93,11 +94,11 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.2)',
     },
     closeButton: {
-        marginTop: GlassTokens.spacing.lg,
-        paddingVertical: GlassTokens.spacing.md,
-        paddingHorizontal: GlassTokens.spacing.xl,
-        backgroundColor: GlassTokens.colors.primary,
-        borderRadius: GlassTokens.radius.md,
+        marginTop: 24,
+        paddingVertical: 16,
+        paddingHorizontal: 32,
+        backgroundColor: '#8b5cf6',
+        borderRadius: 12,
     },
     closeButtonText: {
         color: '#fff',
@@ -106,13 +107,13 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     errorText: {
-        color: GlassTokens.colors.error,
+        color: '#ef4444',
         fontSize: 14,
         textAlign: 'center',
     },
     card: {
         alignItems: 'center',
-        padding: GlassTokens.spacing.xl,
+        padding: 32,
         width: '100%',
         maxWidth: 350,
     },
@@ -120,31 +121,31 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: '700',
         color: '#fff',
-        marginBottom: GlassTokens.spacing.xs,
+        marginBottom: 4,
     },
     subtitle: {
         fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
-        marginBottom: GlassTokens.spacing.xl,
+        color: 'rgba(255, 255, 255, 0.7)',
+        marginBottom: 32,
     },
     qrContainer: {
         backgroundColor: 'white',
-        padding: GlassTokens.spacing.md,
-        borderRadius: GlassTokens.radius.md,
-        marginBottom: GlassTokens.spacing.xl,
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 32,
     },
     infoContainer: {
         width: '100%',
-        gap: GlassTokens.spacing.md,
+        gap: 16,
     },
     infoRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: GlassTokens.spacing.sm,
+        gap: 8,
     },
     infoLabel: {
         fontSize: 14,
-        color: GlassTokens.colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.7)',
     },
     infoValue: {
         fontSize: 14,
