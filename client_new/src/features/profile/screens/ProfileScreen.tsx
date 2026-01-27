@@ -1,46 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Switch, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { GradientBackground, GlassCard, GlassButton, CustomHeader } from '../../../components';
 import { RoleBadges } from '../../../components/RoleBadge';
 import { SmartOTPSection, TwoFactorSection } from '../components';
-import type { User } from '../../../types/auth.types';
-
-// Helper functions to synchronize user data fields
-const getUserDisplayName = (user: User | null): string => {
-    if (!user) return 'Người dùng';
-    
-    // Priority: name > firstName + lastName > username
-    if (user.name) return user.name;
-    
-    const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim();
-    if (fullName) return fullName;
-    
-    return user.username || 'Người dùng';
-};
-
-const getUserInitials = (user: User | null): string => {
-    if (!user) return '?';
-    
-    // Priority: firstName > name > username
-    if (user.profile?.firstName?.[0]) return user.profile.firstName[0].toUpperCase();
-    
-    if (user.name?.[0]) return user.name[0].toUpperCase();
-    
-    if (user.username?.[0]) return user.username[0].toUpperCase();
-    
-    return '?';
-};
-
-const getUserEmail = (user: User | null): string | null => {
-    return user?.email || null;
-};
-
-const getUserPhone = (user: User | null): string | null => {
-    return user?.metadata?.phone || null;
-};
+import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
 export default function ProfileScreen() {
     const { user, logout } = useAuth();
