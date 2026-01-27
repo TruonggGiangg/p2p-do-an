@@ -1,23 +1,69 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GradientBackground, GlassCard, GlassButton } from '../../../components';
+import { GradientBackground, GlassCard, GlassButton, CustomHeader } from '../../../components';
 import { RoleBadges } from '../../../components/RoleBadge';
-import { SyncStatusBadge } from '../../../components/SyncStatusBadge';
+import { SmartOTPSection, TwoFactorSection } from '../components';
+import type { User } from '../../../types/auth.types';
+
+// Helper functions to synchronize user data fields
+const getUserDisplayName = (user: User | null): string => {
+    if (!user) return 'Người dùng';
+    
+    // Priority: name > firstName + lastName > username
+    if (user.name) return user.name;
+    
+    const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim();
+    if (fullName) return fullName;
+    
+    return user.username || 'Người dùng';
+};
+
+const getUserInitials = (user: User | null): string => {
+    if (!user) return '?';
+    
+    // Priority: firstName > name > username
+    if (user.profile?.firstName?.[0]) return user.profile.firstName[0].toUpperCase();
+    
+    if (user.name?.[0]) return user.name[0].toUpperCase();
+    
+    if (user.username?.[0]) return user.username[0].toUpperCase();
+    
+    return '?';
+};
+
+const getUserEmail = (user: User | null): string | null => {
+    return user?.email || null;
+};
+
+const getUserPhone = (user: User | null): string | null => {
+    return user?.metadata?.phone || null;
+};
 
 export default function ProfileScreen() {
     const { user, logout } = useAuth();
     const { theme, themeMode, toggleTheme } = useTheme();
     const isDark = themeMode === 'dark';
 
+    const displayName = getUserDisplayName(user);
+    const initials = getUserInitials(user);
+    const email = getUserEmail(user);
+    const phone = getUserPhone(user);
+
     return (
         <GradientBackground>
-            <View style={styles.container}>
+            <CustomHeader title="Hồ sơ" />
+            <ScrollView 
+                style={styles.container} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
                 {/* Header Card */}
-                <GlassCard>
+                <GlassCard style={styles.card}>
                     <View style={styles.header}>
+                        {/* Avatar */}
                         <View
                             style={[
                                 styles.avatar,
@@ -35,49 +81,69 @@ export default function ProfileScreen() {
                                     },
                                 ]}
                             >
-                                {user?.profile?.firstName?.[0] || user?.username?.[0] || '?'}
+                                {initials}
                             </Text>
                         </View>
-                        <Text style={[styles.name, { color: theme.colors.textPrimary }]}>
-                            {user?.name ||
-                                `${user?.profile?.firstName || ''} ${user?.profile?.lastName || ''}`.trim() ||
-                                user?.username}
-                        </Text>
-                        {user?.email && (
-                            <Text style={[styles.email, { color: theme.colors.textSecondary }]}>
-                                {user.email}
-                            </Text>
-                        )}
-                        <RoleBadges roles={user?.roles || []} />
-                    </View>
-                </GlassCard>
 
-                {/* Sync Status Card */}
-                <GlassCard>
-                    <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                            Trạng thái đồng bộ
-                        </Text>
-                        <SyncStatusBadge
-                            status={user?.metadata?.syncStatus}
-                            lastSyncAt={user?.metadata?.lastSyncAt}
-                            error={user?.metadata?.syncError}
-                        />
+                        {/* Name */}
+                        <View style={styles.nameContainer}>
+                            <View style={[styles.nameWrapper, { backgroundColor: theme.colors.primary + '15' }]}>
+                                <Text style={[styles.name, { color: theme.colors.primary }]} numberOfLines={2}>
+                                    {displayName}
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* Email with Icon */}
+                        {email && (
+                            <View style={styles.infoContainer}>
+                                <MaterialCommunityIcons
+                                    name="email-outline"
+                                    size={18}
+                                    color={theme.colors.textMuted}
+                                    style={styles.infoIcon}
+                                />
+                                <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                    {email}
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* Phone with Icon */}
+                        {phone && (
+                            <View style={styles.infoContainer}>
+                                <MaterialCommunityIcons
+                                    name="phone-outline"
+                                    size={18}
+                                    color={theme.colors.textMuted}
+                                    style={styles.infoIcon}
+                                />
+                                <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                                    {phone}
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* Role Badges */}
+                        <View style={styles.roleBadgesContainer}>
+                            <RoleBadges roles={user?.roles || []} />
+                        </View>
                     </View>
                 </GlassCard>
 
                 {/* Theme Toggle Card */}
-                <GlassCard>
+                <GlassCard style={styles.card}>
                     <View style={styles.section}>
                         <View style={styles.settingRow}>
                             <View style={styles.settingLeft}>
-                                <MaterialCommunityIcons
-                                    name={isDark ? 'weather-night' : 'weather-sunny'}
-                                    size={24}
-                                    color={theme.colors.primary}
-                                    style={styles.settingIcon}
-                                />
-                                <View>
+                                <View style={[styles.settingIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                                    <MaterialCommunityIcons
+                                        name={isDark ? 'weather-night' : 'weather-sunny'}
+                                        size={24}
+                                        color={theme.colors.primary}
+                                    />
+                                </View>
+                                <View style={styles.settingTextContainer}>
                                     <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
                                         Giao diện
                                     </Text>
@@ -100,6 +166,16 @@ export default function ProfileScreen() {
                     </View>
                 </GlassCard>
 
+                {/* Smart OTP Section */}
+                <View style={styles.sectionSpacing}>
+                    <SmartOTPSection />
+                </View>
+
+                {/* Two Factor Section */}
+                <View style={styles.sectionSpacing}>
+                    <TwoFactorSection />
+                </View>
+
                 {/* Logout Button */}
                 <GlassButton
                     title="ĐĂNG XUẤT"
@@ -108,7 +184,7 @@ export default function ProfileScreen() {
                     icon="logout"
                     style={styles.logoutButton}
                 />
-            </View>
+            </ScrollView>
         </GradientBackground>
     );
 }
@@ -116,69 +192,129 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
+    },
+    scrollContent: {
+        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: 24,
+    },
+    card: {
+        marginBottom: 16,
+    },
+    sectionSpacing: {
+        marginBottom: 16,
     },
     header: {
         alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 8,
     },
     avatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 104,
+        height: 104,
+        borderRadius: 52,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 16,
-        borderWidth: 2,
+        marginBottom: 20,
+        borderWidth: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
     avatarText: {
-        fontSize: 32,
+        fontSize: 40,
         fontWeight: 'bold',
         fontFamily: 'Poppins_700Bold',
+    },
+    nameContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
+        paddingHorizontal: 16,
+        width: '100%',
+    },
+    nameWrapper: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 16,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
     },
     name: {
         fontSize: 24,
         fontWeight: 'bold',
-        marginBottom: 4,
         fontFamily: 'Poppins_700Bold',
+        textAlign: 'center',
+        letterSpacing: 0.5,
+        textShadowColor: 'rgba(0, 0, 0, 0.1)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
-    email: {
-        fontSize: 16,
-        marginBottom: 12,
+    infoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+        paddingHorizontal: 20,
+        width: '100%',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    infoIcon: {
+        marginRight: 10,
+    },
+    infoText: {
+        fontSize: 14,
         fontFamily: 'Poppins_400Regular',
+        textAlign: 'left',
+        flex: 1,
+    },
+    roleBadgesContainer: {
+        marginTop: 8,
+        width: '100%',
+        alignItems: 'center',
     },
     section: {
         width: '100%',
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        marginBottom: 12,
-        fontFamily: 'Poppins_600SemiBold',
+        paddingVertical: 4,
     },
     settingRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        paddingVertical: 4,
     },
     settingLeft: {
         flexDirection: 'row',
         alignItems: 'center',
         flex: 1,
     },
-    settingIcon: {
-        marginRight: 12,
+    settingIconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 14,
+    },
+    settingTextContainer: {
+        flex: 1,
     },
     settingTitle: {
         fontSize: 16,
         fontWeight: '600',
         fontFamily: 'Poppins_600SemiBold',
-        marginBottom: 2,
+        marginBottom: 4,
     },
     settingSubtitle: {
-        fontSize: 13,
+        fontSize: 14,
         fontFamily: 'Poppins_400Regular',
     },
     logoutButton: {
-        marginTop: 16,
+        marginTop: 24,
+        marginBottom: 8,
     },
 });

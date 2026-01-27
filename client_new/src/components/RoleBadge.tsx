@@ -1,33 +1,34 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface RoleBadgeProps {
     role: string;
     size?: 'small' | 'medium' | 'large';
 }
 
-const getRoleConfig = (role: string): { color: string; bgColor: string; label: string; icon: string } => {
+const getRoleConfig = (role: string): { color: string; bgColor: string; label: string; iconName: string } => {
     const lowerRole = role.toLowerCase();
 
     if (lowerRole.includes('admin') || lowerRole.includes('operator')) {
-        return { color: '#a855f7', bgColor: '#581c87', label: 'Quản trị viên', icon: '👑' };
+        return { color: '#a855f7', bgColor: '#581c87', label: 'Quản trị viên', iconName: 'shield-star' };
     }
     if (lowerRole.includes('lender') || lowerRole.includes('investor')) {
-        return { color: '#10b981', bgColor: '#064e3b', label: 'Nhà đầu tư', icon: '💰' };
+        return { color: '#10b981', bgColor: '#064e3b', label: 'Nhà đầu tư', iconName: 'cash' };
     }
     if (lowerRole.includes('borrower')) {
-        return { color: '#3b82f6', bgColor: '#1e3a5f', label: 'Người vay', icon: '🙋' };
+        return { color: '#3b82f6', bgColor: '#1e3a5f', label: 'Người vay', iconName: 'handshake-outline' };
     }
     // Default user role
-    return { color: '#6b7280', bgColor: '#374151', label: role, icon: '👤' };
+    return { color: '#6b7280', bgColor: '#374151', label: role, iconName: 'account-circle' };
 };
 
 export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, size = 'medium' }) => {
     const config = getRoleConfig(role);
 
     const sizeStyles = {
-        small: { paddingH: 8, paddingV: 3, fontSize: 11, iconSize: 12 },
-        medium: { paddingH: 12, paddingV: 5, fontSize: 13, iconSize: 14 },
+        small: { paddingH: 8, paddingV: 4, fontSize: 11, iconSize: 14 },
+        medium: { paddingH: 12, paddingV: 6, fontSize: 13, iconSize: 16 },
         large: { paddingH: 16, paddingV: 8, fontSize: 15, iconSize: 18 },
     };
 
@@ -43,7 +44,12 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, size = 'medium' }) =
                 paddingVertical: s.paddingV,
             }
         ]}>
-            <Text style={[styles.icon, { fontSize: s.iconSize }]}>{config.icon}</Text>
+            <MaterialCommunityIcons
+                name={config.iconName as any}
+                size={s.iconSize}
+                color={config.color}
+                style={styles.icon}
+            />
             <Text style={[styles.label, { color: config.color, fontSize: s.fontSize }]}>{config.label}</Text>
         </View>
     );
@@ -86,9 +92,9 @@ const styles = StyleSheet.create({
     badge: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 16,
-        borderWidth: 1,
-        marginRight: 6,
+        borderRadius: 20,
+        borderWidth: 1.5,
+        marginRight: 8,
         marginBottom: 4,
     },
     icon: {

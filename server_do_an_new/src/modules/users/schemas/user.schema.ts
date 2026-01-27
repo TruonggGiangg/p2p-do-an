@@ -44,6 +44,44 @@ export class User extends Document {
 
   @Prop({ type: Object, default: {}, required: false })
   metadata?: Record<string, any>; // Optional metadata for extensibility
+
+  // Smart OTP Configuration (optional)
+  @Prop({
+    type: {
+      enabled: { type: Boolean, default: false },
+      maxDevices: { type: Number, default: 3 },
+      registeredDevices: { type: Number, default: 0 },
+      lockedUntil: { type: Date },
+      otpAttempts: { type: Number, default: 0 },
+      lastOtpAt: { type: Date },
+    },
+    _id: false,
+    required: false,
+  })
+  smartOTP?: {
+    enabled: boolean;
+    maxDevices: number;
+    registeredDevices: number;
+    lockedUntil?: Date;
+    otpAttempts: number;
+    lastOtpAt?: Date;
+  };
+
+  // Two Factor Authentication Configuration (optional)
+  @Prop({
+    type: {
+      enabled: { type: Boolean, default: false },
+      secret: { type: String },
+      enabledAt: { type: Date },
+    },
+    _id: false,
+    required: false,
+  })
+  twoFactor?: {
+    enabled: boolean;
+    secret?: string;
+    enabledAt?: Date;
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

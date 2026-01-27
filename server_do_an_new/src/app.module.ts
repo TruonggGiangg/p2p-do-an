@@ -10,6 +10,8 @@ import { WalletsModule } from './modules/wallets/wallets.module';
 import { FineractModule } from './modules/fineract/fineract.module';
 import { KeycloakModule } from './modules/auth/keycloak.module';
 import { BnplModule } from './modules/bnpl/bnpl.module';
+import { SmartOtpModule } from './modules/smart-otp/smart-otp.module';
+import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -45,6 +47,8 @@ import { validate } from './config/validation';
     HealthModule,
     WalletsModule,
     BnplModule,
+    SmartOtpModule,
+    TwoFactorModule,
   ],
 
   controllers: [AppController],
