@@ -88,6 +88,18 @@ export class FineractSignupService {
       }
       this.logger.log(`[SIGNUP] Created e-wallet ${savingsAccountId} for client ${fineractClientId}`);
 
+      // Step 5: Automatically Approve and Activate the savings account
+      this.logger.log(`[SIGNUP] Automatically approving and activating wallet ${savingsAccountId}`);
+      try {
+        await this.fineractService.approveSavingsAccount(savingsAccountId);
+        await this.fineractService.activateSavingsAccount(savingsAccountId);
+        this.logger.log(`[SIGNUP] Wallet ${savingsAccountId} is now ACTIVE`);
+      } catch (activationError: any) {
+        // We log the error but don't fail the whole signup if activation fails,
+        // although in a real setup we might want to handle this more strictly.
+        this.logger.error(`[SIGNUP] Failed to auto-activate wallet ${savingsAccountId}: ${activationError.message}`);
+      }
+
       // Step 5: Save user to MongoDB
       const mongoUser = await this.userModel.create({
         keycloakId: keycloakUserId,
