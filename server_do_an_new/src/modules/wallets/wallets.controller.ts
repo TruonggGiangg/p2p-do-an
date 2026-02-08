@@ -10,7 +10,7 @@ import type { UserPayload } from '../auth/interfaces/auth.interface';
 @Controller('wallets')
 @UseGuards(JwtAuthGuard)
 export class WalletsController {
-  constructor(private readonly walletsService: WalletsService) {}
+  constructor(private readonly walletsService: WalletsService) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all wallets for current user' })
@@ -159,7 +159,13 @@ export class WalletsController {
       throw new BadRequestException('Số điện thoại phải có 10 chữ số');
     }
 
-    const result = await this.walletsService.transferByPhone(fromWalletId, cleanPhone, amount, description);
+    const result = await this.walletsService.transferByPhone(
+      user._id,
+      fromWalletId,
+      cleanPhone,
+      amount,
+      description,
+    );
 
     return {
       statusCode: HttpStatus.OK,

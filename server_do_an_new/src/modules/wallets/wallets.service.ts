@@ -321,6 +321,7 @@ export class WalletsService {
    * Transfer money by phone number
    */
   async transferByPhone(
+    fromUserId: string,
     fromWalletId: string,
     recipientPhone: string,
     amount: number,
@@ -336,15 +337,31 @@ export class WalletsService {
       throw new BadRequestException(`Số dư không đủ. Số dư hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} VND`);
     }
 
-    // Find user by wallet's fineractSavingsId
-    const fromWalletRef = await this.walletModel.findOne({ fineractSavingsId: fromWalletId }).exec();
-    if (!fromWalletRef) {
-      throw new NotFoundException('Không tìm thấy thông tin ví nguồn');
+    // Load the sender from the authenticated userId
+    const fromUser = await this.userModel.findById(fromUserId).exec();
+    if (!fromUser || !fromUser.fineractClientId) {
+      throw new BadRequestException('Người gửi không hợp lệ hoặc chưa liên kết Fineract');
     }
 
-    const fromUser = await this.userModel.findById(fromWalletRef.userId).exec();
-    if (!fromUser?.fineractClientId) {
-      throw new BadRequestException('Người gửi chưa được liên kết với Fineract');
+    this.logger.debug(`[transferByPhone] Debugging ownership: fromUserId=${fromUserId}, fromWalletId=${fromWalletId}`);
+
+    // Double check that the wallet reference belongs to this user in our DB
+    // Use Types.ObjectId explicitly to be safe
+    const fromWalletRef = await this.walletModel.findOne({
+      fineractSavingsId: fromWalletId,
+      userId: new Types.ObjectId(fromUserId)
+    }).exec();
+
+    if (!fromWalletRef) {
+      this.logger.warn(`[transferByPhone] Ownership check FAILED for user ${fromUserId} and wallet ${fromWalletId}`);
+      // If not found, it might be a mapping issue. Let's be helpful and check if it exists at all.
+      const existingRef = await this.walletModel.findOne({ fineractSavingsId: fromWalletId }).exec();
+      if (existingRef) {
+        this.logger.warn(`[transferByPhone] Wallet ${fromWalletId} exists but belongs to userId: ${existingRef.userId}`);
+        throw new BadRequestException('Ví nguồn không thuộc về tài khoản của bạn trong hệ thống');
+      } else {
+        throw new NotFoundException('Thông tin ví nguồn chưa được đồng bộ');
+      }
     }
 
     // Find recipient by phone number (check username or metadata.phone)
