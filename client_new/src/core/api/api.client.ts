@@ -5,8 +5,8 @@ import { authEvents } from '../events';
 
 // ==================== CONFIG ====================
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL 
-    || Constants.expoConfig?.extra?.apiUrl 
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+    || Constants.expoConfig?.extra?.apiUrl
     || 'http://localhost:3001';
 
 if (__DEV__) {
@@ -78,7 +78,8 @@ api.interceptors.response.use(
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
         // Only handle 401 errors
-        if (error.response?.status !== 401 || originalRequest._retry) {
+        const isPublicEndpoint = PUBLIC_ENDPOINTS.some(endpoint => originalRequest.url?.includes(endpoint));
+        if (error.response?.status !== 401 || originalRequest._retry || isPublicEndpoint) {
             return Promise.reject(error);
         }
 

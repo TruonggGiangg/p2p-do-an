@@ -32,7 +32,7 @@ export class FineractSignupService {
     private readonly fineractService: FineractService,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
-  ) {}
+  ) { }
 
   /**
    * Complete signup process:
@@ -76,8 +76,16 @@ export class FineractSignupService {
 
       // Step 4: Create e-wallet (Digital Wallet) in Fineract
       this.logger.log(`[SIGNUP] Creating e-wallet for client ${fineractClientId}`);
+      if (!fineractClientId) {
+        throw new Error('Không thể tạo Client trên Fineract');
+      }
+
       const ewalletProductId = this.configService.getOrThrow<number>('defaults.ewalletProductId');
       const savingsAccountId = await this.fineractService.createSavingsAccount(fineractClientId, ewalletProductId);
+
+      if (!savingsAccountId) {
+        throw new Error('Không thể tạo tài khoản tiết kiệm trên Fineract');
+      }
       this.logger.log(`[SIGNUP] Created e-wallet ${savingsAccountId} for client ${fineractClientId}`);
 
       // Step 5: Save user to MongoDB

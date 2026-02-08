@@ -25,7 +25,7 @@ export class WalletsService {
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly fineractService: FineractService,
-  ) {}
+  ) { }
 
   /**
    * Get all wallets for a specific MongoDB User
@@ -153,8 +153,21 @@ export class WalletsService {
     this.logger.log(`[syncWalletsFromFineract] Starting sync for userId=${userId}`);
 
     const user = await this.userModel.findById(userId).exec();
-    if (!user || !user.fineractClientId) {
-      throw new Error('User not linked to Fineract');
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Proactive linking if ID is missing
+    if (!user.fineractClientId) {
+      this.logger.log(`[syncWalletsFromFineract] Attempting to link user ${user.username} (missing fineractClientId)`);
+      const client = await this.fineractService.findClientByIdentifier(user.username);
+      if (client) {
+        user.fineractClientId = client.id.toString();
+        await (user as any).save();
+        this.logger.log(`[syncWalletsFromFineract] Successfully linked user ${user.username} to Fineract clientId=${user.fineractClientId}`);
+      } else {
+        throw new Error('User not linked to Fineract (No matching client found)');
+      }
     }
 
     const clientId = Number(user.fineractClientId);
@@ -180,21 +193,38 @@ export class WalletsService {
         continue;
       }
 
-      // Check if wallet already exists in MongoDB
-      const existing = await this.walletModel.findOne({ fineractSavingsId: accountId }).exec();
+      // Check if wallet already exists for THIS user
+      const existing = await this.walletModel.findOne({
+        fineractSavingsId: accountId,
+        userId: user._id
+      }).exec();
+
       if (!existing) {
-        // Create new wallet reference
-        const newWallet = await this.walletModel.create({
-          userId: user._id,
-          fineractSavingsId: accountId,
-        });
-        syncedIds.push(newWallet.fineractSavingsId);
-        syncedCount++;
-        this.logger.log(`[syncWalletsFromFineract] Created new wallet reference: ${accountId} (${walletType}, status=${accountStatus})`);
+        // If it exists for ANOTHER user, we should probably reassign it or create a new one
+        // To be safe, let's look for it regardless of user first
+        const globalExisting = await this.walletModel.findOne({ fineractSavingsId: accountId }).exec();
+
+        if (globalExisting) {
+          // Reassign to correct user
+          globalExisting.userId = user._id;
+          await globalExisting.save();
+          syncedIds.push(globalExisting.fineractSavingsId);
+          syncedCount++;
+          this.logger.log(`[syncWalletsFromFineract] Reassigned wallet ${accountId} to user ${user.username}`);
+        } else {
+          // Create new wallet reference
+          const newWallet = await this.walletModel.create({
+            userId: user._id,
+            fineractSavingsId: accountId,
+          });
+          syncedIds.push(newWallet.fineractSavingsId);
+          syncedCount++;
+          this.logger.log(`[syncWalletsFromFineract] Created new wallet reference: ${accountId} (${walletType}, status=${accountStatus})`);
+        }
       } else {
-        // Wallet already exists
+        // Wallet already exists and belongs to this user
         syncedIds.push(existing.fineractSavingsId);
-        this.logger.debug(`[syncWalletsFromFineract] Wallet ${accountId} (${walletType}) already exists in MongoDB`);
+        this.logger.debug(`[syncWalletsFromFineract] Wallet ${accountId} (${walletType}) already correctly mapped`);
       }
     }
 
@@ -371,7 +401,7 @@ export class WalletsService {
 
     // Refresh wallet balances using Fineract ID (not MongoDB ID)
     const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-    
+
     // Try to find recipient's wallet
     const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
     const recipientEWallet = recipientWallets.find((w) => w.type === 'e_wallet');

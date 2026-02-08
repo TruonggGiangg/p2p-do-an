@@ -7,127 +7,126 @@ export type ThemeMode = 'light' | 'dark';
 
 // ========== DARK THEME COLORS ==========
 const DarkColors = {
-    // Backgrounds - Darker purple/blue base
-    background: '#0f0a1a',
-    backgroundSecondary: '#1a0f2e',
-    backgroundTertiary: '#251a3a',
+    // Backgrounds - Binance Deep Dark
+    background: '#111318',
+    backgroundSecondary: '#1E2329',
+    backgroundTertiary: '#2B3139',
 
-    // Glass surfaces
-    glassDark: 'rgba(30, 30, 30, 0.65)',
-    glassLight: 'rgba(255, 255, 255, 0.1)',
-    surface: 'rgba(26, 31, 58, 0.75)',
-    surfaceLight: 'rgba(37, 43, 74, 0.6)',
+    // Surfaces
+    glassDark: 'rgba(30, 35, 41, 0.7)',
+    glassLight: 'rgba(255, 255, 255, 0.05)',
+    surface: '#1E2329',
+    surfaceLight: '#2B3139',
 
-    // Primary - Purple/Blue gradient colors
-    primary: '#8b5cf6', // Purple as primary
-    primaryDark: '#6366f1', // Indigo
-    primaryLight: '#a855f7', // Lighter purple
-    primaryGlass: 'rgba(139, 92, 246, 0.15)',
-    primaryBorder: 'rgba(139, 92, 246, 0.35)',
+    // Primary - Binance Yellow
+    primary: '#FCD535',
+    primaryDark: '#C9A514',
+    primaryLight: '#FFE066',
+    primaryGlass: 'rgba(252, 213, 53, 0.1)',
+    primaryBorder: 'rgba(252, 213, 53, 0.3)',
 
-    // Success - Green
-    success: '#10b981',
-    successDark: '#059669',
-    successGlass: 'rgba(16, 185, 129, 0.12)',
-    successBorder: 'rgba(16, 185, 129, 0.3)',
+    // Success - Binance Green
+    success: '#0ECB81',
+    successDark: '#0A9D63',
+    successGlass: 'rgba(14, 203, 129, 0.1)',
+    successBorder: 'rgba(14, 203, 129, 0.3)',
 
-    // Error - Red
-    error: '#ef4444',
-    errorDark: '#dc2626',
-    errorGlass: 'rgba(239, 68, 68, 0.12)',
-    errorBorder: 'rgba(239, 68, 68, 0.3)',
+    // Error - Binance Red
+    error: '#F6465D',
+    errorDark: '#D9304E',
+    errorGlass: 'rgba(246, 70, 93, 0.1)',
+    errorBorder: 'rgba(246, 70, 93, 0.3)',
 
-    // Warning - Yellow
-    warning: '#f59e0b',
-    warningDark: '#d97706',
-    warningGlass: 'rgba(245, 158, 11, 0.12)',
-    warningBorder: 'rgba(245, 158, 11, 0.3)',
+    // Warning - Orange/Yellow
+    warning: '#F0B90B',
+    warningDark: '#C99D09',
+    warningGlass: 'rgba(240, 185, 11, 0.1)',
+    warningBorder: 'rgba(240, 185, 11, 0.3)',
 
     // Text
-    text: '#ffffff',
-    textPrimary: '#ffffff',
-    textSecondary: 'rgba(255, 255, 255, 0.7)',
-    textMuted: 'rgba(255, 255, 255, 0.5)',
-    textDim: 'rgba(255, 255, 255, 0.3)',
+    text: '#EAECEF',
+    textPrimary: '#EAECEF',
+    textSecondary: '#848E9C',
+    textMuted: '#5E6673',
+    textDim: '#474D57',
 
     // Borders
-    border: 'rgba(255, 255, 255, 0.1)',
-    borderLight: 'rgba(255, 255, 255, 0.05)',
-    borderGlow: 'rgba(59, 130, 246, 0.2)',
+    border: '#2B3139',
+    borderLight: '#2B3139',
+    borderGlow: 'rgba(252, 213, 53, 0.1)',
 };
 
 // ========== LIGHT THEME COLORS ==========
 const LightColors = {
-    // Backgrounds - Very light purple/white tint
-    background: '#faf5ff', // Very light purple
-    backgroundSecondary: '#f3e8ff', // Light purple tint
-    backgroundTertiary: '#ede9fe', // Lighter purple tint
+    // Backgrounds
+    background: '#FFFFFF',
+    backgroundSecondary: '#F8F8F6',
+    backgroundTertiary: '#EAECEF',
 
-    // Glass surfaces
-    glassDark: 'rgba(255, 255, 255, 0.8)',
-    glassLight: 'rgba(255, 255, 255, 0.6)',
-    surface: 'rgba(255, 255, 255, 0.9)',
-    surfaceLight: 'rgba(255, 255, 255, 0.7)',
+    // Surfaces
+    glassDark: 'rgba(255, 255, 255, 0.9)',
+    glassLight: 'rgba(255, 255, 255, 0.7)',
+    surface: '#FFFFFF',
+    surfaceLight: '#F8F8F6',
 
-    // Primary - Blue
-    primary: '#3b82f6',
-    primaryDark: '#2563eb',
-    primaryLight: '#60a5fa',
-    primaryGlass: 'rgba(59, 130, 246, 0.15)',
-    primaryBorder: 'rgba(59, 130, 246, 0.4)',
+    // Primary - Binance Gold/Yellow
+    primary: '#ecc813',
+    primaryDark: '#d9b812',
+    primaryLight: '#fde047',
+    primaryGlass: 'rgba(236, 200, 19, 0.1)',
+    primaryBorder: 'rgba(236, 200, 19, 0.4)',
 
     // Success - Green
-    success: '#10b981',
-    successDark: '#059669',
-    successGlass: 'rgba(16, 185, 129, 0.15)',
-    successBorder: 'rgba(16, 185, 129, 0.4)',
+    success: '#0ECB81',
+    successDark: '#0A9D63',
+    successGlass: 'rgba(14, 203, 129, 0.1)',
+    successBorder: 'rgba(14, 203, 129, 0.4)',
 
     // Error - Red
-    error: '#ef4444',
-    errorDark: '#dc2626',
-    errorGlass: 'rgba(239, 68, 68, 0.15)',
-    errorBorder: 'rgba(239, 68, 68, 0.4)',
+    error: '#F6465D',
+    errorDark: '#D9304E',
+    errorGlass: 'rgba(246, 70, 93, 0.1)',
+    errorBorder: 'rgba(246, 70, 93, 0.4)',
 
     // Warning - Yellow
-    warning: '#f59e0b',
-    warningDark: '#d97706',
-    warningGlass: 'rgba(245, 158, 11, 0.15)',
-    warningBorder: 'rgba(245, 158, 11, 0.4)',
+    warning: '#F0B90B',
+    warningDark: '#C99D09',
+    warningGlass: 'rgba(240, 185, 11, 0.1)',
+    warningBorder: 'rgba(240, 185, 11, 0.4)',
 
     // Text
-    text: '#0f172a',
-    textPrimary: '#0f172a',
-    textSecondary: 'rgba(15, 23, 42, 0.7)',
-    textMuted: 'rgba(15, 23, 42, 0.5)',
-    textDim: 'rgba(15, 23, 42, 0.3)',
+    text: '#1E2329',
+    textPrimary: '#1E2329',
+    textSecondary: '#707A8A',
+    textMuted: '#929AA5',
+    textDim: '#B7BDC6',
 
     // Borders
-    border: 'rgba(15, 23, 42, 0.1)',
-    borderLight: 'rgba(15, 23, 42, 0.05)',
-    borderGlow: 'rgba(59, 130, 246, 0.3)',
+    border: '#EAECEF',
+    borderLight: '#F5F5F5',
+    borderGlow: 'rgba(236, 200, 19, 0.2)',
 };
 
 // ========== GRADIENTS ==========
 export const Gradients = {
     dark: {
-        // Smooth Purple/Blue gradient for premium feel
-        background: ['#0f0a1a', '#1a0f2e', '#0f0a1a'],
-        primary: ['#8b5cf6', '#6366f1', '#3b82f6'], // Purple to Blue smooth gradient
-        primaryAlt: ['#a855f7', '#8b5cf6', '#6366f1'], // Alternative purple gradient
-        success: ['#10b981', '#059669'],
-        error: ['#ef4444', '#dc2626'],
-        warning: ['#f59e0b', '#d97706'],
-        bnpl: ['#ec4899', '#db2777'],
+        // Smooth Yellow/Gold gradient
+        background: ['#111318', '#1E2329', '#111318'],
+        primary: ['#FCD535', '#EAC126', '#EAC126'],
+        primaryAlt: ['#FFE066', '#FCD535', '#FCD535'],
+        success: ['#0ECB81', '#059669'],
+        error: ['#F6465D', '#D9304E'],
+        warning: ['#F0B90B', '#C99D09'],
+        bnpl: ['#FCD535', '#F0B90B'],
     },
     light: {
-        // Light mode with subtle purple/blue tints
-        background: ['#faf5ff', '#f3e8ff', '#faf5ff'], // Very light purple tint
-        primary: ['#8b5cf6', '#6366f1', '#3b82f6'], // Same gradient for consistency
-        primaryAlt: ['#a855f7', '#8b5cf6', '#6366f1'],
-        success: ['#10b981', '#059669'],
-        error: ['#ef4444', '#dc2626'],
-        warning: ['#f59e0b', '#d97706'],
-        bnpl: ['#ec4899', '#db2777'],
+        background: ['#FFFFFF', '#F8F8F6', '#FFFFFF'],
+        primary: ['#ecc813', '#d9b812', '#d9b812'],
+        primaryAlt: ['#fde047', '#ecc813', '#ecc813'],
+        success: ['#0ECB81', '#059669'],
+        error: ['#F6465D', '#D9304E'],
+        warning: ['#F0B90B', '#C99D09'],
+        bnpl: ['#ecc813', '#F0B90B'],
     },
 };
 

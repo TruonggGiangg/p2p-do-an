@@ -90,8 +90,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setUser(userData);
         } catch (error: unknown) {
             console.error('Login failed:', error);
-            const err = error as { response?: { data?: { message?: string } } };
-            throw new Error(err.response?.data?.message || 'Đăng nhập thất bại');
+            const err = error as any;
+            const message = err.response?.data?.message || err.message || 'Đăng nhập thất bại';
+            throw new Error(message);
         } finally {
             setIsLoading(false);
         }
@@ -103,8 +104,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             await authAPI.register(data);
         } catch (error: unknown) {
             console.error('Registration failed:', error);
-            const err = error as { response?: { data?: { message?: string } } };
-            throw new Error(err.response?.data?.message || 'Đăng ký thất bại');
+            const err = error as any;
+            const message = err.response?.data?.message || err.message || 'Đăng ký thất bại';
+            throw new Error(message);
         } finally {
             setIsLoading(false);
         }

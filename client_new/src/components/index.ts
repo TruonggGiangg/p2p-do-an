@@ -1,4 +1,5 @@
 // Re-export all components for easier imports
+export * from './common';
 export { WalletCard } from './WalletCard';
 export { SyncStatusBadge } from './SyncStatusBadge';
 export { RoleBadge, RoleBadges } from './RoleBadge';

@@ -13,7 +13,13 @@ import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GradientBackground, GlassCard, FloatingLabelInput, GlassButton, CustomHeader } from '../../../components';
+import {
+    GradientBackground,
+    GlassCard,
+    CommonButton,
+    CommonInput,
+    CustomHeader
+} from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function LoginScreen() {
@@ -61,230 +67,135 @@ export default function LoginScreen() {
     const passwordError = useMemo(() => (error && password ? error : undefined), [error, password]);
 
     return (
-        <GradientBackground>
-            <CustomHeader title="Đăng nhập" />
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.container}
-            >
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            {/* Custom Binance Header */}
+            <View style={[styles.customHeader, { paddingTop: Platform.OS === 'ios' ? 50 : 20 }]}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon}>
+                    <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
+                </TouchableOpacity>
+
+                <View style={styles.headerCenter}>
+                    <MaterialCommunityIcons name="shield-check" size={18} color={theme.colors.primary} />
+                    <Text style={[styles.headerCenterText, { color: theme.colors.textSecondary }]}>
+                        SECURE CONNECTION
+                    </Text>
+                </View>
+
+                <TouchableOpacity
+                    onPress={() => navigation.navigate('Register' as never)}
+                    style={styles.headerRight}
                 >
-                    <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-                        {/* Logo & Header */}
-                        <View style={styles.header}>
-                            <View style={styles.logoContainer}>
-                                <LinearGradient
-                                    colors={theme.gradients.primary as any}
-                                    style={styles.logoIcon}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                >
-                                    <MaterialCommunityIcons
-                                        name="flash"
-                                        size={32}
-                                        color="#fff"
-                                    />
-                                </LinearGradient>
-                                <Text style={[styles.logoText, { color: theme.colors.textPrimary }]}>
-                                    P2P Lending
-                                </Text>
-                            </View>
+                    <Text style={[styles.registerText, { color: theme.colors.primary }]}>Register</Text>
+                </TouchableOpacity>
+            </View>
+
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    {/* Branding Section */}
+                    <View style={styles.branding}>
+                        <View style={[styles.logoBox, { backgroundColor: theme.colors.primary }]}>
+                            <Text style={styles.logoChar}>P</Text>
                         </View>
+                        <Text style={[styles.brandName, { color: theme.colors.textPrimary }]}>P2P Exchange</Text>
+                    </View>
 
-                        {/* Hero Section */}
-                        <View style={styles.heroSection}>
-                            <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>
-                                Chào mừng trở lại
-                            </Text>
-                            <Text style={[styles.heroSubtitle, { color: theme.colors.textSecondary }]}>
-                                Kết nối tài chính thông minh
-                            </Text>
-                        </View>
+                    <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>Log In</Text>
+                    <Text style={[styles.heroSubtitle, { color: theme.colors.textSecondary }]}>
+                        Welcome back! Please log in to access your portfolio.
+                    </Text>
 
-                        {/* Login Form Card */}
-                        <GlassCard blur={theme.blur.medium} style={styles.formCard}>
-                            <FloatingLabelInput
-                                label="Số điện thoại"
-                                value={username}
-                                onChangeText={handleUsernameChange}
-                                keyboardType="phone-pad"
-                                autoComplete="tel"
-                                textContentType="telephoneNumber"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                placeholder=""
-                                icon="phone"
-                                error={usernameError}
-                                editable={!isLoading}
-                            />
+                    {/* Form Section */}
+                    <View style={styles.formSection}>
+                        <CommonInput
+                            label="Email / Phone Number"
+                            value={username}
+                            onChangeText={handleUsernameChange}
+                            placeholder="Enter email or phone number"
+                            error={usernameError}
+                            editable={!isLoading}
+                        />
 
-                            <FloatingLabelInput
-                                label="Mật khẩu"
-                                value={password}
-                                onChangeText={handlePasswordChange}
-                                secureTextEntry
-                                placeholder=""
-                                icon="lock"
-                                error={passwordError}
-                                editable={!isLoading}
-                            />
+                        <CommonInput
+                            label="Password"
+                            value={password}
+                            onChangeText={handlePasswordChange}
+                            placeholder="Enter password"
+                            secureTextEntry
+                            error={passwordError}
+                            editable={!isLoading}
+                        />
 
-                            {/* Error Message */}
-                            {error && username && password && (
-                                <View
-                                    style={[
-                                        styles.errorContainer,
-                                        {
-                                            backgroundColor: theme.colors.errorGlass,
-                                            borderColor: theme.colors.errorBorder,
-                                            borderRadius: theme.radius.md,
-                                        },
-                                    ]}
-                                >
-                                    <MaterialCommunityIcons
-                                        name="alert-circle"
-                                        size={16}
-                                        color={theme.colors.error}
-                                    />
-                                    <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
-                                </View>
-                            )}
-
-                            {/* Login Button */}
-                            <GlassButton
-                                title={isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-                                onPress={handleLogin}
-                                disabled={isLoading || !username.trim() || !password.trim()}
-                                loading={isLoading}
-                                icon="login"
-                                variant="primary"
-                                style={styles.loginButton}
-                            />
-
-                            {/* Register Link */}
-                            <TouchableOpacity
-                                onPress={useCallback(() => {
-                                    navigation.navigate('Register' as never);
-                                }, [navigation])}
-                                style={styles.registerLink}
-                                disabled={isLoading}
-                            >
-                                <Text style={[styles.registerText, { color: theme.colors.textSecondary }]}>
-                                    Chưa có tài khoản?{' '}
-                                    <Text style={[styles.registerHighlight, { color: theme.colors.primary }]}>
-                                        Đăng ký ngay
-                                    </Text>
-                                </Text>
-                            </TouchableOpacity>
-                        </GlassCard>
-
-                        {/* Demo Accounts - Compact Design */}
-                        {__DEV__ && (
-                            <GlassCard variant="primary" blur={theme.blur.light} style={styles.demoCard}>
-                                <View style={styles.demoHeader}>
-                                    <MaterialCommunityIcons
-                                        name="lightning-bolt"
-                                        size={18}
-                                        color={theme.colors.primary}
-                                    />
-                                    <Text style={[styles.demoTitle, { color: theme.colors.textMuted }]}>
-                                        Tài khoản demo
-                                    </Text>
-                                </View>
-
-                                <View style={styles.quickFillRow}>
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.quickFillBtn,
-                                            {
-                                                backgroundColor: theme.colors.glassLight,
-                                                borderColor: theme.colors.border,
-                                                borderRadius: theme.radius.md,
-                                            },
-                                        ]}
-                                        onPress={() => {
-                                            setUsername('borrower1');
-                                            setPassword('password');
-                                            setError('');
-                                        }}
-                                        disabled={isLoading}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons
-                                            name="account-cash"
-                                            size={20}
-                                            color={theme.colors.success}
-                                        />
-                                        <Text style={[styles.quickFillLabel, { color: theme.colors.textPrimary }]}>
-                                            Người vay
-                                        </Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.quickFillBtn,
-                                            {
-                                                backgroundColor: theme.colors.glassLight,
-                                                borderColor: theme.colors.border,
-                                                borderRadius: theme.radius.md,
-                                            },
-                                        ]}
-                                        onPress={() => {
-                                            setUsername('investor1');
-                                            setPassword('password');
-                                            setError('');
-                                        }}
-                                        disabled={isLoading}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons
-                                            name="hand-coin"
-                                            size={20}
-                                            color={theme.colors.primary}
-                                        />
-                                        <Text style={[styles.quickFillLabel, { color: theme.colors.textPrimary }]}>
-                                            Nhà đầu tư
-                                        </Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.quickFillBtn,
-                                            {
-                                                backgroundColor: theme.colors.glassLight,
-                                                borderColor: theme.colors.border,
-                                                borderRadius: theme.radius.md,
-                                            },
-                                        ]}
-                                        onPress={() => {
-                                            setUsername('merchant1');
-                                            setPassword('password');
-                                            setError('');
-                                        }}
-                                        disabled={isLoading}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons
-                                            name="store"
-                                            size={20}
-                                            color={theme.colors.warning}
-                                        />
-                                        <Text style={[styles.quickFillLabel, { color: theme.colors.textPrimary }]}>
-                                            Merchant
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </GlassCard>
+                        {error && !usernameError && !passwordError && (
+                            <Text style={[styles.globalError, { color: theme.colors.error }]}>{error}</Text>
                         )}
 
-                        <View style={{ height: theme.spacing.xl }} />
-                    </Animated.View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </GradientBackground>
+                        <CommonButton
+                            title="Log In"
+                            onPress={handleLogin}
+                            loading={isLoading}
+                            disabled={isLoading || !username.trim() || !password.trim()}
+                            variant="primary"
+                            style={styles.loginBtn}
+                        />
+
+                        {/* Secondary Links */}
+                        <View style={styles.linksRow}>
+                            <TouchableOpacity>
+                                <Text style={[styles.linkText, { color: theme.colors.textSecondary }]}>
+                                    Forgot Password?
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.faceIdLink}>
+                                <MaterialCommunityIcons
+                                    name="fingerprint"
+                                    size={20}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={[styles.linkText, { color: theme.colors.textSecondary }]}>
+                                    Face ID
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Divider */}
+                    <View style={styles.dividerContainer}>
+                        <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
+                        <Text style={[styles.dividerText, { color: theme.colors.textDim }]}>Or continue with</Text>
+                        <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
+                    </View>
+
+                    {/* Social Logins */}
+                    <View style={styles.socialRow}>
+                        <TouchableOpacity style={[styles.socialBtn, { borderColor: theme.colors.border }]}>
+                            <MaterialCommunityIcons name="google" size={20} color="#EA4335" />
+                            <Text style={[styles.socialBtnText, { color: theme.colors.textPrimary }]}>Google</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.socialBtn, { borderColor: theme.colors.border }]}>
+                            <MaterialCommunityIcons name="apple" size={22} color={theme.colors.textPrimary} />
+                            <Text style={[styles.socialBtnText, { color: theme.colors.textPrimary }]}>Apple</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Footer Policy */}
+                    <View style={[styles.footer, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
+                        <MaterialCommunityIcons name="lock" size={14} color={theme.colors.textMuted} style={styles.lockIcon} />
+                        <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
+                            By logging in, you agree to our{' '}
+                            <Text style={{ color: theme.colors.primary }}>Terms of Use</Text> and{' '}
+                            <Text style={{ color: theme.colors.primary }}>Privacy Policy</Text>.
+                            Your connection is end-to-end encrypted.
+                        </Text>
+                    </View>
+                </Animated.View>
+            </ScrollView>
+        </View>
     );
 }
 
@@ -292,120 +203,148 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    scrollContent: {
-        flexGrow: 1,
-        padding: 24,
-        paddingTop: 20,
-        paddingHorizontal: 24,
-        width: '100%',
-        maxWidth: '100%',
-    },
-    content: {
-        flex: 1,
-    },
-    header: {
-        alignItems: 'center',
-        marginBottom: 40,
-        marginTop: 20,
-    },
-    logoContainer: {
+    customHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 16,
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        height: 100,
     },
-    logoIcon: {
-        width: 64,
-        height: 64,
-        borderRadius: 16,
+    headerIcon: {
+        width: 40,
+    },
+    headerCenter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    headerCenterText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
+        letterSpacing: 1,
+    },
+    headerRight: {
+        width: 60,
+        alignItems: 'flex-end',
+    },
+    registerText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    scrollContent: {
+        paddingHorizontal: 24,
+        paddingBottom: 40,
+    },
+    branding: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 10,
+        marginBottom: 32,
+    },
+    logoBox: {
+        width: 32,
+        height: 32,
+        borderRadius: 4,
         justifyContent: 'center',
         alignItems: 'center',
-        ...{
-            shadowColor: '#8b5cf6',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.3,
-            shadowRadius: 16,
-            elevation: 8,
-        },
     },
-    logoText: {
-        fontSize: 26,
+    logoChar: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#000',
+    },
+    brandName: {
+        fontSize: 18,
         fontFamily: 'Poppins_700Bold',
-        letterSpacing: 0.5,
-    },
-    heroSection: {
-        alignItems: 'center',
-        marginBottom: 40,
     },
     heroTitle: {
         fontSize: 32,
         fontFamily: 'Poppins_700Bold',
-        textAlign: 'center',
         marginBottom: 8,
-        letterSpacing: 0.5,
     },
     heroSubtitle: {
-        fontSize: 16,
-        fontFamily: 'Poppins_400Regular',
-        textAlign: 'center',
-    },
-    formCard: {
-        marginBottom: 24,
-    },
-    errorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 14,
-        marginBottom: 16,
-        gap: 8,
-        borderWidth: 1,
-    },
-    errorText: {
-        fontFamily: 'Poppins_400Regular',
-        fontSize: 13,
-        flex: 1,
-    },
-    loginButton: {
-        marginTop: 8,
-    },
-    registerLink: {
-        alignItems: 'center',
-        marginTop: 24,
-    },
-    registerText: {
         fontSize: 14,
         fontFamily: 'Poppins_400Regular',
+        lineHeight: 20,
+        marginBottom: 32,
     },
-    registerHighlight: {
-        fontFamily: 'Poppins_600SemiBold',
+    formSection: {
+        width: '100%',
     },
-    demoCard: {
-        marginBottom: 0,
+    loginBtn: {
+        marginTop: 12,
+        height: 52,
     },
-    demoHeader: {
+    linksRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    faceIdLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    linkText: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
+    },
+    dividerContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 40,
+        gap: 16,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+    },
+    dividerText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
+    },
+    socialRow: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 40,
+    },
+    socialBtn: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 16,
-        gap: 8,
-    },
-    demoTitle: {
-        fontSize: 13,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    quickFillRow: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    quickFillBtn: {
-        flex: 1,
-        padding: 14,
-        alignItems: 'center',
+        height: 48,
+        borderRadius: 8,
         borderWidth: 1,
-        gap: 8,
+        gap: 10,
     },
-    quickFillLabel: {
-        fontSize: 12,
+    socialBtnText: {
+        fontSize: 14,
         fontFamily: 'Poppins_600SemiBold',
+    },
+    footer: {
+        flexDirection: 'row',
+        padding: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+    },
+    lockIcon: {
+        marginTop: 2,
+        marginRight: 8,
+    },
+    footerText: {
+        flex: 1,
+        fontSize: 11,
+        lineHeight: 16,
+        fontFamily: 'Poppins_400Regular',
+    },
+    globalError: {
+        fontSize: 12,
+        textAlign: 'center',
+        marginBottom: 12,
+        fontFamily: 'Poppins_400Regular',
     },
 });
+

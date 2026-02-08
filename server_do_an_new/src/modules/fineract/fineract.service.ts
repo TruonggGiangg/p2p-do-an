@@ -22,7 +22,7 @@ export class FineractService {
   constructor(
     @Inject(FINERACT_AXIOS_CLIENT) private readonly client: AxiosInstance,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * Create a new client in Fineract
@@ -66,8 +66,8 @@ export class FineractService {
       const extResponse = await this.client.get('/clients', {
         params: { externalId: identifier },
       });
-      const extClients = extResponse.data?.pageItems || extResponse.data || [];
-      const matchByExt = extClients.find((c: any) => c.externalId === identifier);
+      const extData = extResponse.data?.pageItems || (Array.isArray(extResponse.data) ? extResponse.data : []);
+      const matchByExt = extData.find((c: any) => c.externalId === identifier);
       if (matchByExt) return matchByExt;
 
       // 2. Try heuristic transformation (borrower1 -> BORROWER_1)
@@ -76,8 +76,8 @@ export class FineractService {
         const hResponse = await this.client.get('/clients', {
           params: { externalId: heuristicId },
         });
-        const hClients = hResponse.data?.pageItems || hResponse.data || [];
-        const matchByH = hClients.find((c: any) => c.externalId === heuristicId);
+        const hData = hResponse.data?.pageItems || (Array.isArray(hResponse.data) ? hResponse.data : []);
+        const matchByH = hData.find((c: any) => c.externalId === heuristicId);
         if (matchByH) return matchByH;
       }
 
@@ -87,8 +87,8 @@ export class FineractService {
         const mobileResponse = await this.client.get('/clients', {
           params: { mobileNo: searchPhone },
         });
-        const mobileClients = mobileResponse.data?.pageItems || mobileResponse.data || [];
-        const matchByPhone = mobileClients.find((c: any) => (c.mobileNo || '').replace(/\D/g, '') === searchPhone);
+        const mobileData = mobileResponse.data?.pageItems || (Array.isArray(mobileResponse.data) ? mobileResponse.data : []);
+        const matchByPhone = mobileData.find((c: any) => (c.mobileNo || '').replace(/\D/g, '') === searchPhone);
         if (matchByPhone) return matchByPhone;
       }
 
@@ -474,7 +474,8 @@ export class FineractService {
     amount: number,
     note: string = 'Transfer via P2P',
   ): Promise<any> {
-    const today = new Date().toISOString().split('T')[0];
+    // Use local date instead of UTC ISO date to avoid timezone shifting (e.g., Feb 9 morning local is Feb 8 evening UTC)
+    const today = new Date().toLocaleDateString('en-CA'); // en-CA format is yyyy-mm-dd
 
     this.logger.log(`[transferFunds] Transferring ${amount} VND from Client ${fromClientId}:Account ${fromAccountId} to Client ${toClientId}:Account ${toAccountId}`);
 
