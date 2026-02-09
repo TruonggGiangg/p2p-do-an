@@ -15,6 +15,13 @@ export interface FineractClientData {
   legalFormId?: number;
 }
 
+// Fineract Constants
+const ACCOUNT_TYPE_SAVINGS = 2;
+const LOAN_TYPE_INDIVIDUAL = 'individual';
+const STRATEGY_MIFOS_STANDARD = 'mifos-standard-strategy';
+const DATE_FORMAT_STRICT = 'yyyy-MM-dd';
+const DATE_FORMAT_DISPLAY = 'dd MMMM yyyy';
+
 @Injectable()
 export class FineractService {
   private readonly logger = new Logger(FineractService.name);
@@ -24,18 +31,39 @@ export class FineractService {
     private readonly configService: ConfigService,
   ) { }
 
+  // -------------------- HELPER METHODS --------------------
+
+  private getTodayFormatted(format: 'iso' | 'display' | 'ca' = 'iso'): string {
+    const now = new Date();
+    if (format === 'ca') return now.toLocaleDateString('en-CA'); // yyyy-mm-dd
+    if (format === 'display') {
+      return now.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+    return now.toISOString().split('T')[0]; // yyyy-MM-dd (ISO)
+  }
+
+  private getDefaultConfig<T>(key: string): T {
+    return this.configService.getOrThrow<T>(`defaults.${key}`);
+  }
+
+  private getCommonLocaleParams(format: 'strict' | 'display' = 'display') {
+    return {
+      locale: this.configService.get<string>('defaults.locale') || 'en',
+      dateFormat: format === 'strict' ? DATE_FORMAT_STRICT : this.getDefaultConfig<string>('dateFormat'),
+    };
+  }
+
   /**
    * Create a new client in Fineract
    */
   async createClient(data: FineractClientData): Promise<number> {
-    const today = new Date().toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-    });
-
-    const officeId = data.officeId || this.configService.getOrThrow<number>('defaults.officeId');
-    const legalFormId = data.legalFormId || this.configService.getOrThrow<number>('defaults.legalFormId');
+    const today = this.getTodayFormatted('display');
+    const officeId = data.officeId || this.getDefaultConfig<number>('officeId');
+    const legalFormId = data.legalFormId || this.getDefaultConfig<number>('legalFormId');
 
     try {
       const response = await this.client.post('/clients', {
@@ -48,8 +76,7 @@ export class FineractService {
         emailAddress: data.email,
         active: true,
         activationDate: today,
-        locale: this.configService.get<string>('defaults.locale'),
-        dateFormat: this.configService.get<string>('defaults.dateFormat'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       return response.data.resourceId || response.data.clientId;
@@ -58,38 +85,37 @@ export class FineractService {
     }
   }
 
+  private async searchClients(params: any): Promise<any | null> {
+    const response = await this.client.get('/clients', { params });
+    const data = response.data?.pageItems || (Array.isArray(response.data) ? response.data : []);
+
+    // Return first match if any
+    return data.length > 0 ? data[0] : null;
+  }
+
   async findClientByIdentifier(identifier: string): Promise<any | null> {
     try {
       this.logger.debug(`Searching for Fineract client using: ${identifier}`);
 
       // 1. Search by externalId (direct match)
-      const extResponse = await this.client.get('/clients', {
-        params: { externalId: identifier },
-      });
-      const extData = extResponse.data?.pageItems || (Array.isArray(extResponse.data) ? extResponse.data : []);
-      const matchByExt = extData.find((c: any) => c.externalId === identifier);
+      const matchByExt = await this.searchClients({ externalId: identifier });
       if (matchByExt) return matchByExt;
 
       // 2. Try heuristic transformation (borrower1 -> BORROWER_1)
       const heuristicId = identifier.toUpperCase().replace(/(\D+)(\d+)/, '$1_$2');
       if (heuristicId !== identifier.toUpperCase()) {
-        const hResponse = await this.client.get('/clients', {
-          params: { externalId: heuristicId },
-        });
-        const hData = hResponse.data?.pageItems || (Array.isArray(hResponse.data) ? hResponse.data : []);
-        const matchByH = hData.find((c: any) => c.externalId === heuristicId);
+        const matchByH = await this.searchClients({ externalId: heuristicId });
         if (matchByH) return matchByH;
       }
 
       // 3. Search by mobileNo
       const searchPhone = identifier.replace(/\D/g, '');
       if (searchPhone.length >= 9) {
-        const mobileResponse = await this.client.get('/clients', {
-          params: { mobileNo: searchPhone },
-        });
-        const mobileData = mobileResponse.data?.pageItems || (Array.isArray(mobileResponse.data) ? mobileResponse.data : []);
-        const matchByPhone = mobileData.find((c: any) => (c.mobileNo || '').replace(/\D/g, '') === searchPhone);
-        if (matchByPhone) return matchByPhone;
+        const matchByPhone = await this.searchClients({ mobileNo: searchPhone });
+        // Double check mobileNo match if needed
+        if (matchByPhone && (matchByPhone.mobileNo || '').replace(/\D/g, '') === searchPhone) {
+          return matchByPhone;
+        }
       }
 
       return null;
@@ -178,21 +204,20 @@ export class FineractService {
         productId: data.productId,
         principal: data.principal,
         loanTermFrequency: data.numberOfRepayments,
-        loanTermFrequencyType: 2, // Months (Fineract constant)
+        loanTermFrequencyType: 2, // Months
         numberOfRepayments: data.numberOfRepayments,
         repaymentEvery: data.repaymentEvery || 1,
-        repaymentFrequencyType: data.repaymentFrequencyType || 2, // Monthly (Fineract constant)
-        // Mandatory fields from product configuration
+        repaymentFrequencyType: data.repaymentFrequencyType || 2, // Monthly
         interestRatePerPeriod,
         amortizationType,
         interestType,
         interestCalculationPeriodType,
-        transactionProcessingStrategyCode: 'mifos-standard-strategy', // Fineract standard strategy
-        loanType: 'individual',
+        transactionProcessingStrategyCode: STRATEGY_MIFOS_STANDARD,
+        loanType: LOAN_TYPE_INDIVIDUAL,
         expectedDisbursementDate,
         submittedOnDate,
-        dateFormat: 'yyyy-MM-dd',
-        locale: 'en',
+        ...this.getCommonLocaleParams('strict'),
+        locale: 'en', // Keep en for safety or use param
       });
 
       this.logger.log(`Loan application created: ${response.data.loanId}`);
@@ -214,9 +239,8 @@ export class FineractService {
 
     try {
       await this.client.post(`/loans/${loanId}?command=approve`, {
-        approvedOnDate: today,
-        locale: this.configService.get<string>('defaults.locale') || 'en',
-        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+        approvedOnDate: this.getTodayFormatted('display'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       this.logger.log(`Loan ${loanId} approved`);
@@ -237,9 +261,8 @@ export class FineractService {
 
     try {
       await this.client.post(`/loans/${loanId}?command=disburse`, {
-        actualDisbursementDate: today,
-        locale: this.configService.get<string>('defaults.locale') || 'en',
-        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+        actualDisbursementDate: this.getTodayFormatted('display'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       this.logger.log(`Loan ${loanId} disbursed`);
@@ -481,17 +504,16 @@ export class FineractService {
 
     try {
       const response = await this.client.post('/accounttransfers', {
-        fromOfficeId: this.configService.getOrThrow<number>('defaults.officeId'),
+        fromOfficeId: this.getDefaultConfig<number>('officeId'),
         fromClientId,
-        fromAccountType: 2, // Savings
+        fromAccountType: ACCOUNT_TYPE_SAVINGS,
         fromAccountId,
-        toOfficeId: this.configService.getOrThrow<number>('defaults.officeId'),
+        toOfficeId: this.getDefaultConfig<number>('officeId'),
         toClientId,
-        toAccountType: 2, // Savings
+        toAccountType: ACCOUNT_TYPE_SAVINGS,
         toAccountId,
-        dateFormat: 'yyyy-MM-dd',
-        locale: 'en',
-        transferDate: today,
+        ...this.getCommonLocaleParams('strict'),
+        transferDate: this.getTodayFormatted('ca'),
         transferAmount: amount,
         transferDescription: note,
       });
@@ -522,9 +544,8 @@ export class FineractService {
       const response = await this.client.post('/savingsaccounts', {
         clientId,
         productId: ewalletProductId,
-        submittedOnDate: today,
-        locale: this.configService.get<string>('defaults.locale') || 'en',
-        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+        submittedOnDate: this.getTodayFormatted('display'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       const savingsId = response.data.savingsId || response.data.resourceId;
@@ -554,9 +575,8 @@ export class FineractService {
 
     try {
       await this.client.post(`/savingsaccounts/${savingsId}?command=approve`, {
-        approvedOnDate: today,
-        locale: this.configService.get<string>('defaults.locale') || 'en',
-        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+        approvedOnDate: this.getTodayFormatted('display'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       this.logger.log(`Approved savings account ${savingsId}`);
@@ -577,9 +597,8 @@ export class FineractService {
 
     try {
       await this.client.post(`/savingsaccounts/${savingsId}?command=activate`, {
-        activatedOnDate: today,
-        locale: this.configService.get<string>('defaults.locale') || 'en',
-        dateFormat: this.configService.get<string>('defaults.dateFormat') || 'dd MMMM yyyy',
+        activatedOnDate: this.getTodayFormatted('display'),
+        ...this.getCommonLocaleParams('display'),
       });
 
       this.logger.log(`Activated savings account ${savingsId}`);
@@ -621,8 +640,14 @@ export class FineractService {
         return null;
       }
 
-      // Return the first match (accountNo should be unique in Fineract)
-      return accounts[0];
+      // Manual filter to ensure accountNo matches (in case Fineract ignores the param)
+      const exactMatch = accounts.find((acc: any) => acc.accountNo === accountNo);
+      if (!exactMatch) {
+        this.logger.warn(`[getSavingsAccountByAccountNumber] Fineract returned accounts but none matched accountNo=${accountNo}`);
+        return null;
+      }
+
+      return exactMatch;
     } catch (error: any) {
       this.logger.error(`[getSavingsAccountByAccountNumber] Failed: ${error.message}`);
       return null;
@@ -716,12 +741,14 @@ export class FineractService {
    */
   private handleError(error: any, context: string): never {
     const errorData = error.response?.data;
+    const errorMessage = errorData?.developerMessage || errorData?.defaultUserMessage || error.message;
+
     this.logger.error(`${context}: ${JSON.stringify(errorData || error.message)}`);
 
     if (errorData?.errors?.length > 0) {
       throw new BadRequestException(errorData.errors[0].defaultUserMessage || context);
     }
 
-    throw new BadRequestException(context);
+    throw new BadRequestException(`${context}: ${errorMessage}`);
   }
 }

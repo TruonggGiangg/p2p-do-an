@@ -18,6 +18,10 @@ export interface WalletInfo {
   isDefault: boolean;
 }
 
+// Constants for minimum transfer amount
+const MIN_TRANSFER_AMOUNT = 1000;
+const DEFAULT_CURRENCY = 'VND';
+
 @Injectable()
 export class WalletsService {
   private readonly logger = new Logger(WalletsService.name);
@@ -27,6 +31,64 @@ export class WalletsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly fineractService: FineractService,
   ) { }
+
+  // -------------------- HELPER METHODS --------------------
+
+  /**
+   * Map Fineract savings data to WalletInfo
+   */
+  private mapToWalletInfo(ref: any, data: any): WalletInfo {
+    return {
+      id: ref._id.toString(),
+      fineractId: ref.fineractSavingsId,
+      accountNo: data.accountNo,
+      productId: data.productId,
+      productName: data.productName,
+      type: this.fineractService.getWalletType(data),
+      balance: data.summary?.accountBalance || 0,
+      currency: data.currency?.code || DEFAULT_CURRENCY,
+      status: data.status?.value || 'Unknown',
+      isDefault: ref.isDefault || false,
+    };
+  }
+
+  /**
+   * Validate transfer request (balance, ownership)
+   */
+  private async validateTransferRequest(
+    fromWalletId: string,
+    fromUserId: string,
+    amount: number,
+  ): Promise<{ fromWallet: WalletInfo; fromUser: any; fromWalletRef: any }> {
+    // Get source wallet
+    const fromWallet = await this.getWalletByFineractId(fromWalletId);
+    if (!fromWallet) throw new NotFoundException('Không tìm thấy ví nguồn');
+
+    // Check balance
+    if (fromWallet.balance < amount) {
+      throw new BadRequestException(
+        `Số dư không đủ. Hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} ${DEFAULT_CURRENCY}`,
+      );
+    }
+
+    // Get sender user
+    const fromUser = await this.userModel.findById(fromUserId).exec();
+    if (!fromUser || !fromUser.fineractClientId) {
+      throw new BadRequestException('Người gửi không hợp lệ hoặc chưa liên kết Fineract');
+    }
+
+    // Ownership check
+    const fromWalletRef = await this.walletModel.findOne({
+      fineractSavingsId: fromWalletId,
+      userId: new Types.ObjectId(fromUserId),
+    }).exec();
+
+    if (!fromWalletRef) {
+      throw new BadRequestException('Ví nguồn không thuộc về tài khoản của bạn');
+    }
+
+    return { fromWallet, fromUser, fromWalletRef };
+  }
 
   /**
    * Get all wallets for a specific MongoDB User
@@ -83,30 +145,14 @@ export class WalletsService {
     }
 
     try {
-      // Fetch real-time data from Fineract (source of truth)
       const data = await this.fineractService.getSavingsAccountDetails(ref.fineractSavingsId);
-
       if (!data) {
         this.logger.error(`[getWalletById] Fineract account ${ref.fineractSavingsId} not found`);
         throw new NotFoundException(`Không tìm thấy tài khoản Fineract ${ref.fineractSavingsId}`);
       }
-
-      const walletType = this.fineractService.getWalletType(data);
-
-      return {
-        id: ref._id.toString(), // MongoDB ID (internal use only)
-        fineractId: ref.fineractSavingsId, // Fineract Savings ID (primary identifier)
-        accountNo: data.accountNo,
-        productId: data.productId,
-        productName: data.productName,
-        type: walletType,
-        balance: data.summary?.accountBalance || 0,
-        currency: data.currency?.code || 'VND',
-        status: data.status?.value || 'Unknown',
-        isDefault: ref.isDefault || false,
-      };
+      return this.mapToWalletInfo(ref, data);
     } catch (error: any) {
-      this.logger.error(`[getWalletById] Failed to fetch Fineract data for wallet ${walletId} (fineractSavingsId=${ref.fineractSavingsId}): ${error.message}`);
+      this.logger.error(`[getWalletById] Failed to fetch Fineract data for wallet ${walletId}: ${error.message}`);
       throw error;
     }
   }
@@ -116,27 +162,13 @@ export class WalletsService {
    */
   async getWalletByFineractId(fineractId: string, userId?: string): Promise<WalletInfo | null> {
     const query: any = { fineractSavingsId: fineractId };
-    if (userId) {
-      query.userId = new Types.ObjectId(userId);
-    }
+    if (userId) query.userId = new Types.ObjectId(userId);
 
     const ref = await this.walletModel.findOne(query).exec();
     if (!ref) throw new NotFoundException('Không tìm thấy ví');
 
     const data = await this.fineractService.getSavingsAccountDetails(ref.fineractSavingsId);
-
-    return {
-      id: ref._id.toString(),
-      fineractId: ref.fineractSavingsId,
-      accountNo: data.accountNo,
-      productId: data.productId,
-      productName: data.productName,
-      type: this.fineractService.getWalletType(data),
-      balance: data.summary?.accountBalance || 0,
-      currency: data.currency?.code || 'VND',
-      status: data.status?.value || 'Unknown',
-      isDefault: ref.isDefault || false,
-    };
+    return this.mapToWalletInfo(ref, data);
   }
 
   /**
@@ -339,49 +371,12 @@ export class WalletsService {
     amount: number,
     description?: string,
   ): Promise<{ transactionId: string; fromWallet: any; toWallet?: any }> {
-    // fromWalletId is now Fineract ID, not MongoDB ID
-    const fromWallet = await this.getWalletByFineractId(fromWalletId);
-    if (!fromWallet) {
-      throw new NotFoundException('Không tìm thấy ví nguồn');
-    }
+    // Use shared validation helper
+    const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, fromUserId, amount);
 
-    if (fromWallet.balance < amount) {
-      throw new BadRequestException(`Số dư không đủ. Số dư hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} VND`);
-    }
-
-    // Load the sender from the authenticated userId
-    const fromUser = await this.userModel.findById(fromUserId).exec();
-    if (!fromUser || !fromUser.fineractClientId) {
-      throw new BadRequestException('Người gửi không hợp lệ hoặc chưa liên kết Fineract');
-    }
-
-    this.logger.debug(`[transferByPhone] Debugging ownership: fromUserId=${fromUserId}, fromWalletId=${fromWalletId}`);
-
-    // Double check that the wallet reference belongs to this user in our DB
-    // Use Types.ObjectId explicitly to be safe
-    const fromWalletRef = await this.walletModel.findOne({
-      fineractSavingsId: fromWalletId,
-      userId: new Types.ObjectId(fromUserId)
-    }).exec();
-
-    if (!fromWalletRef) {
-      this.logger.warn(`[transferByPhone] Ownership check FAILED for user ${fromUserId} and wallet ${fromWalletId}`);
-      // If not found, it might be a mapping issue. Let's be helpful and check if it exists at all.
-      const existingRef = await this.walletModel.findOne({ fineractSavingsId: fromWalletId }).exec();
-      if (existingRef) {
-        this.logger.warn(`[transferByPhone] Wallet ${fromWalletId} exists but belongs to userId: ${existingRef.userId}`);
-        throw new BadRequestException('Ví nguồn không thuộc về tài khoản của bạn trong hệ thống');
-      } else {
-        throw new NotFoundException('Thông tin ví nguồn chưa được đồng bộ');
-      }
-    }
-
-    // Find recipient by phone number (check username or metadata.phone)
+    // Find recipient by phone number
     const recipientUser = await this.userModel.findOne({
-      $or: [
-        { username: recipientPhone },
-        { 'metadata.phone': recipientPhone },
-      ],
+      $or: [{ username: recipientPhone }, { 'metadata.phone': recipientPhone }],
     }).exec();
 
     if (!recipientUser || !recipientUser.fineractClientId) {
@@ -392,46 +387,25 @@ export class WalletsService {
       throw new BadRequestException('Không thể chuyển tiền cho chính mình');
     }
 
-    // Use the specific fineractId provided (fromWalletId is Fineract ID)
-    // Get the recipient's active e-wallet (for phone transfer, we use the first active e-wallet)
+    // Get the recipient's active e-wallet
     const toAccount = await this.fineractService.getActiveEWalletAccount(Number(recipientUser.fineractClientId));
-
     if (!toAccount) {
       throw new NotFoundException('Người nhận chưa có ví điện tử active');
     }
 
-    // Get the specific from wallet details by fineractId
-    const fromAccountDetails = await this.fineractService.getSavingsAccountDetails(fromWalletId);
-
-    if (!fromAccountDetails) {
-      throw new NotFoundException('Không tìm thấy ví nguồn');
-    }
-
-    // Verify from account belongs to the correct user
-    if (fromAccountDetails.clientId !== Number(fromUser.fineractClientId)) {
-      throw new BadRequestException('Ví nguồn không thuộc về người gửi');
-    }
-
-    // Verify from account is an e-wallet
-    const fromWalletType = this.fineractService.getWalletType(fromAccountDetails);
-    if (fromWalletType !== 'e_wallet') {
-      throw new BadRequestException('Ví nguồn phải là ví điện tử');
-    }
-
+    // Execute transfer
     const transferNote = description || `Chuyển tiền từ ${fromUser.username || fromUser.keycloakId} đến ${recipientPhone}`;
     const result = await this.fineractService.transferFunds(
       Number(fromUser.fineractClientId),
       Number(recipientUser.fineractClientId),
-      Number(fromWalletId), // Use the fineractId directly
+      Number(fromWalletId),
       toAccount.id,
       amount,
       transferNote,
     );
 
-    // Refresh wallet balances using Fineract ID (not MongoDB ID)
+    // Refresh and return
     const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-
-    // Try to find recipient's wallet
     const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
     const recipientEWallet = recipientWallets.find((w) => w.type === 'e_wallet');
 
@@ -607,30 +581,10 @@ export class WalletsService {
   ): Promise<{ transactionId: string; fromWallet: any; toWallet?: any }> {
     this.logger.log(`[transferByAccountNumber] fromWalletId=${fromWalletId} -> toAccountNo=${recipientAccountNo}, amount=${amount}`);
 
-    // 1. Get source wallet info
-    const fromWallet = await this.getWalletByFineractId(fromWalletId);
-    if (!fromWallet) throw new NotFoundException('Không tìm thấy ví nguồn');
-    if (fromWallet.balance < amount) {
-      throw new BadRequestException(`Số dư không đủ. Hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} VND`);
-    }
+    // Use shared validation helper
+    const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, fromUserId, amount);
 
-    // 2. Resolve sender
-    const fromUser = await this.userModel.findById(fromUserId).exec();
-    if (!fromUser || !fromUser.fineractClientId) {
-      throw new BadRequestException('Người gửi không hợp lệ hoặc chưa liên kết Fineract');
-    }
-
-    // 3. Ownership check
-    const fromWalletRef = await this.walletModel.findOne({
-      fineractSavingsId: fromWalletId,
-      userId: new Types.ObjectId(fromUserId)
-    }).exec();
-
-    if (!fromWalletRef) {
-      throw new BadRequestException('Ví nguồn không thuộc về tài khoản của bạn');
-    }
-
-    // 4. Resolve recipient by Account Number in Fineract
+    // Resolve recipient by Account Number in Fineract
     const toAccount = await this.fineractService.getSavingsAccountByAccountNumber(recipientAccountNo);
     if (!toAccount) {
       throw new NotFoundException('Không tìm thấy tài khoản đích trong hệ thống Fineract');
@@ -640,10 +594,10 @@ export class WalletsService {
       throw new BadRequestException('Không thể chuyển tiền cho chính tài khoản này');
     }
 
-    // 5. Resolve recipient is also a user in our system (optional but recommended for UX)
+    // Resolve recipient user (optional for UX)
     const recipientUser = await this.userModel.findOne({ fineractClientId: String(toAccount.clientId) }).exec();
 
-    // 6. Execute transfer
+    // Execute transfer
     const transferNote = description || `Chuyển tiền đến số tài khoản ${recipientAccountNo}`;
     const result = await this.fineractService.transferFunds(
       Number(fromUser.fineractClientId),
@@ -654,9 +608,9 @@ export class WalletsService {
       transferNote,
     );
 
-    // 7. Success - get updated info
+    // Refresh and return
     const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-    let toWalletInfo = null;
+    let toWalletInfo: any = null;
     if (recipientUser) {
       const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
       toWalletInfo = recipientWallets.find(w => w.fineractId === String(toAccount.id));
@@ -665,7 +619,7 @@ export class WalletsService {
     return {
       transactionId: String(result.resourceId),
       fromWallet: updatedFromWallet,
-      toWallet: (toWalletInfo as any) || null,
+      toWallet: toWalletInfo,
     };
   }
 }
