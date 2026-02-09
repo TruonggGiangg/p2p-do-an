@@ -4,7 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useTwoFactor } from '../../../shared/hooks';
-import { CommonButton, CommonCard } from '../../../components';
+import { CommonButton, CommonCard, BinanceHeader } from '../../../components';
 
 export const TwoFactorSection: React.FC = () => {
   const { theme } = useTheme();
@@ -147,7 +147,7 @@ export const TwoFactorSection: React.FC = () => {
         <View style={styles.section}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View style={[styles.iconWrapper, { backgroundColor: isEnabled ? theme.colors.success + '20' : theme.colors.primary + '20' }]}>
+              <View style={[styles.iconWrapper, { backgroundColor: isEnabled ? theme.colors.success + '15' : theme.colors.primary + '15' }]}>
                 <MaterialCommunityIcons
                   name={isEnabled ? 'shield-check' : 'shield-alert'}
                   size={22}
@@ -163,7 +163,7 @@ export const TwoFactorSection: React.FC = () => {
                 </Text>
               </View>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: isEnabled ? theme.colors.success + '20' : theme.colors.textMuted + '20' }]}>
+            <View style={[styles.statusBadge, { backgroundColor: isEnabled ? theme.colors.success + '15' : theme.colors.textMuted + '15' }]}>
               <Text style={[styles.statusText, { color: isEnabled ? theme.colors.success : theme.colors.textMuted }]}>
                 {isEnabled ? 'ON' : 'OFF'}
               </Text>
@@ -270,27 +270,29 @@ export const TwoFactorSection: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.modalKeyboardView}
           >
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
               {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                  Thiết lập 2FA
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowQRModal(false);
-                    setOtpCode('');
-                    clearError();
-                  }}
-                  style={styles.closeButton}
-                >
-                  <MaterialCommunityIcons
-                    name="close"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+              <BinanceHeader
+                mode="standard"
+                title="Thiết lập 2FA"
+                showBack={false}
+                rightComponents={
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowQRModal(false);
+                      setOtpCode('');
+                      clearError();
+                    }}
+                    style={styles.closeButton}
+                  >
+                    <MaterialCommunityIcons
+                      name="close"
+                      size={24}
+                      color={theme.colors.textPrimary}
+                    />
+                  </TouchableOpacity>
+                }
+              />
 
               {secret && (
                 <ScrollView
@@ -411,27 +413,29 @@ export const TwoFactorSection: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.modalKeyboardView}
           >
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
               {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                  Kiểm tra 2FA
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowTestModal(false);
-                    setTestOtpCode('');
-                    clearError();
-                  }}
-                  style={styles.closeButton}
-                >
-                  <MaterialCommunityIcons
-                    name="close"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+              <BinanceHeader
+                mode="standard"
+                title="Kiểm tra 2FA"
+                showBack={false}
+                rightComponents={
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowTestModal(false);
+                      setTestOtpCode('');
+                      clearError();
+                    }}
+                    style={styles.closeButton}
+                  >
+                    <MaterialCommunityIcons
+                      name="close"
+                      size={24}
+                      color={theme.colors.textPrimary}
+                    />
+                  </TouchableOpacity>
+                }
+              />
 
               <ScrollView
                 showsVerticalScrollIndicator={false}
@@ -726,15 +730,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: 'Poppins_700Bold',
+    display: 'none',
   },
   closeButton: {
     padding: 4,

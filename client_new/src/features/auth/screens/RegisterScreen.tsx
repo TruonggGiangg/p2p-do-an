@@ -17,6 +17,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import {
     CommonButton,
     CommonInput,
+    BinanceHeader,
 } from '../../../components';
 
 export default function RegisterScreen() {
@@ -106,26 +107,16 @@ export default function RegisterScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* Custom Binance Header */}
-            <View style={[styles.customHeader, { paddingTop: Platform.OS === 'ios' ? 50 : 20 }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon}>
-                    <MaterialCommunityIcons name="chevron-left" size={28} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
-
-                <View style={styles.headerCenter}>
-                    <MaterialCommunityIcons name="shield-check" size={18} color={theme.colors.primary} />
-                    <Text style={[styles.headerCenterText, { color: theme.colors.textSecondary }]}>
-                        SECURE REGISTER
-                    </Text>
-                </View>
-
-                <TouchableOpacity
-                    onPress={() => navigation.navigate('Login' as never)}
-                    style={styles.headerRight}
-                >
-                    <Text style={[styles.loginText, { color: theme.colors.primary }]}>Login</Text>
-                </TouchableOpacity>
-            </View>
+            <BinanceHeader
+                mode="standard"
+                title="Register"
+                showBack={true}
+                rightComponents={
+                    <TouchableOpacity onPress={() => navigation.navigate('Login' as never)}>
+                        <Text style={[styles.loginText, { color: theme.colors.primary }]}>Login</Text>
+                    </TouchableOpacity>
+                }
+            />
 
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
@@ -133,19 +124,15 @@ export default function RegisterScreen() {
                 keyboardShouldPersistTaps="handled"
             >
                 <Animated.View style={{ opacity: fadeAnim }}>
-                    {/* Branding Section */}
-                    <View style={styles.branding}>
-                        <View style={[styles.logoBox, { backgroundColor: theme.colors.primary }]}>
-                            <Text style={styles.logoChar}>P</Text>
+                    <View style={styles.heroSection}>
+                        <View style={[styles.heroIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                            <MaterialCommunityIcons name="account-plus-outline" size={32} color={theme.colors.primary} />
                         </View>
-                        <Text style={[styles.brandName, { color: theme.colors.textPrimary }]}>P2P Exchange</Text>
+                        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Create Account</Text>
+                        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+                            Join the most secure P2P lending platform
+                        </Text>
                     </View>
-
-                    <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>Register</Text>
-                    <Text style={[styles.heroSubtitle, { color: theme.colors.textSecondary }]}>
-                        Create your account to start decentralized lending and borrowing.
-                    </Text>
-
                     {/* Form Section */}
                     <View style={styles.formSection}>
                         <View style={styles.row}>
@@ -287,33 +274,10 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    customHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        height: 100,
-    },
-    headerIcon: {
-        width: 40,
-    },
-    headerCenter: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    headerCenterText: {
-        fontSize: 10,
-        fontFamily: 'Poppins_700Bold',
-        letterSpacing: 1,
-    },
-    headerRight: {
-        width: 60,
-        alignItems: 'flex-end',
-    },
     loginText: {
         fontSize: 14,
         fontFamily: 'Poppins_600SemiBold',
+        marginRight: 16,
     },
     scrollContent: {
         paddingHorizontal: 24,
@@ -342,16 +306,31 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontFamily: 'Poppins_700Bold',
     },
-    heroTitle: {
-        fontSize: 32,
+    heroSection: {
+        alignItems: 'center',
+        marginTop: 20,
+        marginBottom: 32,
+    },
+    heroIconContainer: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    title: {
+        fontSize: 28,
         fontFamily: 'Poppins_700Bold',
         marginBottom: 8,
+        textAlign: 'center',
     },
-    heroSubtitle: {
+    subtitle: {
         fontSize: 14,
         fontFamily: 'Poppins_400Regular',
+        textAlign: 'center',
         lineHeight: 20,
-        marginBottom: 32,
+        paddingHorizontal: 20,
     },
     formSection: {
         width: '100%',

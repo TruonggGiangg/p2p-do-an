@@ -15,12 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../contexts/AuthContext';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { bnplAPI } from '../../bnpl/api/bnpl.api';
-import { WalletCard } from '../../../components/WalletCard';
-import { CommonButton } from '../../../components/common/CommonButton';
-import { QuickAction } from '../../../components/QuickAction';
+import { BinanceHeader, CommonCard, CommonButton, QuickAction, QRCodeDisplay } from '../../../components';
 import { TransferModal } from '../../wallet/components/TransferModal';
-import { QRCodeDisplay } from '../../../components/QRCodeDisplay';
-import { BinanceHeader } from '../../../components/BinanceHeader';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
@@ -106,33 +102,35 @@ export default function HomeScreen() {
             >
                 {/* Portfolio Card */}
                 <View style={styles.portfolioSection}>
-                    <View style={styles.portfolioHeader}>
-                        <Text style={[styles.portfolioTitle, { color: theme.colors.textSecondary }]}>Total Assets (VND)</Text>
-                        <MaterialCommunityIcons name="eye-outline" size={16} color={theme.colors.textDim} />
-                    </View>
+                    <CommonCard>
+                        <View style={styles.portfolioHeader}>
+                            <Text style={[styles.portfolioTitle, { color: theme.colors.textSecondary }]}>Total Assets (VND)</Text>
+                            <MaterialCommunityIcons name="eye-outline" size={16} color={theme.colors.textDim} />
+                        </View>
 
-                    <View style={styles.balanceRow}>
-                        <Text style={[styles.balanceMajor, { color: theme.colors.textPrimary }]}>
-                            {formatCurrency(totalBalance)}
-                        </Text>
-                    </View>
+                        <View style={styles.balanceRow}>
+                            <Text style={[styles.balanceMajor, { color: theme.colors.textPrimary }]}>
+                                {formatCurrency(totalBalance)}
+                            </Text>
+                        </View>
 
-                    <View style={styles.portfolioActions}>
-                        <CommonButton
-                            title="Deposit"
-                            variant="primary"
-                            style={{ flex: 1, height: 44 }}
-                            textStyle={{ fontSize: 13, color: '#000' }}
-                            onPress={() => { }}
-                        />
-                        <CommonButton
-                            title="Withdraw"
-                            variant="secondary"
-                            style={{ flex: 1, height: 44, backgroundColor: theme.colors.surfaceLight }}
-                            textStyle={{ fontSize: 13, color: theme.colors.textPrimary }}
-                            onPress={() => { }}
-                        />
-                    </View>
+                        <View style={styles.portfolioActions}>
+                            <CommonButton
+                                title="Deposit"
+                                variant="primary"
+                                style={{ flex: 1, height: 44 }}
+                                textStyle={{ fontSize: 13, color: '#000' }}
+                                onPress={() => { }}
+                            />
+                            <CommonButton
+                                title="Withdraw"
+                                variant="secondary"
+                                style={{ flex: 1, height: 44, backgroundColor: theme.colors.surfaceLight }}
+                                textStyle={{ fontSize: 13, color: theme.colors.textPrimary }}
+                                onPress={() => { }}
+                            />
+                        </View>
+                    </CommonCard>
                 </View>
 
                 {/* Quick Shortcuts */}

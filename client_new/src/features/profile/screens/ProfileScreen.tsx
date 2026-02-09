@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 're
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components/BinanceHeader';
-import { RoleBadges } from '../../../components/RoleBadge';
+import { BinanceHeader, RoleBadges, CommonCard, CommonButton } from '../../../components';
 import { SmartOTPSection, TwoFactorSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
@@ -55,29 +54,33 @@ export default function ProfileScreen() {
             >
                 {/* User Info Header Section */}
                 <View style={styles.userInfoSection}>
-                    <View style={styles.avatarWrapper}>
-                        <View style={[styles.avatar, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
-                            <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
-                        </View>
-                        <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success }]}>
-                            <MaterialCommunityIcons name="check-decagram" size={14} color="#000" />
-                        </View>
-                    </View>
+                    <CommonCard style={styles.profileCard}>
+                        <View style={styles.profileHeaderContent}>
+                            <View style={styles.avatarWrapper}>
+                                <View style={[styles.avatar, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
+                                    <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
+                                </View>
+                                <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success }]}>
+                                    <MaterialCommunityIcons name="check-decagram" size={14} color="#000" />
+                                </View>
+                            </View>
 
-                    <View style={styles.userBaseInfo}>
-                        <View style={styles.nameRow}>
-                            <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{displayName}</Text>
-                            <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-                                <Text style={[styles.levelText, { color: theme.colors.primary }]}>VIP 1</Text>
+                            <View style={styles.userBaseInfo}>
+                                <View style={styles.nameRow}>
+                                    <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{displayName}</Text>
+                                    <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+                                        <Text style={[styles.levelText, { color: theme.colors.primary }]}>VIP 1</Text>
+                                    </View>
+                                </View>
+                                <Text style={[styles.userUid, { color: theme.colors.textSecondary }]}>UID: {uid}</Text>
                             </View>
                         </View>
-                        <Text style={[styles.userUid, { color: theme.colors.textSecondary }]}>UID: {uid}</Text>
-                    </View>
-                </View>
 
-                {/* Role Badges */}
-                <View style={styles.badgesWrapper}>
-                    <RoleBadges roles={user?.roles || []} />
+                        {/* Role Badges simplified inside card */}
+                        <View style={styles.badgesInCard}>
+                            <RoleBadges roles={user?.roles || []} />
+                        </View>
+                    </CommonCard>
                 </View>
 
                 <View style={[styles.divider, { backgroundColor: theme.colors.border + '20' }]} />
@@ -130,13 +133,16 @@ export default function ProfileScreen() {
                 </View>
 
                 {/* Logout Button */}
-                <TouchableOpacity
-                    style={[styles.logoutBtn, { borderTopColor: theme.colors.border + '40', borderBottomColor: theme.colors.border + '40' }]}
-                    onPress={logout}
-                >
-                    <MaterialCommunityIcons name="logout" size={20} color={theme.colors.error} />
-                    <Text style={[styles.logoutText, { color: theme.colors.error }]}>Log Out</Text>
-                </TouchableOpacity>
+                <View style={styles.logoutWrapper}>
+                    <CommonButton
+                        title="Log Out"
+                        onPress={logout}
+                        variant="secondary"
+                        style={styles.logoutBtn}
+                        textStyle={{ color: theme.colors.error }}
+                        icon="logout"
+                    />
+                </View>
 
                 <Text style={[styles.versionText, { color: theme.colors.textDim }]}>Version 2.85.0</Text>
             </ScrollView>
@@ -155,10 +161,16 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     userInfoSection: {
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        marginBottom: 10,
+    },
+    profileCard: {
+        padding: 16,
+    },
+    profileHeaderContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 20,
-        paddingTop: 10,
     },
     avatarWrapper: {
         position: 'relative',
@@ -263,20 +275,21 @@ const styles = StyleSheet.create({
         marginTop: 2,
         fontFamily: 'Poppins_400Regular',
     },
-    logoutBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
+    logoutWrapper: {
+        paddingHorizontal: 20,
         marginTop: 40,
-        paddingVertical: 16,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        gap: 8,
     },
-    logoutText: {
-        fontSize: 16,
-        fontWeight: '600',
-        fontFamily: 'Poppins_600SemiBold',
+    logoutBtn: {
+        height: 52,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    badgesInCard: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(255,255,255,0.1)',
     },
     versionText: {
         textAlign: 'center',

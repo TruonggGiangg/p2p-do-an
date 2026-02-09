@@ -10,9 +10,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
-import { BinanceHeader } from '../../../components/BinanceHeader';
-import { WalletCard } from '../../../components/WalletCard';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { BinanceHeader, WalletCard, CommonCard, CommonButton } from '../../../components';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
 
@@ -76,22 +75,36 @@ export const WalletsScreen = () => {
             >
                 {/* Balance Summary Section (Binance Style) */}
                 <View style={styles.headerSection}>
-                    <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Total Equity (VND)</Text>
-                    <Text style={[styles.totalAmount, { color: theme.colors.textPrimary }]}>
-                        {new Intl.NumberFormat('vi-VN').format(totalBalance)}
-                    </Text>
+                    <CommonCard>
+                        <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Total Equity (VND)</Text>
+                        <Text style={[styles.totalAmount, { color: theme.colors.textPrimary }]}>
+                            {new Intl.NumberFormat('vi-VN').format(totalBalance)}
+                        </Text>
 
-                    <View style={styles.actionButtons}>
-                        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}>
-                            <Text style={styles.actionBtnText}>Deposit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
-                            <Text style={[styles.actionBtnText, { color: theme.colors.textPrimary }]}>Withdraw</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
-                            <Text style={[styles.actionBtnText, { color: theme.colors.textPrimary }]}>Transfer</Text>
-                        </TouchableOpacity>
-                    </View>
+                        <View style={styles.actionButtons}>
+                            <CommonButton
+                                title="Deposit"
+                                variant="primary"
+                                style={{ flex: 1, height: 40 }}
+                                textStyle={{ fontSize: 13, color: '#000' }}
+                                onPress={() => { }}
+                            />
+                            <CommonButton
+                                title="Withdraw"
+                                variant="secondary"
+                                style={{ flex: 1, height: 40 }}
+                                textStyle={{ fontSize: 13 }}
+                                onPress={() => { }}
+                            />
+                            <CommonButton
+                                title="Transfer"
+                                variant="secondary"
+                                style={{ flex: 1, height: 40 }}
+                                textStyle={{ fontSize: 13 }}
+                                onPress={() => { }}
+                            />
+                        </View>
+                    </CommonCard>
                 </View>
 
                 {/* Wallets List Section */}

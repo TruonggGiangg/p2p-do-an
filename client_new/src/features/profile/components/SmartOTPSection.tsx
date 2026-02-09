@@ -72,7 +72,7 @@ export const SmartOTPSection: React.FC = () => {
       <View style={styles.section}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <View style={[styles.iconWrapper, { backgroundColor: isRegistered ? theme.colors.primary + '20' : theme.colors.textMuted + '20' }]}>
+            <View style={[styles.iconWrapper, { backgroundColor: isRegistered ? theme.colors.primary + '15' : theme.colors.textMuted + '15' }]}>
               <MaterialCommunityIcons
                 name="shield-lock"
                 size={22}
@@ -105,7 +105,8 @@ export const SmartOTPSection: React.FC = () => {
         {expanded && (
           <View style={styles.content}>
             {error && (
-              <View style={[styles.errorBox, { backgroundColor: theme.colors.error + '20' }]}>
+              <View style={[styles.errorBox, { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error + '30', borderWidth: 1 }]}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={18} color={theme.colors.error} style={{ marginRight: 8 }} />
                 <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
               </View>
             )}
@@ -223,8 +224,6 @@ export const SmartOTPSection: React.FC = () => {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
-    borderWidth: 1,
     padding: 16,
     marginBottom: 16,
   },

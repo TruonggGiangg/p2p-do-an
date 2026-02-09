@@ -14,7 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI, WalletTransaction } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, CommonCard } from '../../../components';
 
 export default function NotificationScreen() {
     const navigation = useNavigation();
@@ -51,39 +51,44 @@ export default function NotificationScreen() {
         const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
         return (
-            <View style={[styles.notificationItem, { borderBottomColor: theme.colors.border }]}>
-                <View style={[styles.iconContainer, { backgroundColor: isIncome ? theme.colors.success + '20' : theme.colors.error + '20' }]}>
-                    <MaterialCommunityIcons
-                        name={isIncome ? 'plus' : 'minus'}
-                        size={24}
-                        color={isIncome ? theme.colors.success : theme.colors.error}
-                    />
-                </View>
-                <View style={styles.contentContainer}>
-                    <View style={styles.headerRow}>
-                        <Text
-                            style={[styles.title, { color: theme.colors.textPrimary }]}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                        >
-                            {isIncome ? 'Nhận tiền' : 'Chuyển tiền'}
-                        </Text>
-                        <Text style={[styles.amount, { color: isIncome ? theme.colors.success : theme.colors.error }]}>
-                            {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
-                        </Text>
+            <TouchableOpacity activeOpacity={0.7} style={styles.notificationWrapper}>
+                <CommonCard style={styles.notificationCard}>
+                    <View style={styles.notificationInner}>
+                        <View style={[styles.iconContainer, { backgroundColor: isIncome ? theme.colors.success + '15' : theme.colors.error + '15' }]}>
+                            <MaterialCommunityIcons
+                                name={isIncome ? 'arrow-bottom-left' : 'arrow-top-right'}
+                                size={22}
+                                color={isIncome ? theme.colors.success : theme.colors.error}
+                            />
+                        </View>
+                        <View style={styles.contentContainer}>
+                            <View style={styles.headerRow}>
+                                <Text
+                                    style={[styles.title, { color: theme.colors.textPrimary }]}
+                                    numberOfLines={1}
+                                >
+                                    {isIncome ? 'Nhận tiền' : 'Chuyển tiền'}
+                                </Text>
+                                <Text style={[styles.amount, { color: isIncome ? theme.colors.success : theme.colors.error }]}>
+                                    {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+                                </Text>
+                            </View>
+                            <Text
+                                style={[styles.description, { color: theme.colors.textSecondary }]}
+                                numberOfLines={1}
+                            >
+                                {item.description || (isIncome ? 'Nạp tiền vào tài khoản' : 'Thanh toán/Chuyển tiền')}
+                            </Text>
+                            <View style={styles.footerRow}>
+                                <Text style={[styles.time, { color: theme.colors.textDim }]}>
+                                    {timeStr} • {dateStr}
+                                </Text>
+                                <MaterialCommunityIcons name="chevron-right" size={16} color={theme.colors.textDim} />
+                            </View>
+                        </View>
                     </View>
-                    <Text
-                        style={[styles.description, { color: theme.colors.textSecondary }]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                    >
-                        {item.description || (isIncome ? 'Nạp tiền vào tài khoản' : 'Thanh toán/Chuyển tiền')}
-                    </Text>
-                    <Text style={[styles.time, { color: theme.colors.textDim }]}>
-                        {timeStr} | {dateStr}
-                    </Text>
-                </View>
-            </View>
+                </CommonCard>
+            </TouchableOpacity>
         );
     };
 
@@ -159,20 +164,26 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_600SemiBold',
     },
     listContent: {
+        paddingHorizontal: 16,
+        paddingTop: 16,
         paddingBottom: 20,
     },
-    notificationItem: {
+    notificationWrapper: {
+        marginBottom: 12,
+    },
+    notificationCard: {
+        padding: 12,
+    },
+    notificationInner: {
         flexDirection: 'row',
-        padding: 16,
-        borderBottomWidth: 1,
     },
     iconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 16,
+        marginRight: 12,
     },
     contentContainer: {
         flex: 1,
@@ -181,7 +192,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: 2,
     },
     title: {
         fontSize: 14,
@@ -194,9 +205,14 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_700Bold',
     },
     description: {
-        fontSize: 13,
+        fontSize: 12,
         fontFamily: 'Poppins_400Regular',
-        marginBottom: 6,
+        marginBottom: 8,
+    },
+    footerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
     time: {
         fontSize: 11,
