@@ -7,7 +7,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { TwoFactorService } from './two-factor.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
@@ -21,7 +21,7 @@ import { Enable2faDto, Verify2faDto } from './dto';
 @Controller('2fa')
 @ApiBearerAuth('access-token')
 export class TwoFactorController {
-  constructor(private readonly twoFactorService: TwoFactorService) {}
+  constructor(private readonly twoFactorService: TwoFactorService) { }
 
   /**
    * Generate 2FA secret và QR code
@@ -29,6 +29,7 @@ export class TwoFactorController {
    */
   @Get('secret')
   @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
+  @ApiResponse({ status: 200, description: 'Secret và URL QR code' })
   async generateSecret(@CurrentUser() user: UserPayload) {
     if (!user._id) {
       throw new Error('User ID not found');
@@ -51,6 +52,7 @@ export class TwoFactorController {
   @Post('enable')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enable 2FA with OTP verification' })
+  @ApiResponse({ status: 200, description: 'Kết quả kích hoạt 2FA' })
   async enable2fa(
     @CurrentUser() user: UserPayload,
     @Body() body: Enable2faDto,
@@ -80,6 +82,7 @@ export class TwoFactorController {
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify 2FA token' })
+  @ApiResponse({ status: 200, description: 'Kết quả xác thực OTP' })
   async verify2fa(
     @CurrentUser() user: UserPayload,
     @Body() body: Verify2faDto,
@@ -105,6 +108,7 @@ export class TwoFactorController {
   @Delete('disable')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable 2FA' })
+  @ApiResponse({ status: 200, description: 'Kết quả hủy kích hoạt 2FA' })
   async disable2fa(@CurrentUser() user: UserPayload) {
     if (!user._id) {
       throw new Error('User ID not found');
@@ -123,6 +127,7 @@ export class TwoFactorController {
    */
   @Get('status')
   @ApiOperation({ summary: 'Get 2FA status' })
+  @ApiResponse({ status: 200, description: 'Trạng thái 2FA' })
   async getStatus(@CurrentUser() user: UserPayload) {
     if (!user._id) {
       throw new Error('User ID not found');

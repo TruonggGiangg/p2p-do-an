@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, Req, Res, UnauthorizedException, HttpStatus, HttpCode } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
@@ -24,13 +24,15 @@ export class AuthController {
     private readonly fineractSignupService: FineractSignupService,
     private readonly userSyncService: UserSyncService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Register new user' })
+  @ApiResponse({ status: 201, description: 'Đăng ký thành công' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ hoặc người dùng đã tồn tại' })
   async register(@Body() body: RegisterDto) {
     const result = await this.fineractSignupService.signup(body);
     return { message: 'Đăng ký thành công', data: result };
@@ -41,6 +43,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Login user' })
+  @ApiResponse({ status: 200, description: 'Đăng nhập thành công' })
+  @ApiResponse({ status: 401, description: 'Sai tên đăng nhập hoặc mật khẩu' })
   async login(@Body() body: LoginDto, @Res() res: Response) {
     const { username, password } = body;
 
@@ -83,6 +87,8 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
+  @ApiResponse({ status: 200, description: 'Token đã được làm mới' })
+  @ApiResponse({ status: 401, description: 'Refresh token không hợp lệ hoặc đã hết hạn' })
   async refresh(@Body() body: RefreshTokenDto, @Req() req: Request, @Res() res: Response) {
     const refreshToken = body?.refreshToken || req.cookies?.['refreshToken'];
     if (!refreshToken) throw new UnauthorizedException('Refresh token không tồn tại');
@@ -94,6 +100,8 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current profile' })
+  @ApiResponse({ status: 200, description: 'Trả về thông tin user hiện tại' })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async getProfile(@CurrentUser() user: UserPayload) {
     return { data: user };
   }
@@ -102,6 +110,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logout' })
+  @ApiResponse({ status: 200, description: 'Đăng xuất thành công' })
   async logout(@Res() res: Response) {
     await this.authService.logout(res);
     return res.json({ message: 'Đăng xuất thành công' });

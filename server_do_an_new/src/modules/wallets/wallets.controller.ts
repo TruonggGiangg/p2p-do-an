@@ -4,9 +4,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
+import { TransferDto } from './dto/transfer.dto';
+import { TransferByPhoneDto } from './dto/transfer-by-phone.dto';
+import { TransferByAccountDto } from './dto/transfer-by-account.dto';
 
 @ApiTags('wallets')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @Controller('wallets')
 @UseGuards(JwtAuthGuard)
 export class WalletsController {
@@ -112,21 +115,17 @@ export class WalletsController {
   }
 
   @Post('transfer')
-  @ApiOperation({ summary: 'Transfer money between wallets' })
-  @ApiResponse({ status: 200, description: 'Transfer successful' })
+  @ApiOperation({ summary: 'Chuyển tiền giữa các ví Fineract' })
+  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transfer(
     @CurrentUser() user: UserPayload,
-    @Body() body: { fromWalletId: string; toWalletId: string; amount: number; description?: string },
+    @Body() body: TransferDto,
   ) {
     if (!user._id) {
       throw new UnauthorizedException('User ID not found');
     }
 
     const { fromWalletId, toWalletId, amount, description } = body;
-
-    if (!fromWalletId || !toWalletId || !amount || amount < 1000) {
-      throw new BadRequestException('Thông tin không hợp lệ. Số tiền tối thiểu là 1,000 đ');
-    }
 
     const result = await this.walletsService.transferBetweenWallets(fromWalletId, toWalletId, amount, description);
 
@@ -138,26 +137,18 @@ export class WalletsController {
   }
 
   @Post('transfer/phone')
-  @ApiOperation({ summary: 'Transfer money by phone number' })
-  @ApiResponse({ status: 200, description: 'Transfer successful' })
+  @ApiOperation({ summary: 'Chuyển tiền qua số điện thoại' })
+  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transferByPhone(
     @CurrentUser() user: UserPayload,
-    @Body() body: { fromWalletId: string; recipientPhone: string; amount: number; description?: string },
+    @Body() body: TransferByPhoneDto,
   ) {
     if (!user._id) {
       throw new UnauthorizedException('User ID not found');
     }
 
     const { fromWalletId, recipientPhone, amount, description } = body;
-
-    if (!fromWalletId || !recipientPhone || !amount || amount < 1000) {
-      throw new BadRequestException('Thông tin không hợp lệ. Số tiền tối thiểu là 1,000 đ');
-    }
-
     const cleanPhone = recipientPhone.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) {
-      throw new BadRequestException('Số điện thoại phải có 10 chữ số');
-    }
 
     const result = await this.walletsService.transferByPhone(
       user._id,
@@ -195,21 +186,17 @@ export class WalletsController {
   }
 
   @Post('transfer/account')
-  @ApiOperation({ summary: 'Transfer money by account number' })
-  @ApiResponse({ status: 200, description: 'Transfer successful' })
+  @ApiOperation({ summary: 'Chuyển tiền qua số tài khoản Fineract' })
+  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transferByAccount(
     @CurrentUser() user: UserPayload,
-    @Body() body: { fromWalletId: string; recipientAccountNo: string; amount: number; description?: string },
+    @Body() body: TransferByAccountDto,
   ) {
     if (!user._id) {
       throw new UnauthorizedException('User ID not found');
     }
 
     const { fromWalletId, recipientAccountNo, amount, description } = body;
-
-    if (!fromWalletId || !recipientAccountNo || !amount || amount < 1000) {
-      throw new BadRequestException('Thông tin không hợp lệ. Số tiền tối thiểu là 1,000 đ');
-    }
 
     const result = await this.walletsService.transferByAccountNumber(
       user._id,

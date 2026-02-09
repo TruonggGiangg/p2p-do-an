@@ -4,12 +4,20 @@ import axios from 'axios';
 
 import { FINERACT_AXIOS_CLIENT } from './fineract.constants';
 import { KeycloakAuthService } from '../auth/services/keycloak-auth.service';
+
+// Import all services
+import { FineractBaseService } from './services/fineract-base.service';
+import { FineractClientService } from './services/fineract-client.service';
+import { FineractLoanService } from './services/fineract-loan.service';
+import { FineractSavingsService } from './services/fineract-savings.service';
+
+// Legacy facade for backward compatibility
 import { FineractService } from './fineract.service';
 
 @Global()
 @Module({
   providers: [
-    FineractService,
+    // Axios client factory
     {
       provide: FINERACT_AXIOS_CLIENT,
       useFactory: (configService: ConfigService, keycloakAuthService: KeycloakAuthService) => {
@@ -24,7 +32,6 @@ import { FineractService } from './fineract.service';
           },
         });
 
-        // Senior tip: centralize auth interceptors
         client.interceptors.request.use(async config => {
           const token = await keycloakAuthService.getClientToken();
           config.headers.Authorization = `Bearer ${token}`;
@@ -35,7 +42,21 @@ import { FineractService } from './fineract.service';
       },
       inject: [ConfigService, KeycloakAuthService],
     },
+    // New modular services
+    FineractBaseService,
+    FineractClientService,
+    FineractLoanService,
+    FineractSavingsService,
+    // Legacy facade (backward compatible)
+    FineractService,
   ],
-  exports: [FineractService, FINERACT_AXIOS_CLIENT],
+  exports: [
+    FINERACT_AXIOS_CLIENT,
+    FineractBaseService,
+    FineractClientService,
+    FineractLoanService,
+    FineractSavingsService,
+    FineractService, // Keep for backward compatibility
+  ],
 })
-export class FineractModule {}
+export class FineractModule { }

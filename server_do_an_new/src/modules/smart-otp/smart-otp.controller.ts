@@ -9,7 +9,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SmartOtpService } from './services/smart-otp.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -28,7 +28,7 @@ import {
 @Controller('otp')
 @ApiBearerAuth('access-token')
 export class SmartOtpController {
-  constructor(private readonly smartOtpService: SmartOtpService) {}
+  constructor(private readonly smartOtpService: SmartOtpService) { }
 
   /**
    * Đăng ký device mới với Smart OTP
@@ -37,6 +37,8 @@ export class SmartOtpController {
   @Post('register-device')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Register device with Smart OTP' })
+  @ApiResponse({ status: 200, description: 'Đăng ký Smart OTP thành công' })
+  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
   async registerDevice(
     @CurrentUser() user: UserPayload,
     @Body() body: RegisterDeviceDto,
@@ -67,6 +69,7 @@ export class SmartOtpController {
    */
   @Get('devices')
   @ApiOperation({ summary: 'Get registered devices' })
+  @ApiResponse({ status: 200, description: 'Danh sách thiết bị' })
   async getDevices(@CurrentUser() user: UserPayload) {
     if (!user._id) {
       throw new Error('User ID not found');
@@ -87,6 +90,7 @@ export class SmartOtpController {
   @Delete('revoke-device/:deviceId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Revoke device' })
+  @ApiResponse({ status: 200, description: 'Đã thu hồi thiết bị hoặc không tìm thấy' })
   async revokeDevice(
     @CurrentUser() user: UserPayload,
     @Param('deviceId') deviceId: string,
@@ -116,6 +120,8 @@ export class SmartOtpController {
   @Post('request')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request OTP session for action' })
+  @ApiResponse({ status: 200, description: 'Đã tạo OTP session' })
+  @ApiResponse({ status: 404, description: 'Thiết bị không tồn tại' })
   async requestOtp(
     @CurrentUser() user: UserPayload,
     @Body() body: RequestOtpDto,
@@ -149,6 +155,8 @@ export class SmartOtpController {
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify Smart OTP' })
+  @ApiResponse({ status: 200, description: 'Kết quả xác thực OTP' })
+  @ApiResponse({ status: 400, description: 'OTP không hợp lệ hoặc đã hết hạn' })
   async verifyOtp(
     @CurrentUser() user: UserPayload,
     @Body() body: VerifyOtpDto,
@@ -187,6 +195,7 @@ export class SmartOtpController {
    */
   @Get('session/:sessionId')
   @ApiOperation({ summary: 'Get OTP session status' })
+  @ApiResponse({ status: 200, description: 'Trạng thái session' })
   async getSessionStatus(
     @CurrentUser() user: UserPayload,
     @Param('sessionId') sessionId: string,
@@ -217,6 +226,7 @@ export class SmartOtpController {
    */
   @Get('status')
   @ApiOperation({ summary: 'Get Smart OTP status for current user' })
+  @ApiResponse({ status: 200, description: 'Trạng thái Smart OTP' })
   async getSmartOtpStatus(@CurrentUser() user: UserPayload) {
     if (!user._id) {
       throw new Error('User ID not found');

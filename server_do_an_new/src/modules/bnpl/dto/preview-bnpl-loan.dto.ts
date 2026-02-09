@@ -7,7 +7,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  */
 export class PreviewBnplLoanDto {
   @ApiProperty({
-    description: 'Loan amount (VND)',
+    description: 'Số tiền vay dự kiến (VND)',
     minimum: 500000,
     maximum: 50000000,
     example: 5000000,
@@ -18,7 +18,7 @@ export class PreviewBnplLoanDto {
   amount: number;
 
   @ApiPropertyOptional({
-    description: 'Number of repayment periods (months)',
+    description: 'Số kỳ trả nợ (tháng)',
     minimum: 1,
     maximum: 12,
     default: 3,

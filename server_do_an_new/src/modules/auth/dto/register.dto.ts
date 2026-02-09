@@ -2,19 +2,19 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
-  @ApiProperty({ example: 'Nguyen', description: 'First name' })
+  @ApiProperty({ example: 'Nguyễn', description: 'Họ và tên đệm' })
   @IsString()
   @IsNotEmpty()
   firstName: string;
 
-  @ApiProperty({ example: 'Van A', description: 'Last name' })
+  @ApiProperty({ example: 'Văn A', description: 'Tên của người dùng' })
   @IsString()
   @IsNotEmpty()
   lastName: string;
 
   @ApiProperty({
     example: '0123456789',
-    description: 'Phone number (10-11 digits)',
+    description: 'Số điện thoại đăng ký (10 chữ số)',
   })
   @IsString()
   @IsNotEmpty()
@@ -23,7 +23,7 @@ export class RegisterDto {
 
   @ApiPropertyOptional({
     example: 'user@example.com',
-    description: 'Email address',
+    description: 'Địa chỉ email (không bắt buộc)',
   })
   @IsString()
   @IsOptional()
@@ -31,7 +31,7 @@ export class RegisterDto {
 
   @ApiProperty({
     example: 'SecurePassword123',
-    description: 'Password (minimum 6 characters)',
+    description: 'Mật khẩu đăng nhập (tối thiểu 6 ký tự)',
   })
   @IsString()
   @MinLength(6)
@@ -40,7 +40,7 @@ export class RegisterDto {
   @ApiPropertyOptional({
     enum: ['borrower', 'lender'],
     example: 'borrower',
-    description: 'User type (borrower or lender)',
+    description: 'Loại người dùng (người vay hoặc người cho vay)',
   })
   @IsEnum(['borrower', 'lender'])
   @IsOptional()
