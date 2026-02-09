@@ -13,23 +13,25 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CommonButton, CommonInput, CommonCard } from '../../../components';
+import { CommonButton, CommonInput, CommonCard, BinanceHeader } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI } from '../api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
 import type { Wallet } from '../../../types/auth.types';
+import { WalletSelectorModal } from '../components/WalletSelectorModal';
 
 export default function TransferScreen() {
     const navigation = useNavigation();
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
 
-    const [recipientPhone, setRecipientPhone] = useState('');
+    const [recipientAccountNo, setRecipientAccountNo] = useState('');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
     const [wallets, setWallets] = useState<Wallet[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+    const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
 
     useEffect(() => {
         fetchWallets();
@@ -40,8 +42,11 @@ export default function TransferScreen() {
             const response = await walletAPI.getWallets();
             const eWallets = response.wallets.filter(w => w.type === 'e_wallet');
             setWallets(eWallets);
+
             if (eWallets.length > 0) {
-                setSelectedWallet(eWallets[0]);
+                // Ưu tiên chọn ví mặc định
+                const defaultWallet = eWallets.find(w => w.isDefault);
+                setSelectedWallet(defaultWallet || eWallets[0]);
             }
         } catch (error) {
             console.error('Failed to fetch wallets:', error);
@@ -49,7 +54,7 @@ export default function TransferScreen() {
     };
 
     const handleTransfer = async () => {
-        if (!recipientPhone || !amount || !selectedWallet) {
+        if (!recipientAccountNo || !amount || !selectedWallet) {
             Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
             return;
         }
@@ -70,14 +75,14 @@ export default function TransferScreen() {
             const fromWalletId = selectedWallet.fineractId || selectedWallet.accountNo;
             if (!fromWalletId) throw new Error('Không tìm thấy ID ví nguồn');
 
-            const result = await walletAPI.transferByPhone({
+            const result = await walletAPI.transferByAccountNumber({
                 fromWalletId,
-                recipientPhone,
+                recipientAccountNo,
                 amount: amountNum,
                 description,
             });
 
-            Alert.alert('Thành công', `Đã chuyển ${amountNum.toLocaleString()} VND đến ${recipientPhone}`, [
+            Alert.alert('Thành công', `Đã chuyển ${amountNum.toLocaleString()} VND đến tài khoản ${recipientAccountNo}`, [
                 { text: 'OK', onPress: () => navigation.goBack() }
             ]);
         } catch (error: any) {
@@ -92,44 +97,44 @@ export default function TransferScreen() {
             style={[styles.container, { backgroundColor: theme.colors.background }]}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-            <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Transfer</Text>
-                <View style={{ width: 40 }} />
-            </View>
+            <BinanceHeader
+                mode="standard"
+                title="Chuyển tiền"
+                showBack={true}
+            />
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Source Wallet Display */}
-                <CommonCard style={styles.walletCard}>
-                    <Text style={[styles.label, { color: theme.colors.textDim }]}>From Wallet</Text>
-                    <View style={styles.walletInfo}>
-                        <View style={[styles.walletIcon, { backgroundColor: theme.colors.primary }]}>
-                            <MaterialCommunityIcons name="wallet-outline" size={20} color="#000" />
+                <TouchableOpacity activeOpacity={0.8} onPress={() => setIsWalletModalVisible(true)}>
+                    <CommonCard style={styles.walletCard}>
+                        <Text style={[styles.label, { color: theme.colors.textDim }]}>From Wallet</Text>
+                        <View style={styles.walletInfo}>
+                            <View style={[styles.walletIcon, { backgroundColor: theme.colors.primary + '15' }]}>
+                                <MaterialCommunityIcons name="wallet-outline" size={20} color={theme.colors.primary} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.walletName, { color: theme.colors.textPrimary }]}>
+                                    {selectedWallet?.productName || selectedWallet?.metadata?.productName || 'Select Wallet'}
+                                </Text>
+                                <Text style={[styles.walletBalance, { color: theme.colors.textDim }]}>
+                                    Balance: {formatCurrency(selectedWallet?.balance || 0)}
+                                </Text>
+                            </View>
+                            <MaterialCommunityIcons name="chevron-down" size={20} color={theme.colors.textDim} />
                         </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={[styles.walletName, { color: theme.colors.textPrimary }]}>
-                                {selectedWallet?.productName || 'Main Wallet'}
-                            </Text>
-                            <Text style={[styles.walletBalance, { color: theme.colors.textDim }]}>
-                                Balance: {formatCurrency(selectedWallet?.balance || 0)}
-                            </Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-down" size={20} color={theme.colors.textDim} />
-                    </View>
-                </CommonCard>
+                    </CommonCard>
+                </TouchableOpacity>
 
                 {/* Input Form */}
                 <View style={styles.form}>
                     <View style={styles.inputGroup}>
                         <CommonInput
-                            label="Recipient Phone"
-                            placeholder="Enter phone number"
-                            value={recipientPhone}
-                            onChangeText={setRecipientPhone}
-                            keyboardType="phone-pad"
-                            icon="phone-outline"
+                            label="Recipient Account Number"
+                            placeholder="Enter account number"
+                            value={recipientAccountNo}
+                            onChangeText={setRecipientAccountNo}
+                            keyboardType="numeric"
+                            icon="account-cash-outline"
                         />
                     </View>
 
@@ -160,9 +165,18 @@ export default function TransferScreen() {
                     title={loading ? "Processing..." : "Confirm Transfer"}
                     onPress={handleTransfer}
                     variant="primary"
-                    disabled={loading || !recipientPhone || !amount}
+                    disabled={loading || !recipientAccountNo || !amount}
                 />
             </View>
+
+            <WalletSelectorModal
+                visible={isWalletModalVisible}
+                onClose={() => setIsWalletModalVisible(false)}
+                wallets={wallets}
+                selectedWalletId={selectedWallet?.fineractId || selectedWallet?.accountNo || selectedWallet?.id || selectedWallet?._id}
+                onSelect={(wallet) => setSelectedWallet(wallet)}
+                title="Chọn ví nguồn"
+            />
         </KeyboardAvoidingView>
     );
 }

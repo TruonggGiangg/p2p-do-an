@@ -26,7 +26,7 @@ interface TransferModalProps {
     onClose: () => void;
     wallets: Wallet[];
     onSuccess: () => void;
-    initialRecipientPhone?: string; // For QR scan
+    initialRecipientAccountNo?: string; // For QR scan
 }
 
 const formatCurrency = (amount: number): string => {
@@ -45,17 +45,20 @@ const parseNumber = (str: string): number => {
     return parseInt(str.replace(/,/g, ''), 10) || 0;
 };
 
-export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, wallets, onSuccess, initialRecipientPhone }) => {
+export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, wallets, onSuccess, initialRecipientAccountNo }) => {
     const { theme } = useTheme();
     // Filter out BNPL wallets (credit_wallet) - only show e_wallet
     const availableWallets = wallets.filter((w) => w.type === 'e_wallet' && w.status?.toLowerCase() === 'active');
 
-    const [transferMode, setTransferMode] = useState<'wallet' | 'phone'>(initialRecipientPhone ? 'phone' : 'wallet');
+    const [transferMode, setTransferMode] = useState<'wallet' | 'account'>(initialRecipientAccountNo ? 'account' : 'wallet');
     const [fromWalletId, setFromWalletId] = useState<string>(() => {
         if (availableWallets.length > 0) {
-            const firstWallet = availableWallets[0];
+            // Ưu tiên ví mặc định (isDefault)
+            const defaultWallet = availableWallets.find(w => w.isDefault);
+            const firstWallet = defaultWallet || availableWallets[0];
+
             // Use fineractId as primary identifier, fallback to accountNo, then MongoDB ID
-            const walletId = firstWallet?.fineractId || firstWallet?.accountNo || firstWallet?.id || firstWallet?._id;
+            const walletId = firstWallet?.id || firstWallet?._id || firstWallet?.fineractId || firstWallet?.accountNo;
             if (__DEV__) {
                 console.log('[TransferModal] Initial wallet ID:', walletId, 'from wallet:', firstWallet);
             }
@@ -64,7 +67,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
         return '';
     });
     const [toWalletId, setToWalletId] = useState<string>('');
-    const [recipientPhone, setRecipientPhone] = useState<string>(initialRecipientPhone || '');
+    const [recipientAccountNo, setRecipientAccountNo] = useState<string>(initialRecipientAccountNo || '');
     const [amountRaw, setAmountRaw] = useState('');
     const [description, setDescription] = useState('');
     const [transferring, setTransferring] = useState(false);
@@ -113,20 +116,20 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
         if (!visible) {
             setFromWalletId('');
             setToWalletId('');
-            setRecipientPhone(initialRecipientPhone || '');
+            setRecipientAccountNo(initialRecipientAccountNo || '');
             setAmountRaw('');
             setDescription('');
-            setTransferMode(initialRecipientPhone ? 'phone' : 'wallet');
+            setTransferMode(initialRecipientAccountNo ? 'account' : 'wallet');
         }
-    }, [visible, initialRecipientPhone]);
+    }, [visible, initialRecipientAccountNo]);
 
-    // Set recipient phone from QR scan
+    // Set recipient account number from QR scan
     useEffect(() => {
-        if (initialRecipientPhone) {
-            setRecipientPhone(initialRecipientPhone);
-            setTransferMode('phone');
+        if (initialRecipientAccountNo) {
+            setRecipientAccountNo(initialRecipientAccountNo);
+            setTransferMode('account');
         }
-    }, [initialRecipientPhone]);
+    }, [initialRecipientAccountNo]);
 
     // Find wallets by fineractId, accountNo, or MongoDB ID
     const fromWallet = availableWallets.find((w) => {
@@ -142,27 +145,22 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
     const amount = parseNumber(amountRaw);
 
     // Check if transfer button should be disabled
-    const cleanPhone = recipientPhone.replace(/\D/g, '');
-    const isValidPhone = cleanPhone.length === 10;
-
     const isTransferDisabled =
         transferring ||
         !fromWalletId ||
         !amountRaw ||
         amount < 1000 ||
         (transferMode === 'wallet' && (!toWalletId || availableWallets.length < 2)) ||
-        (transferMode === 'phone' && (!recipientPhone.trim() || !isValidPhone));
+        (transferMode === 'account' && !recipientAccountNo.trim());
 
     // Debug log
-    if (__DEV__ && transferMode === 'phone') {
+    if (__DEV__ && transferMode === 'account') {
         console.log('[TransferModal] Debug disabled state:', {
             transferring,
             fromWalletId: !!fromWalletId,
             amountRaw: !!amountRaw,
             amount,
-            recipientPhone,
-            cleanPhone,
-            isValidPhone,
+            recipientAccountNo,
             isTransferDisabled,
         });
     }
@@ -183,14 +181,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                 return;
             }
         } else {
-            // Phone transfer mode
-            if (!recipientPhone.trim()) {
-                Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại người nhận hoặc quét QR');
-                return;
-            }
-            const cleanPhone = recipientPhone.replace(/\D/g, '');
-            if (cleanPhone.length !== 10) {
-                Alert.alert('Lỗi', 'Số điện thoại phải có 10 chữ số');
+            // Account transfer mode
+            if (!recipientAccountNo.trim()) {
+                Alert.alert('Lỗi', 'Vui lòng nhập số tài khoản người nhận hoặc quét QR');
                 return;
             }
         }
@@ -216,10 +209,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                 };
                 await walletAPI.transfer(transferData);
             } else {
-                // Phone transfer - use phone number API
-                await walletAPI.transferByPhone({
+                // Account transfer
+                await walletAPI.transferByAccountNumber({
                     fromWalletId,
-                    recipientPhone: recipientPhone.replace(/\D/g, ''),
+                    recipientAccountNo,
                     amount,
                     description: description.trim() || undefined,
                 });
@@ -233,7 +226,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                         setAmountRaw('');
                         setDescription('');
                         setToWalletId('');
-                        setRecipientPhone('');
+                        setRecipientAccountNo('');
                         setTransferMode('wallet');
                         onSuccess();
                         onClose();
@@ -248,21 +241,16 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
         }
     };
 
-    const handleQRScan = (phone: string) => {
+    const handleQRScan = (scannedData: string) => {
         if (__DEV__) {
-            console.log('[TransferModal] QR scan received phone:', phone);
+            console.log('[TransferModal] QR scan received:', scannedData);
         }
-        // Clean phone number (remove non-digits)
-        const cleanPhone = phone.replace(/\D/g, '');
-        if (cleanPhone.length === 10) {
-            setRecipientPhone(cleanPhone);
-            setTransferMode('phone');
+        if (scannedData) {
+            setRecipientAccountNo(scannedData);
+            setTransferMode('account');
             setQrScannerVisible(false);
-            if (__DEV__) {
-                console.log('[TransferModal] Phone set to:', cleanPhone);
-            }
         } else {
-            Alert.alert('Lỗi', 'Số điện thoại không hợp lệ. Phải có 10 chữ số.');
+            Alert.alert('Lỗi', 'Dữ liệu QR không hợp lệ.');
             setQrScannerVisible(false);
         }
     };
@@ -301,18 +289,18 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                         </Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
-                                        style={[styles.modeButton, transferMode === 'phone' && styles.modeButtonActive]}
-                                        onPress={() => setTransferMode('phone')}
+                                        style={[styles.modeButton, transferMode === 'account' && styles.modeButtonActive]}
+                                        onPress={() => setTransferMode('account')}
                                         disabled={transferring}
                                     >
                                         <Ionicons
-                                            name="call-outline"
+                                            name="person-outline"
                                             size={18}
-                                            color={transferMode === 'phone' ? '#fff' : theme.colors.textSecondary}
+                                            color={transferMode === 'account' ? '#fff' : theme.colors.textSecondary}
                                             style={{ marginRight: 8 }}
                                         />
-                                        <Text style={[styles.modeButtonText, transferMode === 'phone' && styles.modeButtonTextActive]}>
-                                            Theo SĐT
+                                        <Text style={[styles.modeButtonText, transferMode === 'account' && styles.modeButtonTextActive]}>
+                                            Chuyển khoản
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
@@ -395,21 +383,20 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                         </View>
                                     </View>
                                 ) : (
-                                    <View key="transfer-mode-phone" style={styles.section}>
+                                    <View key="transfer-mode-account" style={styles.section}>
                                         <View style={styles.sectionHeader}>
-                                            <Ionicons name="call-outline" size={20} color="#10b981" style={styles.sectionIcon} />
-                                            <Text style={styles.sectionTitle}>Đến số điện thoại</Text>
+                                            <Ionicons name="person-outline" size={20} color="#10b981" style={styles.sectionIcon} />
+                                            <Text style={styles.sectionTitle}>Đến số tài khoản</Text>
                                         </View>
                                         <View style={styles.phoneInputContainer}>
                                             <TextInput
                                                 style={styles.phoneInput}
-                                                value={recipientPhone}
-                                                onChangeText={setRecipientPhone}
-                                                keyboardType="phone-pad"
-                                                placeholder="Nhập số điện thoại"
+                                                value={recipientAccountNo}
+                                                onChangeText={setRecipientAccountNo}
+                                                keyboardType="numeric"
+                                                placeholder="Nhập số tài khoản"
                                                 placeholderTextColor="rgba(255,255,255,0.4)"
                                                 editable={!transferring}
-                                                maxLength={10}
                                             />
                                             <TouchableOpacity
                                                 style={styles.qrButton}
@@ -419,7 +406,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                                 <Ionicons name="qr-code-outline" size={24} color="#fff" />
                                             </TouchableOpacity>
                                         </View>
-                                        <Text style={styles.phoneHint}>Hoặc quét mã QR để tự động điền</Text>
+                                        <Text style={styles.phoneHint}>Quét mã QR để lấy số tài khoản tự động</Text>
                                     </View>
                                 )}
 
@@ -486,7 +473,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                                                     ? toWallet
                                                         ? toWallet.productName || toWallet.metadata?.productName || 'Ví điện tử'
                                                         : 'Chưa chọn'
-                                                    : recipientPhone || 'Chưa nhập'}
+                                                    : recipientAccountNo || 'Chưa nhập'}
                                             </Text>
                                         </View>
                                         <View style={styles.summaryRow}>

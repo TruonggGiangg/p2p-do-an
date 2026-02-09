@@ -15,6 +15,7 @@ export interface WalletInfo {
   balance: number;
   currency: string;
   status: string;
+  isDefault: boolean;
 }
 
 @Injectable()
@@ -102,6 +103,7 @@ export class WalletsService {
         balance: data.summary?.accountBalance || 0,
         currency: data.currency?.code || 'VND',
         status: data.status?.value || 'Unknown',
+        isDefault: ref.isDefault || false,
       };
     } catch (error: any) {
       this.logger.error(`[getWalletById] Failed to fetch Fineract data for wallet ${walletId} (fineractSavingsId=${ref.fineractSavingsId}): ${error.message}`);
@@ -133,6 +135,7 @@ export class WalletsService {
       balance: data.summary?.accountBalance || 0,
       currency: data.currency?.code || 'VND',
       status: data.status?.value || 'Unknown',
+      isDefault: ref.isDefault || false,
     };
   }
 
@@ -556,11 +559,113 @@ export class WalletsService {
       };
     });
 
-    this.logger.log(`[getWalletTransactions] Returning ${transactions.length} transactions`);
-
     return {
       transactions: transactions,
       total: totalFilteredRecords,
+    };
+  }
+
+  /**
+   * Set a wallet as default for a user
+   */
+  async setDefaultWallet(userId: string, walletId: string): Promise<WalletInfo> {
+    this.logger.log(`[setDefaultWallet] Setting wallet ${walletId} as default for userId=${userId}`);
+
+    // 1. Verify wallet exists and belongs to user
+    const wallet = await this.walletModel.findOne({ _id: new Types.ObjectId(walletId), userId: new Types.ObjectId(userId) }).exec();
+    if (!wallet) {
+      this.logger.warn(`[setDefaultWallet] Wallet ${walletId} not found or doesn't belong to user ${userId}`);
+      throw new NotFoundException('Không tìm thấy ví');
+    }
+
+    // 2. Unset current default wallet for this user
+    await this.walletModel.updateMany(
+      { userId: new Types.ObjectId(userId), isDefault: true },
+      { $set: { isDefault: false } }
+    ).exec();
+
+    // 3. Set this wallet as default
+    wallet.isDefault = true;
+    await wallet.save();
+
+    this.logger.log(`[setDefaultWallet] Successfully set wallet ${walletId} as default`);
+
+    const result = await this.getWalletById(walletId);
+    if (!result) throw new NotFoundException('Không thể lấy thông tin ví sau khi cập nhật');
+    return result;
+  }
+
+  /**
+   * Transfer money by account number
+   */
+  async transferByAccountNumber(
+    fromUserId: string,
+    fromWalletId: string, // fineractSavingsId
+    recipientAccountNo: string,
+    amount: number,
+    description?: string,
+  ): Promise<{ transactionId: string; fromWallet: any; toWallet?: any }> {
+    this.logger.log(`[transferByAccountNumber] fromWalletId=${fromWalletId} -> toAccountNo=${recipientAccountNo}, amount=${amount}`);
+
+    // 1. Get source wallet info
+    const fromWallet = await this.getWalletByFineractId(fromWalletId);
+    if (!fromWallet) throw new NotFoundException('Không tìm thấy ví nguồn');
+    if (fromWallet.balance < amount) {
+      throw new BadRequestException(`Số dư không đủ. Hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} VND`);
+    }
+
+    // 2. Resolve sender
+    const fromUser = await this.userModel.findById(fromUserId).exec();
+    if (!fromUser || !fromUser.fineractClientId) {
+      throw new BadRequestException('Người gửi không hợp lệ hoặc chưa liên kết Fineract');
+    }
+
+    // 3. Ownership check
+    const fromWalletRef = await this.walletModel.findOne({
+      fineractSavingsId: fromWalletId,
+      userId: new Types.ObjectId(fromUserId)
+    }).exec();
+
+    if (!fromWalletRef) {
+      throw new BadRequestException('Ví nguồn không thuộc về tài khoản của bạn');
+    }
+
+    // 4. Resolve recipient by Account Number in Fineract
+    const toAccount = await this.fineractService.getSavingsAccountByAccountNumber(recipientAccountNo);
+    if (!toAccount) {
+      throw new NotFoundException('Không tìm thấy tài khoản đích trong hệ thống Fineract');
+    }
+
+    if (toAccount.id === Number(fromWalletId)) {
+      throw new BadRequestException('Không thể chuyển tiền cho chính tài khoản này');
+    }
+
+    // 5. Resolve recipient is also a user in our system (optional but recommended for UX)
+    const recipientUser = await this.userModel.findOne({ fineractClientId: String(toAccount.clientId) }).exec();
+
+    // 6. Execute transfer
+    const transferNote = description || `Chuyển tiền đến số tài khoản ${recipientAccountNo}`;
+    const result = await this.fineractService.transferFunds(
+      Number(fromUser.fineractClientId),
+      toAccount.clientId,
+      Number(fromWalletId),
+      toAccount.id,
+      amount,
+      transferNote,
+    );
+
+    // 7. Success - get updated info
+    const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
+    let toWalletInfo = null;
+    if (recipientUser) {
+      const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
+      toWalletInfo = recipientWallets.find(w => w.fineractId === String(toAccount.id));
+    }
+
+    return {
+      transactionId: String(result.resourceId),
+      fromWallet: updatedFromWallet,
+      toWallet: (toWalletInfo as any) || null,
     };
   }
 }

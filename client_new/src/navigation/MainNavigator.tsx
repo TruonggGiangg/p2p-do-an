@@ -1,6 +1,7 @@
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import HomeScreen from '../features/home/screens/HomeScreen';
@@ -17,6 +18,9 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainNavigator() {
     const { theme } = useTheme();
+    const insets = useSafeAreaInsets();
+
+    const bottomTabHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
 
     return (
         <Tab.Navigator
@@ -32,21 +36,31 @@ export default function MainNavigator() {
                         iconName = focused ? 'card' : 'card-outline';
                     }
 
-                    return <Ionicons name={iconName} size={22} color={color} />;
+                    return (
+                        <View style={styles.iconContainer}>
+                            <Ionicons name={iconName} size={focused ? 24 : 22} color={color} />
+                        </View>
+                    );
                 },
                 tabBarActiveTintColor: theme.colors.primary,
                 tabBarInactiveTintColor: theme.colors.textSecondary,
                 tabBarLabelStyle: {
-                    fontSize: 10,
-                    fontFamily: 'Poppins_500Medium',
-                    marginBottom: 4,
+                    fontSize: 11,
+                    fontFamily: 'Poppins_600SemiBold',
+                    marginTop: -4,
+                    marginBottom: Platform.OS === 'ios' ? 0 : 8,
                 },
                 tabBarStyle: {
                     backgroundColor: theme.colors.backgroundSecondary,
-                    borderTopColor: 'rgba(255,255,255,0.05)',
-                    height: Platform.OS === 'ios' ? 88 : 64,
-                    paddingBottom: Platform.OS === 'ios' ? 30 : 10,
-                    paddingTop: 10,
+                    borderTopWidth: 0,
+                    height: bottomTabHeight,
+                    paddingBottom: Platform.OS === 'ios' ? insets.bottom : 12,
+                    paddingTop: 12,
+                    elevation: 20,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -4 },
+                    shadowOpacity: theme.mode === 'dark' ? 0.3 : 0.1,
+                    shadowRadius: 10,
                 },
                 headerShown: false,
             })}
@@ -69,3 +83,9 @@ export default function MainNavigator() {
         </Tab.Navigator>
     );
 }
+const styles = StyleSheet.create({
+    iconContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+});

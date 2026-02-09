@@ -7,6 +7,7 @@ import {
     RefreshControl,
     ActivityIndicator,
     TouchableOpacity,
+    Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
@@ -50,6 +51,32 @@ export const WalletsScreen = () => {
     useEffect(() => {
         fetchWallets();
     }, []);
+
+    const handleSetDefault = async (wallet: Wallet) => {
+        if (wallet.isDefault) return;
+
+        const walletId = wallet.id || wallet._id;
+        if (!walletId) return;
+
+        Alert.alert(
+            'Ví mặc định',
+            `Bạn có muốn đặt ví ${wallet.productName || 'này'} làm ví mặc định không?`,
+            [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                    text: 'Đồng ý',
+                    onPress: async () => {
+                        try {
+                            await walletAPI.setDefaultWallet(walletId);
+                            fetchWallets();
+                        } catch (error) {
+                            Alert.alert('Lỗi', 'Không thể đặt ví làm mặc định');
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
     const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
@@ -121,7 +148,7 @@ export const WalletsScreen = () => {
                             <WalletCard
                                 key={wallet.id || wallet.fineractId}
                                 wallet={wallet}
-                                onPress={() => { }} // Could navigate to wallet details
+                                onPress={() => handleSetDefault(wallet)}
                             />
                         ))
                     ) : (

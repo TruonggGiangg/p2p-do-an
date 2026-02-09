@@ -42,6 +42,13 @@ export interface TransferByPhoneRequest {
     description?: string;
 }
 
+export interface TransferByAccountRequest {
+    fromWalletId: string;
+    recipientAccountNo: string;
+    amount: number;
+    description?: string;
+}
+
 export interface TransferResponse {
     transactionId: string;
     fromWallet: {
@@ -101,6 +108,18 @@ export const walletAPI = {
     /** Transfer money by phone number */
     transferByPhone: async (data: TransferByPhoneRequest): Promise<TransferResponse> => {
         const response = await api.post<{ data: TransferResponse }>('/api/wallets/transfer/phone', data);
+        return response.data.data;
+    },
+
+    /** Set a wallet as default */
+    setDefaultWallet: async (walletId: string): Promise<Wallet> => {
+        const response = await api.patch<{ data: Wallet }>(`/api/wallets/${walletId}/default`);
+        return response.data.data;
+    },
+
+    /** Transfer money by account number */
+    transferByAccountNumber: async (data: TransferByAccountRequest): Promise<TransferResponse> => {
+        const response = await api.post<{ data: TransferResponse }>('/api/wallets/transfer/account', data);
         return response.data.data;
     },
 };

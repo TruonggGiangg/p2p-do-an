@@ -32,53 +32,32 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
             console.log('[QRScanner] Scanned data:', data);
         }
 
-        // Parse QR data - expect format: phone number or JSON with phone
-        let phoneNumber: string | null = null;
+        // Parse QR data - expect format: account number, phone number or JSON with data
+        let scannedValue: string | null = null;
 
         try {
             // Try to parse as JSON first
             const parsed = JSON.parse(data);
-            if (parsed.phone || parsed.recipientPhone) {
-                phoneNumber = parsed.phone || parsed.recipientPhone;
-            } else if (parsed.type === 'transfer' && parsed.phone) {
-                phoneNumber = parsed.phone;
+            scannedValue = parsed.accountNo || parsed.phoneNumber || parsed.phone || parsed.recipientPhone;
+
+            if (!scannedValue && parsed.type === 'transfer' && (parsed.accountNo || parsed.phone)) {
+                scannedValue = parsed.accountNo || parsed.phone;
             }
         } catch {
-            // Not JSON, treat as plain phone number
-            const cleanPhone = data.replace(/\D/g, '');
-            if (cleanPhone.length === 10) {
-                phoneNumber = cleanPhone;
-            }
+            // Not JSON, treat as plain string (clean digits)
+            scannedValue = data.trim();
         }
 
-        // Validate phone number format (10 digits)
-        if (phoneNumber) {
-            const cleanPhone = phoneNumber.replace(/\D/g, '');
-            const phoneRegex = /^[0-9]{10}$/;
-
-            if (phoneRegex.test(cleanPhone)) {
-                if (__DEV__) {
-                    console.log('[QRScanner] Valid phone number:', cleanPhone);
-                }
-                onScan(cleanPhone);
-                onClose();
-            } else {
-                Alert.alert('Lỗi', 'QR code không hợp lệ. Số điện thoại phải có 10 chữ số.');
-                setScanned(false);
+        // Validate scanned value
+        if (scannedValue) {
+            if (__DEV__) {
+                console.log('[QRScanner] Valid data scanned:', scannedValue);
             }
+            onScan(scannedValue);
+            onClose();
         } else {
-            // Try to extract phone from plain text
-            const cleanPhone = data.replace(/\D/g, '');
-            if (cleanPhone.length === 10) {
-                if (__DEV__) {
-                    console.log('[QRScanner] Extracted phone from text:', cleanPhone);
-                }
-                onScan(cleanPhone);
-                onClose();
-            } else {
-                Alert.alert('Lỗi', 'QR code không hợp lệ. Vui lòng quét lại mã QR chứa số điện thoại (10 chữ số).');
-                setScanned(false);
-            }
+            Alert.alert('Lỗi', 'QR code không hợp lệ. Vui lòng quét mã QR chứa số tài khoản hoặc số điện thoại.');
+            setScanned(false);
         }
     };
 
@@ -168,7 +147,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                                         Đưa mã QR vào khung để quét
                                     </Text>
                                     <Text style={[styles.hintSubtext, { color: theme.colors.textSecondary }]}>
-                                        Mã QR chứa số điện thoại người nhận
+                                        Mã QR chứa số tài khoản hoặc số điện thoại người nhận
                                     </Text>
                                 </CommonCard>
                             </View>

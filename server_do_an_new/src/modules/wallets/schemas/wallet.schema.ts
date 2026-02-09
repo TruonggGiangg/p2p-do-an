@@ -8,6 +8,9 @@ export class Wallet extends Document {
 
   @Prop({ required: true, unique: true, index: true })
   fineractSavingsId: string;
+
+  @Prop({ default: false })
+  isDefault: boolean;
 }
 
 export const WalletSchema = SchemaFactory.createForClass(Wallet);

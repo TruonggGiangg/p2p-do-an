@@ -47,7 +47,7 @@ export const CommonInput: React.FC<CommonInputProps> = ({
     const borderColor = error
         ? theme.colors.error
         : isFocused
-            ? theme.colors.primary
+            ? '#FCD535'
             : theme.colors.border;
 
     const backgroundColor = isFocused
@@ -75,7 +75,7 @@ export const CommonInput: React.FC<CommonInputProps> = ({
                     <MaterialCommunityIcons
                         name={icon as any}
                         size={20}
-                        color={isFocused ? theme.colors.primary : theme.colors.textMuted}
+                        color={isFocused ? '#FCD535' : theme.colors.textMuted}
                         style={styles.icon}
                     />
                 )}
@@ -132,9 +132,9 @@ const styles = StyleSheet.create({
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: 48,
-        borderRadius: 8,
-        paddingHorizontal: 12,
+        height: 52,
+        borderRadius: 12,
+        paddingHorizontal: 16,
     },
     icon: {
         marginRight: 10,

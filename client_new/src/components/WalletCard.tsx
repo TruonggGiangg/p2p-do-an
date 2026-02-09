@@ -64,6 +64,12 @@ export const WalletCard: React.FC<WalletCardProps> = ({ wallet, onPress }) => {
                     <Text style={[styles.balanceText, { color: theme.colors.textPrimary }]}>
                         {formatCurrency(wallet.balance || 0, wallet.currency)}
                     </Text>
+                    {wallet.isDefault && (
+                        <View style={[styles.defaultBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
+                            <MaterialCommunityIcons name="star" size={10} color={theme.colors.primary} />
+                            <Text style={[styles.defaultText, { color: theme.colors.primary }]}>Default</Text>
+                        </View>
+                    )}
                     {isActive ? (
                         <View style={[styles.statusBadge, { backgroundColor: 'rgba(46, 189, 133, 0.1)' }]}>
                             <Text style={[styles.statusText, { color: '#2ebd85' }]}>Active</Text>
@@ -135,6 +141,22 @@ const styles = StyleSheet.create({
     statusText: {
         fontSize: 10,
         fontWeight: '600',
+        textTransform: 'uppercase',
+    },
+    defaultBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 0.5,
+        marginBottom: 4,
+        gap: 2,
+    },
+    defaultText: {
+        fontSize: 10,
+        fontWeight: '700',
+        fontFamily: 'Poppins_700Bold',
         textTransform: 'uppercase',
     },
 });

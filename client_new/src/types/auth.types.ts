@@ -12,8 +12,8 @@ export interface UserMetadata {
     lastSyncAt?: string;
     userType?: 'borrower' | 'lender';
     registeredAt?: string;
-  // Phone number is the external ID across systems (Keycloak username, Fineract externalId/mobileNo)
-  phone?: string;
+    // Phone number is the external ID across systems (Keycloak username, Fineract externalId/mobileNo)
+    phone?: string;
 }
 
 export interface User {
@@ -49,6 +49,7 @@ export interface Wallet {
     currency?: string;
     balance: number;
     status?: WalletStatus | string;
+    isDefault?: boolean;
     metadata?: {
         productName?: string;
         accountNo?: string;

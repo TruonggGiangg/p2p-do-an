@@ -603,6 +603,33 @@ export class FineractService {
   }
 
   /**
+   * Get Savings Account by Account Number
+   */
+  async getSavingsAccountByAccountNumber(accountNo: string): Promise<any | null> {
+    try {
+      this.logger.log(`[getSavingsAccountByAccountNumber] Searching for accountNo=${accountNo}`);
+
+      const response = await this.client.get('/savingsaccounts', {
+        params: {
+          accountNo: accountNo,
+        },
+      });
+
+      const accounts = response.data?.pageItems || [];
+      if (accounts.length === 0) {
+        this.logger.warn(`[getSavingsAccountByAccountNumber] No account found with accountNo=${accountNo}`);
+        return null;
+      }
+
+      // Return the first match (accountNo should be unique in Fineract)
+      return accounts[0];
+    } catch (error: any) {
+      this.logger.error(`[getSavingsAccountByAccountNumber] Failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Get Savings Account Transactions
    * Fetches transaction history for a savings account with pagination
    */

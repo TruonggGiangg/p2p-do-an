@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, HttpStatus, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, HttpStatus, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletsService } from './wallets.service';
@@ -170,6 +170,58 @@ export class WalletsController {
     return {
       statusCode: HttpStatus.OK,
       message: `Chuyển ${amount.toLocaleString('vi-VN')} VND thành công đến ${cleanPhone}`,
+      data: result,
+    };
+  }
+
+  @Patch(':id/default')
+  @ApiOperation({ summary: 'Set a wallet as default' })
+  @ApiResponse({ status: 200, description: 'Wallet set as default successful' })
+  async setDefaultWallet(
+    @CurrentUser() user: UserPayload,
+    @Param('id') id: string,
+  ) {
+    if (!user._id) {
+      throw new UnauthorizedException('User ID not found');
+    }
+
+    const wallet = await this.walletsService.setDefaultWallet(user._id, id);
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Đã đặt ví làm mặc định',
+      data: wallet,
+    };
+  }
+
+  @Post('transfer/account')
+  @ApiOperation({ summary: 'Transfer money by account number' })
+  @ApiResponse({ status: 200, description: 'Transfer successful' })
+  async transferByAccount(
+    @CurrentUser() user: UserPayload,
+    @Body() body: { fromWalletId: string; recipientAccountNo: string; amount: number; description?: string },
+  ) {
+    if (!user._id) {
+      throw new UnauthorizedException('User ID not found');
+    }
+
+    const { fromWalletId, recipientAccountNo, amount, description } = body;
+
+    if (!fromWalletId || !recipientAccountNo || !amount || amount < 1000) {
+      throw new BadRequestException('Thông tin không hợp lệ. Số tiền tối thiểu là 1,000 đ');
+    }
+
+    const result = await this.walletsService.transferByAccountNumber(
+      user._id,
+      fromWalletId,
+      recipientAccountNo,
+      amount,
+      description,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Chuyển ${amount.toLocaleString('vi-VN')} VND thành công đến số tài khoản ${recipientAccountNo}`,
       data: result,
     };
   }
