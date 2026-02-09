@@ -4,7 +4,7 @@
 
 Tài liệu này liệt kê các features đã được implement và chưa được implement trong hệ thống P2P Lending.
 
-**Last Updated**: 2026-01-26
+**Last Updated**: 2026-02-09
 
 ---
 
@@ -35,6 +35,12 @@ Tài liệu này liệt kê các features đã được implement và chưa đư
   - Token refresh mechanism
   - Auto token injection vào API requests
   - Session expiration handling
+
+- [x] **Smart OTP & 2FA (Đang hoàn thiện)**
+  - Device binding với Smart OTP
+  - Ký số giao dịch bằng OTP
+  - TOTP (Google Authenticator) setup
+  - Xác thực hai yếu tố cho giao dịch nhạy cảm
 
 - [x] **User Profile**
   - View user information
@@ -568,9 +574,34 @@ Tài liệu này liệt kê các features đã được implement và chưa đư
   - Configurable limits
 
 - [x] **Swagger Documentation**
-  - API documentation
-  - Swagger UI
-  - API schemas
+  - API documentation (đầy đủ Tags và mô tả tiếng Việt)
+  - Swagger UI tại `/api/docs`
+  - API schemas với DTOs chi tiết
+  - Bearer Auth integration
+
+---
+
+### 🛡️ Smart OTP Module (Mới)
+
+- [x] **Device Binding**
+  - Đăng ký thiết bị với khoá bí mật
+  - Xác minh thiết bị
+  - Huỷ liên kết thiết bị
+
+- [x] **OTP Verification**
+  - Tạo OTP request
+  - Xác thực OTP với chữ ký
+  - Kiểm tra trạng thái thiết bị
+
+---
+
+### 🔐 Two-Factor Authentication Module (Mới)
+
+- [x] **TOTP Setup**
+  - Tạo secret key và QR Code
+  - Xác thực TOTP (Google Authenticator)
+  - Kiểm tra trạng thái 2FA
+  - Bật/Tắt 2FA cho tài khoản
 
 ---
 
@@ -777,6 +808,11 @@ Tài liệu này liệt kê các features đã được implement và chưa đư
 
 ## 🔄 Update Log
 
+- **2026-02-09**: Cập nhật sau khi hoàn thành Swagger Documentation và Security Modules
+  - Thêm Smart OTP Module (Server hoàn tất, Client đang phát triển)
+  - Thêm Two-Factor Authentication Module
+  - Hoàn thành Swagger Documentation chuyên nghiệp
+  - Refactor FineractService theo Facade Pattern
 - **2026-01-26**: Initial documentation created
   - Listed all completed features
   - Identified missing features

@@ -435,6 +435,42 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
 ---
 
+### 9. **Facade Pattern (NEW)**
+
+**Mô tả**: Cung cấp một interface đơn giản, thống nhất cho một hệ thống con phức tạp.
+
+**Implementation**:
+- `FineractService` (facade) → `FineractClientService`, `FineractLoanService`, `FineractSavingsService`
+
+**Ví dụ**:
+```typescript
+// fineract.service.ts (Facade)
+@Injectable()
+export class FineractService {
+    constructor(
+        private readonly clientService: FineractClientService,
+        private readonly loanService: FineractLoanService,
+        private readonly savingsService: FineractSavingsService,
+    ) {}
+
+    // Facade methods delegate to specialized services
+    async createClient(payload) {
+        return this.clientService.createClient(payload);
+    }
+    
+    async getLoanSchedule(loanId) {
+        return this.loanService.getRepaymentSchedule(loanId);
+    }
+}
+```
+
+**Lợi ích**:
+- Giảm độ phức tạp cho các module khác khi sử dụng Fineract
+- Backwards compatibility: Giữ nguyên interface cũ ngay cả khi cấu trúc bên dưới thay đổi
+- Dễ dàng mở rộng và bảo trì từng service con
+
+---
+
 ### 9. **DTO Pattern (Data Transfer Object)**
 
 **Mô tả**: Sử dụng DTOs để validate và transfer data.
@@ -512,8 +548,10 @@ export class CreateBnplLoanDto {
 | Interceptor Pattern | ✅ (Axios) | ✅ (NestJS) | Request/Response handling |
 | Strategy Pattern | ❌ | ✅ (Auth strategies) | Algorithm selection |
 | Guard Pattern | ❌ | ✅ | Route protection |
-| Factory Pattern | ✅ (Theme) | ❌ | Object creation |
+| Factory Pattern | ✅ (Theme) | ✅ (Axios Client) | Object creation |
 | Singleton Pattern | ✅ (API client) | ✅ (Services) | Single instance |
+| **Facade Pattern** | ❌ | ✅ (FineractService) | Simplify complex subsystem |
+| DTO Pattern | ✅ (Types) | ✅ (class-validator) | Data validation & transfer |
 
 ---
 
@@ -524,3 +562,10 @@ export class CreateBnplLoanDto {
 3. **DRY (Don't Repeat Yourself)**: Reuse code qua hooks, utilities
 4. **Dependency Inversion**: Depend on abstractions, not concretions
 5. **Open/Closed Principle**: Open for extension, closed for modification
+
+---
+
+## 🔄 Update Log
+
+- **2026-02-09**: Thêm Facade Pattern được triển khai trong `FineractService`
+- **2026-01-26**: Initial documentation created
