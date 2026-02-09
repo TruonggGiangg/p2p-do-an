@@ -14,11 +14,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import {
-    GradientBackground,
-    GlassCard,
     CommonButton,
     CommonInput,
-    CustomHeader
 } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 

@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GradientBackground, GlassCard, GlassButton, CustomHeader } from '../../../components';
+import { BinanceHeader } from '../../../components/BinanceHeader';
 import { RoleBadges } from '../../../components/RoleBadge';
 import { SmartOTPSection, TwoFactorSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
@@ -17,141 +17,130 @@ export default function ProfileScreen() {
     const initials = getUserInitials(user);
     const email = getUserEmail(user);
     const phone = getUserPhone(user);
+    const uid = user?._id?.toString().slice(-8).toUpperCase() || 'P2P-8888';
+
+    const SettingItem = ({ icon, title, subtitle, onPress, rightElement, color }: any) => (
+        <TouchableOpacity
+            style={[styles.settingItem, { borderBottomColor: theme.colors.border + '40' }]}
+            onPress={onPress}
+            disabled={!onPress}
+        >
+            <View style={[styles.settingIconContainer, { backgroundColor: (color || theme.colors.primary) + '15' }]}>
+                <MaterialCommunityIcons
+                    name={icon}
+                    size={22}
+                    color={color || theme.colors.primary}
+                />
+            </View>
+            <View style={styles.settingContent}>
+                <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
+                {subtitle && <Text style={[styles.settingSubtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text>}
+            </View>
+            {rightElement || <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textDim} />}
+        </TouchableOpacity>
+    );
 
     return (
-        <GradientBackground>
-            <CustomHeader title="Hồ sơ" />
-            <ScrollView 
-                style={styles.container} 
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <BinanceHeader
+                mode="standard"
+                title="Profile"
+                showBack={true}
+            />
+
+            <ScrollView
+                style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
             >
-                {/* Header Card */}
-                <GlassCard style={styles.card}>
-                    <View style={styles.header}>
-                        {/* Avatar */}
-                        <View
-                            style={[
-                                styles.avatar,
-                                {
-                                    backgroundColor: theme.colors.primaryGlass,
-                                    borderColor: theme.colors.primaryBorder,
-                                },
-                            ]}
-                        >
-                            <Text
-                                style={[
-                                    styles.avatarText,
-                                    {
-                                        color: theme.colors.primary,
-                                    },
-                                ]}
-                            >
-                                {initials}
-                            </Text>
+                {/* User Info Header Section */}
+                <View style={styles.userInfoSection}>
+                    <View style={styles.avatarWrapper}>
+                        <View style={[styles.avatar, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
+                            <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
                         </View>
-
-                        {/* Name */}
-                        <View style={styles.nameContainer}>
-                            <View style={[styles.nameWrapper, { backgroundColor: theme.colors.primary + '15' }]}>
-                                <Text style={[styles.name, { color: theme.colors.primary }]} numberOfLines={2}>
-                                    {displayName}
-                                </Text>
-                            </View>
-                        </View>
-
-                        {/* Email with Icon */}
-                        {email && (
-                            <View style={styles.infoContainer}>
-                                <MaterialCommunityIcons
-                                    name="email-outline"
-                                    size={18}
-                                    color={theme.colors.textMuted}
-                                    style={styles.infoIcon}
-                                />
-                                <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                    {email}
-                                </Text>
-                            </View>
-                        )}
-
-                        {/* Phone with Icon */}
-                        {phone && (
-                            <View style={styles.infoContainer}>
-                                <MaterialCommunityIcons
-                                    name="phone-outline"
-                                    size={18}
-                                    color={theme.colors.textMuted}
-                                    style={styles.infoIcon}
-                                />
-                                <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                    {phone}
-                                </Text>
-                            </View>
-                        )}
-
-                        {/* Role Badges */}
-                        <View style={styles.roleBadgesContainer}>
-                            <RoleBadges roles={user?.roles || []} />
+                        <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success }]}>
+                            <MaterialCommunityIcons name="check-decagram" size={14} color="#000" />
                         </View>
                     </View>
-                </GlassCard>
 
-                {/* Theme Toggle Card */}
-                <GlassCard style={styles.card}>
-                    <View style={styles.section}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingLeft}>
-                                <View style={[styles.settingIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
-                                    <MaterialCommunityIcons
-                                        name={isDark ? 'weather-night' : 'weather-sunny'}
-                                        size={24}
-                                        color={theme.colors.primary}
-                                    />
-                                </View>
-                                <View style={styles.settingTextContainer}>
-                                    <Text style={[styles.settingTitle, { color: theme.colors.textPrimary }]}>
-                                        Giao diện
-                                    </Text>
-                                    <Text style={[styles.settingSubtitle, { color: theme.colors.textMuted }]}>
-                                        {isDark ? 'Chế độ tối' : 'Chế độ sáng'}
-                                    </Text>
-                                </View>
+                    <View style={styles.userBaseInfo}>
+                        <View style={styles.nameRow}>
+                            <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{displayName}</Text>
+                            <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+                                <Text style={[styles.levelText, { color: theme.colors.primary }]}>VIP 1</Text>
                             </View>
+                        </View>
+                        <Text style={[styles.userUid, { color: theme.colors.textSecondary }]}>UID: {uid}</Text>
+                    </View>
+                </View>
+
+                {/* Role Badges */}
+                <View style={styles.badgesWrapper}>
+                    <RoleBadges roles={user?.roles || []} />
+                </View>
+
+                <View style={[styles.divider, { backgroundColor: theme.colors.border + '20' }]} />
+
+                {/* Settings Sections */}
+                <View style={styles.menuSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>PREFERENCES</Text>
+
+                    <SettingItem
+                        icon={isDark ? 'weather-night' : 'weather-sunny'}
+                        title="Appearance"
+                        subtitle={isDark ? 'Dark Mode' : 'Light Mode'}
+                        rightElement={
                             <Switch
                                 value={isDark}
                                 onValueChange={toggleTheme}
                                 trackColor={{
-                                    false: theme.colors.surfaceLight,
-                                    true: theme.colors.primaryGlass,
+                                    false: theme.colors.border,
+                                    true: theme.colors.primary + '80',
                                 }}
-                                thumbColor={isDark ? theme.colors.primary : theme.colors.textMuted}
-                                ios_backgroundColor={theme.colors.surfaceLight}
+                                thumbColor={isDark ? theme.colors.primary : '#fff'}
                             />
-                        </View>
-                    </View>
-                </GlassCard>
+                        }
+                    />
 
-                {/* Smart OTP Section */}
-                <View style={styles.sectionSpacing}>
-                    <SmartOTPSection />
+                    <SettingItem
+                        icon="earth"
+                        title="Language"
+                        subtitle="Tiếng Việt (Vietnam)"
+                    />
                 </View>
 
-                {/* Two Factor Section */}
-                <View style={styles.sectionSpacing}>
+                <View style={styles.menuSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SECURITY</Text>
+                    <SmartOTPSection />
+                    <View style={{ height: 12 }} />
                     <TwoFactorSection />
                 </View>
 
+                <View style={styles.menuSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SUPPORT</Text>
+                    <SettingItem
+                        icon="help-circle-outline"
+                        title="Help Center"
+                    />
+                    <SettingItem
+                        icon="chat-processing-outline"
+                        title="Live Chat"
+                    />
+                </View>
+
                 {/* Logout Button */}
-                <GlassButton
-                    title="ĐĂNG XUẤT"
+                <TouchableOpacity
+                    style={[styles.logoutBtn, { borderTopColor: theme.colors.border + '40', borderBottomColor: theme.colors.border + '40' }]}
                     onPress={logout}
-                    variant="error"
-                    icon="logout"
-                    style={styles.logoutButton}
-                />
+                >
+                    <MaterialCommunityIcons name="logout" size={20} color={theme.colors.error} />
+                    <Text style={[styles.logoutText, { color: theme.colors.error }]}>Log Out</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.versionText, { color: theme.colors.textDim }]}>Version 2.85.0</Text>
             </ScrollView>
-        </GradientBackground>
+        </View>
     );
 }
 
@@ -159,128 +148,140 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    scrollView: {
+        flex: 1,
+    },
     scrollContent: {
-        paddingHorizontal: 20,
-        paddingTop: 16,
-        paddingBottom: 24,
+        paddingBottom: 40,
     },
-    card: {
-        marginBottom: 16,
-    },
-    sectionSpacing: {
-        marginBottom: 16,
-    },
-    header: {
+    userInfoSection: {
+        flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 16,
-        paddingHorizontal: 8,
+        padding: 20,
+        paddingTop: 10,
+    },
+    avatarWrapper: {
+        position: 'relative',
     },
     avatar: {
-        width: 104,
-        height: 104,
-        borderRadius: 52,
+        width: 64,
+        height: 64,
+        borderRadius: 32,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 20,
-        borderWidth: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     avatarText: {
-        fontSize: 40,
-        fontWeight: 'bold',
-        fontFamily: 'Poppins_700Bold',
-    },
-    nameContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 12,
-        paddingHorizontal: 16,
-        width: '100%',
-    },
-    nameWrapper: {
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: 16,
-        borderWidth: 1.5,
-        borderColor: 'transparent',
-    },
-    name: {
         fontSize: 24,
         fontWeight: 'bold',
         fontFamily: 'Poppins_700Bold',
-        textAlign: 'center',
-        letterSpacing: 0.5,
-        textShadowColor: 'rgba(0, 0, 0, 0.1)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
     },
-    infoContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
+    verifiedBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         justifyContent: 'center',
-        marginBottom: 10,
-        paddingHorizontal: 20,
-        width: '100%',
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        paddingVertical: 10,
-        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#0b0e11',
     },
-    infoIcon: {
-        marginRight: 10,
+    userBaseInfo: {
+        marginLeft: 16,
+        flex: 1,
     },
-    infoText: {
-        fontSize: 14,
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    userName: {
+        fontSize: 20,
+        fontWeight: '700',
+        fontFamily: 'Poppins_700Bold',
+        marginRight: 8,
+    },
+    levelBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    levelText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    userUid: {
+        fontSize: 13,
         fontFamily: 'Poppins_400Regular',
-        textAlign: 'left',
-        flex: 1,
     },
-    roleBadgesContainer: {
-        marginTop: 8,
+    badgesWrapper: {
+        paddingHorizontal: 20,
+        marginBottom: 20,
+    },
+    divider: {
+        height: 8,
         width: '100%',
-        alignItems: 'center',
     },
-    section: {
-        width: '100%',
-        paddingVertical: 4,
+    menuSection: {
+        paddingTop: 20,
+        paddingHorizontal: 20,
     },
-    settingRow: {
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: '600',
+        letterSpacing: 1,
+        marginBottom: 10,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    settingItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 4,
-    },
-    settingLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
+        paddingVertical: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
     },
     settingIconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         justifyContent: 'center',
+        alignItems: 'center',
         marginRight: 14,
     },
-    settingTextContainer: {
+    settingContent: {
         flex: 1,
     },
     settingTitle: {
+        fontSize: 15,
+        fontWeight: '500',
+        fontFamily: 'Poppins_500Medium',
+    },
+    settingSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
+        fontFamily: 'Poppins_400Regular',
+    },
+    logoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 40,
+        paddingVertical: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        gap: 8,
+    },
+    logoutText: {
         fontSize: 16,
         fontWeight: '600',
         fontFamily: 'Poppins_600SemiBold',
-        marginBottom: 4,
     },
-    settingSubtitle: {
-        fontSize: 14,
+    versionText: {
+        textAlign: 'center',
+        marginTop: 20,
+        fontSize: 12,
         fontFamily: 'Poppins_400Regular',
-    },
-    logoutButton: {
-        marginTop: 24,
-        marginBottom: 8,
     },
 });

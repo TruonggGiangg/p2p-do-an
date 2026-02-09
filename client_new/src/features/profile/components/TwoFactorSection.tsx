@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Plat
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GlassCard, GlassButton } from '../../../components';
 import { useTwoFactor } from '../../../shared/hooks';
+import { CommonButton, CommonCard } from '../../../components';
 
 export const TwoFactorSection: React.FC = () => {
   const { theme } = useTheme();
@@ -126,7 +126,7 @@ export const TwoFactorSection: React.FC = () => {
         const issuer = 'P2P Lending';
         const label = 'P2P Lending';
         const otpauthUrl = secret.otpauthUrl || `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret.secret)}&issuer=${encodeURIComponent(issuer)}`;
-        
+
         const supported = await Linking.canOpenURL(otpauthUrl);
         if (!supported) {
           Alert.alert('Thông báo', 'Không tìm thấy ứng dụng Google Authenticator');
@@ -143,28 +143,29 @@ export const TwoFactorSection: React.FC = () => {
 
   return (
     <>
-      <GlassCard>
+      <CommonCard style={styles.card}>
         <View style={styles.section}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <MaterialCommunityIcons
-                name={isEnabled ? 'shield-check' : 'shield-alert'}
-                size={28}
-                color={isEnabled ? theme.colors.success : theme.colors.primary}
-                style={styles.icon}
-              />
+              <View style={[styles.iconWrapper, { backgroundColor: isEnabled ? theme.colors.success + '20' : theme.colors.primary + '20' }]}>
+                <MaterialCommunityIcons
+                  name={isEnabled ? 'shield-check' : 'shield-alert'}
+                  size={22}
+                  color={isEnabled ? theme.colors.success : theme.colors.primary}
+                />
+              </View>
               <View style={styles.titleContainer}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                  Xác thực 2 yếu tố (2FA)
+                  Two-Factor (2FA)
                 </Text>
                 <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {isEnabled ? 'Đã kích hoạt' : 'Chưa kích hoạt'}
+                  {isEnabled ? 'Enabled' : 'Disabled'}
                 </Text>
               </View>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: isEnabled ? theme.colors.success + '20' : theme.colors.textMuted + '20' }]}>
               <Text style={[styles.statusText, { color: isEnabled ? theme.colors.success : theme.colors.textMuted }]}>
-                {isEnabled ? 'BẬT' : 'TẮT'}
+                {isEnabled ? 'ON' : 'OFF'}
               </Text>
             </View>
             <TouchableOpacity
@@ -173,8 +174,8 @@ export const TwoFactorSection: React.FC = () => {
             >
               <MaterialCommunityIcons
                 name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={24}
-                color={theme.colors.textSecondary}
+                size={20}
+                color={theme.colors.textDim}
               />
             </TouchableOpacity>
           </View>
@@ -192,31 +193,35 @@ export const TwoFactorSection: React.FC = () => {
                   <View style={[styles.stateIconContainer, { backgroundColor: theme.colors.success + '15' }]}>
                     <MaterialCommunityIcons
                       name="shield-check"
-                      size={56}
+                      size={48}
                       color={theme.colors.success}
                     />
                   </View>
                   <Text style={[styles.stateText, { color: theme.colors.textPrimary }]}>
-                    2FA đã được kích hoạt
+                    2FA is Enabled
                   </Text>
                   <Text style={[styles.stateSubtext, { color: theme.colors.textMuted }]}>
-                    Tài khoản của bạn được bảo vệ bằng xác thực 2 yếu tố
+                    Your account is protected with two-factor authentication.
                   </Text>
                   <View style={styles.actions}>
-                    <GlassButton
+                    <CommonButton
                       title="TEST 2FA"
                       onPress={() => setShowTestModal(true)}
+                      variant="outline"
+                      size="sm"
                       icon="test-tube"
-                      variant="secondary"
-                      style={styles.actionButton}
+                      fullWidth={false}
+                      style={styles.testBtn}
                     />
-                    <GlassButton
-                      title="TẮT 2FA"
+                    <CommonButton
+                      title="DISABLE 2FA"
                       onPress={handleDisable}
+                      variant="outline"
+                      size="sm"
                       icon="shield-off"
-                      variant="error"
-                      loading={isLoading}
-                      style={styles.actionButton}
+                      fullWidth={false}
+                      style={styles.disableBtn}
+                      textStyle={{ color: theme.colors.error }}
                     />
                   </View>
                 </View>
@@ -224,32 +229,29 @@ export const TwoFactorSection: React.FC = () => {
                 <View style={styles.disabledState}>
                   <View style={[styles.stateIconContainer, { backgroundColor: theme.colors.textMuted + '15' }]}>
                     <MaterialCommunityIcons
-                      name="shield-alert"
-                      size={56}
+                      name="shield-alert-outline"
+                      size={48}
                       color={theme.colors.textMuted}
                     />
                   </View>
                   <Text style={[styles.stateText, { color: theme.colors.textPrimary }]}>
-                    Chưa kích hoạt 2FA
+                    2FA is Disabled
                   </Text>
                   <Text style={[styles.stateSubtext, { color: theme.colors.textMuted }]}>
-                    Kích hoạt để tăng cường bảo mật cho tài khoản
+                    Enable two-factor authentication to secure your account.
                   </Text>
-                  <View style={styles.actions}>
-                    <GlassButton
-                      title="TẠO SECRET"
-                      onPress={handleGetSecret}
-                      icon="qrcode-scan"
-                      loading={isLoading}
-                      style={styles.actionButton}
-                    />
-                  </View>
+                  <CommonButton
+                    title="ACTIVATE 2FA"
+                    onPress={handleGetSecret}
+                    icon="shield-plus-outline"
+                    style={styles.enableBtn}
+                  />
                 </View>
               )}
             </View>
           )}
         </View>
-      </GlassCard>
+      </CommonCard>
 
       {/* QR Code Modal */}
       <Modal
@@ -320,13 +322,13 @@ export const TwoFactorSection: React.FC = () => {
                     <View style={[
                       styles.otpInputWrapper,
                       {
-                        borderColor: otpCode.length === 6 
-                          ? theme.colors.success 
-                          : error 
-                            ? theme.colors.error 
+                        borderColor: otpCode.length === 6
+                          ? theme.colors.success
+                          : error
+                            ? theme.colors.error
                             : theme.colors.border,
-                        backgroundColor: otpCode.length === 6 
-                          ? theme.colors.success + '10' 
+                        backgroundColor: otpCode.length === 6
+                          ? theme.colors.success + '10'
                           : theme.colors.surfaceLight,
                       },
                     ]}>
@@ -358,30 +360,30 @@ export const TwoFactorSection: React.FC = () => {
 
                   {/* Action Buttons */}
                   <View style={styles.modalActions}>
-                    <GlassButton
-                      title="MỞ GOOGLE AUTHENTICATOR"
+                    <CommonButton
+                      title="OPEN GOOGLE AUTHENTICATOR"
                       onPress={openGoogleAuthenticator}
-                      icon="open-in-app"
                       variant="secondary"
+                      icon="open-in-app"
                       style={styles.modalButton}
                     />
-                    <GlassButton
-                      title="KÍCH HOẠT 2FA"
+                    <CommonButton
+                      title="ENABLE 2FA"
                       onPress={handleConfirmEnable}
-                      icon="shield-check"
                       loading={isLoading}
                       disabled={otpCode.length !== 6}
+                      icon="shield-check"
                       style={styles.modalButton}
                     />
-                    <GlassButton
-                      title="HỦY"
+                    <CommonButton
+                      title="CANCEL"
                       onPress={() => {
                         setShowQRModal(false);
                         setOpenedGA(false);
                         setOtpCode('');
                         clearError();
                       }}
-                      variant="secondary"
+                      variant="ghost"
                       style={styles.modalButton}
                     />
                   </View>
@@ -461,13 +463,13 @@ export const TwoFactorSection: React.FC = () => {
                   <View style={[
                     styles.otpInputWrapper,
                     {
-                      borderColor: testOtpCode.length === 6 
-                        ? theme.colors.success 
-                        : error 
-                          ? theme.colors.error 
+                      borderColor: testOtpCode.length === 6
+                        ? theme.colors.success
+                        : error
+                          ? theme.colors.error
                           : theme.colors.border,
-                      backgroundColor: testOtpCode.length === 6 
-                        ? theme.colors.success + '10' 
+                      backgroundColor: testOtpCode.length === 6
+                        ? theme.colors.success + '10'
                         : theme.colors.surfaceLight,
                     },
                   ]}>
@@ -499,8 +501,8 @@ export const TwoFactorSection: React.FC = () => {
 
                 {/* Action Buttons */}
                 <View style={styles.modalActions}>
-                  <GlassButton
-                    title="KIỂM TRA"
+                  <CommonButton
+                    title="VERIFY"
                     onPress={async () => {
                       if (!testOtpCode || testOtpCode.length !== 6) {
                         Alert.alert('Lỗi', 'Vui lòng nhập mã OTP 6 số');
@@ -511,8 +513,8 @@ export const TwoFactorSection: React.FC = () => {
                       const isValid = await verifyToken(testOtpCode);
                       if (isValid) {
                         Alert.alert(
-                          '✅ Thành công',
-                          '2FA hoạt động đúng! Mã OTP hợp lệ.',
+                          '✅ Success',
+                          '2FA working correctly!',
                           [
                             {
                               text: 'OK',
@@ -525,7 +527,7 @@ export const TwoFactorSection: React.FC = () => {
                           ],
                         );
                       } else {
-                        Alert.alert('❌ Lỗi', error || 'Mã OTP không đúng. Vui lòng thử lại.');
+                        Alert.alert('❌ Error', error || 'Invalid OTP code.');
                         setTestOtpCode('');
                       }
                     }}
@@ -534,14 +536,14 @@ export const TwoFactorSection: React.FC = () => {
                     disabled={testOtpCode.length !== 6 || isLoading}
                     style={styles.modalButton}
                   />
-                  <GlassButton
-                    title="HỦY"
+                  <CommonButton
+                    title="CANCEL"
                     onPress={() => {
                       setShowTestModal(false);
                       setTestOtpCode('');
                       clearError();
                     }}
-                    variant="secondary"
+                    variant="ghost"
                     style={styles.modalButton}
                   />
                 </View>
@@ -556,6 +558,12 @@ export const TwoFactorSection: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
   section: {
     width: '100%',
   },
@@ -563,47 +571,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    minWidth: 0, // Allow text to shrink
-    marginRight: 8,
+  },
+  iconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   titleContainer: {
     flex: 1,
-    minWidth: 0, // Allow text to shrink
-  },
-  icon: {
-    marginRight: 14,
-    flexShrink: 0,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
-    marginBottom: 2,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Poppins_400Regular',
+    marginTop: 2,
   },
   statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-    marginLeft: 8,
-    flexShrink: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 10,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     fontFamily: 'Poppins_700Bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   expandButton: {
     padding: 4,
@@ -628,13 +632,7 @@ const styles = StyleSheet.create({
   },
   enabledState: {
     alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 20,
-  },
-  disabledState: {
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   stateIcon: {
     marginBottom: 16,
@@ -666,11 +664,54 @@ const styles = StyleSheet.create({
   },
   actions: {
     width: '100%',
+    flexDirection: 'row',
     gap: 12,
   },
-  actionButton: {
+  testBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  testBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  disableBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  disableBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  disabledState: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  enableBtn: {
     width: '100%',
-    minHeight: 52,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  enableBtnText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: 'Poppins_600SemiBold',
   },
   modalContainer: {
     flex: 1,

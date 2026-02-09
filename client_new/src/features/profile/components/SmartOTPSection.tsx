@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GlassCard, GlassButton } from '../../../components';
 import { useSmartOTP } from '../../../shared/hooks';
+import { CommonButton, CommonCard } from '../../../components';
 import type { DeviceBindingInfo } from '../../../types/otp.types';
 
 export const SmartOTPSection: React.FC = () => {
@@ -68,24 +68,25 @@ export const SmartOTPSection: React.FC = () => {
   };
 
   return (
-    <GlassCard>
+    <CommonCard style={styles.card}>
       <View style={styles.section}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <MaterialCommunityIcons
-              name="shield-lock"
-              size={28}
-              color={theme.colors.primary}
-              style={styles.icon}
-            />
-            <View>
+            <View style={[styles.iconWrapper, { backgroundColor: isRegistered ? theme.colors.primary + '20' : theme.colors.textMuted + '20' }]}>
+              <MaterialCommunityIcons
+                name="shield-lock"
+                size={22}
+                color={isRegistered ? theme.colors.primary : theme.colors.textMuted}
+              />
+            </View>
+            <View style={styles.titleContainer}>
               <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
                 Smart OTP
               </Text>
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
                 {isRegistered
-                  ? `${devices.length} thiết bị đã đăng ký`
-                  : 'Chưa đăng ký thiết bị'}
+                  ? `${devices.length} registered device(s)`
+                  : 'No devices registered'}
               </Text>
             </View>
           </View>
@@ -95,8 +96,8 @@ export const SmartOTPSection: React.FC = () => {
           >
             <MaterialCommunityIcons
               name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={24}
-              color={theme.colors.textSecondary}
+              size={20}
+              color={theme.colors.textDim}
             />
           </TouchableOpacity>
         </View>
@@ -112,34 +113,37 @@ export const SmartOTPSection: React.FC = () => {
             {isRegistered ? (
               <>
                 {/* Current OTP Display */}
-                <View style={[styles.otpBox, { backgroundColor: theme.colors.primaryGlass }]}>
-                  <Text style={[styles.otpLabel, { color: theme.colors.textSecondary }]}>
-                    Mã OTP hiện tại
+                <View style={[styles.otpBox, { backgroundColor: theme.colors.primary + '10' }]}>
+                  <Text style={[styles.otpLabel, { color: theme.colors.textMuted }]}>
+                    CURRENT OTP CODE
                   </Text>
                   <Text style={[styles.otpCode, { color: theme.colors.primary }]}>
                     {otp || '--- ---'}
                   </Text>
-                  <Text style={[styles.otpTimer, { color: theme.colors.textMuted }]}>
-                    Còn lại: {timeRemaining}s
-                  </Text>
+                  <View style={styles.timerWrapper}>
+                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.textDim} />
+                    <Text style={[styles.otpTimer, { color: theme.colors.textMuted }]}>
+                      Expires in: {timeRemaining}s
+                    </Text>
+                  </View>
                 </View>
 
                 {/* Devices List */}
                 <View style={styles.devicesSection}>
                   <Text style={[styles.devicesTitle, { color: theme.colors.textPrimary }]}>
-                    Thiết bị đã đăng ký ({devices.length})
+                    Registered Devices
                   </Text>
                   <ScrollView style={styles.devicesList}>
                     {devices.map((device: DeviceBindingInfo) => (
                       <View
                         key={device.deviceId}
-                        style={[styles.deviceItem, { borderColor: theme.colors.border }]}
+                        style={[styles.deviceItem, { borderBottomColor: theme.colors.border + '20' }]}
                       >
                         <View style={styles.deviceInfo}>
-                          <View style={[styles.deviceIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                          <View style={[styles.deviceIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
                             <MaterialCommunityIcons
                               name="cellphone"
-                              size={22}
+                              size={20}
                               color={theme.colors.primary}
                             />
                           </View>
@@ -150,8 +154,7 @@ export const SmartOTPSection: React.FC = () => {
                             <Text
                               style={[styles.deviceMeta, { color: theme.colors.textMuted }]}
                             >
-                              {device.fingerprint?.os || 'Unknown OS'} • Đăng ký:{' '}
-                              {device.registeredAt
+                              {device.fingerprint?.os || 'Unknown OS'} • {device.registeredAt
                                 ? new Date(device.registeredAt).toLocaleDateString('vi-VN')
                                 : 'N/A'}
                             </Text>
@@ -159,7 +162,7 @@ export const SmartOTPSection: React.FC = () => {
                         </View>
                         <TouchableOpacity
                           onPress={() => handleRevoke(device.deviceId, device.deviceName || '')}
-                          style={[styles.revokeButton, { backgroundColor: theme.colors.error + '20' }]}
+                          style={styles.revokeButton}
                         >
                           <MaterialCommunityIcons
                             name="delete-outline"
@@ -176,16 +179,16 @@ export const SmartOTPSection: React.FC = () => {
               <View style={styles.emptyState}>
                 <View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.textMuted + '15' }]}>
                   <MaterialCommunityIcons
-                    name="shield-off"
-                    size={56}
+                    name="shield-off-outline"
+                    size={48}
                     color={theme.colors.textMuted}
                   />
                 </View>
-                <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-                  Chưa đăng ký thiết bị cho Smart OTP
+                <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>
+                  Smart OTP Disabled
                 </Text>
                 <Text style={[styles.emptySubtext, { color: theme.colors.textMuted }]}>
-                  Đăng ký để bảo vệ tài khoản với mã OTP tự động
+                  Register this device to receive automatic OTP codes for secure transactions.
                 </Text>
               </View>
             )}
@@ -193,32 +196,38 @@ export const SmartOTPSection: React.FC = () => {
             {/* Action Buttons */}
             <View style={styles.actions}>
               {!isRegistered ? (
-                <GlassButton
-                  title="ĐĂNG KÝ THIẾT BỊ"
+                <CommonButton
+                  title="REGISTER THIS DEVICE"
                   onPress={handleRegister}
-                  icon="shield-check"
                   loading={isLoading}
-                  style={styles.actionButton}
+                  icon="cellphone-check"
+                  style={styles.registerBtn}
                 />
               ) : (
-                <GlassButton
-                  title="LÀM MỚI DANH SÁCH"
+                <CommonButton
+                  title="REFRESH DEVICES"
                   onPress={fetchDevices}
-                  icon="refresh"
                   loading={isLoading}
-                  variant="secondary"
-                  style={styles.actionButton}
+                  variant="outline"
+                  icon="refresh"
+                  style={styles.refreshBtn}
                 />
               )}
             </View>
           </View>
         )}
       </View>
-    </GlassCard>
+    </CommonCard>
   );
 };
 
 const styles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
   section: {
     width: '100%',
   },
@@ -232,74 +241,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  icon: {
-    marginRight: 14,
+  iconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  titleContainer: {
+    flex: 1,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
-    marginBottom: 2,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Poppins_400Regular',
+    marginTop: 2,
   },
   expandButton: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 4,
   },
   content: {
     marginTop: 20,
-    paddingTop: 4,
   },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 8,
     marginBottom: 20,
-    borderWidth: 1,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Poppins_400Regular',
     flex: 1,
   },
   otpBox: {
-    padding: 24,
-    borderRadius: 16,
+    padding: 20,
+    borderRadius: 12,
     alignItems: 'center',
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   otpLabel: {
-    fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
     marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   otpCode: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '700',
     fontFamily: 'Poppins_700Bold',
-    letterSpacing: 10,
-    marginBottom: 10,
+    letterSpacing: 8,
+    marginBottom: 8,
+  },
+  timerWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   otpTimer: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Poppins_400Regular',
   },
   devicesSection: {
     marginBottom: 20,
   },
   devicesTitle: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   devicesList: {
     maxHeight: 240,
@@ -308,10 +324,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   deviceInfo: {
     flexDirection: 'row',
@@ -319,73 +333,83 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   deviceIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deviceDetails: {
-    marginLeft: 14,
+    marginLeft: 12,
     flex: 1,
   },
   deviceName: {
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  deviceMeta: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    marginTop: 2,
+  },
+  revokeButton: {
+    padding: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 16,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
     marginBottom: 4,
   },
-  deviceMeta: {
+  emptySubtext: {
     fontSize: 13,
     fontFamily: 'Poppins_400Regular',
+    textAlign: 'center',
     lineHeight: 18,
-  },
-  revokeButton: {
-    padding: 10,
-    borderRadius: 8,
-    marginLeft: 12,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
     paddingHorizontal: 20,
   },
-  emptyIcon: {
-    marginBottom: 16,
+  actions: {
+    marginTop: 10,
   },
-  emptyIconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  registerBtn: {
+    width: '100%',
+    height: 48,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
-  emptyText: {
-    fontSize: 17,
+  registerBtnText: {
+    color: '#000',
+    fontSize: 15,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
-    marginBottom: 6,
-    textAlign: 'center',
   },
-  emptySubtext: {
-    fontSize: 14,
-    fontFamily: 'Poppins_400Regular',
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 16,
-  },
-  actions: {
-    marginTop: 12,
-  },
-  actionButton: {
+  refreshBtn: {
     width: '100%',
-    minHeight: 52,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  refreshBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'Poppins_600SemiBold',
   },
 });

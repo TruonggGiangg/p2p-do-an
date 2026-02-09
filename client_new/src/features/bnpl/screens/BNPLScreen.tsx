@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { GradientBackground, GlassCard, CustomHeader } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, CommonInput } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
@@ -106,7 +106,7 @@ export default function BNPLScreen() {
     // ==================== PREVIEW HANDLER ====================
     const handlePreview = useCallback(async () => {
         const amount = parseInt(amountRaw) || 0;
-        
+
         // Client-side validation (server will also validate)
         if (!amount || amount < 500000) {
             Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
@@ -201,7 +201,7 @@ export default function BNPLScreen() {
         } catch (error: any) {
             const errorMessage = error.response?.data?.message || error.message || 'Không thể tạo khoản vay';
             Alert.alert('❌ Lỗi', errorMessage);
-            
+
             // If credit limit error, refresh wallet data
             if (error.response?.status === 400 && errorMessage.includes('hạn mức')) {
                 await fetchData();
@@ -217,11 +217,10 @@ export default function BNPLScreen() {
 
     if (loading) {
         return (
-            <GradientBackground>
-                <SafeAreaView style={styles.container}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 100 }} />
-                </SafeAreaView>
-            </GradientBackground>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+                <BinanceHeader title="Ví Trả Sau (BNPL)" />
+                <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 100 }} />
+            </View>
         );
     }
 
@@ -230,15 +229,15 @@ export default function BNPLScreen() {
         : 0;
 
     return (
-        <GradientBackground>
-            <CustomHeader title="Ví Trả Sau (BNPL)" />
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <BinanceHeader title="Ví Trả Sau (BNPL)" />
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
                 {/* Wallet Info Card - Premium Design */}
                 {wallet && (
-                    <GlassCard blur={theme.blur.medium} style={styles.walletCard}>
+                    <CommonCard style={styles.walletCard}>
                         <View style={styles.walletHeader}>
                             <Text style={[styles.walletLabel, { color: theme.colors.textMuted }]}>Hạn mức khả dụng</Text>
                             <View
@@ -312,31 +311,16 @@ export default function BNPLScreen() {
                                 </Text>
                             </View>
                         </View>
-                    </GlassCard>
+                    </CommonCard>
                 )}
 
                 {/* Create Loan Button */}
-                <LinearGradient
-                    colors={theme.gradients.primary as any}
-                    style={[
-                        styles.createBtn,
-                        {
-                            borderRadius: theme.radius.lg,
-                            ...theme.shadows.card,
-                        },
-                    ]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <TouchableOpacity
-                        style={styles.createBtnContent}
-                        onPress={() => setCreateModalVisible(true)}
-                        activeOpacity={0.9}
-                    >
-                        <MaterialCommunityIcons name="plus-circle" size={24} color="#fff" />
-                        <Text style={styles.createBtnText}>Tạo khoản vay mới</Text>
-                    </TouchableOpacity>
-                </LinearGradient>
+                <CommonButton
+                    title="Tạo khoản vay mới"
+                    onPress={() => setCreateModalVisible(true)}
+                    icon="plus-circle"
+                    style={styles.createBtn}
+                />
 
                 {/* Consolidated Schedule */}
                 {schedule.length > 0 && (
@@ -351,7 +335,7 @@ export default function BNPLScreen() {
                                 </Text>
                             )}
                         </View>
-                        <GlassCard blur={theme.blur.light} style={styles.scheduleCard}>
+                        <CommonCard style={styles.scheduleCard}>
                             {schedule.map((item, index) => (
                                 <View
                                     key={index}
@@ -378,7 +362,7 @@ export default function BNPLScreen() {
                                     </View>
                                 </View>
                             ))}
-                        </GlassCard>
+                        </CommonCard>
                     </>
                 )}
 
@@ -394,7 +378,7 @@ export default function BNPLScreen() {
                             </Text>
                         </View>
                         {loans.map((loan) => (
-                            <GlassCard key={loan.id} blur={theme.blur.light} style={styles.loanCard}>
+                            <CommonCard key={loan.id} style={styles.loanCard}>
                                 <View style={styles.loanHeader}>
                                     <Text style={[styles.loanId, { color: theme.colors.textMuted }]}>
                                         #{loan.fineractLoanId}
@@ -443,7 +427,7 @@ export default function BNPLScreen() {
                                         {formatCurrency(loan.outstandingBalance)}
                                     </Text>
                                 </View>
-                            </GlassCard>
+                            </CommonCard>
                         ))}
                     </>
                 )}
@@ -458,67 +442,29 @@ export default function BNPLScreen() {
                 presentationStyle="pageSheet"
                 onRequestClose={() => setCreateModalVisible(false)}
             >
-                <GradientBackground>
-                    <SafeAreaView style={styles.modalContainer}>
+                <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+                    <BinanceHeader title="Tạo khoản vay BNPL" showBack={false} rightComponents={
+                        <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
+                            <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
+                        </TouchableOpacity>
+                    } />
                     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                         <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
-                            {/* Modal Header */}
-                            <View style={styles.modalHeader}>
-                                <TouchableOpacity
-                                    onPress={() => setCreateModalVisible(false)}
-                                    style={[
-                                        styles.closeBtn,
-                                        {
-                                            backgroundColor: theme.colors.surface,
-                                            borderRadius: theme.radius.full,
-                                        },
-                                    ]}
-                                >
-                                    <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
-                                </TouchableOpacity>
-                                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
-                                    Tạo khoản vay BNPL
-                                </Text>
-                                <View style={{ width: 40 }} />
-                            </View>
 
                             {/* Amount Input */}
-                            <View style={styles.inputSection}>
-                                <View style={styles.inputLabelRow}>
-                                    <MaterialCommunityIcons
-                                        name="cash"
-                                        size={18}
-                                        color={theme.colors.textMuted}
-                                        style={styles.inputIcon}
-                                    />
-                                    <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>
-                                        Bạn muốn vay bao nhiêu?
-                                    </Text>
-                                </View>
-                                <View style={styles.amountInputWrapper}>
-                                    <TextInput
-                                        value={amountDisplay}
-                                        onChangeText={(val) => {
-                                            const digits = val.replace(/[^0-9]/g, '');
-                                            setAmountRaw(digits);
-                                            debouncedResetPreview();
-                                        }}
-                                        keyboardType="numeric"
-                                        style={[
-                                            styles.amountInput,
-                                            {
-                                                color: theme.colors.textPrimary,
-                                            },
-                                        ]}
-                                        placeholder="0"
-                                        placeholderTextColor={theme.colors.textDim}
-                                    />
-                                    <Text style={[styles.currency, { color: theme.colors.textMuted }]}>₫</Text>
-                                </View>
-                                <Text style={[styles.limitText, { color: theme.colors.textMuted }]}>
-                                    Hạn mức: 500,000 - 50,000,000 đ
-                                </Text>
-                            </View>
+                            <CommonInput
+                                label="Bạn muốn vay bao nhiêu?"
+                                value={amountDisplay}
+                                onChangeText={(val) => {
+                                    const digits = val.replace(/[^0-9]/g, '');
+                                    setAmountRaw(digits);
+                                    debouncedResetPreview();
+                                }}
+                                keyboardType="numeric"
+                                placeholder="0"
+                                error={parseInt(amountRaw) > 50000000 ? 'Vượt hạn mức tối đa' : undefined}
+                                icon="cash"
+                            />
 
                             {/* Repayments Selector */}
                             <View style={styles.inputSection}>
@@ -575,52 +521,31 @@ export default function BNPLScreen() {
                             </View>
 
                             {/* Description (Optional) */}
-                            <View style={styles.inputSection}>
-                                <View style={styles.inputLabelRow}>
-                                    <MaterialCommunityIcons
-                                        name="text"
-                                        size={18}
-                                        color={theme.colors.textMuted}
-                                        style={styles.inputIcon}
-                                    />
-                                    <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>
-                                        Mô tả (tùy chọn)
-                                    </Text>
-                                </View>
-                                <TextInput
-                                    value={loanDescription}
-                                    onChangeText={setLoanDescription}
-                                    placeholder="Ví dụ: Mua điện thoại"
-                                    placeholderTextColor={theme.colors.textDim}
-                                    style={[
-                                        styles.textInput,
-                                        {
-                                            backgroundColor: theme.colors.surface,
-                                            borderColor: theme.colors.border,
-                                            borderRadius: theme.radius.md,
-                                            color: theme.colors.textPrimary,
-                                        },
-                                    ]}
-                                />
-                            </View>
+                            <CommonInput
+                                label="Mô tả (tùy chọn)"
+                                value={loanDescription}
+                                onChangeText={setLoanDescription}
+                                placeholder="Ví dụ: Mua điện thoại"
+                                icon="text"
+                            />
 
                             {/* ==================== PREVIEW CARD ==================== */}
                             {preview ? (
                                 <Animated.View style={{ opacity: previewFadeAnim }}>
-                                    <GlassCard blur={theme.blur.medium} style={styles.previewCard}>
+                                    <CommonCard style={styles.previewCard}>
                                         <View style={styles.previewHeader}>
                                             <Text style={[styles.previewLabel, { color: theme.colors.textMuted }]}>
                                                 Trả hàng tháng
                                             </Text>
                                             <Text style={[styles.previewAmount, { color: theme.colors.success }]}>
-                                                {formatCurrency(preview.monthlyPayment)}
+                                                {formatCurrency(preview?.monthlyPayment || 0)}
                                             </Text>
                                         </View>
                                         <View style={[styles.dashedLine, { backgroundColor: theme.colors.border }]} />
                                         <View style={styles.previewRow}>
                                             <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Lãi suất</Text>
                                             <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatPercentage(preview.monthlyRate)} / tháng
+                                                {formatPercentage(preview?.monthlyRate || 0)} / tháng
                                             </Text>
                                         </View>
                                         <View style={styles.previewRow}>
@@ -628,7 +553,7 @@ export default function BNPLScreen() {
                                                 Tổng lãi dự kiến
                                             </Text>
                                             <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatCurrency(preview.totalInterest)}
+                                                {formatCurrency(preview?.totalInterest || 0)}
                                             </Text>
                                         </View>
                                         <View style={styles.previewRow}>
@@ -636,7 +561,7 @@ export default function BNPLScreen() {
                                                 Tổng thanh toán
                                             </Text>
                                             <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatCurrency(preview.totalRepayment)}
+                                                {formatCurrency(preview?.totalRepayment || 0)}
                                             </Text>
                                         </View>
 
@@ -695,37 +620,16 @@ export default function BNPLScreen() {
                                                 ))}
                                             </View>
                                         )}
-                                    </GlassCard>
+                                    </CommonCard>
                                 </Animated.View>
                             ) : (
-                                <LinearGradient
-                                    colors={theme.gradients.primary as any}
-                                    style={[
-                                        styles.previewBtn,
-                                        {
-                                            borderRadius: theme.radius.lg,
-                                            ...theme.shadows.card,
-                                        },
-                                        loadingPreview && styles.previewBtnDisabled,
-                                    ]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                >
-                                    <TouchableOpacity
-                                        style={styles.previewBtnContent}
-                                        onPress={handlePreview}
-                                        disabled={loadingPreview}
-                                    >
-                                        {loadingPreview ? (
-                                            <ActivityIndicator color="#fff" />
-                                        ) : (
-                                            <>
-                                                <MaterialCommunityIcons name="calculator" size={20} color="#fff" />
-                                                <Text style={styles.previewBtnText}>Xem trước khoản vay</Text>
-                                            </>
-                                        )}
-                                    </TouchableOpacity>
-                                </LinearGradient>
+                                <CommonButton
+                                    title="Xem trước khoản vay"
+                                    onPress={handlePreview}
+                                    loading={loadingPreview}
+                                    icon="calculator"
+                                    style={styles.previewBtn}
+                                />
                             )}
 
                             <View style={{ height: 120 }} />
@@ -743,40 +647,18 @@ export default function BNPLScreen() {
                                 },
                             ]}
                         >
-                            <LinearGradient
-                                colors={theme.gradients.primary as any}
-                                style={[
-                                    styles.submitBtn,
-                                    {
-                                        borderRadius: theme.radius.lg,
-                                        ...theme.shadows.card,
-                                    },
-                                    creating && styles.submitBtnDisabled,
-                                ]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                            >
-                                <TouchableOpacity
-                                    style={styles.submitBtnContent}
-                                    onPress={handleCreateLoan}
-                                    disabled={creating}
-                                >
-                                    {creating ? (
-                                        <ActivityIndicator color="#fff" />
-                                    ) : (
-                                        <>
-                                            <Text style={styles.submitBtnText}>Xác nhận vay ngay</Text>
-                                            <MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            </LinearGradient>
+                            <CommonButton
+                                title="Xác nhận vay ngay"
+                                onPress={handleCreateLoan}
+                                loading={creating}
+                                icon="arrow-right"
+                                style={styles.submitBtn}
+                            />
                         </View>
                     )}
-                    </SafeAreaView>
-                </GradientBackground>
+                </View>
             </Modal>
-        </GradientBackground>
+        </View >
     );
 }
 

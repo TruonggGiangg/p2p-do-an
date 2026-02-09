@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Mod
 import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
 import { View as SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GradientBackground } from './GradientBackground';
-import { GlassCard } from './GlassCard';
+import { CommonCard } from './common/CommonCard';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface QRScannerProps {
@@ -91,14 +90,14 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
     if (!permission) {
         return (
             <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-                <GradientBackground>
+                <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                     <SafeAreaView style={styles.container}>
                         <View style={styles.permissionContainer}>
                             <ActivityIndicator size="large" color={theme.colors.primary} />
                             <Text style={styles.permissionText}>Đang kiểm tra quyền camera...</Text>
                         </View>
                     </SafeAreaView>
-                </GradientBackground>
+                </View>
             </Modal>
         );
     }
@@ -106,41 +105,44 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
     if (!permission.granted) {
         return (
             <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-                <GradientBackground>
+                <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                     <SafeAreaView style={styles.container}>
                         <View style={styles.header}>
                             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                                <Ionicons name="close" size={24} color="#fff" />
+                                <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
                             </TouchableOpacity>
-                            <Text style={styles.headerTitle}>Quét QR</Text>
+                            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Quét QR</Text>
                             <View style={{ width: 40 }} />
                         </View>
 
                         <View style={styles.permissionContainer}>
                             <Ionicons name="camera-outline" size={64} color={theme.colors.textMuted} />
-                            <Text style={styles.permissionTitle}>Cần quyền truy cập camera</Text>
-                            <Text style={styles.permissionText}>
+                            <Text style={[styles.permissionTitle, { color: theme.colors.textPrimary }]}>Cần quyền truy cập camera</Text>
+                            <Text style={[styles.permissionText, { color: theme.colors.textSecondary }]}>
                                 Ứng dụng cần quyền truy cập camera để quét mã QR chuyển tiền
                             </Text>
-                            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+                            <TouchableOpacity
+                                style={[styles.permissionButton, { backgroundColor: theme.colors.primary }]}
+                                onPress={requestPermission}
+                            >
                                 <Text style={styles.permissionButtonText}>Cấp quyền</Text>
                             </TouchableOpacity>
                         </View>
                     </SafeAreaView>
-                </GradientBackground>
+                </View>
             </Modal>
         );
     }
 
     return (
         <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-            <GradientBackground>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <SafeAreaView style={styles.container}>
                     <View style={styles.header}>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                            <Ionicons name="close" size={24} color="#fff" />
+                            <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>Quét mã QR</Text>
+                        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Quét mã QR</Text>
                         <View style={{ width: 40 }} />
                     </View>
 
@@ -161,19 +163,19 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                                     <View style={[styles.corner, styles.bottomLeft]} />
                                     <View style={[styles.corner, styles.bottomRight]} />
                                 </View>
-                                <GlassCard style={styles.hintCard}>
-                                    <Text style={styles.hintText}>
+                                <CommonCard style={styles.hintCard}>
+                                    <Text style={[styles.hintText, { color: theme.colors.textPrimary }]}>
                                         Đưa mã QR vào khung để quét
                                     </Text>
-                                    <Text style={styles.hintSubtext}>
+                                    <Text style={[styles.hintSubtext, { color: theme.colors.textSecondary }]}>
                                         Mã QR chứa số điện thoại người nhận
                                     </Text>
-                                </GlassCard>
+                                </CommonCard>
                             </View>
                         </CameraView>
                     </View>
                 </SafeAreaView>
-            </GradientBackground>
+            </View>
         </Modal>
     );
 };

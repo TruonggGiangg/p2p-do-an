@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { GlassCard } from './GlassCard';
+import { CommonCard } from './common/CommonCard';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,15 +22,15 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
     if (!phone) {
         return (
             <View style={styles.container}>
-                <GlassCard style={styles.card}>
-                    <Text style={styles.title}>Lỗi</Text>
-                    <Text style={styles.subtitle}>Không có số điện thoại để tạo QR code</Text>
+                <CommonCard style={styles.card}>
+                    <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Lỗi</Text>
+                    <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Không có số điện thoại để tạo QR code</Text>
                     {onClose && (
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                        <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}>
                             <Text style={styles.closeButtonText}>Đóng</Text>
                         </TouchableOpacity>
                     )}
-                </GlassCard>
+                </CommonCard>
             </View>
         );
     }
@@ -43,9 +43,9 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
                 </TouchableOpacity>
             )}
 
-            <GlassCard style={styles.card}>
-                <Text style={styles.title}>Mã QR của tôi</Text>
-                <Text style={styles.subtitle}>Quét mã này để nhận tiền</Text>
+            <CommonCard style={styles.card}>
+                <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Mã QR của tôi</Text>
+                <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Quét mã này để nhận tiền</Text>
 
                 <View style={styles.qrContainer}>
                     {qrData ? (
@@ -59,15 +59,15 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
                     <View style={styles.infoRow}>
                         <Ionicons name="person-outline" size={16} color={theme.colors.textSecondary} />
                         <Text style={styles.infoLabel}>Tên:</Text>
-                        <Text style={styles.infoValue}>{name || 'Người dùng'}</Text>
+                        <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{name || 'Người dùng'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Ionicons name="call-outline" size={16} color={theme.colors.textSecondary} />
                         <Text style={styles.infoLabel}>SĐT:</Text>
-                        <Text style={styles.infoValue}>{phone}</Text>
+                        <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{phone}</Text>
                     </View>
                 </View>
-            </GlassCard>
+            </CommonCard>
         </View>
     );
 };
