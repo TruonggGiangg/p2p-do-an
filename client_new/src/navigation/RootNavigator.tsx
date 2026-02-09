@@ -3,12 +3,15 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import { TransferScreen } from '../features/wallet';
+import { TransferScreen, WalletsScreen } from '../features/wallet';
+import { NotificationScreen } from '../features/notifications';
 
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
     Transfer: undefined;
+    Notifications: undefined;
+    Wallets: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -24,6 +27,8 @@ export default function RootNavigator() {
                 <>
                     <Stack.Screen name="Main" component={MainNavigator} />
                     <Stack.Screen name="Transfer" component={TransferScreen} />
+                    <Stack.Screen name="Notifications" component={NotificationScreen} />
+                    <Stack.Screen name="Wallets" component={WalletsScreen} />
                 </>
             )}
         </Stack.Navigator>

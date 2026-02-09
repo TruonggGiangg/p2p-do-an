@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -31,20 +32,40 @@ export default function MainNavigator() {
                         iconName = focused ? 'card' : 'card-outline';
                     }
 
-                    return <Ionicons name={iconName} size={size} color={color} />;
+                    return <Ionicons name={iconName} size={22} color={color} />;
                 },
                 tabBarActiveTintColor: theme.colors.primary,
-                tabBarInactiveTintColor: theme.colors.textMuted,
+                tabBarInactiveTintColor: theme.colors.textSecondary,
+                tabBarLabelStyle: {
+                    fontSize: 10,
+                    fontFamily: 'Poppins_500Medium',
+                    marginBottom: 4,
+                },
                 tabBarStyle: {
-                    backgroundColor: theme.colors.surface,
-                    borderTopColor: theme.colors.border,
+                    backgroundColor: theme.colors.backgroundSecondary,
+                    borderTopColor: 'rgba(255,255,255,0.05)',
+                    height: Platform.OS === 'ios' ? 88 : 64,
+                    paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+                    paddingTop: 10,
                 },
                 headerShown: false,
             })}
         >
-            <Tab.Screen name="Home" component={HomeScreen} />
-            <Tab.Screen name="BNPL" component={BNPLScreen} />
-            <Tab.Screen name="Profile" component={ProfileScreen} />
+            <Tab.Screen
+                name="Home"
+                component={HomeScreen}
+                options={{ tabBarLabel: 'Home' }}
+            />
+            <Tab.Screen
+                name="BNPL"
+                component={BNPLScreen}
+                options={{ tabBarLabel: 'BNPL' }}
+            />
+            <Tab.Screen
+                name="Profile"
+                component={ProfileScreen}
+                options={{ tabBarLabel: 'Profile' }}
+            />
         </Tab.Navigator>
     );
 }

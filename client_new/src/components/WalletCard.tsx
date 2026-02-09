@@ -1,16 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Wallet } from '../types/auth.types';
 
 interface WalletCardProps {
-    wallet: Wallet & {
-        productName?: string;
-        shortProductName?: string;
-        accountNo?: string;
-    };
+    wallet: Wallet;
+    onPress?: () => void;
 }
 
 const formatCurrency = (amount: number, currency: string = 'VND'): string => {
@@ -23,192 +20,122 @@ const formatCurrency = (amount: number, currency: string = 'VND'): string => {
 
 const getWalletIcon = (type: string, productName?: string): keyof typeof MaterialCommunityIcons.glyphMap => {
     const pn = (productName || '').toLowerCase();
-    if (pn.includes('trả sau') || pn.includes('credit')) return 'credit-card';
-    if (pn.includes('điện tử') || pn.includes('vdt')) return 'wallet';
-    
+    if (pn.includes('trả sau') || pn.includes('credit')) return 'credit-card-outline';
+    if (pn.includes('điện tử') || pn.includes('vdt')) return 'wallet-outline';
+
     switch (type) {
         case 'credit_wallet':
-            return 'credit-card';
+            return 'credit-card-outline';
         case 'e_wallet':
-            return 'wallet';
+            return 'wallet-outline';
         default:
             return 'wallet-outline';
     }
 };
 
-const getWalletLabel = (type: string, productName?: string): string => {
-    if (productName) return productName;
-    
-    switch (type) {
-        case 'credit_wallet':
-            return 'Ví Trả Sau';
-        case 'e_wallet':
-            return 'Ví điện tử';
-        default:
-            return 'Ví';
-    }
-};
-
-export const WalletCard: React.FC<WalletCardProps> = ({ wallet }) => {
-    const { theme } = useTheme();
+export const WalletCard: React.FC<WalletCardProps> = ({ wallet, onPress }) => {
+    const { theme, themeMode } = useTheme();
     const isActive = wallet.status?.toLowerCase() === 'active';
-    const productName = wallet.productName || wallet.metadata?.productName || '';
+    const productName = wallet.productName || wallet.metadata?.productName || 'Digital Wallet';
     const accountNo = wallet.accountNo || wallet.metadata?.accountNo || wallet.fineractSavingsId;
     const iconName = getWalletIcon(wallet.type, productName);
 
     return (
-        <View
+        <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={onPress}
             style={[
                 styles.container,
-                {
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: theme.radius.lg,
-                    borderColor: isActive ? theme.colors.primaryBorder : theme.colors.border,
-                },
-                !isActive && styles.containerLocked,
-                theme.shadows.card,
+                { backgroundColor: theme.colors.backgroundSecondary || theme.colors.surface }
             ]}
         >
-            <View style={styles.header}>
-                <View
-                    style={[
-                        styles.iconContainer,
-                        {
-                            backgroundColor: theme.colors.primaryGlass,
-                            borderRadius: theme.radius.md,
-                        },
-                    ]}
-                >
-                    <MaterialCommunityIcons
-                        name={iconName}
-                        size={24}
-                        color={theme.colors.primary}
-                    />
+            <View style={styles.content}>
+                <View style={styles.leftPart}>
+                    <View style={[styles.iconBox, { backgroundColor: theme.colors.primaryGlass || 'rgba(252, 213, 53, 0.1)' }]}>
+                        <MaterialCommunityIcons name={iconName} size={24} color={theme.colors.primary} />
+                    </View>
+                    <View style={styles.textInfo}>
+                        <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>{productName}</Text>
+                        <Text style={[styles.cardSubtitle, { color: theme.colors.textSecondary }]}>{accountNo}</Text>
+                    </View>
                 </View>
-                <View style={styles.headerInfo}>
-                    <Text style={[styles.walletType, { color: theme.colors.textPrimary }]}>
-                        {getWalletLabel(wallet.type, productName)}
+
+                <View style={styles.rightPart}>
+                    <Text style={[styles.balanceText, { color: theme.colors.textPrimary }]}>
+                        {formatCurrency(wallet.balance || 0, wallet.currency)}
                     </Text>
-                    <View
-                        style={[
-                            styles.statusBadge,
-                            {
-                                backgroundColor: isActive ? theme.colors.successGlass : theme.colors.textDim,
-                                borderRadius: theme.radius.sm,
-                            },
-                        ]}
-                    >
-                        <Text
-                            style={[
-                                styles.statusText,
-                                {
-                                    color: isActive ? theme.colors.success : theme.colors.textMuted,
-                                },
-                            ]}
-                        >
-                            {isActive ? 'Hoạt động' : wallet.status || 'Đã khóa'}
-                        </Text>
-                    </View>
+                    {isActive ? (
+                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(46, 189, 133, 0.1)' }]}>
+                            <Text style={[styles.statusText, { color: '#2ebd85' }]}>Active</Text>
+                        </View>
+                    ) : (
+                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(246, 70, 93, 0.1)' }]}>
+                            <Text style={[styles.statusText, { color: '#f6465d' }]}>Locked</Text>
+                        </View>
+                    )}
                 </View>
             </View>
-
-            <View style={styles.balanceContainer}>
-                <Text style={[styles.balanceLabel, { color: theme.colors.textMuted }]}>Số dư</Text>
-                <Text style={[styles.balanceAmount, { color: theme.colors.success }]}>
-                    {formatCurrency(wallet.balance || 0, wallet.currency)}
-                </Text>
-            </View>
-
-            <View style={[styles.details, { borderTopColor: theme.colors.border }]}>
-                <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Mã tài khoản</Text>
-                    <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]}>{accountNo}</Text>
-                </View>
-                {wallet.shortProductName && (
-                    <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Mã sản phẩm</Text>
-                        <Text style={[styles.detailValue, { color: theme.colors.textSecondary }]}>
-                            {wallet.shortProductName}
-                        </Text>
-                    </View>
-                )}
-            </View>
-        </View>
+        </TouchableOpacity>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        padding: 20,
-        marginBottom: 16,
+        borderRadius: 12,
+        padding: 16,
+        marginVertical: 6,
         borderWidth: 1,
-        overflow: 'hidden',
+        borderColor: 'rgba(255, 255, 255, 0.05)',
     },
-    containerLocked: {
-        opacity: 0.6,
+    content: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
-    header: {
+    leftPart: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 20,
+        flex: 1,
     },
-    iconContainer: {
-        width: 48,
-        height: 48,
+    iconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
     },
-    headerInfo: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    walletType: {
-        fontSize: 16,
-        fontFamily: 'Poppins_600SemiBold',
-        flexShrink: 1,
+    textInfo: {
         flex: 1,
     },
-    statusBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-    },
-    statusText: {
-        fontSize: 11,
+    cardTitle: {
+        fontSize: 15,
+        fontWeight: '600',
         fontFamily: 'Poppins_600SemiBold',
     },
-    balanceContainer: {
-        marginBottom: 20,
-    },
-    balanceLabel: {
-        fontSize: 13,
-        fontFamily: 'Poppins_500Medium',
-        marginBottom: 6,
-    },
-    balanceAmount: {
-        fontSize: 32,
-        fontFamily: 'Poppins_700Bold',
-        fontWeight: '700',
-        flexWrap: 'wrap',
-    },
-    details: {
-        borderTopWidth: 1,
-        paddingTop: 16,
-    },
-    detailRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 10,
-    },
-    detailLabel: {
-        fontSize: 13,
+    cardSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
         fontFamily: 'Poppins_400Regular',
     },
-    detailValue: {
-        fontSize: 13,
-        fontFamily: 'Poppins_600SemiBold',
+    rightPart: {
+        alignItems: 'flex-end',
+    },
+    balanceText: {
+        fontSize: 16,
+        fontWeight: '700',
+        fontFamily: 'Poppins_700Bold',
+        marginBottom: 4,
+    },
+    statusBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    statusText: {
+        fontSize: 10,
+        fontWeight: '600',
+        textTransform: 'uppercase',
     },
 });
 

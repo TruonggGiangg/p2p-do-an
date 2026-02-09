@@ -16,10 +16,10 @@ import {
 } from 'react-native';
 import { View as SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { walletAPI, TransferRequest } from '../features/wallet';
-import { QRScanner } from './QRScanner';
-import { useTheme } from '../contexts/ThemeContext';
-import type { Wallet } from '../types/auth.types';
+import { walletAPI, TransferRequest } from '../api/wallet.api';
+import { QRScanner } from '../../../components/QRScanner';
+import { useTheme } from '../../../contexts/ThemeContext';
+import type { Wallet } from '../../../types/auth.types';
 
 interface TransferModalProps {
     visible: boolean;
@@ -76,7 +76,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
             const firstWallet = availableWallets[0];
             // Use fineractId as primary identifier
             const walletId = firstWallet?.fineractId || firstWallet?.accountNo || firstWallet?.id || firstWallet?._id;
-            
+
             if (__DEV__) {
                 console.log('[TransferModal] Checking wallets:', {
                     count: availableWallets.length,
@@ -85,13 +85,13 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
                     currentFromWalletId: fromWalletId,
                 });
             }
-            
+
             // Check if current fromWalletId is still valid
             const currentWalletExists = fromWalletId && availableWallets.some((w) => {
                 const wId = w.fineractId || w.accountNo || w.id || w._id;
                 return wId === fromWalletId;
             });
-            
+
             if (!currentWalletExists && walletId) {
                 setFromWalletId(walletId);
                 if (__DEV__) {
@@ -144,7 +144,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({ visible, onClose, 
     // Check if transfer button should be disabled
     const cleanPhone = recipientPhone.replace(/\D/g, '');
     const isValidPhone = cleanPhone.length === 10;
-    
+
     const isTransferDisabled =
         transferring ||
         !fromWalletId ||

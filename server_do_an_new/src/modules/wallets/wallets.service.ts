@@ -160,7 +160,16 @@ export class WalletsService {
     // Proactive linking if ID is missing
     if (!user.fineractClientId) {
       this.logger.log(`[syncWalletsFromFineract] Attempting to link user ${user.username} (missing fineractClientId)`);
-      const client = await this.fineractService.findClientByIdentifier(user.username);
+
+      // Try multiple identifiers (consistent with UserSyncService)
+      const identifiers = [`KEYCLOAK_${user.username}`, user.username];
+      let client: any = null;
+
+      for (const id of identifiers) {
+        client = await this.fineractService.findClientByIdentifier(id);
+        if (client) break;
+      }
+
       if (client) {
         user.fineractClientId = client.id.toString();
         await (user as any).save();
