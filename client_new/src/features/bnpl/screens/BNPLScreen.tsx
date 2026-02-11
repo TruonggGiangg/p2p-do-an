@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, CommonButton, CommonInput } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
@@ -231,9 +231,10 @@ export default function BNPLScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <BinanceHeader title="Ví Trả Sau (BNPL)" />
-            <ScrollView
+            <FintechPullToRefresh
+                onRefresh={onRefresh}
+                refreshing={refreshing}
                 contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
                 {/* Wallet Info Card - Premium Design */}
                 {wallet && (
@@ -433,7 +434,7 @@ export default function BNPLScreen() {
                 )}
 
                 <View style={{ height: 40 }} />
-            </ScrollView>
+            </FintechPullToRefresh>
 
             {/* ==================== CREATE LOAN MODAL ==================== */}
             <Modal

@@ -3,8 +3,6 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
-    RefreshControl,
     ActivityIndicator,
     TouchableOpacity,
     Alert,
@@ -12,7 +10,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, WalletCard, CommonCard, CommonButton } from '../../../components';
+import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh } from '../../../components';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
 
@@ -88,17 +86,10 @@ export const WalletsScreen = () => {
                 showBack={true}
             />
 
-            <ScrollView
-                style={styles.scrollView}
+            <FintechPullToRefresh
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={theme.colors.primary}
-                    />
-                }
             >
                 {/* Balance Summary Section (Binance Style) */}
                 <View style={styles.headerSection}>
@@ -163,7 +154,7 @@ export const WalletsScreen = () => {
                         </View>
                     )}
                 </View>
-            </ScrollView>
+            </FintechPullToRefresh>
         </View>
     );
 };

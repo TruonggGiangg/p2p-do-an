@@ -4,10 +4,8 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    ScrollView,
     Alert,
     ActivityIndicator,
-    RefreshControl,
     Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -15,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../contexts/AuthContext';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { bnplAPI } from '../../bnpl/api/bnpl.api';
-import { BinanceHeader, CommonCard, CommonButton, QuickAction, QRCodeDisplay } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, QuickAction, QRCodeDisplay, FintechPullToRefresh } from '../../../components';
 import { TransferModal } from '../../wallet/components/TransferModal';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -57,13 +55,18 @@ export default function HomeScreen() {
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            await walletAPI.syncWallets();
-        } catch (error) {
-            console.error('[HomeScreen] Sync failed during refresh:', error);
+            await Promise.all([
+                minDelay,
+                (async () => {
+                    try { await walletAPI.syncWallets(); } catch (e) { console.error('[HomeScreen] Sync failed:', e); }
+                    await Promise.all([refreshUser(), fetchWallets()]);
+                })()
+            ]);
+        } finally {
+            setRefreshing(false);
         }
-        await Promise.all([refreshUser(), fetchWallets()]);
-        setRefreshing(false);
     }, [refreshUser]);
 
     useEffect(() => {
@@ -92,13 +95,12 @@ export default function HomeScreen() {
                 onSearchPress={() => { }}
             />
 
-            <ScrollView
-                style={styles.scrollView}
+            <FintechPullToRefresh
+                onRefresh={onRefresh}
+                refreshing={refreshing}
                 contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
-                }
+                primaryColor={theme.colors.primary}
+                glowColor={theme.colors.primaryLight}
             >
                 {/* Portfolio Card */}
                 <View style={styles.portfolioSection}>
@@ -151,7 +153,7 @@ export default function HomeScreen() {
                 </View>
 
                 <View style={{ height: 40 }} />
-            </ScrollView>
+            </FintechPullToRefresh>
 
             <TransferModal
                 visible={transferModalVisible}

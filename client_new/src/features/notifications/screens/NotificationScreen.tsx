@@ -3,18 +3,17 @@ import {
     View,
     Text,
     StyleSheet,
-    FlatList,
     TouchableOpacity,
     ActivityIndicator,
-    RefreshControl,
     Platform,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI, WalletTransaction } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
-import { BinanceHeader, CommonCard } from '../../../components';
+import { BinanceHeader, CommonCard, FintechPullToRefresh } from '../../../components';
 
 export default function NotificationScreen() {
     const navigation = useNavigation();
@@ -101,20 +100,24 @@ export default function NotificationScreen() {
                     <ActivityIndicator size="large" color={theme.colors.primary} />
                 </View>
             ) : (
-                <FlatList
-                    data={transactions}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderNotificationItem}
-                    contentContainerStyle={styles.listContent}
-                    refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
-                    }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <MaterialCommunityIcons name="bell-off-outline" size={64} color={theme.colors.textDim} />
-                            <Text style={[styles.emptyText, { color: theme.colors.textDim }]}>Không có thông báo nào</Text>
-                        </View>
-                    }
+                <FintechPullToRefresh
+                    onRefresh={onRefresh}
+                    refreshing={refreshing}
+                    renderScrollComponent={(props: any) => (
+                        <Animated.FlatList
+                            {...props}
+                            data={transactions}
+                            keyExtractor={(item: WalletTransaction) => item.id}
+                            renderItem={renderNotificationItem}
+                            contentContainerStyle={styles.listContent}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <MaterialCommunityIcons name="bell-off-outline" size={64} color={theme.colors.textDim} />
+                                    <Text style={[styles.emptyText, { color: theme.colors.textDim }]}>Không có thông báo nào</Text>
+                                </View>
+                            }
+                        />
+                    )}
                 />
             )}
         </View>

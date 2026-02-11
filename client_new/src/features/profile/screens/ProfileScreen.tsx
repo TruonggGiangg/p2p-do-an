@@ -1,16 +1,31 @@
-import React from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Switch, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, RoleBadges, CommonCard, CommonButton } from '../../../components';
+import { BinanceHeader, RoleBadges, CommonCard, CommonButton, FintechPullToRefresh } from '../../../components';
 import { SmartOTPSection, TwoFactorSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
 export default function ProfileScreen() {
-    const { user, logout } = useAuth();
+    const { user, logout, refreshUser } = useAuth();
     const { theme, themeMode, toggleTheme } = useTheme();
     const isDark = themeMode === 'dark';
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            if (refreshUser) await refreshUser();
+            // Simulate a minimum delay for the animation to be seen
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        } catch (error) {
+            console.error('Failed to refresh profile:', error);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [refreshUser]);
 
     const displayName = getUserDisplayName(user);
     const initials = getUserInitials(user);
@@ -47,10 +62,11 @@ export default function ProfileScreen() {
                 showBack={true}
             />
 
-            <ScrollView
-                style={styles.scrollView}
-                showsVerticalScrollIndicator={false}
+            <FintechPullToRefresh
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
             >
                 {/* User Info Header Section */}
                 <View style={styles.userInfoSection}>
@@ -145,7 +161,7 @@ export default function ProfileScreen() {
                 </View>
 
                 <Text style={[styles.versionText, { color: theme.colors.textDim }]}>Version 2.85.0</Text>
-            </ScrollView>
+            </FintechPullToRefresh>
         </View>
     );
 }

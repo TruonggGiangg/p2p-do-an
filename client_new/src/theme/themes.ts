@@ -19,7 +19,7 @@ const DarkColors = {
     surfaceLight: '#2B3139',
 
     // Primary - Binance Yellow
-    primary: '#FCD535',
+    primary: '#F0B90B', // Darker Gold (was #FCD535)
     primaryDark: '#C9A514',
     primaryLight: '#FFE066',
     primaryGlass: 'rgba(252, 213, 53, 0.1)',
@@ -70,7 +70,7 @@ const LightColors = {
     surfaceLight: '#F8F8F6',
 
     // Primary - Binance Gold/Yellow
-    primary: '#ecc813',
+    primary: '#F0B90B', // Darker Gold (was #ecc813)
     primaryDark: '#d9b812',
     primaryLight: '#fde047',
     primaryGlass: 'rgba(236, 200, 19, 0.1)',
