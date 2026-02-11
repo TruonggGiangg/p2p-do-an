@@ -5,11 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import HomeScreen from '../features/home/screens/HomeScreen';
+import LoanScreen from '../features/loan/screens/LoanScreen';
 import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 
 export type MainTabParamList = {
     Home: undefined;
+    Loan: undefined;
     BNPL: undefined;
     Profile: undefined;
 };
@@ -32,6 +34,8 @@ export default function MainNavigator() {
                         iconName = focused ? 'home' : 'home-outline';
                     } else if (route.name === 'Profile') {
                         iconName = focused ? 'person' : 'person-outline';
+                    } else if (route.name === 'Loan') {
+                        iconName = focused ? 'wallet' : 'wallet-outline';
                     } else if (route.name === 'BNPL') {
                         iconName = focused ? 'card' : 'card-outline';
                     }
@@ -69,6 +73,11 @@ export default function MainNavigator() {
                 name="Home"
                 component={HomeScreen}
                 options={{ tabBarLabel: 'Home' }}
+            />
+            <Tab.Screen
+                name="Loan"
+                component={LoanScreen}
+                options={{ tabBarLabel: 'Vay vốn' }}
             />
             <Tab.Screen
                 name="BNPL"

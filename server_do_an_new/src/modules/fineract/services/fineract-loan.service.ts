@@ -179,6 +179,19 @@ export class FineractLoanService extends FineractBaseService {
     }
 
     /**
+     * Get all loan products from Fineract
+     */
+    async getLoanProducts(): Promise<any[]> {
+        try {
+            const response = await this.client.get('/loanproducts');
+            const items = response.data?.pageItems ?? response.data ?? [];
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.handleError(error, 'Failed to get loan products list');
+        }
+    }
+
+    /**
      * Calculate BNPL loan schedule based on Product configuration
      */
     async calculateBnplSchedule(data: { productId: number; principal: number; numberOfRepayments: number }): Promise<{

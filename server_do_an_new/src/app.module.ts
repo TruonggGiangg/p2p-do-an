@@ -10,6 +10,7 @@ import { WalletsModule } from './modules/wallets/wallets.module';
 import { FineractModule } from './modules/fineract/fineract.module';
 import { KeycloakModule } from './modules/auth/keycloak.module';
 import { BnplModule } from './modules/bnpl/bnpl.module';
+import { LoanModule } from './modules/loan/loan.module';
 import { SmartOtpModule } from './modules/smart-otp/smart-otp.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 
@@ -47,6 +48,7 @@ import { validate } from './config/validation';
     HealthModule,
     WalletsModule,
     BnplModule,
+    LoanModule,
     SmartOtpModule,
     TwoFactorModule,
   ],
@@ -65,4 +67,4 @@ import { validate } from './config/validation';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }
