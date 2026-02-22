@@ -8,15 +8,21 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonCard, FintechPullToRefresh } from '../../../components';
 import { loanService, LoanProduct } from '../services/loan.service';
 import { formatCurrency } from '../../../shared/utils';
+import type { RootStackParamList } from '../../../navigation/RootNavigator';
+
+type LoanScreenNav = NativeStackNavigationProp<RootStackParamList, 'LoanProductDetail'>;
 
 export default function LoanScreen() {
     const { theme } = useTheme();
+    const navigation = useNavigation<LoanScreenNav>();
     const [products, setProducts] = useState<LoanProduct[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -50,7 +56,7 @@ export default function LoanScreen() {
     const renderProductItem = ({ item }: { item: LoanProduct }) => (
         <TouchableOpacity
             style={styles.productItem}
-            onPress={() => Alert.alert('Thông báo', `Bạn chọn sản phẩm: ${item.name}`)}
+            onPress={() => navigation.navigate('LoanProductDetail', { product: item })}
         >
             <CommonCard style={styles.card}>
                 <View style={styles.cardHeader}>

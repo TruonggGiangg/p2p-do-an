@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, UseGuards, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LoanService } from './loan.service';
@@ -23,6 +23,18 @@ export class LoanController {
                 products,
                 count: products.length,
             },
+        };
+    }
+
+    @Get('products/:productId/document-types')
+    @ApiOperation({ summary: 'Lấy danh sách loại tài liệu cần nộp theo sản phẩm vay' })
+    @ApiResponse({ status: 200, description: 'Danh sách loại tài liệu' })
+    async getProductDocumentTypes(@Param('productId', ParseIntPipe) productId: number) {
+        const documentTypes = await this.loanService.getDocumentTypesByProduct(productId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'OK',
+            data: { documentTypes },
         };
     }
 }

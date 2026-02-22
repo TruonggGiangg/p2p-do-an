@@ -5,6 +5,8 @@ import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
 import { TransferScreen, WalletsScreen } from '../features/wallet';
 import { NotificationScreen } from '../features/notifications';
+import LoanProductDetailScreen from '../features/loan/screens/LoanProductDetailScreen';
+import type { LoanProduct } from '../features/loan/services/loan.service';
 
 export type RootStackParamList = {
     Auth: undefined;
@@ -12,6 +14,7 @@ export type RootStackParamList = {
     Transfer: undefined;
     Notifications: undefined;
     Wallets: undefined;
+    LoanProductDetail: { product: LoanProduct };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -29,6 +32,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="Transfer" component={TransferScreen} />
                     <Stack.Screen name="Notifications" component={NotificationScreen} />
                     <Stack.Screen name="Wallets" component={WalletsScreen} />
+                    <Stack.Screen name="LoanProductDetail" component={LoanProductDetailScreen} />
                 </>
             )}
         </Stack.Navigator>
