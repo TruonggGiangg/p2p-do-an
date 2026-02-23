@@ -96,14 +96,18 @@ export const getDeviceFingerprint = async (): Promise<DeviceFingerprint> => {
 
 /**
  * Generate ECDSA key pair for device binding
+ * Uses expo-crypto for random bytes (elliptic's genKeyPair uses Node crypto which fails in RN)
  */
 const generateKeyPair = async (): Promise<{ privateKey: string; publicKey: string }> => {
   try {
     console.log('[SmartOTPService] Generating ECDSA key pair (P-256)...');
-    const key = ec.genKeyPair();
-
-    const privateKey = key.getPrivate('hex');
-    const publicKey = key.getPublic('hex');
+    const randomBytes = await Crypto.getRandomBytesAsync(32);
+    const privateKeyHex = Array.from(randomBytes)
+      .map((c) => c.toString(16).padStart(2, '0'))
+      .join('');
+    const key = ec.keyFromPrivate(privateKeyHex, 'hex');
+    const privateKey = String(key.getPrivate('hex'));
+    const publicKey = String(key.getPublic('hex'));
 
     await SecureStore.setItemAsync(STORAGE_KEYS.PRIVATE_KEY, privateKey);
     await SecureStore.setItemAsync(STORAGE_KEYS.PUBLIC_KEY, publicKey);
@@ -226,12 +230,16 @@ const registerDevice = async (): Promise<RegisterDeviceResponse> => {
   );
 
   if (response.data.success) {
-    const { deviceId, totpSecret } = response.data;
+    const payload = response.data.data ?? response.data;
+    const deviceId = String(payload.deviceId ?? '');
+    const totpSecret = String(payload.totpSecret ?? '');
 
-    // Store TOTP secret
+    if (!totpSecret) {
+      throw new Error('Server không trả về TOTP secret');
+    }
+
     await SecureStore.setItemAsync(STORAGE_KEYS.TOTP_SECRET, totpSecret);
 
-    // Store device binding info
     const binding: DeviceBindingInfo = {
       deviceId,
       deviceName: deviceFingerprint.deviceName || 'Unknown Device',
@@ -255,11 +263,11 @@ const registerDevice = async (): Promise<RegisterDeviceResponse> => {
  * Get registered devices from server
  */
 const getRegisteredDevices = async (): Promise<DeviceBindingInfo[]> => {
-  const response = await api.get<{ success: boolean; devices: DeviceBindingInfo[] }>(
+  const response = await api.get<{ success: boolean; data?: { devices?: DeviceBindingInfo[] }; devices?: DeviceBindingInfo[] }>(
     '/api/otp/devices',
   );
-
-  return response.data.devices || [];
+  const payload = response.data.data ?? response.data;
+  return payload.devices || [];
 };
 
 /**
@@ -289,8 +297,8 @@ const requestOTPSession = async (
     actionType,
     actionData,
   });
-
-  return response.data;
+  const payload = response.data.data ?? response.data;
+  return payload as RequestOtpResponse;
 };
 
 /**
@@ -315,8 +323,8 @@ const verifyOTP = async (
     deviceId,
     actionType,
   });
-
-  return response.data;
+  const payload = response.data.data ?? response.data;
+  return payload as VerifyOtpResponse;
 };
 
 /**

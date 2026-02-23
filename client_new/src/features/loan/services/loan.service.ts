@@ -164,6 +164,7 @@ class LoanService {
 
     /**
      * Tạo đơn vay (không blockchain, không bước thanh toán)
+     * @param otpSessionId - Smart OTP session ID khi user đã bật Smart OTP
      */
     async apply(params: {
         capital: number;
@@ -174,6 +175,7 @@ class LoanService {
         disbursementDate: string;
         disbursementWalletId: string;
         documents?: Array<{ documentTypeId: string; name: string; uri?: string }>;
+        otpSessionId?: string;
     }): Promise<{ id: string; status: string; capital: number; periodMonth: number; monthlyPay: number; entirelyPay: number; disbursementWalletId: string; schedulePreview: ScheduleItem[] }> {
         const response = await api.post<{ statusCode: number; data: any }>('/api/loan/apply', params);
         return response.data.data;

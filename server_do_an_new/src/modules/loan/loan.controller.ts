@@ -111,6 +111,7 @@ export class LoanController {
             disbursementDate: dto.disbursementDate,
             disbursementWalletId: dto.disbursementWalletId,
             documents: dto.documents,
+            otpSessionId: dto.otpSessionId,
         });
         return {
             statusCode: HttpStatus.CREATED,

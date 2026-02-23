@@ -63,4 +63,9 @@ export class ApplyLoanDto {
   @ValidateNested({ each: true })
   @Type(() => DocumentItemDto)
   documents?: DocumentItemDto[];
+
+  @ApiPropertyOptional({ description: 'Smart OTP session ID (bắt buộc khi đã bật Smart OTP)' })
+  @IsOptional()
+  @IsString()
+  otpSessionId?: string;
 }

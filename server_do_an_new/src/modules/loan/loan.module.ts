@@ -7,6 +7,7 @@ import { FineractModule } from '../fineract/fineract.module';
 import { AdminModule } from '../admin/admin.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { UsersModule } from '../users/users.module';
+import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 
 @Module({
     imports: [
@@ -15,6 +16,7 @@ import { UsersModule } from '../users/users.module';
         AdminModule,
         WalletsModule,
         UsersModule,
+        SmartOtpModule,
     ],
     controllers: [LoanController],
     providers: [LoanService],

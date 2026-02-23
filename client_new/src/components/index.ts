@@ -12,5 +12,7 @@ export * from './common/CommonCard';
 export * from './common/CommonInput';
 export * from './common/CommonBadge';
 export { default as FintechPullToRefresh } from './common/FintechPullToRefresh';
+export { OTPVerifyModal } from './common/OTPVerifyModal';
+export { OTPProtectedAction } from './common/OTPProtectedAction';
 export { default as VentoUltimateLoading } from './common/VentoSVGLoading';
 export * from './WalletCard';

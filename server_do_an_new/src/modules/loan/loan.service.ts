@@ -4,6 +4,8 @@ import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { AdminService } from '../admin/admin.service';
 import { WalletsService } from '../wallets/wallets.service';
+import { SmartOtpService } from '../smart-otp/services/smart-otp.service';
+import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
 import { roundToCurrency } from '../../utils/RoundingUtils';
@@ -53,6 +55,7 @@ export class LoanService {
         private readonly fineractLoanService: FineractLoanService,
         private readonly adminService: AdminService,
         private readonly walletsService: WalletsService,
+        private readonly smartOtpService: SmartOtpService,
         @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
         @InjectModel(User.name) private readonly userModel: Model<User>,
     ) { }
@@ -273,9 +276,32 @@ export class LoanService {
             disbursementDate: string;
             disbursementWalletId: string;
             documents?: Array<{ documentTypeId: string; name: string; uri?: string }>;
+            otpSessionId?: string;
         },
     ) {
         this.logger.log(`[createApplication] START | userId=${userId} capital=${dto.capital} periodMonth=${dto.periodMonth} productId=${dto.productId}`);
+
+        // 0. Smart OTP: bắt buộc đăng ký và xác thực OTP khi tạo khoản vay
+        const devices = await this.smartOtpService.getRegisteredDevices(userId);
+        if (devices.length === 0) {
+            throw new BadRequestException(
+                'Bạn cần đăng ký Smart OTP trong Profile trước khi tạo khoản vay.',
+            );
+        }
+        if (!dto.otpSessionId) {
+            throw new BadRequestException(
+                'Vui lòng xác thực OTP để tạo khoản vay.',
+            );
+        }
+        const consumeResult = await this.smartOtpService.consumeSession(
+            userId,
+            dto.otpSessionId,
+            OtpActionType.LOAN_CREATE,
+        );
+        if (!consumeResult.valid) {
+            throw new BadRequestException(consumeResult.message);
+        }
+        this.logger.log(`[createApplication] Smart OTP session consumed: ${dto.otpSessionId}`);
 
         // 1. Validate wallet belongs to user
         await this.walletsService.ensureWalletBelongsToUser(dto.disbursementWalletId, userId);

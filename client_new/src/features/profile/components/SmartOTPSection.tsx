@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -21,6 +21,10 @@ export const SmartOTPSection: React.FC = () => {
   } = useSmartOTP();
 
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!isRegistered) setExpanded(true);
+  }, [isRegistered]);
 
   const handleRegister = async () => {
     Alert.alert(
@@ -70,7 +74,11 @@ export const SmartOTPSection: React.FC = () => {
   return (
     <CommonCard style={styles.card}>
       <View style={styles.section}>
-        <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.header}
+          onPress={() => setExpanded(!expanded)}
+          activeOpacity={0.7}
+        >
           <View style={styles.headerLeft}>
             <View style={[styles.iconWrapper, { backgroundColor: isRegistered ? theme.colors.primary + '15' : theme.colors.textMuted + '15' }]}>
               <MaterialCommunityIcons
@@ -85,22 +93,17 @@ export const SmartOTPSection: React.FC = () => {
               </Text>
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
                 {isRegistered
-                  ? `${devices.length} registered device(s)`
-                  : 'No devices registered'}
+                  ? `${devices.length} thiết bị đã đăng ký`
+                  : 'Chưa đăng ký thiết bị'}
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={() => setExpanded(!expanded)}
-            style={styles.expandButton}
-          >
-            <MaterialCommunityIcons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={theme.colors.textDim}
-            />
-          </TouchableOpacity>
-        </View>
+          <MaterialCommunityIcons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={theme.colors.textDim}
+          />
+        </TouchableOpacity>
 
         {expanded && (
           <View style={styles.content}>
@@ -260,9 +263,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Poppins_400Regular',
     marginTop: 2,
-  },
-  expandButton: {
-    padding: 4,
   },
   content: {
     marginTop: 20,

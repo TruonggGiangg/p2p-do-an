@@ -18,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, CommonButton } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction } from '../../../components';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
@@ -26,6 +26,7 @@ import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal
 import type { Wallet } from '../../../types/auth.types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
+import { OtpActionType } from '../../../types/otp.types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -122,7 +123,7 @@ export default function LoanConfirmScreen() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleApply = async () => {
+    const handleApply = async (payload?: { otpSessionId?: string }) => {
         if (!selectedWallet) {
             Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
             return;
@@ -152,6 +153,7 @@ export default function LoanConfirmScreen() {
                 documents: Object.entries(documents)
                     .filter(([, v]) => v?.name)
                     .map(([documentTypeId, v]) => ({ documentTypeId, name: v!.name })),
+                otpSessionId: payload?.otpSessionId,
             });
 
             const loanMongoId = result.id;
@@ -454,22 +456,52 @@ export default function LoanConfirmScreen() {
                     </CommonCard>
                 )}
 
-                {/* ── Submit ── */}
-                <TouchableOpacity
-                    style={[styles.submitBtn, { backgroundColor: submitting || !selectedWallet ? theme.colors.border : theme.colors.primary }]}
-                    onPress={handleApply}
-                    disabled={submitting || !selectedWallet}
-                    activeOpacity={0.85}
+                {/* ── Submit (Smart OTP protected) ── */}
+                <OTPProtectedAction
+                    actionType={OtpActionType.LOAN_CREATE}
+                    actionData={{ capital, periodMonth, productId: product.id }}
+                    onExecute={handleApply}
+                    requireOTP
+                    title="Xác thực Smart OTP"
+                    description="Nhập mã OTP để xác nhận tạo khoản vay"
                 >
-                    {submitting ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                        <MaterialCommunityIcons name="send-check-outline" size={20} color="#fff" />
-                    )}
-                    <Text style={[styles.submitBtnText, { color: submitting || !selectedWallet ? theme.colors.textDim : '#fff' }]}>
-                        {submitting ? 'Đang gửi...' : 'Xác nhận đăng ký vay'}
-                    </Text>
-                </TouchableOpacity>
+                    {({ trigger, isLoading, isInitialized }) => {
+                        const handlePress = () => {
+                            if (!selectedWallet) {
+                                Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
+                                return;
+                            }
+                            if (!(selectedWallet.id ?? selectedWallet._id)) {
+                                Alert.alert('Lỗi', 'Ví không hợp lệ');
+                                return;
+                            }
+                            const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
+                            if (requiredMissing.length > 0) {
+                                Alert.alert('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
+                                return;
+                            }
+                            trigger();
+                        };
+                        const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized;
+                        return (
+                            <TouchableOpacity
+                                style={[styles.submitBtn, { backgroundColor: isDisabled ? theme.colors.border : theme.colors.primary }]}
+                                onPress={handlePress}
+                                disabled={isDisabled}
+                                activeOpacity={0.85}
+                            >
+                                {submitting || isLoading ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <MaterialCommunityIcons name="send-check-outline" size={20} color="#fff" />
+                                )}
+                                <Text style={[styles.submitBtnText, { color: isDisabled ? theme.colors.textDim : '#fff' }]}>
+                                    {submitting || isLoading ? 'Đang gửi...' : 'Xác nhận đăng ký vay'}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    }}
+                </OTPProtectedAction>
 
                 <View style={{ height: 40 }} />
             </ScrollView>
