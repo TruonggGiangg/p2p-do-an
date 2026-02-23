@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { ThemeTransitionStyles } from './src/components/ThemeTransitionStyles';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function AppContent() {
@@ -28,6 +29,7 @@ function AppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
+      <ThemeTransitionStyles />
       <ThemeProvider>
         <AuthProvider>
           <AppContent />

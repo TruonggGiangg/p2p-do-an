@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
+import { FineractClientService } from '../fineract/services/fineract-client.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
@@ -9,6 +10,11 @@ import { SyncDriftLog } from './schemas/sync-drift-log.schema';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
+import { User } from '../users/schemas/user.schema';
+import { LoanApplication } from '../loan/schemas/loan-application.schema';
+
+/** officeId=1 = Head Office in default Fineract setup */
+const HEAD_OFFICE_ID = 1;
 
 const SNAPSHOT_SCOPE = 'default';
 
@@ -21,8 +27,11 @@ export class AdminService {
     @InjectModel(LoanProductDocumentType.name) private loanProductDocModel: Model<LoanProductDocumentType>,
     @InjectModel(LoanProductSnapshot.name) private snapshotModel: Model<LoanProductSnapshot>,
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
+    @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     private readonly fineractLoanService: FineractLoanService,
-  ) {}
+    private readonly fineractClientService: FineractClientService,
+  ) { }
 
   // ---------- Loan products (from Fineract) ----------
   async getLoanProductsForAdmin() {
@@ -32,8 +41,13 @@ export class AdminService {
       name: p.name,
       shortName: p.shortName,
       interestRatePerPeriod: p.interestRatePerPeriod,
+      interestRateFrequencyType: p.interestRateFrequencyType,
       interestType: p.interestType,
     }));
+  }
+
+  async getLoanProductDetails(productId: number) {
+    return this.fineractLoanService.getLoanProductDetails(productId);
   }
 
   // ---------- Document types CRUD ----------
@@ -41,14 +55,13 @@ export class AdminService {
     const doc = await this.documentTypeModel.create({
       name: dto.name,
       required: dto.required ?? false,
-      sortOrder: dto.sortOrder ?? 0,
       description: dto.description,
     });
     return doc.toObject();
   }
 
   async findAllDocumentTypes() {
-    const list = await this.documentTypeModel.find().sort({ sortOrder: 1, name: 1 }).lean();
+    const list = await this.documentTypeModel.find().sort({ name: 1 }).lean();
     return list;
   }
 
@@ -76,27 +89,31 @@ export class AdminService {
     const links = await this.loanProductDocModel
       .find({ fineractProductId })
       .populate('documentTypeId')
-      .sort({ sortOrder: 1 })
+      .sort({ name: 1 })
       .lean();
     return links.map((l: any) => ({
       documentTypeId: l.documentTypeId?._id,
       documentType: l.documentTypeId,
       required: l.required,
-      sortOrder: l.sortOrder,
     }));
   }
 
   async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) {
     await this.loanProductDocModel.deleteMany({ fineractProductId });
     if (items.length === 0) return { fineractProductId, count: 0 };
-    const toInsert = items.map((item, index) => ({
-      fineractProductId,
-      documentTypeId: new Types.ObjectId(item.documentTypeId),
-      required: item.required ?? false,
-      sortOrder: item.sortOrder ?? index,
+    const operations = items.map((item) => ({
+      updateOne: {
+        filter: { fineractProductId, documentTypeId: new Types.ObjectId(item.documentTypeId) },
+        update: {
+          $set: {
+            required: item.required ?? false,
+          }
+        },
+        upsert: true,
+      },
     }));
-    await this.loanProductDocModel.insertMany(toInsert);
-    return { fineractProductId, count: toInsert.length };
+    await this.loanProductDocModel.bulkWrite(operations);
+    return { fineractProductId, count: operations.length };
   }
 
   // ---------- Sync & drift ----------
@@ -169,5 +186,310 @@ export class AdminService {
       await this.logSyncDrift(added, removed, modified);
     }
     return { added, removed, modified };
+  }
+
+  // ---------- Customers (Fineract-First) ----------
+  /**
+   * Get all Fineract clients from Head Office (officeId=1) as primary list.
+   * Enriches each client with MongoDB user data (profiles, emails) where available.
+   */
+  async getCustomers(page = 1, limit = 20, keyword?: string) {
+    // 1. Fetch Head Office client map from Fineract
+    const headOfficeClientsMap = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
+
+    // Filter unique clients (Map contains both externalId and id keys)
+    let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
+      (c, index, self) => self.findIndex(t => t.id === c.id) === index
+    );
+
+    // Filter by keyword (displayName, username, email, firstname, lastname, externalId)
+    if (keyword) {
+      const q = keyword.toLowerCase();
+      uniqueClients = uniqueClients.filter((fc: any) => {
+        const first = (fc.firstname || '').toLowerCase();
+        const last = (fc.lastname || '').toLowerCase();
+        const ext = (fc.externalId || '').toLowerCase();
+        const email = (fc.emailAddress || '').toLowerCase();
+        const display = `${first} ${last}`.trim() || ext;
+        return first.includes(q) || last.includes(q) || ext.includes(q) || email.includes(q) || display.includes(q);
+      });
+    }
+
+    // 2. Fetch MongoDB users associated with these clients to enrich data
+    const clientIds = uniqueClients.map(c => c.id);
+    const mongoUsers = await this.userModel
+      .find({ fineractClientId: { $in: clientIds.map(String) } })
+      .select('username email profile fineractClientId status createdAt')
+      .lean();
+
+    const userMap = new Map<string, any>();
+    for (const u of mongoUsers) {
+      if (u.fineractClientId) userMap.set(String(u.fineractClientId), u);
+    }
+
+    // 3. Paginate the Fineract list (after keyword filter)
+    const total = uniqueClients.length;
+    const skip = (page - 1) * limit;
+    const pagedClients = uniqueClients.slice(skip, skip + limit);
+
+    // 4. Transform and enrich
+    const users = pagedClients.map((fc: any) => {
+      const u = userMap.get(String(fc.id));
+      return {
+        _id: u?._id?.toString() ?? null,
+        username: u?.username ?? fc?.externalId ?? `FC_${fc.id}`,
+        email: u?.email ?? (fc?.emailAddress || null),
+        profile: u?.profile ?? {
+          firstName: fc?.firstname,
+          lastName: fc?.lastname,
+          avatar: null,
+        },
+        fineractClientId: String(fc.id),
+        status: u?.status ?? 'active',
+        createdAt: u?.createdAt ?? fc?.activationDate ?? null,
+        // Fineract enrichment
+        fineractStatus: fc?.status ?? null,
+        officeName: fc?.officeName ?? 'Head Office',
+        activationDate: fc?.activationDate ?? null,
+        displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
+      };
+    });
+
+    return { users, total, page, limit };
+  }
+
+  async getCustomerById(userId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId)
+        .select('username email profile fineractClientId status createdAt metadata')
+        .lean();
+    }
+
+    // If not found by Mongo ID, maybe userId is actually a fineractClientId
+    if (!user) {
+      user = await this.userModel.findOne({ fineractClientId: userId })
+        .select('username email profile fineractClientId status createdAt metadata')
+        .lean();
+    }
+
+    // Enrich with Fineract client data
+    const map = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
+    const fineractClientId = user?.fineractClientId ?? userId;
+    const fc: any = map.get(String(fineractClientId)) ?? (user ? map.get(user.username) : null);
+
+    if (!user && !fc) throw new NotFoundException('Khách hàng không tồn tại');
+
+    return {
+      _id: user?._id?.toString() ?? `FC_${fineractClientId}`,
+      username: user?.username ?? fc?.externalId ?? `FC_${fineractClientId}`,
+      email: user?.email ?? fc?.emailAddress ?? null,
+      profile: user?.profile ?? { firstName: fc?.firstname, lastName: fc?.lastname },
+      fineractClientId: user?.fineractClientId ?? String(fineractClientId),
+      status: user?.status ?? 'active',
+      createdAt: (user as any)?.createdAt ?? (fc as any)?.activationDate ?? null,
+      // Fineract enrichment
+      fineractStatus: fc?.status ?? null,
+      officeName: fc?.officeName ?? 'Head Office',
+      activationDate: fc?.activationDate ?? null,
+      displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || user?.username || `FC_${fineractClientId}`,
+    };
+  }
+
+  /**
+   * Get loans for a customer - only P* products, FETCHED DIRECTLY FROM FINERACT.
+   * Enriches with MongoDB data for internal IDs if available.
+   */
+  async getCustomerLoans(userId: string) {
+    // 1. Get user to find fineractClientId
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId).lean();
+    }
+
+    if (!user) {
+      // maybe userId is fineractClientId
+      user = await this.userModel.findOne({ fineractClientId: userId }).lean();
+    }
+
+    const fineractClientId = user?.fineractClientId ?? (userId.startsWith('FC_') ? userId.split('_')[1] : userId);
+    if (!fineractClientId) return [];
+
+    // 2. Fetch all loans for this client from Fineract
+    const fineractLoans = await this.fineractLoanService.getLoansByClientId(Number(fineractClientId));
+
+    // 3. Get products to filter by 'P*'
+    const products = await this.fineractLoanService.getLoanProducts();
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+
+    // 4. Fetch local loan applications to map internal IDs and static data
+    const localLoans = user
+      ? await this.loanApplicationModel.find({ userId: user._id }).lean()
+      : [];
+    const localLoanMap = new Map<number, any>();
+    for (const ll of localLoans) {
+      if (ll.fineractLoanId) localLoanMap.set(ll.fineractLoanId, ll);
+    }
+
+    // 5. Transform
+    this.logger.log(`[getCustomerLoans] fineractClientId=${fineractClientId} | Found ${fineractLoans.length} total loans in Fineract`);
+
+    return fineractLoans
+      .map(fl => {
+        const productId = fl.productId || fl.loanProductId;
+        const p: any = productMap.get(productId);
+        const ll: any = localLoanMap.get(fl.id);
+        const annualRate = fl.annualInterestRate ?? 0;
+        return {
+          _id: ll?._id?.toString() ?? `FL_${fl.id}`,
+          productId: productId,
+          productName: p?.name ?? String(productId),
+          productShortName: p?.shortName ?? '',
+          capital: fl.principal ?? ll?.capital ?? 0,
+          periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
+          monthlyPay: ll?.monthlyPay ?? 0,
+          entirelyPay: ll?.entirelyPay ?? 0,
+          monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
+          status: fl.status ?? { value: ll?.status ?? 'active', code: ll?.status ?? 'active' },
+          fineractLoanId: fl.id,
+          disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
+          createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
+          willing: ll?.willing ?? '',
+        };
+      });
+  }
+
+  /**
+   * Get all pending loans (status 100 in Fineract) for admin approval.
+   * Only P* products.
+   */
+  async getAllPendingLoans() {
+    // 1. Fetch all pending loans from Fineract (Status 100 = Submitted and pending approval)
+    const pendingFineractLoans = await this.fineractLoanService.getLoansByStatus(100);
+
+    // 2. Filter by P* products
+    const products = await this.fineractLoanService.getLoanProducts();
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+
+    this.logger.log(`[getAllPendingLoans] Found ${pendingFineractLoans.length} total pending loans (status 100) in Fineract`);
+    pendingFineractLoans.forEach(fl => {
+      const productId = fl.productId || fl.loanProductId;
+      const p: any = productMap.get(productId);
+      this.logger.log(`  - Pending ID ${fl.id} | Client ${fl.clientId} | Product ${productId} (${p?.shortName || 'N/A'})`);
+    });
+
+    this.logger.log(`[getAllPendingLoans] Returning ${pendingFineractLoans.length} pending loans`);
+
+    if (pendingFineractLoans.length === 0) return [];
+
+    // 3. Map to internal MongoDB users and loan applications
+    const fineractLoanIds = pendingFineractLoans.map(fl => fl.id);
+    const fineractClientIds = pendingFineractLoans.map(fl => String(fl.clientId));
+
+    const [mongoUsers, mongoLoans] = await Promise.all([
+      this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean(),
+      this.loanApplicationModel.find({ fineractLoanId: { $in: fineractLoanIds } }).lean(),
+    ]);
+
+    const userMap = new Map(mongoUsers.map(u => [u.fineractClientId, u]));
+    const loanMap = new Map(mongoLoans.map(l => [l.fineractLoanId, l]));
+
+    // 4. Transform
+    return pendingFineractLoans.map(fl => {
+      const productId = fl.productId || fl.loanProductId;
+      const p: any = productMap.get(productId) ?? {};
+      const u = userMap.get(String(fl.clientId));
+      const ll: any = loanMap.get(fl.id);
+      const annualRate = fl.annualInterestRate ?? 0;
+
+      return {
+        _id: ll?._id?.toString() ?? `FL_${fl.id}`,
+        userId: u?._id?.toString() ?? null,
+        productId: fl.productId,
+        productName: p.name ?? String(fl.productId),
+        productShortName: p.shortName ?? '',
+        capital: fl.principal ?? ll?.capital ?? 0,
+        periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
+        monthlyPay: ll?.monthlyPay ?? 0,
+        entirelyPay: ll?.entirelyPay ?? 0,
+        monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
+        status: fl.status ?? { value: 'pending', code: 'loanStatusType.pendingApproval' },
+        fineractLoanId: fl.id,
+        disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
+        createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
+        willing: ll?.willing ?? '',
+        // Client display name for easier approval
+        clientName: fl.clientName ?? u?.username ?? `Client ${fl.clientId}`,
+      };
+    });
+  }
+
+  /**
+   * Admin approve loan: Fineract approve + update MongoDB status
+   */
+  async approveLoan(fineractLoanId: number) {
+    this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
+    await this.fineractLoanService.approveLoan(fineractLoanId);
+    await this.loanApplicationModel.updateOne(
+      { fineractLoanId },
+      { $set: { status: 'approved' } },
+    );
+    return { fineractLoanId, status: 'approved' };
+  }
+
+  /**
+   * Admin disburse loan: Fineract disburse + update MongoDB status
+   */
+  async disburseLoan(fineractLoanId: number) {
+    this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
+    const loan = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
+    if (!loan) throw new BadRequestException(`Kho\u1ea3n vay Fineract #${fineractLoanId} kh\u00f4ng t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng`);
+    await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
+    await this.loanApplicationModel.updateOne(
+      { fineractLoanId },
+      { $set: { status: 'disbursed' } },
+    );
+    return { fineractLoanId, status: 'disbursed' };
+  }
+
+  async getLoanDetails(fineractLoanId: number) {
+    this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId}`);
+    return this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+  }
+
+  async getLoanDocuments(fineractLoanId: number) {
+    this.logger.log(`[getLoanDocuments] fineractLoanId=${fineractLoanId}`);
+    const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
+
+    // Find matching loan in MongoDB to get our metadata
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean().exec();
+    if (!app || !app.documents || app.documents.length === 0) {
+      return fineractDocs;
+    }
+
+    // Map documentType names
+    const docTypeIds = app.documents.map(d => d.documentTypeId).filter(Boolean);
+    const docTypes = await this.documentTypeModel.find({ _id: { $in: docTypeIds } }).lean().exec();
+    const typeMap = new Map(docTypes.map(t => [t._id.toString(), t.name]));
+
+    // Enrich Fineract docs with Mongo data
+    return fineractDocs.map(fd => {
+      const mongoDoc = app.documents.find(md => md.fineractDocumentId === fd.id);
+      if (mongoDoc) {
+        return {
+          ...fd,
+          documentTypeId: mongoDoc.documentTypeId,
+          documentTypeName: typeMap.get(mongoDoc.documentTypeId.toString()) || 'Unknown',
+          originalName: mongoDoc.name,
+          uploadedAt: mongoDoc.uploadedAt,
+        };
+      }
+      return fd;
+    });
+  }
+
+  async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
+    this.logger.log(`[getLoanDocumentStream] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
+    return this.fineractLoanService.downloadDocument(fineractLoanId, documentId);
   }
 }

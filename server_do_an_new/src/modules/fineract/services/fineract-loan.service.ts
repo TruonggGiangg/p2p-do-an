@@ -19,7 +19,8 @@ export class FineractLoanService extends FineractBaseService {
     }
 
     /**
-     * Create a new loan application in Fineract
+     * Create a new loan application in Fineract (học theo p2p)
+     * interestRatePerPeriod: lãi/tháng (%). Nếu không truyền thì lấy từ product.
      */
     async createLoanApplication(data: {
         clientId: number;
@@ -32,17 +33,25 @@ export class FineractLoanService extends FineractBaseService {
         expectedDisbursementDate?: string;
     }): Promise<number> {
         try {
+            this.logger.log(`[createLoanApplication] START | clientId=${data.clientId} productId=${data.productId} principal=${data.principal} periods=${data.numberOfRepayments}`);
+
             const product = await this.getLoanProductDetails(data.productId);
             if (!product) {
+                this.logger.error(`[createLoanApplication] Product ${data.productId} not found`);
                 throw new BadRequestException(`Loan product ${data.productId} not found in Fineract`);
             }
 
-            const interestRatePerPeriod = product.interestRatePerPeriod;
+            // Ưu tiên lãi suất từ data (user chọn), fallback product
+            const productRate = product.interestRatePerPeriod ?? product.defaultInterestRatePerPeriod ?? 0;
+            const interestRatePerPeriod = data.interestRatePerPeriod ?? productRate;
             const amortizationType = product.amortizationType?.id;
             const interestType = product.interestType?.id;
             const interestCalculationPeriodType = product.interestCalculationPeriodType?.id;
 
-            if (!interestRatePerPeriod || !amortizationType || interestType === undefined || !interestCalculationPeriodType) {
+            this.logger.log(`[createLoanApplication] Config: rate=${interestRatePerPeriod}%/period amortization=${amortizationType} interestType=${interestType}`);
+
+            if (interestRatePerPeriod == null || interestRatePerPeriod < 0 || !amortizationType || interestType === undefined || !interestCalculationPeriodType) {
+                this.logger.error(`[createLoanApplication] Missing config: rate=${interestRatePerPeriod} amortization=${amortizationType} interestType=${interestType} calcPeriod=${interestCalculationPeriodType}`);
                 throw new BadRequestException(`Loan product ${data.productId} is missing required configuration`);
             }
 
@@ -50,7 +59,7 @@ export class FineractLoanService extends FineractBaseService {
             const submittedOnDate = today.toISOString().split('T')[0];
             const expectedDisbursementDate = data.expectedDisbursementDate || submittedOnDate;
 
-            const response = await this.client.post('/loans', {
+            const payload = {
                 clientId: data.clientId,
                 productId: data.productId,
                 principal: data.principal,
@@ -69,41 +78,73 @@ export class FineractLoanService extends FineractBaseService {
                 submittedOnDate,
                 ...this.getCommonLocaleParams('strict'),
                 locale: 'en',
-            });
+            };
 
-            this.logger.log(`Loan application created: ${response.data.loanId}`);
-            return response.data.loanId || response.data.resourceId;
+            this.logger.log(`[createLoanApplication] POST /loans payload: ${JSON.stringify({ clientId: payload.clientId, principal: payload.principal, numberOfRepayments: payload.numberOfRepayments, expectedDisbursementDate: payload.expectedDisbursementDate, interestRatePerPeriod: payload.interestRatePerPeriod })}`);
+
+            const response = await this.client.post('/loans', payload, { timeout: 60000 });
+
+            const loanId = response.data.loanId || response.data.resourceId;
+            this.logger.log(`[createLoanApplication] SUCCESS | loanId=${loanId}`);
+            return loanId;
         } catch (error: any) {
+            this.logger.error(`[createLoanApplication] FAILED: ${error.message}`);
+            if (error.response?.data) {
+                this.logger.error(`[createLoanApplication] Response: ${JSON.stringify(error.response.data)}`);
+                if (error.response.data?.errors) {
+                    error.response.data.errors.forEach((e: any, i: number) => {
+                        this.logger.error(`[createLoanApplication] Error[${i}]: ${e.userMessageGlobalisationCode || e.defaultUserMessage || e}`);
+                    });
+                }
+            }
             this.handleError(error, 'Failed to create loan application');
         }
     }
 
     /**
-     * Approve a loan application
+     * Approve a loan application (học theo p2p)
      */
     async approveLoan(loanId: number): Promise<void> {
         try {
+            const approvedOnDate = this.getTodayFormatted('iso');
+            this.logger.log(`[approveLoan] START | loanId=${loanId} approvedOnDate=${approvedOnDate}`);
             await this.client.post(`/loans/${loanId}?command=approve`, {
-                approvedOnDate: this.getTodayFormatted('display'),
-                ...this.getCommonLocaleParams('display'),
+                approvedOnDate,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
             });
-            this.logger.log(`Loan ${loanId} approved`);
+            this.logger.log(`[approveLoan] SUCCESS | loanId=${loanId}`);
         } catch (error: any) {
+            if (error.response?.data?.errors?.[0]?.userMessageGlobalisationCode === 'error.msg.loan.already.approved') {
+                this.logger.log(`[approveLoan] Loan ${loanId} already approved, continuing`);
+                return;
+            }
+            this.logger.error(`[approveLoan] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[approveLoan] Response: ${JSON.stringify(error.response.data)}`);
             this.handleError(error, `Failed to approve loan ${loanId}`);
         }
     }
 
     /**
-     * Disburse an approved loan
+     * Disburse an approved loan (học theo p2p)
      */
-    async disburseLoan(loanId: number): Promise<void> {
+    async disburseLoan(loanId: number, principal?: number): Promise<void> {
         try {
-            await this.client.post(`/loans/${loanId}?command=disburse`, {
-                actualDisbursementDate: this.getTodayFormatted('display'),
-                ...this.getCommonLocaleParams('display'),
-            });
-            this.logger.log(`Loan ${loanId} disbursed`);
+            const actualDisbursementDate = this.getTodayFormatted('iso');
+            const payload: any = {
+                actualDisbursementDate,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+            };
+            if (principal != null && principal > 0) {
+                payload.transactionAmount = principal;
+            }
+            this.logger.log(`[disburseLoan] START | loanId=${loanId} date=${actualDisbursementDate} amount=${principal ?? '(full)'}`);
+            await this.client.post(`/loans/${loanId}?command=disburse`, payload);
+            this.logger.log(`[disburseLoan] SUCCESS | loanId=${loanId}`);
         } catch (error: any) {
+            this.logger.error(`[disburseLoan] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[disburseLoan] Response: ${JSON.stringify(error.response.data)}`);
             this.handleError(error, `Failed to disburse loan ${loanId}`);
         }
     }
@@ -113,7 +154,7 @@ export class FineractLoanService extends FineractBaseService {
      */
     async getLoanDetails(loanId: string): Promise<any> {
         try {
-            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule`);
+            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule,transactions`);
             return response.data;
         } catch (error: any) {
             this.handleError(error, `Failed to get loan details ${loanId}`);
@@ -147,6 +188,41 @@ export class FineractLoanService extends FineractBaseService {
     }
 
     /**
+     * Get loans list filtered by status (Fineract GET /loans?status=X)
+     * e.g. status 100 = Submitted and pending approval
+     */
+    async getLoansByStatus(status: number): Promise<any[]> {
+        try {
+            this.logger.log(`[getLoansByStatus] GET /loans?status=${status}`);
+            const response = await this.client.get('/loans', { params: { status, limit: 1000 } });
+            const items = response.data?.pageItems ?? response.data ?? [];
+            this.logger.log(`[getLoansByStatus] SUCCESS | Got ${Array.isArray(items) ? items.length : 0} items`);
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.logger.error(`[getLoansByStatus] FAILED status ${status}: ${error.message}`);
+            this.logger.warn(`Failed to get loans by status ${status}:`, error?.response?.data ?? error?.message);
+            return [];
+        }
+    }
+
+    /**
+     * Get loans list filtered by clientId (Fineract GET /loans?clientId=X)
+     */
+    async getLoansByClientId(clientId: number): Promise<any[]> {
+        try {
+            this.logger.log(`[getLoansByClientId] GET /loans?clientId=${clientId}`);
+            const response = await this.client.get('/loans', { params: { clientId, limit: 1000 } });
+            const items = response.data?.pageItems ?? response.data ?? [];
+            this.logger.log(`[getLoansByClientId] SUCCESS | Got ${Array.isArray(items) ? items.length : 0} items`);
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.logger.error(`[getLoansByClientId] FAILED clientId ${clientId}: ${error.message}`);
+            this.logger.warn(`Failed to get loans by clientId ${clientId}:`, error?.response?.data ?? error?.message);
+            return [];
+        }
+    }
+
+    /**
      * Create loan, approve, and disburse in one flow
      */
     async createAndDisburseLoan(data: {
@@ -157,7 +233,7 @@ export class FineractLoanService extends FineractBaseService {
     }): Promise<{ loanId: number; repaymentSchedule: any }> {
         const loanId = await this.createLoanApplication(data);
         await this.approveLoan(loanId);
-        await this.disburseLoan(loanId);
+        await this.disburseLoan(loanId, data.principal);
         const loanDetails = await this.getLoanDetails(loanId.toString());
 
         return {
@@ -175,6 +251,39 @@ export class FineractLoanService extends FineractBaseService {
             return response.data;
         } catch (error: any) {
             this.handleError(error, `Failed to get loan product ${productId}`);
+        }
+    }
+
+    /**
+     * Lấy danh sách mục đích vay (CodeValues) từ Fineract - LoanPurpose
+     */
+    async getLoanPurposeCodeValues(): Promise<Array<{ id: number; name: string; position: number }>> {
+        try {
+            const codesResponse = await this.client.get('/codes');
+            const codes = codesResponse.data?.pageItems ?? codesResponse.data ?? [];
+            const loanPurposeCode = Array.isArray(codes)
+                ? codes.find((c: any) => c.name === 'LoanPurpose' || c.name === 'loanPurpose')
+                : null;
+
+            if (!loanPurposeCode) {
+                this.logger.log('Code "LoanPurpose" chưa tồn tại trong Fineract');
+                return [];
+            }
+
+            const codeValuesResponse = await this.client.get(`/codes/${loanPurposeCode.id}/codevalues`);
+            const codeValues = codeValuesResponse.data?.pageItems ?? codeValuesResponse.data ?? [];
+
+            return (Array.isArray(codeValues) ? codeValues : [])
+                .filter((cv: any) => cv.isActive !== false)
+                .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+                .map((cv: any) => ({
+                    id: cv.id,
+                    name: cv.name,
+                    position: cv.position ?? 0,
+                }));
+        } catch (error: any) {
+            this.logger.warn('Lỗi lấy loan purpose code values:', error?.response?.data ?? error?.message);
+            return [];
         }
     }
 
@@ -299,7 +408,6 @@ export class FineractLoanService extends FineractBaseService {
         }
 
         const totalInterest = totalRepayment - data.principal;
-
         return {
             monthlyRate,
             annualRate,
@@ -309,5 +417,54 @@ export class FineractLoanService extends FineractBaseService {
             interestType,
             schedulePreview,
         };
+    }
+
+    /**
+     * Upload document for a loan
+     */
+    async uploadDocument(loanId: number, formData: any): Promise<any> {
+        try {
+            this.logger.log(`[uploadDocument] START | loanId=${loanId}`);
+            const response = await this.client.post(`/loans/${loanId}/documents`, formData, {
+                headers: {
+                    ...formData.getHeaders?.(), // if using form-data package
+                },
+            });
+            this.logger.log(`[uploadDocument] SUCCESS | loanId=${loanId} docId=${response.data.resourceId}`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`[uploadDocument] FAILED loanId=${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to upload document for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Download/Stream document content from Fineract
+     */
+    async downloadDocument(loanId: number, documentId: number): Promise<any> {
+        try {
+            this.logger.log(`[downloadDocument] START | loanId=${loanId} documentId=${documentId}`);
+            const response = await this.client.get(`/loans/${loanId}/documents/${documentId}/attachment`, {
+                responseType: 'arraybuffer',
+            });
+            return response;
+        } catch (error: any) {
+            this.logger.error(`[downloadDocument] FAILED loanId=${loanId} docId=${documentId}: ${error.message}`);
+            this.handleError(error, `Failed to download document ${documentId}`);
+        }
+    }
+
+    /**
+     * Get list of documents for a loan
+     */
+    async getLoanDocuments(loanId: number): Promise<any[]> {
+        try {
+            this.logger.log(`[getLoanDocuments] START | loanId=${loanId}`);
+            const response = await this.client.get(`/loans/${loanId}/documents`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`[getLoanDocuments] FAILED loanId=${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to get documents for loan ${loanId}`);
+        }
     }
 }

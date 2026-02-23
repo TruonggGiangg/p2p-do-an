@@ -12,12 +12,7 @@ export class CreateDocumentTypeDto {
   @IsBoolean()
   required?: boolean;
 
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @IsNumber()
-  sortOrder?: number;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Mô tả' })
   @IsOptional()
   @IsString()
   description?: string;

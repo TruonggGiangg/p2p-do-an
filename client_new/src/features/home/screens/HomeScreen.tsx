@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../contexts/AuthContext';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { bnplAPI } from '../../bnpl/api/bnpl.api';
-import { BinanceHeader, CommonCard, CommonButton, QuickAction, QRCodeDisplay, FintechPullToRefresh } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, QuickAction, QRCodeDisplay, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
 import { TransferModal } from '../../wallet/components/TransferModal';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -33,14 +33,18 @@ export default function HomeScreen() {
 
     const fetchWallets = async () => {
         setWalletsLoading(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            let response = await walletAPI.getWallets();
+            const [response] = await Promise.all([
+                walletAPI.getWallets(),
+                minDelay
+            ]);
             let walletData = response.wallets || [];
 
             if (walletData.length === 0) {
                 await walletAPI.syncWallets();
-                response = await walletAPI.getWallets();
-                walletData = response.wallets || [];
+                const syncResponse = await walletAPI.getWallets();
+                walletData = syncResponse.wallets || [];
             }
 
             const eWallets = walletData.filter((w: Wallet) => w.type === 'e_wallet');
@@ -95,65 +99,71 @@ export default function HomeScreen() {
                 onSearchPress={() => { }}
             />
 
-            <FintechPullToRefresh
-                onRefresh={onRefresh}
-                refreshing={refreshing}
-                contentContainerStyle={styles.scrollContent}
-                primaryColor={theme.colors.primary}
-                glowColor={theme.colors.primaryLight}
-            >
-                {/* Portfolio Card */}
-                <View style={styles.portfolioSection}>
-                    <CommonCard>
-                        <View style={styles.portfolioHeader}>
-                            <Text style={[styles.portfolioTitle, { color: theme.colors.textSecondary }]}>Total Assets (VND)</Text>
-                            <MaterialCommunityIcons name="eye-outline" size={16} color={theme.colors.textDim} />
-                        </View>
-
-                        <View style={styles.balanceRow}>
-                            <Text style={[styles.balanceMajor, { color: theme.colors.textPrimary }]}>
-                                {formatCurrency(totalBalance)}
-                            </Text>
-                        </View>
-
-                        <View style={styles.portfolioActions}>
-                            <CommonButton
-                                title="Deposit"
-                                variant="primary"
-                                style={{ flex: 1, height: 44 }}
-                                textStyle={{ fontSize: 13, color: '#000' }}
-                                onPress={() => { }}
-                            />
-                            <CommonButton
-                                title="Withdraw"
-                                variant="secondary"
-                                style={{ flex: 1, height: 44, backgroundColor: theme.colors.surfaceLight }}
-                                textStyle={{ fontSize: 13, color: theme.colors.textPrimary }}
-                                onPress={() => { }}
-                            />
-                        </View>
-                    </CommonCard>
+            {walletsLoading && !refreshing ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <VentoUltimateLoading size={200} />
                 </View>
-
-                {/* Quick Shortcuts */}
-                <View style={styles.shortcutGrid}>
-                    {[
-                        { icon: 'card-account-details-outline', label: 'BNPL', color: theme.colors.primary, onPress: () => (navigation as any).navigate('BNPL') },
-                        { icon: 'send-outline', label: 'Transfer', color: theme.colors.primary, onPress: () => (navigation as any).getParent()?.navigate('Transfer') },
-                        { icon: 'wallet-outline', label: 'Wallets', color: theme.colors.primary, onPress: () => (navigation as any).getParent()?.navigate('Wallets') },
-                        { icon: 'history', label: 'History', color: theme.colors.primary, onPress: () => (navigation as any).navigate('Notifications') },
-                    ].map((item, idx) => (
-                        <TouchableOpacity key={idx} style={styles.shortcutItem} onPress={item.onPress}>
-                            <View style={[styles.shortcutIcon, { backgroundColor: theme.colors.surfaceLight }]}>
-                                <MaterialCommunityIcons name={item.icon as any} size={24} color={item.color} />
+            ) : (
+                <FintechPullToRefresh
+                    onRefresh={onRefresh}
+                    refreshing={refreshing}
+                    contentContainerStyle={styles.scrollContent}
+                    primaryColor={theme.colors.primary}
+                    glowColor={theme.colors.primaryLight}
+                >
+                    {/* Portfolio Card */}
+                    <View style={styles.portfolioSection}>
+                        <CommonCard>
+                            <View style={styles.portfolioHeader}>
+                                <Text style={[styles.portfolioTitle, { color: theme.colors.textSecondary }]}>Total Assets (VND)</Text>
+                                <MaterialCommunityIcons name="eye-outline" size={16} color={theme.colors.textDim} />
                             </View>
-                            <Text style={[styles.shortcutLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
 
-                <View style={{ height: 40 }} />
-            </FintechPullToRefresh>
+                            <View style={styles.balanceRow}>
+                                <Text style={[styles.balanceMajor, { color: theme.colors.textPrimary }]}>
+                                    {formatCurrency(totalBalance)}
+                                </Text>
+                            </View>
+
+                            <View style={styles.portfolioActions}>
+                                <CommonButton
+                                    title="Deposit"
+                                    variant="primary"
+                                    style={{ flex: 1, height: 44 }}
+                                    textStyle={{ fontSize: 13, color: '#000' }}
+                                    onPress={() => { }}
+                                />
+                                <CommonButton
+                                    title="Withdraw"
+                                    variant="secondary"
+                                    style={{ flex: 1, height: 44, backgroundColor: theme.colors.surfaceLight }}
+                                    textStyle={{ fontSize: 13, color: theme.colors.textPrimary }}
+                                    onPress={() => { }}
+                                />
+                            </View>
+                        </CommonCard>
+                    </View>
+
+                    {/* Quick Shortcuts */}
+                    <View style={styles.shortcutGrid}>
+                        {[
+                            { icon: 'card-account-details-outline', label: 'BNPL', color: theme.colors.primary, onPress: () => (navigation as any).navigate('BNPL') },
+                            { icon: 'send-outline', label: 'Transfer', color: theme.colors.primary, onPress: () => (navigation as any).getParent()?.navigate('Transfer') },
+                            { icon: 'wallet-outline', label: 'Wallets', color: theme.colors.primary, onPress: () => (navigation as any).getParent()?.navigate('Wallets') },
+                            { icon: 'history', label: 'History', color: theme.colors.primary, onPress: () => (navigation as any).navigate('Notifications') },
+                        ].map((item, idx) => (
+                            <TouchableOpacity key={idx} style={styles.shortcutItem} onPress={item.onPress}>
+                                <View style={[styles.shortcutIcon, { backgroundColor: theme.colors.surfaceLight }]}>
+                                    <MaterialCommunityIcons name={item.icon as any} size={24} color={item.color} />
+                                </View>
+                                <Text style={[styles.shortcutLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    <View style={{ height: 40 }} />
+                </FintechPullToRefresh>
+            )}
 
             <TransferModal
                 visible={transferModalVisible}

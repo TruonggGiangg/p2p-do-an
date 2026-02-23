@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ViewStyle, TouchableOpacity, StyleProp } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface CommonCardProps {
     children: React.ReactNode;
-    style?: ViewStyle;
+    style?: StyleProp<ViewStyle>;
     onPress?: () => void;
     variant?: 'default' | 'surface' | 'outline';
     padding?: number;

@@ -19,7 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
@@ -75,32 +75,36 @@ export default function BNPLScreen() {
     }, []);
 
     const fetchData = async () => {
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            const [walletData, loansData, scheduleData] = await Promise.all([
-                bnplAPI.getWallet(),
-                bnplAPI.getLoans(),
-                bnplAPI.getConsolidatedSchedule(),
+            await Promise.all([
+                minDelay,
+                (async () => {
+                    const [walletData, loansData, scheduleData] = await Promise.all([
+                        bnplAPI.getWallet(),
+                        bnplAPI.getLoans(),
+                        bnplAPI.getConsolidatedSchedule(),
+                    ]);
+                    setWallet(walletData);
+                    setLoans(loansData.loans);
+                    setSchedule(scheduleData.schedule);
+                    setScheduleSummary(scheduleData.summary);
+                })()
             ]);
-            setWallet(walletData);
-            setLoans(loansData.loans);
-            setSchedule(scheduleData.schedule);
-            setScheduleSummary(scheduleData.summary);
         } catch (error: any) {
             console.error('Failed to fetch BNPL data:', error);
-            // Only show error for critical failures, not for individual API failures
-            // Auth errors are handled by interceptor
             if (error.response?.status && error.response.status >= 500) {
                 Alert.alert('Lỗi', 'Không thể tải dữ liệu. Vui lòng thử lại sau.');
             }
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await fetchData();
-        setRefreshing(false);
     }, []);
 
     // ==================== PREVIEW HANDLER ====================
@@ -215,11 +219,13 @@ export default function BNPLScreen() {
         return `${rate.toFixed(2)}%`;
     };
 
-    if (loading) {
+    if (loading && !refreshing) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <BinanceHeader title="Ví Trả Sau (BNPL)" />
-                <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 100 }} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <VentoUltimateLoading size={200} />
+                </View>
             </View>
         );
     }

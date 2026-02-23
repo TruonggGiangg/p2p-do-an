@@ -4,7 +4,6 @@ export interface DocumentTypeDto {
   _id: string;
   name: string;
   required: boolean;
-  sortOrder: number;
   description?: string;
 }
 
@@ -13,7 +12,12 @@ export interface LoanProductDto {
   name: string;
   shortName: string;
   interestRatePerPeriod?: number;
-  interestType?: { id: number; code: string; value: string };
+  interestRateFrequencyType?: {
+    id: number;
+    code: string;
+    value: string;
+  };
+  annualInterestRate?: number;
 }
 
 export interface SyncDriftLogDto {
@@ -23,6 +27,48 @@ export interface SyncDriftLogDto {
   added: { id: number; name?: string; shortName?: string }[];
   removed: { id: number; name?: string; shortName?: string }[];
   modified: { id: number; name?: string; shortName?: string }[];
+}
+
+/** Fineract status object: { id, code, value } */
+export interface FineractStatus {
+  id: number;
+  code: string;
+  value: string;
+}
+
+export interface CustomerDto {
+  _id?: string | null;
+  username: string;
+  email?: string;
+  profile?: { firstName?: string; lastName?: string; avatar?: string };
+  fineractClientId?: string;
+  status: string;
+  createdAt: string;
+  // Fineract enrichment
+  fineractStatus?: FineractStatus | null;
+  officeName?: string;
+  activationDate?: string | null;
+  displayName?: string;
+}
+
+export interface LoanDto {
+  _id?: string | null;
+  userId?: string | null;
+  clientName?: string;
+  productId: number;
+  productName: string;
+  productShortName: string;
+  capital: number;
+  periodMonth: number;
+  monthlyPay?: number;
+  entirelyPay?: number;
+  monthlyRatePercent?: number;
+  /** May be FineractStatus object or fallback string-like { value, code } */
+  status: FineractStatus | { value: string; code: string };
+  fineractLoanId?: number;
+  disbursementDate?: string;
+  createdAt: string;
+  willing?: string;
 }
 
 export const adminApi = {
@@ -35,10 +81,13 @@ export const adminApi = {
   getLoanProducts: () =>
     api.get<{ data: { products: LoanProductDto[] } }>('/api/admin/loan-products').then((r) => r.data.data.products),
 
+  getLoanProductDetails: (productId: number) =>
+    api.get<{ data: any }>(`/api/admin/loan-products/${productId}/details`).then((r) => r.data.data),
+
   getDocumentTypes: () =>
     api.get<{ data: DocumentTypeDto[] }>('/api/admin/document-types').then((r) => r.data.data),
 
-  createDocumentType: (body: { name: string; required?: boolean; sortOrder?: number; description?: string }) =>
+  createDocumentType: (body: { name: string; required?: boolean; description?: string }) =>
     api.post<{ data: DocumentTypeDto }>('/api/admin/document-types', body).then((r) => r.data.data),
 
   updateDocumentType: (id: string, body: Partial<DocumentTypeDto>) =>
@@ -48,12 +97,12 @@ export const adminApi = {
 
   getProductDocumentTypes: (fineractProductId: number) =>
     api
-      .get<{ data: { documentTypeId: string; documentType: DocumentTypeDto; required: boolean; sortOrder: number }[] }>(
+      .get<{ data: { documentTypeId: string; documentType: DocumentTypeDto; required: boolean }[] }>(
         `/api/admin/loan-products/${fineractProductId}/document-types`
       )
       .then((r) => r.data.data),
 
-  setProductDocumentTypes: (fineractProductId: number, items: { documentTypeId: string; required?: boolean; sortOrder?: number }[]) =>
+  setProductDocumentTypes: (fineractProductId: number, items: { documentTypeId: string; required?: boolean }[]) =>
     api.put(`/api/admin/loan-products/${fineractProductId}/document-types`, { items }),
 
   getSyncDriftLogs: (limit = 20) =>
@@ -61,4 +110,58 @@ export const adminApi = {
 
   syncCompare: () =>
     api.post<{ data: { added: unknown[]; removed: unknown[]; modified: unknown[] } }>('/api/admin/sync-compare').then((r) => r.data.data),
+
+  // ── Customers (Head Office) ────────────────────────────────────────────────
+  getCustomers: (page = 1, limit = 20, keyword?: string) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (keyword?.trim()) params.set('keyword', keyword.trim());
+    return api
+      .get<{ data: { users: CustomerDto[]; total: number; page: number; limit: number } }>(
+        `/api/admin/customers?${params.toString()}`
+      )
+      .then((r) => r.data.data);
+  },
+
+  getCustomer: (id: string) =>
+    api.get<{ data: CustomerDto }>(`/api/admin/customers/${id}`).then((r) => r.data.data),
+
+  getCustomerLoans: (userId: string) =>
+    api.get<{ data: { loans: LoanDto[] } }>(`/api/admin/customers/${userId}/loans`).then((r) => r.data.data.loans),
+
+  // ── Loan Approvals ──────────────────────────────────────────────────────────
+  getPendingLoans: () =>
+    api.get<{ data: { loans: LoanDto[] } }>('/api/admin/loans/pending').then((r) => r.data.data.loans),
+
+  approveLoan: (fineractLoanId: number) =>
+    api.post<{ data: { fineractLoanId: number; status: string } }>(`/api/admin/loans/${fineractLoanId}/approve`).then((r) => r.data.data),
+
+  disburseLoan: (fineractLoanId: number) =>
+    api.post<{ data: { fineractLoanId: number; status: string } }>(`/api/admin/loans/${fineractLoanId}/disburse`).then((r) => r.data.data),
+
+  getLoanDetails: (fineractLoanId: number | { id?: number }) => {
+    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
+      ? fineractLoanId.id
+      : fineractLoanId;
+    const num = Number(id);
+    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api.get<{ data: any }>(`/api/admin/loans/${num}/details`).then((r) => r.data.data);
+  },
+
+  getLoanDocuments: (fineractLoanId: number | { id?: number }) => {
+    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
+      ? fineractLoanId.id
+      : fineractLoanId;
+    const num = Number(id);
+    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api.get<{ data: any[] }>(`/api/admin/loans/${num}/documents`).then((r) => r.data.data);
+  },
+
+  downloadLoanDocument: (fineractLoanId: number | { id?: number }, documentId: number) => {
+    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
+      ? fineractLoanId.id
+      : fineractLoanId;
+    const num = Number(id);
+    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api.get(`/api/admin/loans/${num}/documents/${documentId}`, { responseType: 'blob' });
+  },
 };

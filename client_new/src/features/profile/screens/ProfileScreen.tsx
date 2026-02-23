@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, RefreshControl, Platform, Dimensions } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -8,18 +10,23 @@ import { SmartOTPSection, TwoFactorSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
 export default function ProfileScreen() {
+    const navigation = useNavigation();
     const { user, logout, refreshUser } = useAuth();
-    const { theme, themeMode, toggleTheme } = useTheme();
+    const { theme, themeMode, toggleTheme, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const isDark = themeMode === 'dark';
 
     const [refreshing, setRefreshing] = useState(false);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            if (refreshUser) await refreshUser();
-            // Simulate a minimum delay for the animation to be seen
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await Promise.all([
+                minDelay,
+                (async () => {
+                    if (refreshUser) await refreshUser();
+                })()
+            ]);
         } catch (error) {
             console.error('Failed to refresh profile:', error);
         } finally {
@@ -33,11 +40,11 @@ export default function ProfileScreen() {
     const phone = getUserPhone(user);
     const uid = user?._id?.toString().slice(-8).toUpperCase() || 'P2P-8888';
 
-    const SettingItem = ({ icon, title, subtitle, onPress, rightElement, color }: any) => (
+    const SettingItem = ({ icon, title, subtitle, onPress, rightElement, color, onPressWithEvent }: any) => (
         <TouchableOpacity
             style={[styles.settingItem, { borderBottomColor: theme.colors.border + '40' }]}
-            onPress={onPress}
-            disabled={!onPress}
+            onPress={onPress ?? (onPressWithEvent ? (e: any) => onPressWithEvent(e) : undefined)}
+            disabled={!onPress && !onPressWithEvent}
         >
             <View style={[styles.settingIconContainer, { backgroundColor: (color || theme.colors.primary) + '15' }]}>
                 <MaterialCommunityIcons
@@ -103,22 +110,50 @@ export default function ProfileScreen() {
 
                 {/* Settings Sections */}
                 <View style={styles.menuSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>LOAN</Text>
+                    <SettingItem
+                        icon="history"
+                        title="Lịch sử khoản vay"
+                        subtitle="Xem các khoản vay của bạn"
+                        onPress={() => (navigation as any).getParent()?.navigate('LoanHistory')}
+                    />
+                </View>
+
+                <View style={styles.menuSection}>
                     <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>PREFERENCES</Text>
 
                     <SettingItem
                         icon={isDark ? 'weather-night' : 'weather-sunny'}
                         title="Appearance"
                         subtitle={isDark ? 'Dark Mode' : 'Light Mode'}
+                        onPressWithEvent={(e: any) => {
+                            if (Platform.OS === 'web' && e?.nativeEvent) {
+                                const ne = e.nativeEvent as { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
+                                toggleThemeWithTransition({
+                                    clientX: ne.clientX ?? ne.pageX,
+                                    clientY: ne.clientY ?? ne.pageY,
+                                    nativeEvent: e.nativeEvent,
+                                });
+                            } else {
+                                const ne = e?.nativeEvent as { pageX?: number; pageY?: number; locationX?: number; locationY?: number };
+                                const { width, height } = Dimensions.get('window');
+                                const x = ne?.pageX ?? ne?.locationX ?? width / 2;
+                                const y = ne?.pageY ?? ne?.locationY ?? height / 2;
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                toggleThemeWithOverlay(x, y);
+                            }
+                        }}
                         rightElement={
-                            <Switch
-                                value={isDark}
-                                onValueChange={toggleTheme}
-                                trackColor={{
-                                    false: theme.colors.border,
-                                    true: theme.colors.primary + '80',
-                                }}
-                                thumbColor={isDark ? theme.colors.primary : '#fff'}
-                            />
+                            <View pointerEvents="none">
+                                <Switch
+                                    value={isDark}
+                                    trackColor={{
+                                        false: theme.colors.border,
+                                        true: theme.colors.primary + '80',
+                                    }}
+                                    thumbColor={isDark ? theme.colors.primary : '#fff'}
+                                />
+                            </View>
                         }
                     />
 
@@ -174,7 +209,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 40,
+        paddingBottom: 80,
     },
     userInfoSection: {
         paddingHorizontal: 20,

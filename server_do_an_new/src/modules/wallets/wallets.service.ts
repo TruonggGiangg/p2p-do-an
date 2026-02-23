@@ -106,31 +106,35 @@ export class WalletsService {
       return [];
     }
 
-    // 2. Fetch real-time data from Fineract for each wallet
-    const wallets: WalletInfo[] = [];
-    const errors: string[] = [];
-
-    for (const ref of walletRefs) {
-      try {
-        this.logger.debug(`[getWalletsByUserId] Fetching Fineract data for wallet ref ${ref._id}, fineractSavingsId=${ref.fineractSavingsId}`);
-        const info = await this.getWalletById(ref._id.toString());
-        if (info) {
-          wallets.push(info);
-          this.logger.debug(`[getWalletsByUserId] Successfully loaded wallet: ${info.fineractId} (${info.type}) - Balance: ${info.balance}`);
+    // 2. Fetch real-time data from Fineract for each wallet in parallel
+    const results = await Promise.all(
+      walletRefs.map(async (ref) => {
+        try {
+          return await this.getWalletById(ref._id.toString());
+        } catch (error: any) {
+          this.logger.error(`[getWalletsByUserId] Failed for wallet ref ${ref._id}: ${error.message}`);
+          return null;
         }
-      } catch (error: any) {
-        const errorMsg = `Failed to fetch Fineract data for wallet ref ${ref._id} (fineractSavingsId=${ref.fineractSavingsId}): ${error.message}`;
-        this.logger.error(`[getWalletsByUserId] ${errorMsg}`);
-        errors.push(errorMsg);
-      }
-    }
+      })
+    );
 
-    this.logger.log(`[getWalletsByUserId] Successfully loaded ${wallets.length}/${walletRefs.length} wallets. Errors: ${errors.length}`);
-    if (errors.length > 0) {
-      this.logger.warn(`[getWalletsByUserId] Errors: ${JSON.stringify(errors)}`);
-    }
+    const wallets = results.filter((w): w is WalletInfo => w !== null);
+    this.logger.log(`[getWalletsByUserId] Successfully loaded ${wallets.length}/${walletRefs.length} wallets.`);
 
     return wallets;
+  }
+
+  /**
+   * Ensure wallet exists and belongs to user (for loan disbursement, etc.)
+   */
+  async ensureWalletBelongsToUser(walletId: string, userId: string): Promise<void> {
+    const ref = await this.walletModel.findOne({
+      _id: new Types.ObjectId(walletId),
+      userId: new Types.ObjectId(userId),
+    }).exec();
+    if (!ref) {
+      throw new NotFoundException('Ví giải ngân không tồn tại hoặc không thuộc về tài khoản của bạn');
+    }
   }
 
   /**

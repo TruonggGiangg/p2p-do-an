@@ -1,145 +1,190 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import {
+  ProTable,
+  DrawerForm,
+  ProFormText,
+  ProFormCheckbox,
+} from '@ant-design/pro-components';
+import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import { Button, Popconfirm, message, Space, Typography } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { adminApi, type DocumentTypeDto } from '../api/admin';
 
+const { Text } = Typography;
+
 export default function DocumentTypesPage() {
-  const [list, setList] = useState<DocumentTypeDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [modal, setModal] = useState<'add' | DocumentTypeDto | null>(null);
-  const [name, setName] = useState('');
-  const [required, setRequired] = useState(false);
-  const [sortOrder, setSortOrder] = useState(0);
+  const actionRef = useRef<ActionType>();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [currentRow, setCurrentRow] = useState<DocumentTypeDto | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await adminApi.getDocumentTypes();
-      setList(data);
-      setError('');
-    } catch (e: any) {
-      setError(e.response?.data?.message || e.message || 'Tải danh sách thất bại');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
+  const fetchData = useCallback(async () => {
+    actionRef.current?.reload();
   }, []);
 
-  const openAdd = () => {
-    setName('');
-    setRequired(false);
-    setSortOrder(list.length);
-    setModal('add');
-  };
-
-  const openEdit = (doc: DocumentTypeDto) => {
-    setName(doc.name);
-    setRequired(doc.required);
-    setSortOrder(doc.sortOrder);
-    setModal(doc);
-  };
-
-  const save = async () => {
-    if (!name.trim()) return;
+  const handleSave = async (values: any) => {
     try {
-      if (modal === 'add') {
-        await adminApi.createDocumentType({ name: name.trim(), required, sortOrder });
-      } else if (modal && '_id' in modal) {
-        await adminApi.updateDocumentType(modal._id, { name: name.trim(), required, sortOrder });
+      if (currentRow) {
+        await adminApi.updateDocumentType(currentRow._id, values);
+        message.success('Cập nhật thành công');
+      } else {
+        await adminApi.createDocumentType(values);
+        message.success('Thêm mới thành công');
       }
-      setModal(null);
-      load();
+      setModalVisible(false);
+      setCurrentRow(null);
+      await fetchData();
     } catch (e: any) {
-      alert(e.response?.data?.message || e.message || 'Lưu thất bại');
+      message.error(e.response?.data?.message || e.message || 'Lưu thất bại');
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm('Xóa loại tài liệu này?')) return;
+  const handleRemove = async (id: string) => {
     try {
       await adminApi.deleteDocumentType(id);
-      setModal(null);
-      load();
+      message.success('Đã xóa loại tài liệu');
+      await fetchData();
     } catch (e: any) {
-      alert(e.response?.data?.message || e.message || 'Xóa thất bại');
+      message.error(e.response?.data?.message || e.message || 'Xóa thất bại');
     }
   };
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Loại tài liệu</h1>
-        <button
-          onClick={openAdd}
-          style={{ padding: '10px 16px', background: '#238636', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600 }}
-        >
-          + Thêm loại tài liệu
-        </button>
-      </div>
-      {error && (
-        <div style={{ marginBottom: 16, padding: 12, background: '#3d1f1f', color: '#f85149', borderRadius: 8 }}>{error}</div>
-      )}
-      {loading ? (
-        <p style={{ color: '#8b949e' }}>Đang tải...</p>
-      ) : (
-        <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#0d1117', borderBottom: '1px solid #30363d' }}>
-                <th style={{ textAlign: 'left', padding: 12 }}>Tên</th>
-                <th style={{ textAlign: 'left', padding: 12 }}>Bắt buộc</th>
-                <th style={{ textAlign: 'left', padding: 12 }}>Thứ tự</th>
-                <th style={{ textAlign: 'right', padding: 12 }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((doc) => (
-                <tr key={doc._id} style={{ borderBottom: '1px solid #30363d' }}>
-                  <td style={{ padding: 12 }}>{doc.name}</td>
-                  <td style={{ padding: 12 }}>{doc.required ? 'Có' : 'Không'}</td>
-                  <td style={{ padding: 12 }}>{doc.sortOrder}</td>
-                  <td style={{ padding: 12, textAlign: 'right' }}>
-                    <button onClick={() => openEdit(doc)} style={{ marginRight: 8, padding: '6px 10px', background: '#21262d', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}>Sửa</button>
-                    <button onClick={() => remove(doc._id)} style={{ padding: '6px 10px', background: 'transparent', border: '1px solid #da3633', borderRadius: 6, color: '#f85149' }}>Xóa</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {list.length === 0 && <p style={{ padding: 24, color: '#8b949e', textAlign: 'center' }}>Chưa có loại tài liệu nào.</p>}
-        </div>
-      )}
+  const columns: ProColumns<DocumentTypeDto>[] = [
+    {
+      title: 'Tên loại tài liệu',
+      dataIndex: 'name',
+      copyable: true,
+      ellipsis: true,
+      search: { transform: (v) => v?.trim() || undefined },
+      fieldProps: { placeholder: 'Tìm theo tên...' },
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
+      render: (text) => <Text strong>{text}</Text>,
+    },
+    {
+      title: 'Bắt buộc',
+      dataIndex: 'required',
+      width: 150,
+      align: 'center',
+      valueType: 'select',
+      valueEnum: {
+        true: { text: 'Bắt buộc', status: 'Error' },
+        false: { text: 'Không bắt buộc', status: 'Default' },
+      },
+      search: {
+        transform: (v) => (v === '' || v === undefined ? undefined : v),
+      },
+      fieldProps: {
+        placeholder: 'Tất cả',
+        allowClear: true,
+        options: [
+          { label: 'Bắt buộc', value: 'true' },
+          { label: 'Không bắt buộc', value: 'false' },
+        ],
+      },
+    },
+    {
+      title: 'Thao tác',
+      valueType: 'option',
+      key: 'option',
+      align: 'right',
+      search: false,
+      render: (_, record) => (
+        <Space>
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setCurrentRow(record);
+              setModalVisible(true);
+            }}
+          >
+            Sửa
+          </Button>
+          <Popconfirm
+            title="Xóa loại tài liệu này?"
+            description="Lưu ý: Hành động này không thể hoàn tác."
+            onConfirm={() => handleRemove(record._id)}
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />}>
+              Xóa
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
-      {modal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#161b22', padding: 24, borderRadius: 12, border: '1px solid #30363d', width: '100%', maxWidth: 400 }}>
-            <h2 style={{ margin: '0 0 20px' }}>{modal === 'add' ? 'Thêm loại tài liệu' : 'Sửa loại tài liệu'}</h2>
-            <label style={{ display: 'block', marginBottom: 8, color: '#8b949e' }}>Tên</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: '100%', padding: '10px 12px', marginBottom: 16, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}
-            />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-              Bắt buộc
-            </label>
-            <label style={{ display: 'block', marginBottom: 8, color: '#8b949e' }}>Thứ tự</label>
-            <input
-              type="number"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(parseInt(e.target.value, 10) || 0)}
-              style={{ width: '100%', padding: '10px 12px', marginBottom: 24, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}
-            />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setModal(null)} style={{ padding: '10px 16px', background: '#21262d', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3' }}>Hủy</button>
-              <button onClick={save} style={{ padding: '10px 16px', background: '#238636', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600 }}>Lưu</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+  return (
+    <>
+      <DrawerForm
+        title={currentRow ? 'Sửa loại tài liệu' : 'Thêm loại tài liệu'}
+        open={modalVisible}
+        onOpenChange={setModalVisible}
+        layout="vertical"
+        initialValues={currentRow || { required: false }}
+        onFinish={handleSave}
+        width={Math.min(480, window.innerWidth * 0.92)}
+        drawerProps={{
+          destroyOnClose: true,
+        }}
+      >
+        <ProFormText
+          name="name"
+          label="Tên loại tài liệu"
+          placeholder="Ví dụ: CCCD mặt trước"
+          rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
+        />
+        <ProFormCheckbox name="required">Đánh dấu là bắt buộc nộp</ProFormCheckbox>
+      </DrawerForm>
+
+      <ProTable<DocumentTypeDto>
+        headerTitle="Danh mục loại tài liệu"
+        actionRef={actionRef}
+        rowKey="_id"
+        search={{
+          labelWidth: 'auto',
+          defaultCollapsed: false,
+        }}
+        request={async (params) => {
+          try {
+            const data = await adminApi.getDocumentTypes();
+            let filtered = data;
+            const name = (params.name as string)?.toLowerCase?.()?.trim?.();
+            if (name) filtered = filtered.filter((i) => i.name.toLowerCase().includes(name));
+            if (params.required !== undefined && params.required !== '') {
+              const isReq = params.required === 'true';
+              filtered = filtered.filter((i) => i.required === isReq);
+            }
+            const page = params.current ?? 1;
+            const size = params.pageSize ?? 10;
+            const start = (page - 1) * size;
+            const paged = filtered.slice(start, start + size);
+            return { data: paged, success: true, total: filtered.length };
+          } catch (e) {
+            message.error('Không thể tải dữ liệu');
+            return { data: [], success: false, total: 0 };
+          }
+        }}
+        toolBarRender={() => [
+          <Button
+            key="button"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setCurrentRow(null);
+              setModalVisible(true);
+            }}
+            type="primary"
+          >
+            Thêm mới
+          </Button>,
+        ]}
+        columns={columns}
+        pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `${t} loại tài liệu` }}
+        options={{ reload: true, density: true, fullScreen: true, setting: true }}
+        columnsState={{ persistenceKey: 'document-types-table', persistenceType: 'localStorage' }}
+      />
+    </>
   );
 }

@@ -96,4 +96,61 @@ export class FineractClientService extends FineractBaseService {
             return null;
         }
     }
+
+    /**
+     * Get all Fineract clients for a given officeId (default: 1 = Head Office).
+     * Returns map keyed by externalId AND numeric clientId (as string) → client object.
+     */
+    async getClientsByOffice(officeId = 1): Promise<Map<string, any>> {
+        const map = new Map<string, any>();
+        try {
+            let offset = 0;
+            const limit = 200;
+            while (true) {
+                const response = await this.client.get('/clients', {
+                    params: { officeId, limit, offset, orderBy: 'id', sortOrder: 'ASC' },
+                });
+                const items: any[] = response.data?.pageItems ?? (Array.isArray(response.data) ? response.data : []);
+                if (items.length === 0) break;
+                for (const c of items) {
+                    if (c.externalId) map.set(c.externalId, c);
+                    map.set(String(c.id), c);
+                }
+                if (items.length < limit) break;
+                offset += limit;
+            }
+        } catch (error: any) {
+            this.logger.warn(`[getClientsByOffice] officeId=${officeId}: ${error.message}`);
+        }
+        return map;
+    }
+
+    /**
+     * Get Fineract loan status for a single loanId.
+     * Returns { id, code, value } e.g. { id: 100, code: 'loanStatusType.pendingApproval', value: 'Submitted and pending approval' }
+     */
+    async getFineractLoanStatus(loanId: number): Promise<{ id: number; code: string; value: string } | null> {
+        try {
+            const response = await this.client.get(`/loans/${loanId}`, { params: { fields: 'id,status' } });
+            return response.data?.status ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Get Fineract loan statuses for multiple loan IDs (batched 10 at a time).
+     */
+    async getFineractLoanStatuses(loanIds: number[]): Promise<Map<number, { id: number; code: string; value: string }>> {
+        const result = new Map<number, { id: number; code: string; value: string }>();
+        const chunks: number[][] = [];
+        for (let i = 0; i < loanIds.length; i += 10) chunks.push(loanIds.slice(i, i + 10));
+        for (const chunk of chunks) {
+            await Promise.all(chunk.map(async id => {
+                const status = await this.getFineractLoanStatus(id);
+                if (status) result.set(id, status);
+            }));
+        }
+        return result;
+    }
 }

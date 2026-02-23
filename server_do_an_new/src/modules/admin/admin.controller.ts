@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from './guards/admin.guard';
@@ -12,7 +13,7 @@ import { SetProductDocumentTypesDto } from './dto/set-product-document-types.dto
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   @Get('loan-products')
   @ApiOperation({ summary: 'Danh sách sản phẩm vay từ Fineract (cho admin)' })
@@ -20,6 +21,14 @@ export class AdminController {
   async getLoanProducts() {
     const products = await this.adminService.getLoanProductsForAdmin();
     return { statusCode: 200, message: 'OK', data: { products } };
+  }
+
+  @Get('loan-products/:productId/details')
+  @ApiOperation({ summary: 'Chi tiết cấu hình sản phẩm vay từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async getLoanProductDetails(@Param('productId', ParseIntPipe) productId: number) {
+    const details = await this.adminService.getLoanProductDetails(productId);
+    return { statusCode: 200, message: 'OK', data: details };
   }
 
   @Get('document-types')
@@ -96,5 +105,94 @@ export class AdminController {
   async syncCompare() {
     const diff = await this.adminService.compareAndSync(true);
     return { statusCode: 200, message: 'OK', data: diff };
+  }
+
+  // ── Customers ──────────────────────────────────────────────────────────────
+
+  @Get('customers')
+  @ApiOperation({ summary: 'Danh sách khách hàng (phân trang)' })
+  @ApiResponse({ status: 200 })
+  async getCustomers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const result = await this.adminService.getCustomers(
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+      keyword?.trim() || undefined,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Get('customers/:id')
+  @ApiOperation({ summary: 'Chi tiết khách hàng' })
+  @ApiResponse({ status: 200 })
+  async getCustomer(@Param('id') id: string) {
+    const user = await this.adminService.getCustomerById(id);
+    return { statusCode: 200, message: 'OK', data: user };
+  }
+
+  @Get('customers/:id/loans')
+  @ApiOperation({ summary: 'Khoản vay của khách hàng (chỉ sản phẩm P*)' })
+  @ApiResponse({ status: 200 })
+  async getCustomerLoans(@Param('id') id: string) {
+    const loans = await this.adminService.getCustomerLoans(id);
+    return { statusCode: 200, message: 'OK', data: { loans } };
+  }
+
+  // ── Loan Approvals ──────────────────────────────────────────────────────────
+
+  @Get('loans/pending')
+  @ApiOperation({ summary: 'Danh sách khoản vay chờ phê duyệt (sản phẩm P*)' })
+  @ApiResponse({ status: 200 })
+  async getPendingLoans() {
+    const loans = await this.adminService.getAllPendingLoans();
+    return { statusCode: 200, message: 'OK', data: { loans } };
+  }
+
+  @Post('loans/:fineractLoanId/approve')
+  @ApiOperation({ summary: 'Phê duyệt khoản vay' })
+  @ApiResponse({ status: 200 })
+  async approveLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.approveLoan(fineractLoanId);
+    return { statusCode: 200, message: 'Đã phê duyệt', data: result };
+  }
+
+  @Post('loans/:fineractLoanId/disburse')
+  @ApiOperation({ summary: 'Giải ngân khoản vay' })
+  @ApiResponse({ status: 200 })
+  async disburseLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.disburseLoan(fineractLoanId);
+    return { statusCode: 200, message: 'Đã giải ngân', data: result };
+  }
+
+  @Get('loans/:fineractLoanId/details')
+  @ApiOperation({ summary: 'Chi tiết khoản vay từ Fineract (bao gồm lịch trả nợ)' })
+  @ApiResponse({ status: 200 })
+  async getLoanDetails(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const details = await this.adminService.getLoanDetails(fineractLoanId);
+    return { statusCode: 200, message: 'OK', data: details };
+  }
+
+  @Get('loans/:fineractLoanId/documents')
+  @ApiOperation({ summary: 'Danh sách tài liệu của khoản vay' })
+  @ApiResponse({ status: 200 })
+  async getLoanDocuments(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const list = await this.adminService.getLoanDocuments(fineractLoanId);
+    return { statusCode: 200, message: 'OK', data: list };
+  }
+
+  @Get('loans/:fineractLoanId/documents/:documentId')
+  @ApiOperation({ summary: 'Tải tài liệu của khoản vay' })
+  async getLoanDocumentStream(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Res() res: Response,
+  ) {
+    const response = await this.adminService.getLoanDocumentStream(fineractLoanId, documentId);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', response.headers['content-disposition'] || 'inline');
+    res.send(response.data);
   }
 }

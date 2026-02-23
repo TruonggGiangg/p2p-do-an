@@ -10,7 +10,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh } from '../../../components';
+import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
 
@@ -23,27 +23,24 @@ export const WalletsScreen = () => {
 
     const fetchWallets = async () => {
         setLoading(true);
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            const response = await walletAPI.getWallets();
+            const [response] = await Promise.all([
+                walletAPI.getWallets(),
+                minDelay
+            ]);
             setWallets(response.wallets || []);
         } catch (error) {
             console.error('[WalletsScreen] Failed to fetch wallets:', error);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        try {
-            await walletAPI.syncWallets();
-            const response = await walletAPI.getWallets();
-            setWallets(response.wallets || []);
-        } catch (error) {
-            console.error('[WalletsScreen] Sync failed:', error);
-        } finally {
-            setRefreshing(false);
-        }
+        await fetchWallets();
     }, []);
 
     useEffect(() => {
@@ -133,7 +130,7 @@ export const WalletsScreen = () => {
                     </View>
 
                     {loading && !refreshing ? (
-                        <ActivityIndicator size="large" color={theme.colors.primary} style={styles.loader} />
+                        <VentoUltimateLoading size={200} style={styles.loader} />
                     ) : wallets.length > 0 ? (
                         wallets.map((wallet) => (
                             <WalletCard

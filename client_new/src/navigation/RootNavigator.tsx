@@ -6,7 +6,11 @@ import MainNavigator from './MainNavigator';
 import { TransferScreen, WalletsScreen } from '../features/wallet';
 import { NotificationScreen } from '../features/notifications';
 import LoanProductDetailScreen from '../features/loan/screens/LoanProductDetailScreen';
+import LoanCreateScreen from '../features/loan/screens/LoanCreateScreen';
+import LoanConfirmScreen from '../features/loan/screens/LoanConfirmScreen';
+import LoanHistoryScreen from '../features/loan/screens/LoanHistoryScreen';
 import type { LoanProduct } from '../features/loan/services/loan.service';
+import type { LoanProductConfig, LoanScheduleResult } from '../features/loan/services/loan.service';
 
 export type RootStackParamList = {
     Auth: undefined;
@@ -14,7 +18,18 @@ export type RootStackParamList = {
     Transfer: undefined;
     Notifications: undefined;
     Wallets: undefined;
+    LoanHistory: undefined;
     LoanProductDetail: { product: LoanProduct };
+    LoanCreate: { product: LoanProduct; willing?: string };
+    LoanConfirm: {
+        product: LoanProduct;
+        config: LoanProductConfig;
+        capital: number;
+        periodMonth: number;
+        willing?: string;
+        monthlyRatePercent?: number;
+        schedule: LoanScheduleResult;
+    };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -32,7 +47,10 @@ export default function RootNavigator() {
                     <Stack.Screen name="Transfer" component={TransferScreen} />
                     <Stack.Screen name="Notifications" component={NotificationScreen} />
                     <Stack.Screen name="Wallets" component={WalletsScreen} />
+                    <Stack.Screen name="LoanHistory" component={LoanHistoryScreen} />
                     <Stack.Screen name="LoanProductDetail" component={LoanProductDetailScreen} />
+                    <Stack.Screen name="LoanCreate" component={LoanCreateScreen} />
+                    <Stack.Screen name="LoanConfirm" component={LoanConfirmScreen} />
                 </>
             )}
         </Stack.Navigator>

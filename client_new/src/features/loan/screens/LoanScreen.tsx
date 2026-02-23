@@ -13,7 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, FintechPullToRefresh } from '../../../components';
+import { BinanceHeader, CommonCard, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
 import { loanService, LoanProduct } from '../services/loan.service';
 import { formatCurrency } from '../../../shared/utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
@@ -29,24 +29,25 @@ export default function LoanScreen() {
     const insets = useSafeAreaInsets();
 
     const fetchProducts = async () => {
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            const data = await loanService.getLoanProducts();
+            const [data] = await Promise.all([
+                loanService.getLoanProducts(),
+                minDelay
+            ]);
             setProducts(data);
         } catch (error) {
             console.error('Failed to fetch loan products:', error);
             Alert.alert('Lỗi', 'Không thể tải danh sách sản phẩm vay');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        try {
-            await fetchProducts();
-        } finally {
-            setRefreshing(false);
-        }
+        await fetchProducts();
     }, []);
 
     useEffect(() => {
@@ -73,7 +74,9 @@ export default function LoanScreen() {
                 <View style={styles.cardFooter}>
                     <View style={styles.infoBlock}>
                         <Text style={[styles.infoLabel, { color: theme.colors.textDim }]}>Lãi suất</Text>
-                        <Text style={[styles.infoValue, { color: theme.colors.primary }]}>{item.interestRatePerPeriod}% / tháng</Text>
+                        <Text style={[styles.infoValue, { color: theme.colors.primary }]}>
+                            {item.interestRatePerPeriod}% / {item.interestRateFrequencyType?.value?.toLowerCase()?.includes('year') ? 'năm' : 'tháng'}
+                        </Text>
                     </View>
                     <View style={styles.infoBlock}>
                         <Text style={[styles.infoLabel, { color: theme.colors.textDim }]}>Kiểu lãi</Text>
@@ -102,7 +105,7 @@ export default function LoanScreen() {
 
                 {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
-                        <ActivityIndicator color={theme.colors.primary} size="large" />
+                        <VentoUltimateLoading size={200} />
                     </View>
                 ) : (
                     <FlatList

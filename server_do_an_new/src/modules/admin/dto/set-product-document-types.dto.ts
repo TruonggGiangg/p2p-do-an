@@ -11,11 +11,6 @@ export class ProductDocumentTypeItemDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
-
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @IsNumber()
-  sortOrder?: number;
 }
 
 export class SetProductDocumentTypesDto {

@@ -6,8 +6,9 @@ import {
     TouchableOpacity,
     StatusBar,
     Platform,
-    TextInput,
+    Dimensions,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,8 @@ interface BinanceHeaderProps {
     onAvatarPress?: () => void;
     onSearchPress?: () => void;
     rightComponents?: React.ReactNode;
+    /** Hiển thị nút chuyển theme (mặc định: true) */
+    showThemeToggle?: boolean;
 }
 
 export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
@@ -29,10 +32,39 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     onAvatarPress,
     onSearchPress,
     rightComponents,
+    showThemeToggle = true,
 }) => {
     const navigation = useNavigation();
-    const { theme, toggleTheme, themeMode } = useTheme();
+    const { theme, themeMode, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const insets = useSafeAreaInsets();
+
+    const handleThemePress = (e: any) => {
+        if (Platform.OS === 'web' && e?.nativeEvent) {
+            const ne = e.nativeEvent as { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
+            toggleThemeWithTransition({
+                clientX: ne.clientX ?? ne.pageX,
+                clientY: ne.clientY ?? ne.pageY,
+                nativeEvent: e.nativeEvent,
+            });
+        } else {
+            const ne = e?.nativeEvent as { pageX?: number; pageY?: number };
+            const { width, height } = Dimensions.get('window');
+            const x = ne?.pageX ?? width / 2;
+            const y = ne?.pageY ?? height / 2;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            toggleThemeWithOverlay(x, y);
+        }
+    };
+
+    const ThemeToggleButton = () => (
+        <TouchableOpacity style={styles.iconBtn} onPress={(e) => handleThemePress(e)}>
+            <MaterialCommunityIcons
+                name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
+                size={22}
+                color={theme.colors.textPrimary}
+            />
+        </TouchableOpacity>
+    );
 
     const topPadding = Platform.OS === 'ios' ? insets.top : (StatusBar.currentHeight || 0) + 10;
 
@@ -67,13 +99,15 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
                             <MaterialCommunityIcons name="bell-outline" size={22} color={theme.colors.textPrimary} />
                             <View style={[styles.dot, { backgroundColor: theme.colors.primary }]} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.iconBtn} onPress={toggleTheme}>
-                            <MaterialCommunityIcons
-                                name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
-                                size={22}
-                                color={theme.colors.textPrimary}
-                            />
-                        </TouchableOpacity>
+                        {showThemeToggle && (
+                            <TouchableOpacity style={styles.iconBtn} onPress={(e) => handleThemePress(e)}>
+                                <MaterialCommunityIcons
+                                    name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
+                                    size={22}
+                                    color={theme.colors.textPrimary}
+                                />
+                            </TouchableOpacity>
+                        )}
                         <TouchableOpacity style={styles.iconBtn}>
                             <MaterialCommunityIcons name="headphones" size={20} color={theme.colors.textPrimary} />
                         </TouchableOpacity>
@@ -97,6 +131,7 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
                     )}
                 </View>
                 <View style={styles.rightActions}>
+                    {showThemeToggle && <ThemeToggleButton />}
                     {rightComponents || (
                         <TouchableOpacity>
                             <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.textPrimary} />

@@ -9,13 +9,9 @@ export class DocumentType extends Document {
   @Prop({ default: false })
   required: boolean;
 
-  @Prop({ default: 0 })
-  sortOrder: number;
-
   @Prop({ required: false })
   description?: string;
 }
 
 export const DocumentTypeSchema = SchemaFactory.createForClass(DocumentType);
 DocumentTypeSchema.index({ name: 1 });
-DocumentTypeSchema.index({ sortOrder: 1 });

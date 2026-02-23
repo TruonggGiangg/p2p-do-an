@@ -1,14 +1,26 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemeMode, Theme, themes } from '../theme/themes';
 
 const THEME_STORAGE_KEY = '@app/theme_mode';
 
+export interface ThemePressEvent {
+    clientX?: number;
+    clientY?: number;
+    pageX?: number;
+    pageY?: number;
+    nativeEvent?: { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
+}
+
 interface ThemeContextData {
     theme: Theme;
     themeMode: ThemeMode;
     toggleTheme: () => void;
+    /** Toggle with View Transition API (circular reveal) on web - pass press event for click position */
+    toggleThemeWithTransition: (event?: ThemePressEvent) => void;
+    /** Toggle with circular reveal overlay on native (Android/iOS) - pass tap position. Tạm dùng toggle đơn giản để tránh mất content */
+    toggleThemeWithOverlay: (x: number, y: number) => void;
     setThemeMode: (mode: ThemeMode) => void;
 }
 
@@ -59,6 +71,39 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         setThemeMode(newMode);
     };
 
+    const toggleThemeWithTransition = (event?: ThemePressEvent) => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') {
+            toggleTheme();
+            return;
+        }
+
+        const doc = document as Document & { startViewTransition?: (cb: () => void) => Promise<void> };
+        if (!doc.startViewTransition) {
+            toggleTheme();
+            return;
+        }
+
+        const x = event?.clientX ?? event?.nativeEvent?.clientX ?? event?.nativeEvent?.pageX ?? window.innerWidth / 2;
+        const y = event?.clientY ?? event?.nativeEvent?.clientY ?? event?.nativeEvent?.pageY ?? window.innerHeight / 2;
+
+        doc.documentElement.style.setProperty('--reveal-x', `${x}px`);
+        doc.documentElement.style.setProperty('--reveal-y', `${y}px`);
+
+        doc.startViewTransition(() => {
+            toggleTheme();
+            // Wait for React to flush state update and re-render before capturing new snapshot
+            return new Promise<void>((resolve) => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => resolve());
+                });
+            });
+        });
+    };
+
+    const toggleThemeWithOverlay = (_x?: number, _y?: number) => {
+        toggleTheme();
+    };
+
     const theme = themes[themeMode];
 
     // Don't render children until theme is initialized to avoid flash
@@ -72,6 +117,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
                 theme,
                 themeMode,
                 toggleTheme,
+                toggleThemeWithTransition,
+                toggleThemeWithOverlay,
                 setThemeMode,
             }}
         >

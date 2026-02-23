@@ -145,7 +145,8 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         .onUpdate((event) => {
             if (isRefreshingValue.value) return;
 
-            if (scrollY.value <= 1 && event.translationY > 0) {
+            // Only pull if we are at the top and pulling down
+            if (scrollY.value <= 4 && event.translationY > 0) {
                 // Progressive dampening for a "heavy" fintech feel
                 const input = event.translationY;
                 const resistance = 0.65; // High resistance
@@ -159,6 +160,10 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 
                 translationY.value = dampened;
                 pullProgress.value = newProgress;
+            } else if (translationY.value > 0) {
+                // Smoothly return if we were pulling and then went past boundaries
+                translationY.value = withSpring(0, { damping: 20, stiffness: 100 });
+                pullProgress.value = withTiming(0, { duration: 400 });
             }
         })
         .onEnd(() => {
@@ -178,8 +183,9 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                 pullProgress.value = withTiming(0, { duration: 400 });
             }
         })
-        .activeOffsetY([0, 10])
-        .failOffsetX([-15, 15]);
+        .activeOffsetY(20) // Only trigger on downward pull > 20
+        .failOffsetY(-10) // Fail on upward swipe to allow normal scrolling
+        .shouldCancelWhenOutside(true);
 
     const animatedHeaderStyle = useAnimatedStyle(() => {
         // Logo pops in and tilts a bit during pull for 3D depth
@@ -218,12 +224,14 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                         renderScrollComponent({
                             onScroll: scrollHandler,
                             scrollEventThrottle: 1,
+                            style: { flex: 1 },
                             ...scrollProps
                         })
                     ) : (
                         <Animated.ScrollView
                             onScroll={scrollHandler}
                             scrollEventThrottle={1}
+                            style={{ flex: 1 }}
                             contentContainerStyle={contentContainerStyle}
                             showsVerticalScrollIndicator={showsVerticalScrollIndicator}
                             {...scrollProps}

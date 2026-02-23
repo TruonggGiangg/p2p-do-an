@@ -15,9 +15,6 @@ export class LoanProductDocumentType extends Document {
 
   @Prop({ default: false })
   required: boolean;
-
-  @Prop({ default: 0 })
-  sortOrder: number;
 }
 
 export const LoanProductDocumentTypeSchema = SchemaFactory.createForClass(LoanProductDocumentType);
