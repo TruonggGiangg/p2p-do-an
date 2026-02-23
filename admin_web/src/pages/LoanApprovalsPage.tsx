@@ -2,9 +2,9 @@ import { useRef, useCallback, useState } from 'react';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
-    Tag, Typography, Button, Space, Popconfirm, Statistic, Row, Col, Card, Badge, theme, Drawer, Table, Tabs, Empty, Descriptions, Divider, Skeleton, Flex
+    Tag, Typography, Button, Space, Popconfirm, Statistic, Row, Col, Card, Badge, theme, Drawer, Table, Tabs, Empty, Descriptions, Divider, Skeleton, Flex, Tooltip
 } from 'antd';
-import { CheckOutlined, SendOutlined, ReloadOutlined, ClockCircleOutlined, DollarOutlined, FileTextOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons';
+import { CheckOutlined, SendOutlined, ReloadOutlined, ClockCircleOutlined, DollarOutlined, FileTextOutlined, EyeOutlined, CloseOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { adminApi, LoanDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
@@ -23,6 +23,9 @@ export default function LoanApprovalsPage() {
     const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [loadingDocuments, setLoadingDocuments] = useState(false);
+    const [canApprove, setCanApprove] = useState(true);
+    const [missingRequired, setMissingRequired] = useState<string[]>([]);
+    const [documentReviewing, setDocumentReviewing] = useState<Set<number>>(new Set());
 
     const handleApprove = useCallback(async (loan: LoanDto) => {
         if (!loan.fineractLoanId) return;
@@ -57,12 +60,15 @@ export default function LoanApprovalsPage() {
         setLoadingDetails(true);
         setLoadingDocuments(true);
         try {
-            const [details, docs] = await Promise.all([
+            const [details, docs, canApproveRes] = await Promise.all([
                 adminApi.getLoanDetails(loanId),
-                adminApi.getLoanDocuments(loanId)
+                adminApi.getLoanDocuments(loanId),
+                adminApi.canApproveLoan(loanId),
             ]);
             setLoanDetails(details);
             setLoanDocuments(docs);
+            setCanApprove(canApproveRes.canApprove);
+            setMissingRequired(canApproveRes.missingRequired || []);
         } catch (e: any) {
             messageApi.error('Không thể tải chi tiết khoản vay');
             setViewLoanId(null);
@@ -71,6 +77,49 @@ export default function LoanApprovalsPage() {
             setLoadingDocuments(false);
         }
     }, [messageApi]);
+
+    const refreshDocumentsAndCanApprove = useCallback(async () => {
+        if (!viewLoanId) return;
+        try {
+            const [docs, canApproveRes] = await Promise.all([
+                adminApi.getLoanDocuments(viewLoanId),
+                adminApi.canApproveLoan(viewLoanId),
+            ]);
+            setLoanDocuments(docs);
+            setCanApprove(canApproveRes.canApprove);
+            setMissingRequired(canApproveRes.missingRequired || []);
+        } catch (e) {
+            messageApi.error('Không thể cập nhật');
+        }
+    }, [viewLoanId, messageApi]);
+
+    const handleApproveDocument = useCallback(async (documentId: number) => {
+        if (!viewLoanId) return;
+        setDocumentReviewing(s => new Set(s).add(documentId));
+        try {
+            await adminApi.approveDocument(viewLoanId, documentId);
+            messageApi.success('Đã duyệt tài liệu');
+            await refreshDocumentsAndCanApprove();
+        } catch (e: any) {
+            messageApi.error(e?.response?.data?.message || 'Duyệt tài liệu thất bại');
+        } finally {
+            setDocumentReviewing(s => { const n = new Set(s); n.delete(documentId); return n; });
+        }
+    }, [viewLoanId, messageApi, refreshDocumentsAndCanApprove]);
+
+    const handleRejectDocument = useCallback(async (documentId: number) => {
+        if (!viewLoanId) return;
+        setDocumentReviewing(s => new Set(s).add(documentId));
+        try {
+            await adminApi.rejectDocument(viewLoanId, documentId);
+            messageApi.success('Đã từ chối tài liệu');
+            await refreshDocumentsAndCanApprove();
+        } catch (e: any) {
+            messageApi.error(e?.response?.data?.message || 'Từ chối tài liệu thất bại');
+        } finally {
+            setDocumentReviewing(s => { const n = new Set(s); n.delete(documentId); return n; });
+        }
+    }, [viewLoanId, messageApi, refreshDocumentsAndCanApprove]);
 
     const handleDownloadDocument = useCallback(async (documentId: number, fileName: string) => {
         if (!viewLoanId) return;
@@ -129,7 +178,7 @@ export default function LoanApprovalsPage() {
             ellipsis: true,
             search: { transform: (v) => v?.trim() || undefined },
             fieldProps: { placeholder: 'Tìm theo tên...' },
-            render: v => v ? <Text strong style={{ fontSize: 13 }}>{v}</Text> : <Text type="secondary">–</Text>,
+            render: (_, r) => r.clientName ? <Text strong style={{ fontSize: 13 }}>{r.clientName}</Text> : <Text type="secondary">–</Text>,
         },
         {
             title: 'Sản phẩm',
@@ -150,7 +199,7 @@ export default function LoanApprovalsPage() {
             dataIndex: 'willing',
             width: 100,
             search: false,
-            render: v => <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{v || '–'}</Text>,
+            render: (_, r) => <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{r.willing || '–'}</Text>,
         },
         {
             title: 'Số tiền vay',
@@ -159,7 +208,7 @@ export default function LoanApprovalsPage() {
             valueType: 'money',
             sorter: (a, b) => (a.capital || 0) - (b.capital || 0),
             search: false,
-            render: v => <Text strong style={{ color: token.colorPrimary, fontSize: 13 }}>{fmtVND(v as number)}</Text>,
+            render: (_, r) => <Text strong style={{ color: token.colorPrimary, fontSize: 13 }}>{fmtVND(r.capital)}</Text>,
         },
         {
             title: 'Kỳ hạn',
@@ -168,21 +217,21 @@ export default function LoanApprovalsPage() {
             align: 'center',
             search: false,
             sorter: (a, b) => (a.periodMonth || 0) - (b.periodMonth || 0),
-            render: v => <Text style={{ fontSize: 13 }}>{v} tháng</Text>,
+            render: (_, r) => <Text style={{ fontSize: 13 }}>{r.periodMonth} tháng</Text>,
         },
         {
             title: 'Trả/tháng',
             dataIndex: 'monthlyPay',
             width: 110,
             search: false,
-            render: v => <Text style={{ fontSize: 13 }}>{fmtVND(v as number)}</Text>,
+            render: (_, r) => <Text style={{ fontSize: 13 }}>{fmtVND(r.monthlyPay)}</Text>,
         },
         {
             title: 'Tổng trả',
             dataIndex: 'entirelyPay',
             width: 110,
             search: false,
-            render: v => <Text style={{ fontSize: 13 }}>{fmtVND(v as number)}</Text>,
+            render: (_, r) => <Text style={{ fontSize: 13 }}>{fmtVND(r.entirelyPay)}</Text>,
         },
         {
             title: 'Lãi suất',
@@ -190,7 +239,7 @@ export default function LoanApprovalsPage() {
             width: 80,
             align: 'center',
             search: false,
-            render: v => v != null ? <Text style={{ fontSize: 13 }}>{v}%/th</Text> : '–',
+            render: (_, r) => r.monthlyRatePercent != null ? <Text style={{ fontSize: 13 }}>{r.monthlyRatePercent}%/th</Text> : '–',
         },
         {
             title: 'Trạng thái (Fineract)',
@@ -207,7 +256,12 @@ export default function LoanApprovalsPage() {
             valueType: 'date',
             search: false,
             sorter: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
-            render: v => v ? <Text type="secondary" style={{ fontSize: 12 }}>{new Date(v as string).toLocaleDateString('vi-VN')}</Text> : '–',
+            render: (_, r) => {
+                const d = r.createdAt;
+                if (!d) return '–';
+                const date = Array.isArray(d) ? new Date(d[0], (d[1] ?? 1) - 1, d[2] ?? 1) : new Date(d as string);
+                return <Text type="secondary" style={{ fontSize: 12 }}>{date.toLocaleDateString('vi-VN')}</Text>;
+            },
         },
         {
             title: 'Hành động',
@@ -345,12 +399,12 @@ export default function LoanApprovalsPage() {
                     </Space>
                 }
                 open={!!viewLoanId}
-                onClose={() => { setViewLoanId(null); setLoanDetails(null); setLoanDocuments([]); }}
+                onClose={() => { setViewLoanId(null); setLoanDetails(null); setLoanDocuments([]); setCanApprove(true); setMissingRequired([]); }}
                 width={Math.min(960, window.innerWidth * 0.92)}
                 destroyOnClose
                 styles={{ body: { paddingTop: 8 } }}
                 extra={
-                    <Button type="text" icon={<CloseOutlined />} onClick={() => { setViewLoanId(null); setLoanDetails(null); setLoanDocuments([]); }} />
+                    <Button type="text" icon={<CloseOutlined />} onClick={() => { setViewLoanId(null); setLoanDetails(null); setLoanDocuments([]); setCanApprove(true); setMissingRequired([]); }} />
                 }
             >
                 {loadingDetails ? (
@@ -360,7 +414,7 @@ export default function LoanApprovalsPage() {
                 ) : !loanDetails ? (
                     <Empty description="Không có dữ liệu" />
                 ) : (
-                    <Tabs defaultActiveKey="schedule" items={[
+                    <Tabs defaultActiveKey="documents" items={[
                         {
                             key: 'info',
                             label: 'Chung (Overview)',
@@ -396,16 +450,24 @@ export default function LoanApprovalsPage() {
                                             </Tag>
                                             {viewLoanId && (
                                                 <Space.Compact>
-                                                    <Popconfirm
-                                                        title={`Phê duyệt #${viewLoanId}?`}
-                                                        onConfirm={() => { handleApprove({ fineractLoanId: viewLoanId } as LoanDto); setViewLoanId(null); setLoanDetails(null); }}
-                                                        okText="Duyệt" cancelText="Hủy"
-                                                        okButtonProps={{ type: 'primary' }}
-                                                    >
-                                                        <Button size="small" type="primary" icon={<CheckOutlined />} loading={approving.has(viewLoanId)} style={{ background: token.colorSuccess, borderColor: token.colorSuccess }}>
-                                                            Duyệt
-                                                        </Button>
-                                                    </Popconfirm>
+                                                    {canApprove ? (
+                                                        <Popconfirm
+                                                            title={`Phê duyệt #${viewLoanId}?`}
+                                                            onConfirm={() => { handleApprove({ fineractLoanId: viewLoanId } as LoanDto); setViewLoanId(null); setLoanDetails(null); }}
+                                                            okText="Duyệt" cancelText="Hủy"
+                                                            okButtonProps={{ type: 'primary', style: { background: token.colorSuccess, borderColor: token.colorSuccess } }}
+                                                        >
+                                                            <Button size="small" type="primary" icon={<CheckOutlined />} loading={approving.has(viewLoanId)} style={{ background: token.colorSuccess, borderColor: token.colorSuccess }}>
+                                                                Duyệt khoản vay
+                                                            </Button>
+                                                        </Popconfirm>
+                                                    ) : (
+                                                        <Tooltip title={`Chưa duyệt đủ tài liệu: ${missingRequired.join(', ')}`}>
+                                                            <Button size="small" icon={<CheckOutlined />} disabled>
+                                                                Duyệt khoản vay
+                                                            </Button>
+                                                        </Tooltip>
+                                                    )}
                                                     <Popconfirm
                                                         title={`Giải ngân #${viewLoanId}?`}
                                                         onConfirm={() => { handleDisburse({ fineractLoanId: viewLoanId } as LoanDto); setViewLoanId(null); setLoanDetails(null); }}
@@ -568,54 +630,92 @@ export default function LoanApprovalsPage() {
                                 </Badge>
                             ),
                             children: (
-                                <Table
-                                    dataSource={loanDocuments}
-                                    loading={loadingDocuments}
-                                    pagination={false}
-                                    size="small"
-                                    rowKey="id"
-                                    columns={[
-                                        {
-                                            title: 'Loại tài liệu',
-                                            dataIndex: 'documentTypeName',
-                                            width: 200,
-                                            render: (v) => v || <Text type="secondary">Chưa phân loại</Text>
-                                        },
-                                        {
-                                            title: 'Tên file gốc',
-                                            dataIndex: 'originalName',
-                                            ellipsis: true,
-                                            render: (v, r) => v || r.fileName
-                                        },
-                                        { title: 'Định dạng', dataIndex: 'type', width: 120, align: 'center' },
-                                        {
-                                            title: 'Ngày tải lên',
-                                            key: 'createdAt',
-                                            width: 180,
-                                            align: 'center',
-                                            render: (_, r) => {
-                                                const date = r.uploadedAt || r.createdDate;
-                                                return date ? new Date(date).toLocaleString('vi-VN') : '–';
+                                <>
+                                    {!canApprove && missingRequired.length > 0 && (
+                                        <div style={{ marginBottom: 12, padding: '8px 12px', background: token.colorWarningBg, borderRadius: 8, border: `1px solid ${token.colorWarningBorder}` }}>
+                                            <Text type="warning">
+                                                <strong>Lưu ý:</strong> Cần duyệt đủ tài liệu bắt buộc trước khi duyệt khoản vay: {missingRequired.join(', ')}
+                                            </Text>
+                                        </div>
+                                    )}
+                                    <Table
+                                        dataSource={loanDocuments}
+                                        loading={loadingDocuments}
+                                        pagination={false}
+                                        size="small"
+                                        rowKey="id"
+                                        columns={[
+                                            {
+                                                title: 'Loại tài liệu',
+                                                dataIndex: 'documentTypeName',
+                                                width: 180,
+                                                render: (v) => v || <Text type="secondary">Chưa phân loại</Text>
+                                            },
+                                            {
+                                                title: 'Tên file',
+                                                dataIndex: 'originalName',
+                                                ellipsis: true,
+                                                width: 160,
+                                                render: (v, r) => v || r.fileName
+                                            },
+                                            {
+                                                title: 'Trạng thái',
+                                                dataIndex: 'reviewStatus',
+                                                width: 120,
+                                                align: 'center',
+                                                render: (v) => {
+                                                    if (v === 'approved') return <Tag color="success">Đã duyệt</Tag>;
+                                                    if (v === 'rejected') return <Tag color="error">Từ chối</Tag>;
+                                                    return <Tag color="processing">Chờ duyệt</Tag>;
+                                                }
+                                            },
+                                            { title: 'Định dạng', dataIndex: 'type', width: 90, align: 'center' },
+                                            {
+                                                title: 'Hành động',
+                                                key: 'action',
+                                                width: 220,
+                                                align: 'right',
+                                                render: (_, r) => (
+                                                    <Space size={4}>
+                                                        <Button
+                                                            type="link"
+                                                            size="small"
+                                                            icon={<EyeOutlined />}
+                                                            onClick={() => handleDownloadDocument(r.id, r.originalName || r.fileName || 'document')}
+                                                        >
+                                                            Xem
+                                                        </Button>
+                                                        {r.reviewStatus !== 'approved' && (
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                icon={<CheckOutlined />}
+                                                                loading={documentReviewing.has(r.id)}
+                                                                onClick={() => handleApproveDocument(r.id)}
+                                                                style={{ color: token.colorSuccess }}
+                                                            >
+                                                                Duyệt
+                                                            </Button>
+                                                        )}
+                                                        {r.reviewStatus !== 'rejected' && (
+                                                            <Button
+                                                                type="link"
+                                                                size="small"
+                                                                danger
+                                                                icon={<CloseCircleOutlined />}
+                                                                loading={documentReviewing.has(r.id)}
+                                                                onClick={() => handleRejectDocument(r.id)}
+                                                            >
+                                                                Từ chối
+                                                            </Button>
+                                                        )}
+                                                    </Space>
+                                                )
                                             }
-                                        },
-                                        {
-                                            title: 'Hành động',
-                                            key: 'action',
-                                            width: 150,
-                                            align: 'right',
-                                            render: (_, r) => (
-                                                <Button
-                                                    type="link"
-                                                    icon={<EyeOutlined />}
-                                                    onClick={() => handleDownloadDocument(r.id, r.originalName || r.fileName || 'document')}
-                                                >
-                                                    Xem/Tải về
-                                                </Button>
-                                            )
-                                        }
-                                    ]}
-                                    locale={{ emptyText: 'Chưa có tài liệu đính kèm' }}
-                                />
+                                        ]}
+                                        locale={{ emptyText: 'Chưa có tài liệu đính kèm' }}
+                                    />
+                                </>
                             )
                         },
                         {
