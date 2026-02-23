@@ -183,6 +183,36 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: list };
   }
 
+  @Post('loans/:fineractLoanId/documents/:documentId/approve')
+  @ApiOperation({ summary: 'Duyệt tài liệu' })
+  @ApiResponse({ status: 200 })
+  async approveDocument(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    const result = await this.adminService.approveDocument(fineractLoanId, documentId);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Post('loans/:fineractLoanId/documents/:documentId/reject')
+  @ApiOperation({ summary: 'Từ chối tài liệu' })
+  @ApiResponse({ status: 200 })
+  async rejectDocument(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    const result = await this.adminService.rejectDocument(fineractLoanId, documentId);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Get('loans/:fineractLoanId/can-approve')
+  @ApiOperation({ summary: 'Kiểm tra đã duyệt đủ tài liệu bắt buộc chưa' })
+  @ApiResponse({ status: 200 })
+  async canApproveLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.canApproveLoan(fineractLoanId);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
   @Get('loans/:fineractLoanId/documents/:documentId')
   @ApiOperation({ summary: 'Tải tài liệu của khoản vay' })
   async getLoanDocumentStream(

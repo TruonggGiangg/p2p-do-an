@@ -164,4 +164,19 @@ export const adminApi = {
     if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
     return api.get(`/api/admin/loans/${num}/documents/${documentId}`, { responseType: 'blob' });
   },
+
+  approveDocument: (fineractLoanId: number, documentId: number) =>
+    api.post<{ data: { documentId: number; reviewStatus: string } }>(
+      `/api/admin/loans/${fineractLoanId}/documents/${documentId}/approve`
+    ).then((r) => r.data.data),
+
+  rejectDocument: (fineractLoanId: number, documentId: number) =>
+    api.post<{ data: { documentId: number; reviewStatus: string } }>(
+      `/api/admin/loans/${fineractLoanId}/documents/${documentId}/reject`
+    ).then((r) => r.data.data),
+
+  canApproveLoan: (fineractLoanId: number) =>
+    api.get<{ data: { canApprove: boolean; missingRequired: string[] } }>(
+      `/api/admin/loans/${fineractLoanId}/can-approve`
+    ).then((r) => r.data.data),
 };

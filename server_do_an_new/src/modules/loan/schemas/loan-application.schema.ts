@@ -62,7 +62,10 @@ export class LoanApplication extends Document {
     name: string;
     uri?: string;
     fineractDocumentId?: number;
-    uploadedAt?: Date
+    uploadedAt?: Date;
+    /** Trạng thái duyệt: pending | approved | rejected */
+    reviewStatus?: 'pending' | 'approved' | 'rejected';
+    reviewedAt?: Date;
   }>;
 
   @Prop({ required: false })

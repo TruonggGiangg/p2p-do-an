@@ -425,10 +425,17 @@ export class AdminService {
   }
 
   /**
-   * Admin approve loan: Fineract approve + update MongoDB status
+   * Admin approve loan: Fineract approve + update MongoDB status.
+   * Yêu cầu: đã duyệt đủ tất cả tài liệu bắt buộc.
    */
   async approveLoan(fineractLoanId: number) {
     this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
+    const { canApprove, missingRequired } = await this.canApproveLoan(fineractLoanId);
+    if (!canApprove) {
+      throw new BadRequestException(
+        `Chưa duyệt đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`,
+      );
+    }
     await this.fineractLoanService.approveLoan(fineractLoanId);
     await this.loanApplicationModel.updateOne(
       { fineractLoanId },
@@ -472,7 +479,7 @@ export class AdminService {
     const docTypes = await this.documentTypeModel.find({ _id: { $in: docTypeIds } }).lean().exec();
     const typeMap = new Map(docTypes.map(t => [t._id.toString(), t.name]));
 
-    // Enrich Fineract docs with Mongo data
+    // Enrich Fineract docs with Mongo data (including reviewStatus)
     return fineractDocs.map(fd => {
       const mongoDoc = app.documents.find(md => md.fineractDocumentId === fd.id);
       if (mongoDoc) {
@@ -482,10 +489,58 @@ export class AdminService {
           documentTypeName: typeMap.get(mongoDoc.documentTypeId.toString()) || 'Unknown',
           originalName: mongoDoc.name,
           uploadedAt: mongoDoc.uploadedAt,
+          reviewStatus: mongoDoc.reviewStatus ?? 'pending',
+          reviewedAt: mongoDoc.reviewedAt,
         };
       }
-      return fd;
+      return { ...fd, reviewStatus: 'pending' };
     });
+  }
+
+  async approveDocument(fineractLoanId: number, documentId: number) {
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
+    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
+    if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
+    doc.reviewStatus = 'approved';
+    doc.reviewedAt = new Date();
+    await app.save();
+    return { documentId, reviewStatus: 'approved' };
+  }
+
+  async rejectDocument(fineractLoanId: number, documentId: number) {
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
+    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
+    if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
+    doc.reviewStatus = 'rejected';
+    doc.reviewedAt = new Date();
+    await app.save();
+    return { documentId, reviewStatus: 'rejected' };
+  }
+
+  /** Kiểm tra khoản vay đã duyệt đủ tài liệu bắt buộc chưa */
+  async canApproveLoan(fineractLoanId: number): Promise<{ canApprove: boolean; missingRequired: string[] }> {
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
+    if (!app) return { canApprove: false, missingRequired: ['Khoản vay không tồn tại'] };
+    const productId = app.productId;
+    const requiredDocTypes = await this.loanProductDocModel
+      .find({ fineractProductId: productId, required: true })
+      .populate('documentTypeId')
+      .lean();
+    if (requiredDocTypes.length === 0) return { canApprove: true, missingRequired: [] };
+    const approvedDocTypeIds = new Set(
+      (app.documents || [])
+        .filter(d => d.reviewStatus === 'approved')
+        .map(d => d.documentTypeId?.toString())
+    );
+    const missingRequired: string[] = [];
+    for (const r of requiredDocTypes) {
+      const typeId = (r.documentTypeId as any)?._id?.toString();
+      const typeName = (r.documentTypeId as any)?.name || 'Tài liệu bắt buộc';
+      if (!approvedDocTypeIds.has(typeId)) missingRequired.push(typeName);
+    }
+    return { canApprove: missingRequired.length === 0, missingRequired };
   }
 
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
