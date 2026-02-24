@@ -60,6 +60,7 @@ export interface SmartOtpStatus {
 export interface RegisterDeviceRequest {
   publicKey: string;
   deviceFingerprint: DeviceFingerprint;
+  verificationToken?: string;
 }
 
 export interface RegisterDeviceResponse {

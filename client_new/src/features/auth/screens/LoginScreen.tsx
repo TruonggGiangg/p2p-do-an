@@ -8,6 +8,8 @@ import {
     ScrollView,
     TouchableOpacity,
     Animated,
+    Modal,
+    TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,6 +18,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import {
     CommonButton,
     CommonInput,
+    BinanceHeader,
 } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -27,6 +30,9 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [fadeAnim] = useState(new Animated.Value(0));
+    const [show2faModal, setShow2faModal] = useState(false);
+    const [twoFactorToken, setTwoFactorToken] = useState('');
+    const [is2faLoading, setIs2faLoading] = useState(false);
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -46,7 +52,7 @@ export default function LoginScreen() {
         setError('');
     }, []);
 
-    const handleLogin = useCallback(async () => {
+    const handleLogin = useCallback(async (token?: string) => {
         if (!username.trim() || !password.trim()) {
             setError('Vui lòng nhập đầy đủ thông tin');
             return;
@@ -54,9 +60,29 @@ export default function LoginScreen() {
 
         try {
             setError('');
-            await login({ username, password });
+            if (token) {
+                setIs2faLoading(true);
+            }
+
+            const response = await login({
+                username: username.trim(),
+                password: password.trim(),
+                twoFactorToken: token
+            });
+
+            if (response.requires2fa) {
+                setShow2faModal(true);
+            } else {
+                setShow2faModal(false);
+                setTwoFactorToken('');
+            }
         } catch (err: any) {
             setError(err.message || 'Đăng nhập thất bại. Vui lòng thử lại.');
+            if (token) {
+                setTwoFactorToken('');
+            }
+        } finally {
+            setIs2faLoading(false);
         }
     }, [username, password, login]);
 
@@ -192,6 +218,116 @@ export default function LoginScreen() {
                     </View>
                 </Animated.View>
             </ScrollView>
+
+            {/* 2FA Verification Modal */}
+            <Modal
+                visible={show2faModal}
+                transparent={false}
+                animationType="slide"
+                presentationStyle="pageSheet"
+                onRequestClose={() => {
+                    setShow2faModal(false);
+                    setTwoFactorToken('');
+                }}
+            >
+                <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.modalKeyboardView}
+                    >
+                        <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+                            <BinanceHeader
+                                mode="standard"
+                                title="2FA Verification"
+                                showBack={false}
+                                rightComponents={
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setShow2faModal(false);
+                                            setTwoFactorToken('');
+                                        }}
+                                        style={styles.closeButton}
+                                    >
+                                        <MaterialCommunityIcons
+                                            name="close"
+                                            size={24}
+                                            color={theme.colors.textPrimary}
+                                        />
+                                    </TouchableOpacity>
+                                }
+                            />
+
+                            <ScrollView
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                            >
+                                <View style={styles.modalLogoContainer}>
+                                    <View style={[styles.modalLogoBox, { backgroundColor: theme.colors.primary + '20' }]}>
+                                        <MaterialCommunityIcons name="shield-lock" size={40} color={theme.colors.primary} />
+                                    </View>
+                                </View>
+
+                                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+                                    Two-Factor Authentication
+                                </Text>
+                                <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]}>
+                                    Enter the 6-digit code from your Google Authenticator app to secure your account.
+                                </Text>
+
+                                <View style={styles.otpInputContainer}>
+                                    <View style={[
+                                        styles.otpInputWrapper,
+                                        {
+                                            borderColor: twoFactorToken.length === 6
+                                                ? theme.colors.success
+                                                : theme.colors.border,
+                                            backgroundColor: twoFactorToken.length === 6
+                                                ? theme.colors.success + '10'
+                                                : theme.colors.surfaceLight,
+                                        },
+                                    ]}>
+                                        <TextInput
+                                            style={[styles.otpInput, { color: theme.colors.textPrimary }]}
+                                            value={twoFactorToken}
+                                            onChangeText={setTwoFactorToken}
+                                            placeholder="000000"
+                                            placeholderTextColor={theme.colors.textMuted + '80'}
+                                            keyboardType="number-pad"
+                                            maxLength={6}
+                                            autoFocus={true}
+                                        />
+                                        {twoFactorToken.length === 6 && (
+                                            <MaterialCommunityIcons
+                                                name="check-circle"
+                                                size={24}
+                                                color={theme.colors.success}
+                                                style={styles.otpCheckIcon}
+                                            />
+                                        )}
+                                    </View>
+                                </View>
+
+                                <CommonButton
+                                    title="Verify"
+                                    onPress={() => handleLogin(twoFactorToken)}
+                                    loading={is2faLoading}
+                                    disabled={twoFactorToken.length !== 6 || is2faLoading}
+                                    style={styles.verifyBtn}
+                                />
+
+                                <TouchableOpacity
+                                    onPress={() => setShow2faModal(false)}
+                                    style={styles.cancelBtn}
+                                >
+                                    <Text style={[styles.cancelBtnText, { color: theme.colors.textSecondary }]}>
+                                        Cancel
+                                    </Text>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -342,6 +478,82 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 12,
         fontFamily: 'Poppins_400Regular',
+    },
+    modalContainer: {
+        flex: 1,
+    },
+    modalKeyboardView: {
+        flex: 1,
+    },
+    modalContent: {
+        flex: 1,
+        paddingHorizontal: 20,
+    },
+    closeButton: {
+        padding: 4,
+    },
+    modalLogoContainer: {
+        alignItems: 'center',
+        marginTop: 40,
+        marginBottom: 24,
+    },
+    modalLogoBox: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        fontFamily: 'Poppins_400Regular',
+        textAlign: 'center',
+        lineHeight: 20,
+        paddingHorizontal: 20,
+        marginBottom: 40,
+    },
+    otpInputContainer: {
+        marginBottom: 32,
+        width: '100%',
+    },
+    otpInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderRadius: 12,
+        paddingHorizontal: 20,
+        height: 64,
+    },
+    otpInput: {
+        flex: 1,
+        fontSize: 32,
+        fontWeight: 'bold',
+        fontFamily: 'Poppins_700Bold',
+        textAlign: 'center',
+        letterSpacing: 12,
+        padding: 0,
+    },
+    otpCheckIcon: {
+        marginLeft: 12,
+    },
+    verifyBtn: {
+        height: 52,
+        borderRadius: 12,
+    },
+    cancelBtn: {
+        marginTop: 20,
+        padding: 12,
+        alignItems: 'center',
+    },
+    cancelBtnText: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
     },
 });
 

@@ -97,47 +97,73 @@ export const TwoFactorSection: React.FC = () => {
   };
 
   const openGoogleAuthenticator = async () => {
+    console.log('[DEBUG] Bắt đầu mở Google Authenticator...');
     if (!secret) {
-      Alert.alert('Lỗi', 'Chưa có secret. Vui lòng tạo secret trước.');
+      console.error('[DEBUG] Lỗi: Không có thông tin secret');
+      Alert.alert('Lỗi', 'Chưa có thông tin bí mật. Vui lòng tạo lại.');
       return;
     }
 
+    const issuer = 'P2P Lending';
+    const label = 'P2P Lending';
+    const otpauthUrl = secret.otpauthUrl || `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret.secret)}&issuer=${encodeURIComponent(issuer)}`;
+
+    console.log('[DEBUG] Platform:', Platform.OS);
+    console.log('[DEBUG] OTPAuth URL:', otpauthUrl);
+
     try {
       if (Platform.OS === 'ios') {
-        // iOS: Chỉ mở Google Authenticator app trực tiếp (KHÔNG dùng otpauth URL để tránh mở nhầm Passkey)
-        const candidateUrls = [
-          'googleauthenticator://',
-          'com.googleauthenticator://',
-        ];
-        for (const url of candidateUrls) {
+        const googleAuthScheme = 'googleauthenticator://';
+        console.log('[DEBUG] iOS: Thử mở bằng scheme:', googleAuthScheme);
+
+        try {
+          // Thử mở app trực tiếp trước
+          await Linking.openURL(googleAuthScheme);
+          console.log('[DEBUG] iOS: Mở scheme thành công');
+          setOpenedGA(true);
+        } catch (err: any) {
+          console.warn('[DEBUG] iOS: Mở scheme thất bại:', err.message);
+          console.log('[DEBUG] iOS: Thử mở bằng otpauthUrl');
           try {
-            await Linking.openURL(url);
+            await Linking.openURL(otpauthUrl);
+            console.log('[DEBUG] iOS: Mở otpauthUrl thành công');
             setOpenedGA(true);
-            return;
-          } catch (openError: any) {
-            console.log('Open GA URL failed:', url, openError?.message || openError);
+          } catch (otpErr: any) {
+            console.error('[DEBUG] iOS: Mở otpauthUrl thất bại:', otpErr.message);
+            // Cuối cùng nếu vẫn lỗi, gợi ý tải từ App Store
+            Alert.alert(
+              'Thông báo',
+              'Không thể mở ứng dụng. Bạn có muốn tải Google Authenticator từ App Store không?',
+              [
+                { text: 'Hủy', style: 'cancel' },
+                { text: 'Tải về', onPress: () => Linking.openURL('https://apps.apple.com/us/app/google-authenticator/id388497605') }
+              ]
+            );
           }
         }
-        // Nếu không mở được app, chỉ thông báo (KHÔNG fallback về otpauth URL)
-        Alert.alert('Thông báo', 'Không thể mở Google Authenticator. Vui lòng mở thủ công.');
-        return;
       } else {
-        // Android: Mở trực tiếp với otpauth URL
-        const issuer = 'P2P Lending';
-        const label = 'P2P Lending';
-        const otpauthUrl = secret.otpauthUrl || `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret.secret)}&issuer=${encodeURIComponent(issuer)}`;
-
-        const supported = await Linking.canOpenURL(otpauthUrl);
-        if (!supported) {
-          Alert.alert('Thông báo', 'Không tìm thấy ứng dụng Google Authenticator');
-          return;
+        // Android: Sử dụng otpauth tiêu chuẩn
+        console.log('[DEBUG] Android: Thử mở bằng otpauthUrl');
+        try {
+          await Linking.openURL(otpauthUrl);
+          console.log('[DEBUG] Android: Mở otpauthUrl thành công');
+          setOpenedGA(true);
+        } catch (err: any) {
+          console.error('[DEBUG] Android: Mở otpauthUrl thất bại:', err.message);
+          // Trên Android nếu otpauth:// không được xử lý, gợi ý mở Play Store
+          Alert.alert(
+            'Thông báo',
+            'Không thể mở Google Authenticator. Bạn có muốn tải về từ Play Store không?',
+            [
+              { text: 'Hủy', style: 'cancel' },
+              { text: 'Tải về', onPress: () => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2') }
+            ]
+          );
         }
-        await Linking.openURL(otpauthUrl);
-        setOpenedGA(true);
       }
-    } catch (error) {
-      console.error('Open GA Error:', error);
-      Alert.alert('Lỗi', 'Không thể mở Google Authenticator');
+    } catch (error: any) {
+      console.error('[DEBUG] Lỗi ngoại lệ hệ thống:', error);
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi cố gắng kết nối với ứng dụng xác thực.');
     }
   };
 
@@ -145,7 +171,11 @@ export const TwoFactorSection: React.FC = () => {
     <>
       <CommonCard style={styles.card}>
         <View style={styles.section}>
-          <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.header}
+            onPress={() => setExpanded(!expanded)}
+            activeOpacity={0.7}
+          >
             <View style={styles.headerLeft}>
               <View style={[styles.iconWrapper, { backgroundColor: isEnabled ? theme.colors.success + '15' : theme.colors.primary + '15' }]}>
                 <MaterialCommunityIcons
@@ -159,7 +189,7 @@ export const TwoFactorSection: React.FC = () => {
                   Two-Factor (2FA)
                 </Text>
                 <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {isEnabled ? 'Enabled' : 'Disabled'}
+                  {isEnabled ? 'Authenticated by Google' : 'Additional security layer'}
                 </Text>
               </View>
             </View>
@@ -168,17 +198,14 @@ export const TwoFactorSection: React.FC = () => {
                 {isEnabled ? 'ON' : 'OFF'}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => setExpanded(!expanded)}
-              style={styles.expandButton}
-            >
+            <View style={styles.expandButton}>
               <MaterialCommunityIcons
                 name={expanded ? 'chevron-up' : 'chevron-down'}
                 size={20}
                 color={theme.colors.textDim}
               />
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
 
           {expanded && (
             <View style={styles.content}>
@@ -201,7 +228,7 @@ export const TwoFactorSection: React.FC = () => {
                     2FA is Enabled
                   </Text>
                   <Text style={[styles.stateSubtext, { color: theme.colors.textMuted }]}>
-                    Your account is protected with two-factor authentication.
+                    Your account is now protected with 2FA. We will ask for a verification code when you log in or perform sensitive actions.
                   </Text>
                   <View style={styles.actions}>
                     <CommonButton
@@ -311,9 +338,22 @@ export const TwoFactorSection: React.FC = () => {
                     </View>
                   </View>
 
+                  {/* Manual Setup Key */}
+                  <View style={styles.manualSetupContainer}>
+                    <Text style={[styles.manualSetupLabel, { color: theme.colors.textSecondary }]}>
+                      Setup Key (Manual entry)
+                    </Text>
+                    <View style={[styles.secretBox, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
+                      <Text style={[styles.secretText, { color: theme.colors.primary }]}>
+                        {secret.secret}
+                      </Text>
+                    </View>
+                  </View>
+
                   {/* Simple Instructions */}
                   <Text style={[styles.simpleInstructions, { color: theme.colors.textMuted }]}>
-                    Quét mã QR bằng Google Authenticator, sau đó nhập mã OTP 6 số bên dưới
+                    1. Scan the QR code with Google Authenticator.{"\n"}
+                    2. Enter the 6-digit code provided by the app below.
                   </Text>
 
                   {/* OTP Input */}
@@ -807,5 +847,29 @@ const styles = StyleSheet.create({
   },
   errorIcon: {
     marginRight: 8,
+  },
+  manualSetupContainer: {
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 20,
+  },
+  manualSetupLabel: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    marginBottom: 8,
+  },
+  secretBox: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    width: '100%',
+    alignItems: 'center',
+  },
+  secretText: {
+    fontSize: 16,
+    fontFamily: 'Poppins_700Bold',
+    letterSpacing: 1,
   },
 });

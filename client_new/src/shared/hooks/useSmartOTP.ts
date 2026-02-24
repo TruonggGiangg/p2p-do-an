@@ -130,12 +130,12 @@ export const useSmartOTP = () => {
 
   // ==================== Device Registration ====================
 
-  const registerDevice = useCallback(async (): Promise<boolean> => {
+  const registerDevice = useCallback(async (verificationToken?: string): Promise<boolean> => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const result = await SmartOTPService.registerDevice();
+      const result = await SmartOTPService.registerDevice(verificationToken);
 
       if (result.success) {
         setIsRegistered(true);

@@ -211,7 +211,7 @@ const getDeviceBinding = async (): Promise<DeviceBindingInfo | null> => {
 /**
  * Register device with server
  */
-const registerDevice = async (): Promise<RegisterDeviceResponse> => {
+const registerDevice = async (verificationToken?: string): Promise<RegisterDeviceResponse> => {
   console.log('[SmartOTPService] Registering device...');
 
   // Generate key pair
@@ -226,6 +226,7 @@ const registerDevice = async (): Promise<RegisterDeviceResponse> => {
     {
       publicKey,
       deviceFingerprint,
+      verificationToken,
     },
   );
 

@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
+import { TwoFactorService } from '../two-factor/two-factor.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/register.dto';
@@ -19,11 +20,12 @@ import { Public } from '../../common/decorators/public.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(
+    private readonly userSyncService: UserSyncService,
+    private readonly jwtService: JwtService,
     private readonly authService: AuthService,
     private readonly keycloakAuthService: KeycloakAuthService,
     private readonly fineractSignupService: FineractSignupService,
-    private readonly userSyncService: UserSyncService,
-    private readonly jwtService: JwtService,
+    private readonly twoFactorService: TwoFactorService,
   ) { }
 
   @Public()
@@ -65,6 +67,28 @@ export class AuthController {
 
     // 3. Sync with Local Database & Fineract
     const mongoUser = await this.userSyncService.syncUser(keycloakUser);
+
+    // 3.1 Check 2FA Status
+    const is2faEnabled = await this.twoFactorService.isEnabled(mongoUser._id.toString());
+    if (is2faEnabled) {
+      if (!body.twoFactorToken) {
+        return res.json({
+          success: true,
+          requires2fa: true,
+          message: 'Yêu cầu mã xác thực 2FA',
+        });
+      }
+
+      // Verify 2FA Token
+      const isValid = await this.twoFactorService.verifyToken(
+        mongoUser._id.toString(),
+        body.twoFactorToken,
+      );
+
+      if (!isValid) {
+        throw new UnauthorizedException('Mã 2FA không chính xác');
+      }
+    }
 
     // 4. Generate Internal Session
     const userSession = {

@@ -12,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SmartOtpService } from './services/smart-otp.service';
+import { TwoFactorService } from '../two-factor/two-factor.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
 import {
@@ -19,6 +20,7 @@ import {
   RequestOtpDto,
   VerifyOtpDto,
 } from './dto';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * Smart OTP Controller
@@ -28,7 +30,10 @@ import {
 @Controller('otp')
 @ApiBearerAuth('access-token')
 export class SmartOtpController {
-  constructor(private readonly smartOtpService: SmartOtpService) { }
+  constructor(
+    private readonly smartOtpService: SmartOtpService,
+    private readonly twoFactorService: TwoFactorService,
+  ) { }
 
   /**
    * Đăng ký device mới với Smart OTP
@@ -47,6 +52,22 @@ export class SmartOtpController {
     if (!user._id) {
       throw new Error('User ID not found');
     }
+
+    // Security Enhancement: Verify 2FA token if 2FA is enabled for user
+    const is2faEnabled = await this.twoFactorService.isEnabled(user._id);
+    if (is2faEnabled) {
+      if (!body.verificationToken) {
+        throw new BadRequestException('Mã 2FA là bắt buộc khi đăng ký thiết bị mới');
+      }
+      const isTokenValid = await this.twoFactorService.verifyToken(
+        user._id,
+        body.verificationToken,
+      );
+      if (!isTokenValid) {
+        throw new BadRequestException('Mã 2FA không chính xác hoặc đã hết hạn');
+      }
+    }
+
     const ipAddress = req.ip || req.connection?.remoteAddress;
     const result = await this.smartOtpService.registerDevice(
       user._id,

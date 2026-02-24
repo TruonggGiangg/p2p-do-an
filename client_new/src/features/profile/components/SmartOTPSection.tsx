@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useSmartOTP } from '../../../shared/hooks';
 import { CommonButton, CommonCard } from '../../../components';
+import TwoFactorService from '../../../services/two-factor.service';
 import type { DeviceBindingInfo } from '../../../types/otp.types';
 
 export const SmartOTPSection: React.FC = () => {
@@ -21,31 +22,69 @@ export const SmartOTPSection: React.FC = () => {
   } = useSmartOTP();
 
   const [expanded, setExpanded] = useState(false);
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authCode, setAuthCode] = useState('');
+
+  useEffect(() => {
+    const check2FA = async () => {
+      try {
+        const status = await TwoFactorService.getStatus();
+        setIs2FAEnabled(status.enabled);
+      } catch (err) {
+        console.error('Check 2FA error:', err);
+      }
+    };
+    check2FA();
+  }, []);
 
   useEffect(() => {
     if (!isRegistered) setExpanded(true);
   }, [isRegistered]);
 
   const handleRegister = async () => {
-    Alert.alert(
-      'Đăng ký thiết bị',
-      'Bạn có muốn đăng ký thiết bị này cho Smart OTP?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Đăng ký',
-          onPress: async () => {
-            const success = await registerDevice();
-            if (success) {
-              Alert.alert('Thành công', 'Thiết bị đã được đăng ký thành công!');
-              await fetchDevices();
-            } else {
-              Alert.alert('Lỗi', error || 'Không thể đăng ký thiết bị');
-            }
+    const registerWithToken = async (token?: string) => {
+      const success = await registerDevice(token);
+      if (success) {
+        Alert.alert('Thành công', 'Thiết bị đã được đăng ký thành công!');
+        await fetchDevices();
+        setShowAuthModal(false);
+        setAuthCode('');
+      } else {
+        Alert.alert('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
+      }
+    };
+
+    if (is2FAEnabled) {
+      if (Platform.OS === 'ios') {
+        Alert.prompt(
+          'Xác thực 2FA',
+          'Vui lòng nhập mã từ ứng dụng Authenticator để đăng ký thiết bị này.',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            {
+              text: 'Xác nhận',
+              onPress: (token?: string) => registerWithToken(token),
+            },
+          ],
+          'plain-text',
+        );
+      } else {
+        setShowAuthModal(true);
+      }
+    } else {
+      Alert.alert(
+        'Đăng ký thiết bị',
+        'Bạn có muốn đăng ký thiết bị này cho Smart OTP?',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Đăng ký',
+            onPress: () => registerWithToken(),
           },
-        },
-      ],
-    );
+        ],
+      );
+    }
   };
 
   const handleRevoke = (deviceId: string, deviceName: string) => {
@@ -221,6 +260,76 @@ export const SmartOTPSection: React.FC = () => {
           </View>
         )}
       </View>
+
+      {/* 2FA Auth Modal for Android fallback */}
+      <Modal
+        visible={showAuthModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAuthModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalContainer}
+          >
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Xác thực 2FA</Text>
+                <TouchableOpacity onPress={() => setShowAuthModal(false)}>
+                  <MaterialCommunityIcons name="close" size={24} color={theme.colors.textDim} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.modalDescription, { color: theme.colors.textSecondary }]}>
+                Vui lòng nhập mã 6 số từ ứng dụng Google Authenticator để xác nhận đăng ký thiết bị.
+              </Text>
+
+              <View style={[styles.inputWrapper, { borderColor: authCode.length === 6 ? theme.colors.primary : theme.colors.border }]}>
+                <TextInput
+                  style={[styles.textInput, { color: theme.colors.textPrimary }]}
+                  value={authCode}
+                  onChangeText={setAuthCode}
+                  placeholder="000 000"
+                  placeholderTextColor={theme.colors.textDim}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus={true}
+                />
+              </View>
+
+              <View style={styles.modalFooter}>
+                <CommonButton
+                  title="CANCEL"
+                  onPress={() => setShowAuthModal(false)}
+                  variant="ghost"
+                  style={{ flex: 1 }}
+                />
+                <CommonButton
+                  title="CONFIRM"
+                  onPress={() => {
+                    const registerWithToken = async (token?: string) => {
+                      const success = await registerDevice(token);
+                      if (success) {
+                        Alert.alert('Thành công', 'Thiết bị đã được đăng ký thành công!');
+                        await fetchDevices();
+                        setShowAuthModal(false);
+                        setAuthCode('');
+                      } else {
+                        Alert.alert('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
+                      }
+                    };
+                    registerWithToken(authCode);
+                  }}
+                  disabled={authCode.length !== 6 || isLoading}
+                  loading={isLoading}
+                  style={{ flex: 1.5 }}
+                />
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </CommonCard>
   );
 };
@@ -410,5 +519,61 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     fontFamily: 'Poppins_600SemiBold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: 24,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
+  },
+  modalDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: 'Poppins_400Regular',
+    marginBottom: 24,
+  },
+  inputWrapper: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 56,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  textInput: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'Poppins_700Bold',
+    textAlign: 'center',
+    letterSpacing: 4,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
   },
 });

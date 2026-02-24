@@ -9,6 +9,7 @@ import { OtpSessionService } from './services/otp-session.service';
 import { DeviceBinding, DeviceBindingSchema } from './schemas/device-binding.schema';
 import { TransactionOtp, TransactionOtpSchema } from './schemas/transaction-otp.schema';
 import { UsersModule } from '../users/users.module';
+import { TwoFactorModule } from '../two-factor/two-factor.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from '../users/users.module';
       { name: TransactionOtp.name, schema: TransactionOtpSchema },
     ]),
     UsersModule,
+    TwoFactorModule,
   ],
   controllers: [SmartOtpController],
   providers: [
@@ -28,4 +30,4 @@ import { UsersModule } from '../users/users.module';
   ],
   exports: [SmartOtpService],
 })
-export class SmartOtpModule {}
+export class SmartOtpModule { }

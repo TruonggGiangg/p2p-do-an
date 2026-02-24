@@ -15,14 +15,20 @@ export const authAPI = {
     },
 
     /** Login with username and password */
-    login: async (credentials: LoginRequest): Promise<User> => {
+    login: async (credentials: LoginRequest): Promise<LoginResponse> => {
         const response = await api.post<LoginResponse>('/api/auth/login', credentials);
-        const { data, accessToken, refreshToken } = response.data;
+        const { data, accessToken, refreshToken, requires2fa } = response.data;
 
-        await authStorage.saveAuthData(data, { accessToken, refreshToken });
-        authEvents.emitLogin();
+        if (requires2fa) {
+            return response.data;
+        }
 
-        return data;
+        if (data && accessToken && refreshToken) {
+            await authStorage.saveAuthData(data, { accessToken, refreshToken });
+            authEvents.emitLogin();
+        }
+
+        return response.data;
     },
 
     /** Get current user info */

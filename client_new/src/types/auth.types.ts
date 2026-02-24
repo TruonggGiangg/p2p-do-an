@@ -69,6 +69,7 @@ export interface AuthTokens {
 export interface LoginRequest {
     username: string;
     password: string;
+    twoFactorToken?: string;
 }
 
 export interface RegisterRequest {
@@ -81,11 +82,13 @@ export interface RegisterRequest {
 }
 
 export interface LoginResponse {
-    statusCode: number;
+    statusCode?: number;
+    success?: boolean;
     message: string;
-    data: User;
-    accessToken: string;
-    refreshToken: string;
+    data?: User;
+    accessToken?: string;
+    refreshToken?: string;
+    requires2fa?: boolean;
 }
 
 export interface RegisterResponse {

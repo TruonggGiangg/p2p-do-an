@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsObject, ValidateNested } from 'class-validator';
+import { IsNotEmpty, IsString, IsObject, ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class DeviceFingerprintDto {
@@ -51,4 +51,13 @@ export class RegisterDeviceDto {
   @ValidateNested()
   @Type(() => DeviceFingerprintDto)
   deviceFingerprint: DeviceFingerprintDto;
+
+  @ApiProperty({
+    example: '123456',
+    description: '2FA token from Authenticator app',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  verificationToken?: string;
 }

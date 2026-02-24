@@ -12,6 +12,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
+import { TwoFactorModule } from '../two-factor/two-factor.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
     UsersModule,
     WalletsModule,
     MongooseModule.forFeature([{ name: Wallet.name, schema: WalletSchema }]),
+    TwoFactorModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -35,4 +37,4 @@ import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 
   exports: [AuthService, JwtStrategy, FineractSignupService],
 })
-export class AuthModule {}
+export class AuthModule { }

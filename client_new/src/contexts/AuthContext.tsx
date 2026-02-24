@@ -1,13 +1,13 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { authStorage, authEvents, AuthEvent } from '../core';
 import { authAPI } from '../features/auth/api/auth.api';
-import type { User, LoginRequest, RegisterRequest } from '../types/auth.types';
+import type { User, LoginRequest, RegisterRequest, LoginResponse } from '../types/auth.types';
 
 interface AuthContextData {
     user: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (credentials: LoginRequest) => Promise<void>;
+    login: (credentials: LoginRequest) => Promise<LoginResponse>;
     register: (data: RegisterRequest) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
@@ -83,11 +83,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(null);
     };
 
-    const login = async (credentials: LoginRequest) => {
+    const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
         setIsLoading(true);
         try {
-            const userData = await authAPI.login(credentials);
-            setUser(userData);
+            const response = await authAPI.login(credentials);
+            if (!response.requires2fa && response.data) {
+                setUser(response.data);
+            }
+            return response;
         } catch (error: unknown) {
             console.error('Login failed:', error);
             const err = error as any;

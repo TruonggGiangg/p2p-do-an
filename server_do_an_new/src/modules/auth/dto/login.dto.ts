@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
@@ -14,4 +14,13 @@ export class LoginDto {
   @IsString()
   @IsNotEmpty()
   password: string;
+
+  @ApiProperty({
+    example: '123456',
+    description: '2FA Token from Google Authenticator',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  twoFactorToken?: string;
 }
