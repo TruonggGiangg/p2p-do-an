@@ -158,6 +158,14 @@ export class LoanService {
     }
 
     /**
+     * Lấy danh sách phí (charges) của sản phẩm vay từ Fineract
+     * Phí lấy động từ Fineract, không hardcode
+     */
+    async getProductCharges(productId: number) {
+        return this.fineractLoanService.getProductCharges(productId);
+    }
+
+    /**
      * Calculate loan schedule with rounding (p2p-style: flat vs declining, last-period adjustment)
      */
     calculateLoanSchedule(
@@ -524,6 +532,111 @@ export class LoanService {
         const list = Array.from(resultMap.values());
         list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         return list;
+    }
+
+    /**
+     * Paginated + filtered version of getApplicationHistory
+     * Reuses getApplicationHistory (data per user is small), then filters/sorts/paginates in-memory
+     */
+    async getApplicationHistoryPaginated(userId: string, options: {
+        page: number;
+        pageSize: number;
+        status?: string;
+        sortBy?: string;
+        sortOrder?: 'asc' | 'desc';
+    }) {
+        const allLoans = await this.getApplicationHistory(userId);
+
+        // Summary stats (computed on full unfiltered list)
+        const summary = {
+            totalActiveLoans: allLoans.filter(l => l.status === 'success' || l.status === 'disbursed').length,
+            totalPaidLoans: allLoans.filter(l => l.status === 'clean' || l.status === 'closed').length,
+            totalWaitingLoans: allLoans.filter(l => l.status === 'waiting' || l.status === 'pending').length,
+            totalOutstanding: 0,
+        };
+
+        // Calculate total outstanding from fineractDetails if available
+        for (const loan of allLoans) {
+            const outstanding = (loan as any).fineractDetails?.summary?.totalOutstanding;
+            if (outstanding && typeof outstanding === 'number') {
+                summary.totalOutstanding += outstanding;
+            }
+        }
+
+        // Filter by status
+        let filtered = [...allLoans];
+        if (options.status) {
+            const statusMap: Record<string, string[]> = {
+                'waiting': ['waiting', 'pending', 'approved'],
+                'success': ['success', 'disbursed'],
+                'clean': ['clean', 'closed'],
+                'fail': ['fail', 'rejected', 'cancelled'],
+            };
+            const mapped = statusMap[options.status] || [options.status];
+            filtered = filtered.filter(l => mapped.includes(l.status));
+        }
+
+        // Sort
+        const sortBy = options.sortBy || 'createdAt';
+        const sortOrder = options.sortOrder === 'asc' ? 1 : -1;
+        filtered.sort((a, b) => {
+            if (sortBy === 'amount' || sortBy === 'capital') {
+                return ((a.capital || 0) - (b.capital || 0)) * sortOrder;
+            }
+            if (sortBy === 'status') {
+                return (a.status || '').localeCompare(b.status || '') * sortOrder;
+            }
+            // Default: createdAt
+            return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * sortOrder;
+        });
+
+        // Pagination
+        const page = Math.max(1, options.page);
+        const pageSize = Math.max(1, Math.min(50, options.pageSize));
+        const totalCount = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+        const start = (page - 1) * pageSize;
+        const loans = filtered.slice(start, start + pageSize);
+
+        // Enrich loans with progress info for client display
+        const enrichedLoans = loans.map(loan => {
+            const details = (loan as any).fineractDetails;
+            const schedule = details?.repaymentSchedule;
+            let progress = 0;
+            let paidInstallments = 0;
+            let totalInstallments = 0;
+            let monthlyPay = loan.monthlyPay || 0;
+            let willing = '';
+
+            if (schedule?.periods) {
+                const periods = schedule.periods.filter((p: any) => p.period > 0);
+                totalInstallments = periods.length;
+                paidInstallments = periods.filter((p: any) => p.complete).length;
+                progress = totalInstallments > 0 ? (paidInstallments / totalInstallments) * 100 : 0;
+            }
+
+            // Get willing/purpose from mongo or fineract
+            willing = (loan as any).willing || details?.loanPurposeName || '';
+
+            return {
+                ...loan,
+                willing,
+                progress,
+                paidInstallments,
+                totalInstallments,
+                monthlyPay,
+                rate: (loan as any).rate || details?.annualInterestRate || 0,
+                statusInfo: details?.status || null,
+            };
+        });
+
+        return {
+            loans: enrichedLoans,
+            currentPage: page,
+            totalPages,
+            totalCount,
+            summary,
+        };
     }
 
     private mapFineractStatus(code?: string): string {

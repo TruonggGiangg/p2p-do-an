@@ -19,7 +19,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction } from '../../../components';
-import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType } from '../services/loan.service';
+import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
 import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal';
@@ -46,45 +46,24 @@ type RouteParams = {
 
 type LoanConfirmNav = NativeStackNavigationProp<RootStackParamList, 'LoanConfirm'>;
 
-// ── Step indicator (same as LoanCreateScreen) ────────────────────────────────
-function StepIndicator({ current }: { current: number }) {
-    const steps = ['Thông tin', 'Xác nhận', 'Hoàn tất'];
+// ── Step indicator: Bước 2/2 ─────────────────────────────────────────────────
+function StepIndicator({ current, theme }: { current: number; theme: any }) {
+    const c = theme.colors;
     return (
-        <View style={stepStyles.container}>
-            {steps.map((label, idx) => {
-                const done = idx < current;
-                const active = idx === current;
-                return (
-                    <React.Fragment key={idx}>
-                        <View style={stepStyles.step}>
-                            <View style={[stepStyles.dot, done && stepStyles.dotDone, active && stepStyles.dotActive]}>
-                                {done
-                                    ? <MaterialCommunityIcons name="check" size={12} color="#fff" />
-                                    : <Text style={[stepStyles.dotText, active && { color: '#fff' }]}>{idx + 1}</Text>
-                                }
-                            </View>
-                            <Text style={[stepStyles.label, active && stepStyles.labelActive, done && stepStyles.labelDone]}>{label}</Text>
-                        </View>
-                        {idx < steps.length - 1 && <View style={[stepStyles.line, done && stepStyles.lineDone]} />}
-                    </React.Fragment>
-                );
-            })}
+        <View style={[stepStyles.container, { backgroundColor: c.surfaceLight }]}>
+            <View style={[stepStyles.pill, { backgroundColor: c.primary }]}>
+                <Text style={stepStyles.pillText}>Bước 2/2</Text>
+            </View>
+            <Text style={[stepStyles.sub, { color: c.textSecondary }]}>Xác nhận & gửi đơn</Text>
         </View>
     );
 }
 
 const stepStyles = StyleSheet.create({
-    container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-    step: { alignItems: 'center', gap: 4 },
-    dot: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#ddd', justifyContent: 'center', alignItems: 'center' },
-    dotActive: { backgroundColor: '#F5A623' },
-    dotDone: { backgroundColor: '#4CAF50' },
-    dotText: { fontSize: 12, fontWeight: '700', color: '#888' },
-    label: { fontSize: 10, color: '#aaa', fontWeight: '500' },
-    labelActive: { color: '#F5A623', fontWeight: '700' },
-    labelDone: { color: '#4CAF50' },
-    line: { flex: 1, height: 2, backgroundColor: '#ddd', marginHorizontal: 4, marginBottom: 14 },
-    lineDone: { backgroundColor: '#4CAF50' },
+    container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+    pill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+    pillText: { fontSize: 13, fontWeight: '700', color: '#000' },
+    sub: { fontSize: 13 },
 });
 
 export default function LoanConfirmScreen() {
@@ -95,6 +74,7 @@ export default function LoanConfirmScreen() {
     const { product, config, capital, periodMonth, willing, monthlyRatePercent, schedule } = params;
 
     const [documentTypes, setDocumentTypes] = useState<LoanDocumentType[]>([]);
+    const [charges, setCharges] = useState<ProductCharge[]>([]);
     const [wallets, setWallets] = useState<Wallet[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
     const [showWalletModal, setShowWalletModal] = useState(false);
@@ -105,11 +85,13 @@ export default function LoanConfirmScreen() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [docTypes, walletRes] = await Promise.all([
+            const [docTypes, walletRes, productCharges] = await Promise.all([
                 loanService.getDocumentTypesByProduct(product.id),
                 walletAPI.getWallets(),
+                loanService.getProductCharges(product.id),
             ]);
             setDocumentTypes(docTypes);
+            setCharges(productCharges);
             const wList = walletRes.wallets ?? [];
             setWallets(wList);
             const defaultWallet = wList.find((w) => w.isDefault) ?? wList[0];
@@ -266,11 +248,11 @@ export default function LoanConfirmScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <BinanceHeader showBack title="Xác nhận đơn vay" />
-            <StepIndicator current={1} />
+            <StepIndicator current={1} theme={theme} />
 
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-                {/* ── Hero Summary ── */}
+                {/* ── Hero: Tóm tắt chính ── */}
                 <View style={[styles.heroSummary, { backgroundColor: theme.colors.primary }]}>
                     <Text style={styles.heroLabel}>Số tiền vay</Text>
                     <Text style={styles.heroAmount}>{formatCurrency(capital)}</Text>
@@ -290,40 +272,56 @@ export default function LoanConfirmScreen() {
                             <Text style={styles.heroItemValue}>{formatCurrency(schedule.monthlyPay)}</Text>
                         </View>
                     </View>
+                    <View style={[styles.heroTotalRow, { borderTopColor: 'rgba(255,255,255,0.3)' }]}>
+                        <Text style={styles.heroTotalLabel}>Tổng trả</Text>
+                        <Text style={styles.heroTotalValue}>{formatCurrency(schedule.entirelyPay)}</Text>
+                    </View>
                 </View>
 
-                {/* ── Loan details ── */}
-                <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Thông tin khoản vay</Text>
+                {/* ── Phí (nếu có) ── */}
+                {charges.length > 0 && (
+                    <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Phí khoản vay</Text>
+                        {charges.map((fee, idx) => {
+                            const isPercent = /percent|amount/i.test(fee.chargeCalculationType);
+                            const pct = fee.amount ?? 0;
+                            // Nếu % → tính tiền cụ thể từ vốn
+                            const feeAmountCalc = isPercent && capital > 0
+                                ? Math.round(capital * pct / 100)
+                                : null;
+                            const isDisbursement = /disbursement/i.test(fee.chargeTimeType);
+                            const isLast = idx === charges.length - 1;
+                            return (
+                                <View key={fee.id} style={[styles.feeRow, { borderBottomColor: theme.colors.border }, isLast && { borderBottomWidth: 0 }]}>
+                                    <View style={styles.feeLabelBlock}>
+                                        <Text style={[styles.feeName, { color: theme.colors.textPrimary }]}>{fee.name}</Text>
+                                        {isDisbursement && (
+                                            <Text style={[styles.feeNote, { color: theme.colors.textDim }]}>Thu khi giải ngân</Text>
+                                        )}
+                                    </View>
+                                    <View style={styles.feeValueBlock}>
+                                        <Text style={[styles.feeRate, { color: theme.colors.textPrimary }]}>
+                                            {isPercent
+                                                ? `${Number(pct).toFixed(2)}% gốc`
+                                                : `${formatCurrency(pct)}`}
+                                        </Text>
+                                        {feeAmountCalc != null && (
+                                            <Text style={[styles.feeAmountText, { color: theme.colors.textDim }]}>
+                                                ≈ {formatCurrency(feeAmountCalc)}
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </CommonCard>
+                )}
 
-                    {[
-                        { label: 'Sản phẩm', value: product.name, color: theme.colors.textPrimary },
-                        { label: 'Mục đích', value: willing || '-', color: theme.colors.textPrimary },
-                        { label: 'Số tiền', value: formatCurrency(capital), color: theme.colors.primary },
-                        { label: 'Kỳ hạn', value: `${periodMonth} tháng`, color: theme.colors.textPrimary },
-                        { label: 'Lãi suất', value: `${effectiveRate}%/${rateUnit}`, color: monthlyRatePercent ? '#FF6B00' : theme.colors.primary },
-                        { label: 'Trả hàng tháng', value: formatCurrency(schedule.monthlyPay), color: theme.colors.primary },
-                        { label: 'Tổng trả', value: formatCurrency(schedule.entirelyPay), color: theme.colors.textPrimary },
-                    ].map((row, idx) => (
-                        <View key={idx} style={[styles.infoRow, { borderTopColor: theme.colors.border }]}>
-                            <Text style={[styles.infoLabel, { color: theme.colors.textDim }]}>{row.label}</Text>
-                            <Text style={[styles.infoValue, { color: row.color }]}>{row.value}</Text>
-                        </View>
-                    ))}
-
-                    {monthlyRatePercent && (
-                        <View style={[styles.customRateBadge, { backgroundColor: '#FF6B0015' }]}>
-                            <MaterialCommunityIcons name="tune-variant" size={14} color="#FF6B00" />
-                            <Text style={styles.customRateBadgeText}>Lãi suất tùy chọn (khác mặc định {config?.monthlyRate}%)</Text>
-                        </View>
-                    )}
-                </CommonCard>
-
-                {/* ── Repayment Schedule ── */}
+                {/* ── Lịch trả (có thể thu gọn) ── */}
                 {schedule.schedulePreview && schedule.schedulePreview.length > 0 && (
                     <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
                         <View style={styles.scheduleTitleRow}>
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch trả nợ dự kiến</Text>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch trả nợ</Text>
                             <TouchableOpacity style={[styles.expandBtn, { borderColor: theme.colors.border }]} onPress={toggleSchedule}>
                                 <Text style={[styles.expandText, { color: theme.colors.primary }]}>
                                     {scheduleExpanded ? 'Thu gọn' : `Xem tất cả (${schedule.schedulePreview.length})`}
@@ -380,9 +378,9 @@ export default function LoanConfirmScreen() {
                     </CommonCard>
                 )}
 
-                {/* ── Disbursement Wallet ── */}
+                {/* ── Cần làm: Chọn ví + Tài liệu ── */}
                 <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Ví nhận giải ngân</Text>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Thông tin nhận giải ngân</Text>
                     {loading ? (
                         <ActivityIndicator color={theme.colors.primary} size="small" />
                     ) : (
@@ -415,10 +413,10 @@ export default function LoanConfirmScreen() {
                     )}
                 </CommonCard>
 
-                {/* ── Documents ── */}
+                {/* ── Tài liệu ── */}
                 {documentTypes.length > 0 && (
                     <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Tài liệu cần nộp</Text>
+                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Tài liệu đính kèm</Text>
                         {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => (
                             <View key={doc.id} style={[styles.docRow, { borderTopColor: theme.colors.border }]}>
                                 <View style={styles.docHeader}>
@@ -427,7 +425,7 @@ export default function LoanConfirmScreen() {
                                     </View>
                                     <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
                                     {doc.required ? (
-                                        <View style={styles.badgeRequired}>
+                                        <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
                                             <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
                                         </View>
                                     ) : (
@@ -543,17 +541,11 @@ const styles = StyleSheet.create({
     heroItemLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginBottom: 4 },
     heroItemValue: { color: '#fff', fontSize: 13, fontWeight: '700' },
     heroSeparator: { width: 1, backgroundColor: 'rgba(255,255,255,0.25)', marginVertical: 4 },
+    heroTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
+    heroTotalLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
+    heroTotalValue: { color: '#fff', fontSize: 18, fontWeight: '800' },
 
     sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
-    infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 0.5 },
-    infoLabel: { fontSize: 13 },
-    infoValue: { fontSize: 14, fontWeight: '600' },
-
-    customRateBadge: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        padding: 8, borderRadius: 8, marginTop: 10,
-    },
-    customRateBadgeText: { fontSize: 12, color: '#FF6B00', fontWeight: '500', flex: 1 },
 
     // Schedule
     scheduleTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -594,7 +586,7 @@ const styles = StyleSheet.create({
     docHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
     docIconWrap: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
     docName: { flex: 1, fontSize: 14, fontWeight: '500' },
-    badgeRequired: { backgroundColor: '#e53935', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    badgeRequired: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeRequiredText: { color: '#fff', fontSize: 11, fontWeight: '700' },
     badgeOptional: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeOptionalText: { fontSize: 11, fontWeight: '600' },
@@ -619,4 +611,15 @@ const styles = StyleSheet.create({
         gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
     },
     submitBtnText: { fontSize: 16, fontWeight: '700' },
+
+    feeRow: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        paddingVertical: 10, borderBottomWidth: 0.5,
+    },
+    feeLabelBlock: { flex: 1, paddingRight: 12 },
+    feeName: { fontSize: 14, fontWeight: '500' },
+    feeNote: { fontSize: 11, marginTop: 2 },
+    feeValueBlock: { alignItems: 'flex-end', minWidth: 110 },
+    feeRate: { fontSize: 13, fontWeight: '600' },
+    feeAmountText: { fontSize: 12, marginTop: 2 },
 });

@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Param, Body, ParseIntPipe, UseGuards, HttpStatus, Req, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import {
+    Controller, Get, Post, Param, Body, UseGuards, Query,
+    HttpStatus, Req, UseInterceptors, UploadedFile, Res, ParseIntPipe,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LoanService } from './loan.service';
+import { RepaymentService } from './repayment.service';
 import { RatePreviewDto } from './dto/rate-preview.dto';
 import { ApplyLoanDto } from './dto/apply-loan.dto';
 
@@ -12,7 +16,14 @@ import { ApplyLoanDto } from './dto/apply-loan.dto';
 @Controller('loan')
 @UseGuards(JwtAuthGuard)
 export class LoanController {
-    constructor(private readonly loanService: LoanService) { }
+    constructor(
+        private readonly loanService: LoanService,
+        private readonly repaymentService: RepaymentService,
+    ) { }
+
+    // =============================================
+    // LOAN CREATION & INFO
+    // =============================================
 
     @Get('purposes')
     @ApiOperation({ summary: 'Lấy danh sách mục đích vay từ Fineract CodeValues' })
@@ -66,6 +77,18 @@ export class LoanController {
         };
     }
 
+    @Get('products/:productId/charges')
+    @ApiOperation({ summary: 'Lấy danh sách phí của sản phẩm vay từ Fineract' })
+    @ApiResponse({ status: 200, description: 'Danh sách phí sản phẩm' })
+    async getProductCharges(@Param('productId', ParseIntPipe) productId: number) {
+        const charges = await this.loanService.getProductCharges(productId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'OK',
+            data: { charges },
+        };
+    }
+
     @Post('rate-preview')
     @ApiOperation({ summary: 'Tính lịch trả nợ dự kiến (lãi phẳng / dư nợ giảm dần, làm tròn theo bội số)' })
     @ApiResponse({ status: 200, description: 'Lịch trả nợ dự kiến' })
@@ -79,18 +102,36 @@ export class LoanController {
     }
 
     @Get('applications')
-    @ApiOperation({ summary: 'Lấy lịch sử khoản vay theo user (MongoDB + Fineract)' })
-    @ApiResponse({ status: 200, description: 'Danh sách khoản vay' })
-    async getApplications(@Req() req: any) {
+    @ApiOperation({ summary: 'Lấy lịch sử khoản vay theo user - hỗ trợ pagination, filter, sort' })
+    @ApiResponse({ status: 200, description: 'Danh sách khoản vay phân trang' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'pageSize', required: false, type: Number })
+    @ApiQuery({ name: 'status', required: false, type: String })
+    @ApiQuery({ name: 'sortBy', required: false, type: String })
+    @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
+    async getApplications(
+        @Req() req: any,
+        @Query('page') page?: string,
+        @Query('pageSize') pageSize?: string,
+        @Query('status') status?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('sortOrder') sortOrder?: string,
+    ) {
         const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
         if (!userId) {
             return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
         }
-        const list = await this.loanService.getApplicationHistory(userId);
+        const result = await this.loanService.getApplicationHistoryPaginated(userId, {
+            page: page ? parseInt(page, 10) : 1,
+            pageSize: pageSize ? parseInt(pageSize, 10) : 10,
+            status: status || undefined,
+            sortBy: sortBy || 'createdAt',
+            sortOrder: (sortOrder as 'asc' | 'desc') || 'desc',
+        });
         return {
             statusCode: HttpStatus.OK,
             message: 'OK',
-            data: { applications: list },
+            data: result,
         };
     }
 
@@ -152,5 +193,89 @@ export class LoanController {
         res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
         res.setHeader('Content-Disposition', response.headers['content-disposition'] || 'inline');
         res.send(response.data);
+    }
+
+    // =============================================
+    // REPAYMENT & PREPAYMENT
+    // =============================================
+
+    @Post('repay')
+    @ApiOperation({ summary: 'Thanh toán nợ theo kỳ' })
+    @ApiResponse({ status: 200, description: 'Thanh toán thành công' })
+    async repay(@Req() req: any, @Body() body: { loanId: string; amount: number; repaymentDate?: string }) {
+        const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+        if (!userId) {
+            return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+        }
+        const result = await this.repaymentService.makeRepayment(userId, body.loanId, body.amount, body.repaymentDate);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Thanh toán thành công',
+            data: result,
+        };
+    }
+
+    @Post('prepay')
+    @ApiOperation({ summary: 'Tất toán sớm (trả hết dư nợ)' })
+    @ApiResponse({ status: 200, description: 'Tất toán thành công' })
+    async prepay(@Req() req: any, @Body() body: { loanId: string; repaymentDate?: string }) {
+        const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+        if (!userId) {
+            return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+        }
+        const result = await this.repaymentService.prepayLoan(userId, body.loanId, body.repaymentDate);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'Tất toán thành công',
+            data: result,
+        };
+    }
+
+    @Get(':loanId/prepay-amount')
+    @ApiOperation({ summary: 'Lấy số tiền cần trả để tất toán sớm' })
+    @ApiResponse({ status: 200, description: 'Thông tin tất toán' })
+    async getPrepayAmount(@Req() req: any, @Param('loanId') loanId: string) {
+        const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+        if (!userId) {
+            return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+        }
+        const result = await this.repaymentService.getPrepayAmount(userId, loanId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'OK',
+            data: result,
+        };
+    }
+
+    @Get(':loanId/outstanding')
+    @ApiOperation({ summary: 'Lấy dư nợ còn lại' })
+    @ApiResponse({ status: 200, description: 'Thông tin dư nợ' })
+    async getOutstanding(@Req() req: any, @Param('loanId') loanId: string) {
+        const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+        if (!userId) {
+            return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+        }
+        const result = await this.repaymentService.getOutstandingBalance(userId, loanId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'OK',
+            data: result,
+        };
+    }
+
+    @Get(':loanId/schedule')
+    @ApiOperation({ summary: 'Lấy lịch trả nợ từ Fineract' })
+    @ApiResponse({ status: 200, description: 'Lịch trả nợ' })
+    async getSchedule(@Req() req: any, @Param('loanId') loanId: string) {
+        const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+        if (!userId) {
+            return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+        }
+        const result = await this.repaymentService.getRepaymentSchedule(userId, loanId);
+        return {
+            statusCode: HttpStatus.OK,
+            message: 'OK',
+            data: result,
+        };
     }
 }

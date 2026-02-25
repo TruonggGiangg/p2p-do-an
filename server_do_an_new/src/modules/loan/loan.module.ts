@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LoanController } from './loan.controller';
 import { LoanService } from './loan.service';
+import { RepaymentService } from './repayment.service';
 import { LoanApplication, LoanApplicationSchema } from './schemas/loan-application.schema';
 import { FineractModule } from '../fineract/fineract.module';
 import { AdminModule } from '../admin/admin.module';
@@ -19,7 +20,7 @@ import { SmartOtpModule } from '../smart-otp/smart-otp.module';
         SmartOtpModule,
     ],
     controllers: [LoanController],
-    providers: [LoanService],
-    exports: [LoanService],
+    providers: [LoanService, RepaymentService],
+    exports: [LoanService, RepaymentService],
 })
 export class LoanModule { }

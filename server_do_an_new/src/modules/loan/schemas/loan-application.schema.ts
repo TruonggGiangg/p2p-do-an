@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-export type LoanApplicationStatus = 'pending' | 'approved' | 'rejected' | 'disbursed' | 'cancelled';
+export type LoanApplicationStatus = 'pending' | 'approved' | 'rejected' | 'disbursed' | 'cancelled' | 'closed';
 
 export interface ScheduleItem {
   period: number;
@@ -70,6 +70,21 @@ export class LoanApplication extends Document {
 
   @Prop({ required: false })
   fineractLoanId?: number;
+
+  @Prop({ type: [Object], default: [] })
+  repaymentHistory: Array<{
+    amount: number;
+    date: string;
+    type: 'repayment' | 'prepayment';
+    fineractTransactionId?: number;
+    breakdown?: {
+      principal?: number;
+      interest?: number;
+      fees?: number;
+      penalty?: number;
+    };
+    createdAt: Date;
+  }>;
 }
 
 export const LoanApplicationSchema = SchemaFactory.createForClass(LoanApplication);

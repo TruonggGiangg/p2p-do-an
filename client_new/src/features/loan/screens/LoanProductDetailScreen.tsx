@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
     ActivityIndicator,
     TouchableOpacity,
     Alert,
@@ -14,7 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard } from '../../../components';
+import { BinanceHeader, CommonCard, FintechPullToRefresh } from '../../../components';
 import { loanService, LoanProduct, LoanDocumentType, LoanProductConfig } from '../services/loan.service';
 
 type RouteParams = { product: LoanProduct };
@@ -31,27 +30,24 @@ export default function LoanProductDetailScreen() {
     const [loading, setLoading] = useState(true);
     const btnScale = new Animated.Value(1);
 
-    useEffect(() => {
+    const fetchData = useCallback(async () => {
         if (!product?.id) return;
-        let cancelled = false;
-        (async () => {
-            try {
-                const [list, cfg] = await Promise.all([
-                    loanService.getDocumentTypesByProduct(product.id),
-                    loanService.getProductConfig(product.id).catch(() => null),
-                ]);
-                if (!cancelled) {
-                    setDocumentTypes(list);
-                    setConfig(cfg ?? null);
-                }
-            } catch (e) {
-                if (!cancelled) Alert.alert('Lỗi', 'Không thể tải danh sách tài liệu');
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        })();
-        return () => { cancelled = true; };
+        try {
+            setLoading(true);
+            const [list, cfg] = await Promise.all([
+                loanService.getDocumentTypesByProduct(product.id),
+                loanService.getProductConfig(product.id).catch(() => null),
+            ]);
+            setDocumentTypes(list);
+            setConfig(cfg ?? null);
+        } catch (e) {
+            Alert.alert('Lỗi', 'Không thể tải danh sách tài liệu');
+        } finally {
+            setLoading(false);
+        }
     }, [product?.id]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const handlePressIn = () => {
         Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true, speed: 50 }).start();
@@ -83,11 +79,24 @@ export default function LoanProductDetailScreen() {
         );
     }
 
+    const [refreshing, setRefreshing] = useState(false);
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchData();
+        setRefreshing(false);
+    }, [fetchData]);
+
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <BinanceHeader showBack title={product.name} />
 
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <FintechPullToRefresh
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+                contentContainerStyle={styles.scrollContent}
+                primaryColor={theme.colors.primary}
+                glowColor={theme.colors.primaryLight}
+            >
                 {/* Hero Card */}
                 <View style={[styles.heroCard, { backgroundColor: theme.colors.surface }]}>
                     <View style={[styles.heroTopRow]}>
@@ -194,7 +203,7 @@ export default function LoanProductDetailScreen() {
                                     </View>
                                     <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
                                     {doc.required ? (
-                                        <View style={styles.badgeRequired}>
+                                        <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
                                             <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
                                         </View>
                                     ) : (
@@ -222,14 +231,13 @@ export default function LoanProductDetailScreen() {
                 </Animated.View>
 
                 <View style={{ height: 40 }} />
-            </ScrollView>
+            </FintechPullToRefresh>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scroll: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 24 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
@@ -288,7 +296,7 @@ const styles = StyleSheet.create({
     },
     docIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
     docName: { flex: 1, fontSize: 14, fontWeight: '500' },
-    badgeRequired: { backgroundColor: '#e53935', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    badgeRequired: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeRequiredText: { color: '#fff', fontSize: 11, fontWeight: '700' },
     badgeOptional: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeOptionalText: { fontSize: 11, fontWeight: '600' },

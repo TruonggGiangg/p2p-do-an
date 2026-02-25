@@ -467,4 +467,191 @@ export class FineractLoanService extends FineractBaseService {
             this.handleError(error, `Failed to get documents for loan ${loanId}`);
         }
     }
+
+    // =============================================
+    // REPAYMENT Methods
+    // =============================================
+
+    /**
+     * Thực hiện trả nợ theo kỳ (Repayment)
+     * POST /loans/{loanId}/transactions?command=repayment
+     */
+    async makeRepayment(loanId: number, transactionAmount: number, transactionDate?: string, note?: string): Promise<{
+        success: boolean;
+        resourceId: number;
+        transactionId: number;
+    }> {
+        try {
+            const date = transactionDate || this.getTodayFormatted('iso');
+            const payload = {
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+                transactionDate: date,
+                transactionAmount,
+                note: note || `P2P Repayment`,
+            };
+
+            this.logger.log(`[makeRepayment] START | loanId=${loanId} amount=${transactionAmount} date=${date}`);
+            const response = await this.client.post(`/loans/${loanId}/transactions?command=repayment`, payload);
+
+            const resourceId = response.data.resourceId;
+            this.logger.log(`[makeRepayment] SUCCESS | loanId=${loanId} transactionId=${resourceId}`);
+            return { success: true, resourceId, transactionId: resourceId };
+        } catch (error: any) {
+            this.logger.error(`[makeRepayment] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[makeRepayment] Response: ${JSON.stringify(error.response.data)}`);
+            this.handleError(error, `Failed to make repayment for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Tất toán sớm (Prepay Loan) - Fineract tự đóng loan nếu outstanding = 0
+     */
+    async prepayLoan(loanId: number, transactionAmount: number, transactionDate?: string, note?: string): Promise<{
+        success: boolean;
+        resourceId: number;
+        transactionId: number;
+    }> {
+        try {
+            const date = transactionDate || this.getTodayFormatted('iso');
+            this.logger.log(`[prepayLoan] START | loanId=${loanId} amount=${transactionAmount} date=${date}`);
+
+            const result = await this.makeRepayment(loanId, transactionAmount, date, note || 'Early Repayment (Prepay) via P2P');
+            this.logger.log(`[prepayLoan] SUCCESS | Fineract will auto-close loan if outstanding=0`);
+            return result;
+        } catch (error: any) {
+            this.logger.error(`[prepayLoan] FAILED loanId=${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to prepay loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Lấy số tiền cần trả để tất toán sớm
+     * GET /loans/{loanId}/transactions/template?command=prepayLoan
+     * Fallback: dùng outstanding balance nếu Fineract không hỗ trợ prepayLoan command
+     */
+    async getPrepaymentAmount(loanId: number): Promise<{
+        amount: number;
+        principalPortion: number;
+        interestPortion: number;
+        penaltyPortion: number;
+        feesPortion: number;
+        date: string;
+    }> {
+        try {
+            this.logger.log(`[getPrepaymentAmount] START | loanId=${loanId}`);
+            const response = await this.client.get(`/loans/${loanId}/transactions/template?command=prepayLoan`);
+            const data = response.data;
+            this.logger.log(`[getPrepaymentAmount] SUCCESS | amount=${data.amount}`);
+
+            return {
+                amount: data.amount || 0,
+                principalPortion: data.principalPortion || 0,
+                interestPortion: data.interestPortion || 0,
+                penaltyPortion: data.penaltyChargesPortion || 0,
+                feesPortion: data.feeChargesPortion || 0,
+                date: data.date ? (Array.isArray(data.date) ? `${data.date[0]}-${String(data.date[1]).padStart(2, '0')}-${String(data.date[2]).padStart(2, '0')}` : data.date) : this.getTodayFormatted('iso'),
+            };
+        } catch (error: any) {
+            // Fallback: dùng outstanding balance
+            if (error.response?.status === 400 || error.response?.status === 404) {
+                this.logger.warn(`[getPrepaymentAmount] prepayLoan command not supported, using outstanding balance`);
+                try {
+                    const outstanding = await this.getOutstandingBalance(loanId);
+                    return {
+                        amount: outstanding.totalOutstanding,
+                        principalPortion: outstanding.principalOutstanding,
+                        interestPortion: outstanding.interestOutstanding,
+                        penaltyPortion: outstanding.penaltyOutstanding,
+                        feesPortion: outstanding.feeOutstanding,
+                        date: this.getTodayFormatted('iso'),
+                    };
+                } catch (fallbackErr: any) {
+                    this.logger.error(`[getPrepaymentAmount] Fallback also failed: ${fallbackErr.message}`);
+                }
+            }
+            this.handleError(error, `Failed to get prepayment amount for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Lấy dư nợ còn lại của một loan từ Fineract summary
+     */
+    async getOutstandingBalance(loanId: number): Promise<{
+        totalOutstanding: number;
+        principalOutstanding: number;
+        interestOutstanding: number;
+        feeOutstanding: number;
+        penaltyOutstanding: number;
+    }> {
+        try {
+            const loanDetails = await this.getLoanDetails(loanId.toString());
+            const summary = loanDetails?.summary || {};
+
+            return {
+                totalOutstanding: summary.totalOutstanding || 0,
+                principalOutstanding: summary.principalOutstanding || 0,
+                interestOutstanding: summary.interestOutstanding || 0,
+                feeOutstanding: summary.feeChargesOutstanding || 0,
+                penaltyOutstanding: summary.penaltyChargesOutstanding || 0,
+            };
+        } catch (error: any) {
+            this.logger.error(`[getOutstandingBalance] FAILED loanId=${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to get outstanding balance for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Lấy danh sách phí (charges) của loan product từ Fineract
+     * Dùng để hiển thị phí động (không hardcode) cho client
+     */
+    async getProductCharges(productId: number): Promise<Array<{
+        id: number;
+        name: string;
+        amount: number;
+        chargeTimeType: string;
+        chargeCalculationType: string;
+        percentage: number | null;
+    }>> {
+        try {
+            const product = await this.getLoanProductDetails(productId);
+            const raw = product?.charges || product?.chargeOptions || [];
+            const list = Array.isArray(raw) ? raw : [];
+
+            return list.map((c: any) => {
+                const chargeTime = typeof c.chargeTimeType === 'object'
+                    ? (c.chargeTimeType?.value ?? c.chargeTimeType?.code ?? '')
+                    : (c.chargeTimeType || '');
+                const calcType = typeof c.chargeCalculationType === 'object'
+                    ? (c.chargeCalculationType?.value ?? c.chargeCalculationType?.code ?? '')
+                    : (c.chargeCalculationType || '');
+
+                return {
+                    id: c.id ?? c.chargeId,
+                    name: c.name || 'Phí',
+                    amount: c.amount != null ? Number(c.amount) : 0,
+                    chargeTimeType: String(chargeTime),
+                    chargeCalculationType: String(calcType),
+                    percentage: c.percentage != null ? Number(c.percentage) : null,
+                };
+            }).filter((c: any) => c.id != null);
+        } catch (error: any) {
+            this.logger.warn(`[getProductCharges] Failed for product ${productId}: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Lấy danh sách charges đã áp dụng trên một loan cụ thể
+     * (charges thực tế, không phải template)
+     */
+    async getLoanCharges(loanId: number): Promise<any[]> {
+        try {
+            const response = await this.client.get(`/loans/${loanId}/charges`);
+            return response.data || [];
+        } catch (error: any) {
+            this.logger.warn(`[getLoanCharges] Failed for loan ${loanId}: ${error.message}`);
+            return [];
+        }
+    }
 }
