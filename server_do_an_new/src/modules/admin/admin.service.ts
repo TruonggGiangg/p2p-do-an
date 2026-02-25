@@ -436,7 +436,19 @@ export class AdminService {
         `Chưa duyệt đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`,
       );
     }
-    await this.fineractLoanService.approveLoan(fineractLoanId);
+
+    // Fineract requires: approvedOnDate <= expectedDisbursementDate
+    // Use the loan's disbursementDate so approval works even for past-dated loans
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
+    const disbursementDate = app?.disbursementDate; // format: yyyy-MM-dd
+    const today = new Date().toISOString().split('T')[0];
+    // Use disbursementDate if it exists and is earlier than today (i.e. past-dated)
+    let approvedOnDate: string | undefined;
+    if (disbursementDate) {
+      approvedOnDate = disbursementDate < today ? disbursementDate : today;
+    }
+
+    await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
     await this.loanApplicationModel.updateOne(
       { fineractLoanId },
       { $set: { status: 'approved' } },
@@ -500,11 +512,14 @@ export class AdminService {
   async approveDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    this.logger.log(`[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId} documents=${JSON.stringify(app.documents?.map(d => ({ id: d.fineractDocumentId, type: typeof d.fineractDocumentId })))}`);
     const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
     if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
     doc.reviewStatus = 'approved';
     doc.reviewedAt = new Date();
+    app.markModified('documents');
     await app.save();
+    this.logger.log(`[approveDocument] SAVED: documentId=${documentId} reviewStatus=approved`);
     return { documentId, reviewStatus: 'approved' };
   }
 
@@ -515,6 +530,7 @@ export class AdminService {
     if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
     doc.reviewStatus = 'rejected';
     doc.reviewedAt = new Date();
+    app.markModified('documents');
     await app.save();
     return { documentId, reviewStatus: 'rejected' };
   }

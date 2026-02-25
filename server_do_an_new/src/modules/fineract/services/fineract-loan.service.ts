@@ -104,12 +104,15 @@ export class FineractLoanService extends FineractBaseService {
     /**
      * Approve a loan application (học theo p2p)
      */
-    async approveLoan(loanId: number): Promise<void> {
+    async approveLoan(loanId: number, approvedOnDate?: string): Promise<void> {
         try {
-            const approvedOnDate = this.getTodayFormatted('iso');
-            this.logger.log(`[approveLoan] START | loanId=${loanId} approvedOnDate=${approvedOnDate}`);
+            const today = this.getTodayFormatted('iso');
+            // Fineract requires: approvedOnDate <= expectedDisbursementDate
+            // If caller passes disbursementDate (may be in the past), use it directly
+            const finalApprovedOnDate = approvedOnDate || today;
+            this.logger.log(`[approveLoan] START | loanId=${loanId} approvedOnDate=${finalApprovedOnDate}`);
             await this.client.post(`/loans/${loanId}?command=approve`, {
-                approvedOnDate,
+                approvedOnDate: finalApprovedOnDate,
                 dateFormat: 'yyyy-MM-dd',
                 locale: 'en',
             });
