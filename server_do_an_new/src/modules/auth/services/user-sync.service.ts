@@ -27,12 +27,25 @@ export class UserSyncService {
   async syncUser(keycloakUser: KeycloakUser): Promise<User> {
     const { keycloakUserId, username, email, name } = keycloakUser;
 
+    // First, try to find user by keycloakId
     let mongoUser = await this.userModel.findOne({
       keycloakId: keycloakUserId,
     });
 
+    // If not found by keycloakId, check by username (existing user without keycloakId)
     if (!mongoUser) {
-      mongoUser = await this.createMongoUser(keycloakUserId, username, email, name);
+      mongoUser = await this.userModel.findOne({ username });
+
+      if (mongoUser) {
+        // Update existing user with keycloakId
+        this.logger.log(`[SYNC] Updating existing user ${username} with Keycloak ID`);
+        mongoUser.keycloakId = keycloakUserId;
+        if (email) mongoUser.email = email;
+        await mongoUser.save();
+      } else {
+        // Create new user only if username doesn't exist
+        mongoUser = await this.createMongoUser(keycloakUserId, username, email, name);
+      }
     }
 
     if (!mongoUser.fineractClientId) {
@@ -54,22 +67,40 @@ export class UserSyncService {
   private async createMongoUser(keycloakUserId: string, username: string, email?: string, name?: string) {
     this.logger.log(`[SYNC] Initializing MongoDB user: ${username}`);
 
-    const kcUser = await this.keycloakService.findUserByUsername(username);
-    const firstName = kcUser?.firstName || name?.split(' ')[0] || '';
-    const lastName = kcUser?.lastName || name?.split(' ').slice(1).join(' ') || '';
+    try {
+      const kcUser = await this.keycloakService.findUserByUsername(username);
+      const firstName = kcUser?.firstName || name?.split(' ')[0] || '';
+      const lastName = kcUser?.lastName || name?.split(' ').slice(1).join(' ') || '';
 
-    const emailDomain = this.configService.get<string>('defaults.emailDomain');
-    const mongoUser = await this.userModel.create({
-      keycloakId: keycloakUserId,
-      username,
-      email: email || kcUser?.email || `${username}@${emailDomain}`,
+      const emailDomain = this.configService.get<string>('defaults.emailDomain');
+      const mongoUser = await this.userModel.create({
+        keycloakId: keycloakUserId,
+        username,
+        email: email || kcUser?.email || `${username}@${emailDomain}`,
+        profile: { firstName, lastName },
+        status: UserStatus.ACTIVE,
+        metadata: { syncStatus: 'initialized', lastSyncAt: new Date() },
+      });
 
-      profile: { firstName, lastName },
-      status: UserStatus.ACTIVE,
-      metadata: { syncStatus: 'initialized', lastSyncAt: new Date() },
-    });
+      return mongoUser;
+    } catch (error: any) {
+      // Handle duplicate key error (E11000)
+      if (error.code === 11000) {
+        this.logger.warn(`[SYNC] User ${username} already exists, attempting to find and update`);
 
-    return mongoUser;
+        // Try to find and update existing user with keycloakId
+        const existingUser = await this.userModel.findOne({ username });
+        if (existingUser) {
+          existingUser.keycloakId = keycloakUserId;
+          if (email) existingUser.email = email;
+          await existingUser.save();
+          return existingUser;
+        }
+      }
+
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   private async linkFineractClient(mongoUser: User, username: string): Promise<void> {

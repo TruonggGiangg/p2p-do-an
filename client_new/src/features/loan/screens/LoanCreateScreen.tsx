@@ -359,6 +359,7 @@ export default function LoanCreateScreen() {
     const route = useRoute();
     const navigation = useNavigation<LoanCreateNav>();
     const { product, willing: initialWilling } = (route.params || {}) as RouteParams;
+    const [step, setStep] = useState(0); // 0 = input, 1 = confirm
 
     const [config, setConfig] = useState<LoanProductConfig | null>(null);
     const [capital, setCapital] = useState('');
@@ -487,12 +488,12 @@ export default function LoanCreateScreen() {
             <StepIndicator current={0} theme={theme} />
 
             <KeyboardAvoidingView
-                style={styles.flex}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={80}
+                style={styles.keyboardContainer}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
             >
                 <ScrollView
-                    style={styles.scroll}
+                    style={styles.scrollContainer}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
@@ -656,6 +657,8 @@ export default function LoanCreateScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    keyboardContainer: { flex: 1 },
+    scrollContainer: { flex: 1 },
     flex: { flex: 1 },
     scroll: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 24 },

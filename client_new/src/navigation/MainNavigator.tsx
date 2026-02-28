@@ -22,7 +22,7 @@ export default function MainNavigator() {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
 
-    const bottomTabHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
+    const bottomTabHeight = Platform.OS === 'ios' ? 60 + insets.bottom : Math.max(70, 56 + insets.bottom);
 
     return (
         <Tab.Navigator
@@ -58,7 +58,7 @@ export default function MainNavigator() {
                     backgroundColor: theme.colors.backgroundSecondary,
                     borderTopWidth: 0,
                     height: bottomTabHeight,
-                    paddingBottom: Platform.OS === 'ios' ? insets.bottom : 12,
+                    paddingBottom: Platform.OS === 'ios' ? insets.bottom : Math.max(12, insets.bottom),
                     paddingTop: 12,
                     elevation: 20,
                     shadowColor: '#000',

@@ -66,7 +66,7 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
         </TouchableOpacity>
     );
 
-    const topPadding = Platform.OS === 'ios' ? insets.top : (StatusBar.currentHeight || 0) + 10;
+    const topPadding = Platform.OS === 'ios' ? insets.top : Math.max(insets.top, (StatusBar.currentHeight || 0)) + 12;
 
     if (mode === 'dashboard') {
         return (

@@ -9,6 +9,8 @@ import {
     TouchableOpacity,
     Animated,
     Alert,
+    Keyboard,
+    TouchableWithoutFeedback,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -118,154 +120,163 @@ export default function RegisterScreen() {
                 }
             />
 
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
             >
-                <Animated.View style={{ opacity: fadeAnim }}>
-                    <View style={styles.heroSection}>
-                        <View style={[styles.heroIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
-                            <MaterialCommunityIcons name="account-plus-outline" size={32} color={theme.colors.primary} />
-                        </View>
-                        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Create Account</Text>
-                        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-                            Join the most secure P2P lending platform
-                        </Text>
-                    </View>
-                    {/* Form Section */}
-                    <View style={styles.formSection}>
-                        <View style={styles.row}>
-                            <View style={styles.halfWidth}>
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                    <ScrollView
+                        contentContainerStyle={styles.scrollContent}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
+                    >
+                        <Animated.View style={{ opacity: fadeAnim }}>
+                            <View style={styles.heroSection}>
+                                <View style={[styles.heroIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                                    <MaterialCommunityIcons name="account-plus-outline" size={32} color={theme.colors.primary} />
+                                </View>
+                                <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Create Account</Text>
+                                <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+                                    Join the most secure P2P lending platform
+                                </Text>
+                            </View>
+                            {/* Form Section */}
+                            <View style={styles.formSection}>
+                                <View style={styles.row}>
+                                    <View style={styles.halfWidth}>
+                                        <CommonInput
+                                            label="First Name"
+                                            value={formData.firstName}
+                                            onChangeText={(text) => updateField('firstName', text)}
+                                            placeholder="Nguyễn"
+                                            error={errors.firstName}
+                                            editable={!isLoading}
+                                        />
+                                    </View>
+                                    <View style={styles.halfWidth}>
+                                        <CommonInput
+                                            label="Last Name"
+                                            value={formData.lastName}
+                                            onChangeText={(text) => updateField('lastName', text)}
+                                            placeholder="Văn A"
+                                            error={errors.lastName}
+                                            editable={!isLoading}
+                                        />
+                                    </View>
+                                </View>
+
                                 <CommonInput
-                                    label="First Name"
-                                    value={formData.firstName}
-                                    onChangeText={(text) => updateField('firstName', text)}
-                                    placeholder="Nguyễn"
-                                    error={errors.firstName}
+                                    label="Phone Number"
+                                    value={formData.phoneNumber}
+                                    onChangeText={(text) => updateField('phoneNumber', text)}
+                                    keyboardType="phone-pad"
+                                    placeholder="0987 654 321"
+                                    error={errors.phoneNumber}
                                     editable={!isLoading}
                                 />
-                            </View>
-                            <View style={styles.halfWidth}>
+
                                 <CommonInput
-                                    label="Last Name"
-                                    value={formData.lastName}
-                                    onChangeText={(text) => updateField('lastName', text)}
-                                    placeholder="Văn A"
-                                    error={errors.lastName}
+                                    label="Email (Optional)"
+                                    value={formData.email}
+                                    onChangeText={(text) => updateField('email', text)}
+                                    keyboardType="email-address"
+                                    placeholder="email@example.com"
+                                    autoCapitalize="none"
+                                    error={errors.email}
                                     editable={!isLoading}
                                 />
+
+                                {/* User Type Selector */}
+                                <View style={styles.typeContainer}>
+                                    <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Account Type</Text>
+                                    <View style={styles.typeSelector}>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.typeButton,
+                                                {
+                                                    backgroundColor: formData.userType === 'borrower' ? theme.colors.primaryGlass : 'transparent',
+                                                    borderColor: formData.userType === 'borrower' ? theme.colors.primary : theme.colors.border,
+                                                }
+                                            ]}
+                                            onPress={() => updateField('userType', 'borrower')}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name="account-cash"
+                                                size={20}
+                                                color={formData.userType === 'borrower' ? theme.colors.primary : theme.colors.textDim}
+                                            />
+                                            <Text style={[styles.typeBtnText, { color: formData.userType === 'borrower' ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
+                                                Borrower
+                                            </Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.typeButton,
+                                                {
+                                                    backgroundColor: formData.userType === 'lender' ? theme.colors.primaryGlass : 'transparent',
+                                                    borderColor: formData.userType === 'lender' ? theme.colors.primary : theme.colors.border,
+                                                }
+                                            ]}
+                                            onPress={() => updateField('userType', 'lender')}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name="hand-coin"
+                                                size={20}
+                                                color={formData.userType === 'lender' ? theme.colors.primary : theme.colors.textDim}
+                                            />
+                                            <Text style={[styles.typeBtnText, { color: formData.userType === 'lender' ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
+                                                Lender
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                <CommonInput
+                                    label="Password"
+                                    value={formData.password}
+                                    onChangeText={(text) => updateField('password', text)}
+                                    secureTextEntry
+                                    placeholder="At least 6 characters"
+                                    error={errors.password}
+                                    editable={!isLoading}
+                                />
+
+                                <CommonInput
+                                    label="Confirm Password"
+                                    value={formData.confirmPassword}
+                                    onChangeText={(text) => updateField('confirmPassword', text)}
+                                    secureTextEntry
+                                    placeholder="Re-enter password"
+                                    error={errors.confirmPassword}
+                                    editable={!isLoading}
+                                />
+
+                                <CommonButton
+                                    title={isLoading ? 'Creating Account...' : 'Register'}
+                                    onPress={handleRegister}
+                                    loading={isLoading}
+                                    variant="primary"
+                                    style={styles.registerBtn}
+                                />
                             </View>
-                        </View>
 
-                        <CommonInput
-                            label="Phone Number"
-                            value={formData.phoneNumber}
-                            onChangeText={(text) => updateField('phoneNumber', text)}
-                            keyboardType="phone-pad"
-                            placeholder="0987 654 321"
-                            error={errors.phoneNumber}
-                            editable={!isLoading}
-                        />
-
-                        <CommonInput
-                            label="Email (Optional)"
-                            value={formData.email}
-                            onChangeText={(text) => updateField('email', text)}
-                            keyboardType="email-address"
-                            placeholder="email@example.com"
-                            autoCapitalize="none"
-                            error={errors.email}
-                            editable={!isLoading}
-                        />
-
-                        {/* User Type Selector */}
-                        <View style={styles.typeContainer}>
-                            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>Account Type</Text>
-                            <View style={styles.typeSelector}>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.typeButton,
-                                        {
-                                            backgroundColor: formData.userType === 'borrower' ? theme.colors.primaryGlass : 'transparent',
-                                            borderColor: formData.userType === 'borrower' ? theme.colors.primary : theme.colors.border,
-                                        }
-                                    ]}
-                                    onPress={() => updateField('userType', 'borrower')}
-                                >
-                                    <MaterialCommunityIcons
-                                        name="account-cash"
-                                        size={20}
-                                        color={formData.userType === 'borrower' ? theme.colors.primary : theme.colors.textDim}
-                                    />
-                                    <Text style={[styles.typeBtnText, { color: formData.userType === 'borrower' ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
-                                        Borrower
-                                    </Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[
-                                        styles.typeButton,
-                                        {
-                                            backgroundColor: formData.userType === 'lender' ? theme.colors.primaryGlass : 'transparent',
-                                            borderColor: formData.userType === 'lender' ? theme.colors.primary : theme.colors.border,
-                                        }
-                                    ]}
-                                    onPress={() => updateField('userType', 'lender')}
-                                >
-                                    <MaterialCommunityIcons
-                                        name="hand-coin"
-                                        size={20}
-                                        color={formData.userType === 'lender' ? theme.colors.primary : theme.colors.textDim}
-                                    />
-                                    <Text style={[styles.typeBtnText, { color: formData.userType === 'lender' ? theme.colors.textPrimary : theme.colors.textSecondary }]}>
-                                        Lender
-                                    </Text>
-                                </TouchableOpacity>
+                            {/* Footer Policy */}
+                            <View style={[styles.footer, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
+                                <MaterialCommunityIcons name="lock" size={14} color={theme.colors.textMuted} style={styles.lockIcon} />
+                                <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
+                                    By registering, you agree to our{' '}
+                                    <Text style={{ color: theme.colors.primary }}>Terms of Use</Text> and{' '}
+                                    <Text style={{ color: theme.colors.primary }}>Privacy Policy</Text>.
+                                    All data is end-to-end encrypted.
+                                </Text>
                             </View>
-                        </View>
-
-                        <CommonInput
-                            label="Password"
-                            value={formData.password}
-                            onChangeText={(text) => updateField('password', text)}
-                            secureTextEntry
-                            placeholder="At least 6 characters"
-                            error={errors.password}
-                            editable={!isLoading}
-                        />
-
-                        <CommonInput
-                            label="Confirm Password"
-                            value={formData.confirmPassword}
-                            onChangeText={(text) => updateField('confirmPassword', text)}
-                            secureTextEntry
-                            placeholder="Re-enter password"
-                            error={errors.confirmPassword}
-                            editable={!isLoading}
-                        />
-
-                        <CommonButton
-                            title={isLoading ? 'Creating Account...' : 'Register'}
-                            onPress={handleRegister}
-                            loading={isLoading}
-                            variant="primary"
-                            style={styles.registerBtn}
-                        />
-                    </View>
-
-                    {/* Footer Policy */}
-                    <View style={[styles.footer, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
-                        <MaterialCommunityIcons name="lock" size={14} color={theme.colors.textMuted} style={styles.lockIcon} />
-                        <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
-                            By registering, you agree to our{' '}
-                            <Text style={{ color: theme.colors.primary }}>Terms of Use</Text> and{' '}
-                            <Text style={{ color: theme.colors.primary }}>Privacy Policy</Text>.
-                            All data is end-to-end encrypted.
-                        </Text>
-                    </View>
-                </Animated.View>
-            </ScrollView>
+                        </Animated.View>
+                    </ScrollView>
+                </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
         </View>
     );
 }

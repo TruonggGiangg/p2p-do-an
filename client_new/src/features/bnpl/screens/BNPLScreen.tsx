@@ -13,8 +13,10 @@ import {
     Keyboard,
     TouchableWithoutFeedback,
     Animated,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
-import { View as SafeAreaView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
@@ -23,6 +25,21 @@ import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefr
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
+
+// ── Membership Tier ──────────────────────────────────────────────────────────
+const TIERS = [
+    { key: 'dong', label: 'Hạng Đồng', icon: 'medal-outline' as const, color: '#CD7F32', limit: 2_000_000, minSpend: 0 },
+    { key: 'bac', label: 'Hạng Bạc', icon: 'medal' as const, color: '#9E9E9E', limit: 5_000_000, minSpend: 5_000_000 },
+    { key: 'vang', label: 'Hạng Vàng', icon: 'star-circle' as const, color: '#F0B90B', limit: 10_000_000, minSpend: 20_000_000 },
+    { key: 'kimcuong', label: 'Kim Cương', icon: 'diamond-stone' as const, color: '#81D4FA', limit: 20_000_000, minSpend: 50_000_000 },
+];
+
+function getTier(creditLimit: number) {
+    if (creditLimit <= 2_000_000) return TIERS[0];
+    if (creditLimit <= 5_000_000) return TIERS[1];
+    if (creditLimit <= 10_000_000) return TIERS[2];
+    return TIERS[3];
+}
 
 interface PreviewData {
     amount: number;
@@ -44,6 +61,7 @@ interface PreviewData {
 
 export default function BNPLScreen() {
     const { theme } = useTheme();
+    const insets = useSafeAreaInsets();
     const [wallet, setWallet] = useState<BnplWalletInfo | null>(null);
     const [loans, setLoans] = useState<BnplLoan[]>([]);
     const [schedule, setSchedule] = useState<ConsolidatedScheduleItem[]>([]);
@@ -52,6 +70,8 @@ export default function BNPLScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [createModalVisible, setCreateModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [balanceVisible, setBalanceVisible] = useState(true);
+    const [transactions, setTransactions] = useState<any[]>([]);
 
     // Form state
     const [amountRaw, setAmountRaw] = useState('5000000');
@@ -80,15 +100,17 @@ export default function BNPLScreen() {
             await Promise.all([
                 minDelay,
                 (async () => {
-                    const [walletData, loansData, scheduleData] = await Promise.all([
+                    const [walletData, loansData, scheduleData, transData] = await Promise.all([
                         bnplAPI.getWallet(),
                         bnplAPI.getLoans(),
                         bnplAPI.getConsolidatedSchedule(),
+                        bnplAPI.getTransactions(20),
                     ]);
                     setWallet(walletData);
                     setLoans(loansData.loans);
                     setSchedule(scheduleData.schedule);
                     setScheduleSummary(scheduleData.summary);
+                    setTransactions(transData.transactions);
                 })()
             ]);
         } catch (error: any) {
@@ -234,46 +256,47 @@ export default function BNPLScreen() {
         ? Math.min((wallet.usedCredit / wallet.creditLimit) * 100, 100)
         : 0;
 
+    const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
+    const currentTier = wallet ? getTier(wallet.creditLimit) : TIERS[0];
+    const c = theme.colors;
+
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.container, { backgroundColor: c.background }]}>
             <BinanceHeader title="Ví Trả Sau (BNPL)" />
             <FintechPullToRefresh
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
             >
-                {/* Wallet Info Card - Premium Design */}
+                {/* ── Wallet Info Card ── */}
                 {wallet && (
                     <CommonCard style={styles.walletCard}>
-                        <View style={styles.walletHeader}>
-                            <Text style={[styles.walletLabel, { color: theme.colors.textMuted }]}>Hạn mức khả dụng</Text>
-                            <View
-                                style={[
-                                    styles.statusBadge,
-                                    {
-                                        backgroundColor: theme.colors.successGlass,
-                                        borderRadius: theme.radius.sm,
-                                    },
-                                ]}
-                            >
-                                <Text style={[styles.statusText, { color: theme.colors.success }]}>{wallet.status}</Text>
+                        {/* Tier badge + balance visibility toggle */}
+                        <View style={styles.walletHeaderRow}>
+                            <View style={[styles.tierPill, { backgroundColor: currentTier.color + '25' }]}>
+                                <MaterialCommunityIcons name={currentTier.icon} size={13} color={currentTier.color} />
+                                <Text style={[styles.tierPillText, { color: currentTier.color }]}>{currentTier.label}</Text>
                             </View>
+                            <TouchableOpacity onPress={() => setBalanceVisible(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <MaterialCommunityIcons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={18} color={c.textDim} />
+                            </TouchableOpacity>
                         </View>
+                        <Text style={[styles.walletLabel, { color: theme.colors.textMuted, marginTop: 12 }]}>Hạn mức khả dụng</Text>
                         <Text style={[styles.walletBalance, { color: theme.colors.textPrimary }]}>
-                            {formatCurrency(wallet.availableCredit)}
+                            {balanceVisible ? formatCurrency(wallet!.availableCredit) : '• • • • • •'}
                         </Text>
                         <View style={styles.walletRow}>
                             <View style={styles.walletRowItem}>
                                 <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Tổng hạn mức</Text>
                                 <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                    {formatCurrency(wallet.creditLimit)}
+                                    {balanceVisible ? formatCurrency(wallet!.creditLimit) : '- - -'}
                                 </Text>
                             </View>
                             <View style={[styles.walletRowItemDivider, { backgroundColor: theme.colors.border }]} />
                             <View style={styles.walletRowItem}>
                                 <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Đã sử dụng</Text>
                                 <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                    {formatCurrency(wallet.usedCredit)}
+                                    {balanceVisible ? formatCurrency(wallet!.usedCredit) : '- - -'}
                                 </Text>
                             </View>
                         </View>
@@ -314,10 +337,18 @@ export default function BNPLScreen() {
                                     Đã dùng {progressPercentage.toFixed(0)}%
                                 </Text>
                                 <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
-                                    Còn lại {formatCurrency(wallet.availableCredit)}
+                                    Còn lại {balanceVisible ? formatCurrency(wallet!.availableCredit) : '- - -'}
                                 </Text>
                             </View>
                         </View>
+                        {/* Repay button */}
+                        <TouchableOpacity
+                            style={[styles.repayBtn, { backgroundColor: c.primary }]}
+                            activeOpacity={0.8}
+                        >
+                            <MaterialCommunityIcons name="credit-card-refresh-outline" size={16} color="#000" />
+                            <Text style={styles.repayBtnText}>Thanh toán dư nợ</Text>
+                        </TouchableOpacity>
                     </CommonCard>
                 )}
 
@@ -328,6 +359,45 @@ export default function BNPLScreen() {
                     icon="plus-circle"
                     style={styles.createBtn}
                 />
+
+                {/* ── Transaction History ── */}
+                {transactions.length > 0 && (
+                    <>
+                        <View style={styles.sectionHeader}>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch sử giao dịch</Text>
+                        </View>
+                        <CommonCard style={styles.txCard}>
+                            {transactions.slice(0, 10).map((tx, idx) => (
+                                <View
+                                    key={tx.id || idx}
+                                    style={[
+                                        styles.txRow,
+                                        idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
+                                    ]}
+                                >
+                                    <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
+                                        <MaterialCommunityIcons
+                                            name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+                                            size={20}
+                                            color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
+                                        />
+                                    </View>
+                                    <View style={styles.txInfo}>
+                                        <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                            {tx.description || tx.type || 'Giao dịch'}
+                                        </Text>
+                                        <Text style={[styles.txDate, { color: theme.colors.textMuted }]}>
+                                            {tx.date || tx.createdAt || ''}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
+                                        {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                    </Text>
+                                </View>
+                            ))}
+                        </CommonCard>
+                    </>
+                )}
 
                 {/* Consolidated Schedule */}
                 {schedule.length > 0 && (
@@ -449,220 +519,230 @@ export default function BNPLScreen() {
                 presentationStyle="pageSheet"
                 onRequestClose={() => setCreateModalVisible(false)}
             >
-                <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+                <View style={[styles.modalContainer, { backgroundColor: c.background }]}>
                     <BinanceHeader title="Tạo khoản vay BNPL" showBack={false} rightComponents={
                         <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
-                            <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
+                            <MaterialCommunityIcons name="close" size={24} color={c.textPrimary} />
                         </TouchableOpacity>
                     } />
-                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                        <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+                    <KeyboardAvoidingView
+                        style={{ flex: 1 }}
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+                    >
+                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                            <ScrollView
+                                style={{ flex: 1 }}
+                                contentContainerStyle={[styles.modalScroll, { paddingBottom: Platform.OS === 'ios' ? insets.bottom + 24 : 24 }]}
+                                keyboardShouldPersistTaps="handled"
+                                keyboardDismissMode="on-drag"
+                                showsVerticalScrollIndicator={false}
+                            >
 
-                            {/* Amount Input */}
-                            <CommonInput
-                                label="Bạn muốn vay bao nhiêu?"
-                                value={amountDisplay}
-                                onChangeText={(val) => {
-                                    const digits = val.replace(/[^0-9]/g, '');
-                                    setAmountRaw(digits);
-                                    debouncedResetPreview();
-                                }}
-                                keyboardType="numeric"
-                                placeholder="0"
-                                error={parseInt(amountRaw) > 50000000 ? 'Vượt hạn mức tối đa' : undefined}
-                                icon="cash"
-                            />
+                                {/* Amount Input */}
+                                <CommonInput
+                                    label="Bạn muốn vay bao nhiêu?"
+                                    value={amountDisplay}
+                                    onChangeText={(val) => {
+                                        const digits = val.replace(/[^0-9]/g, '');
+                                        setAmountRaw(digits);
+                                        debouncedResetPreview();
+                                    }}
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    error={parseInt(amountRaw) > 50000000 ? 'Vượt hạn mức tối đa' : undefined}
+                                    icon="cash"
+                                />
 
-                            {/* Repayments Selector */}
-                            <View style={styles.inputSection}>
-                                <View style={styles.inputLabelRow}>
-                                    <MaterialCommunityIcons
-                                        name="calendar"
-                                        size={18}
-                                        color={theme.colors.textMuted}
-                                        style={styles.inputIcon}
-                                    />
-                                    <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>Số kỳ trả nợ</Text>
-                                </View>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
-                                    {[1, 2, 3, 6, 9, 12].map((months) => (
-                                        <TouchableOpacity
-                                            key={months}
-                                            onPress={() => {
-                                                setNumberOfRepayments(months);
-                                                setPreview(null);
-                                            }}
-                                            style={[
-                                                styles.pill,
-                                                {
-                                                    backgroundColor:
-                                                        numberOfRepayments === months
-                                                            ? theme.colors.primaryGlass
-                                                            : theme.colors.glassLight,
-                                                    borderColor:
-                                                        numberOfRepayments === months
-                                                            ? theme.colors.primaryBorder
-                                                            : theme.colors.border,
-                                                    borderRadius: theme.radius.full,
-                                                },
-                                                numberOfRepayments === months && styles.pillActive,
-                                            ]}
-                                        >
-                                            <Text
+                                {/* Repayments Selector */}
+                                <View style={styles.inputSection}>
+                                    <View style={styles.inputLabelRow}>
+                                        <MaterialCommunityIcons
+                                            name="calendar"
+                                            size={18}
+                                            color={theme.colors.textMuted}
+                                            style={styles.inputIcon}
+                                        />
+                                        <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>Số kỳ trả nợ</Text>
+                                    </View>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
+                                        {[1, 2, 3, 6, 9, 12].map((months) => (
+                                            <TouchableOpacity
+                                                key={months}
+                                                onPress={() => {
+                                                    setNumberOfRepayments(months);
+                                                    setPreview(null);
+                                                }}
                                                 style={[
-                                                    styles.pillText,
+                                                    styles.pill,
                                                     {
-                                                        color:
+                                                        backgroundColor:
                                                             numberOfRepayments === months
-                                                                ? theme.colors.primary
-                                                                : theme.colors.textSecondary,
+                                                                ? theme.colors.primaryGlass
+                                                                : theme.colors.glassLight,
+                                                        borderColor:
+                                                            numberOfRepayments === months
+                                                                ? theme.colors.primaryBorder
+                                                                : theme.colors.border,
+                                                        borderRadius: theme.radius.full,
                                                     },
-                                                    numberOfRepayments === months && styles.pillTextActive,
+                                                    numberOfRepayments === months && styles.pillActive,
                                                 ]}
                                             >
-                                                {months} tháng
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-
-                            {/* Description (Optional) */}
-                            <CommonInput
-                                label="Mô tả (tùy chọn)"
-                                value={loanDescription}
-                                onChangeText={setLoanDescription}
-                                placeholder="Ví dụ: Mua điện thoại"
-                                icon="text"
-                            />
-
-                            {/* ==================== PREVIEW CARD ==================== */}
-                            {preview ? (
-                                <Animated.View style={{ opacity: previewFadeAnim }}>
-                                    <CommonCard style={styles.previewCard}>
-                                        <View style={styles.previewHeader}>
-                                            <Text style={[styles.previewLabel, { color: theme.colors.textMuted }]}>
-                                                Trả hàng tháng
-                                            </Text>
-                                            <Text style={[styles.previewAmount, { color: theme.colors.success }]}>
-                                                {formatCurrency(preview?.monthlyPayment || 0)}
-                                            </Text>
-                                        </View>
-                                        <View style={[styles.dashedLine, { backgroundColor: theme.colors.border }]} />
-                                        <View style={styles.previewRow}>
-                                            <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Lãi suất</Text>
-                                            <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatPercentage(preview?.monthlyRate || 0)} / tháng
-                                            </Text>
-                                        </View>
-                                        <View style={styles.previewRow}>
-                                            <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
-                                                Tổng lãi dự kiến
-                                            </Text>
-                                            <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatCurrency(preview?.totalInterest || 0)}
-                                            </Text>
-                                        </View>
-                                        <View style={styles.previewRow}>
-                                            <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
-                                                Tổng thanh toán
-                                            </Text>
-                                            <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
-                                                {formatCurrency(preview?.totalRepayment || 0)}
-                                            </Text>
-                                        </View>
-
-                                        {/* Schedule Table */}
-                                        {preview.schedulePreview && preview.schedulePreview.length > 0 && (
-                                            <View style={styles.scheduleTable}>
-                                                <View style={[styles.dashedLine, { backgroundColor: theme.colors.border }]} />
-                                                <Text style={[styles.scheduleTableTitle, { color: theme.colors.textPrimary }]}>
-                                                    Lịch trả nợ chi tiết
-                                                </Text>
-                                                <View
+                                                <Text
                                                     style={[
-                                                        styles.scheduleTableHeader,
+                                                        styles.pillText,
                                                         {
-                                                            backgroundColor: theme.colors.primaryGlass,
-                                                            borderRadius: theme.radius.md,
+                                                            color:
+                                                                numberOfRepayments === months
+                                                                    ? theme.colors.primary
+                                                                    : theme.colors.textSecondary,
                                                         },
+                                                        numberOfRepayments === months && styles.pillTextActive,
                                                     ]}
                                                 >
-                                                    <Text style={[styles.scheduleTableHeaderText, { flex: 0.5 }]}>Kỳ</Text>
-                                                    <Text style={styles.scheduleTableHeaderText}>Gốc</Text>
-                                                    <Text style={styles.scheduleTableHeaderText}>Lãi</Text>
-                                                    <Text style={styles.scheduleTableHeaderText}>Tổng</Text>
-                                                </View>
-                                                {preview.schedulePreview.map((item, idx) => (
+                                                    {months} tháng
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+
+                                {/* Description (Optional) */}
+                                <CommonInput
+                                    label="Mô tả (tùy chọn)"
+                                    value={loanDescription}
+                                    onChangeText={setLoanDescription}
+                                    placeholder="Ví dụ: Mua điện thoại"
+                                    icon="text"
+                                />
+
+                                {/* ==================== PREVIEW CARD ==================== */}
+                                {preview ? (
+                                    <Animated.View style={{ opacity: previewFadeAnim }}>
+                                        <CommonCard style={styles.previewCard}>
+                                            <View style={styles.previewHeader}>
+                                                <Text style={[styles.previewLabel, { color: theme.colors.textMuted }]}>
+                                                    Trả hàng tháng
+                                                </Text>
+                                                <Text style={[styles.previewAmount, { color: theme.colors.success }]}>
+                                                    {formatCurrency(preview?.monthlyPayment || 0)}
+                                                </Text>
+                                            </View>
+                                            <View style={[styles.dashedLine, { backgroundColor: theme.colors.border }]} />
+                                            <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Lãi suất</Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {formatPercentage(preview?.monthlyRate || 0)} / tháng
+                                                </Text>
+                                            </View>
+                                            <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
+                                                    Tổng lãi dự kiến
+                                                </Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {formatCurrency(preview?.totalInterest || 0)}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
+                                                    Tổng thanh toán
+                                                </Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {formatCurrency(preview?.totalRepayment || 0)}
+                                                </Text>
+                                            </View>
+
+                                            {/* Schedule Table */}
+                                            {preview.schedulePreview && preview.schedulePreview.length > 0 && (
+                                                <View style={styles.scheduleTable}>
+                                                    <View style={[styles.dashedLine, { backgroundColor: theme.colors.border }]} />
+                                                    <Text style={[styles.scheduleTableTitle, { color: theme.colors.textPrimary }]}>
+                                                        Lịch trả nợ chi tiết
+                                                    </Text>
                                                     <View
-                                                        key={idx}
                                                         style={[
-                                                            styles.scheduleTableRow,
-                                                            idx % 2 === 0 && {
+                                                            styles.scheduleTableHeader,
+                                                            {
                                                                 backgroundColor: theme.colors.primaryGlass,
+                                                                borderRadius: theme.radius.md,
                                                             },
                                                         ]}
                                                     >
-                                                        <Text style={[styles.scheduleTableCell, { flex: 0.5, color: theme.colors.textPrimary }]}>
-                                                            {item.period}
-                                                        </Text>
-                                                        <Text style={[styles.scheduleTableCell, { color: theme.colors.textPrimary }]}>
-                                                            {formatNumber(item.principal)}
-                                                        </Text>
-                                                        <Text style={[styles.scheduleTableCell, { color: theme.colors.textPrimary }]}>
-                                                            {formatNumber(item.interest)}
-                                                        </Text>
-                                                        <Text
+                                                        <Text style={[styles.scheduleTableHeaderText, { flex: 0.5 }]}>Kỳ</Text>
+                                                        <Text style={styles.scheduleTableHeaderText}>Gốc</Text>
+                                                        <Text style={styles.scheduleTableHeaderText}>Lãi</Text>
+                                                        <Text style={styles.scheduleTableHeaderText}>Tổng</Text>
+                                                    </View>
+                                                    {preview.schedulePreview.map((item, idx) => (
+                                                        <View
+                                                            key={idx}
                                                             style={[
-                                                                styles.scheduleTableCell,
-                                                                {
-                                                                    fontFamily: 'Poppins_700Bold',
-                                                                    color: theme.colors.success,
+                                                                styles.scheduleTableRow,
+                                                                idx % 2 === 0 && {
+                                                                    backgroundColor: theme.colors.primaryGlass,
                                                                 },
                                                             ]}
                                                         >
-                                                            {formatNumber(item.total)}
-                                                        </Text>
-                                                    </View>
-                                                ))}
-                                            </View>
-                                        )}
-                                    </CommonCard>
-                                </Animated.View>
-                            ) : (
+                                                            <Text style={[styles.scheduleTableCell, { flex: 0.5, color: theme.colors.textPrimary }]}>
+                                                                {item.period}
+                                                            </Text>
+                                                            <Text style={[styles.scheduleTableCell, { color: theme.colors.textPrimary }]}>
+                                                                {formatNumber(item.principal)}
+                                                            </Text>
+                                                            <Text style={[styles.scheduleTableCell, { color: theme.colors.textPrimary }]}>
+                                                                {formatNumber(item.interest)}
+                                                            </Text>
+                                                            <Text
+                                                                style={[
+                                                                    styles.scheduleTableCell,
+                                                                    {
+                                                                        fontFamily: 'Poppins_700Bold',
+                                                                        color: theme.colors.success,
+                                                                    },
+                                                                ]}
+                                                            >
+                                                                {formatNumber(item.total)}
+                                                            </Text>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </CommonCard>
+                                    </Animated.View>
+                                ) : (
+                                    <CommonButton
+                                        title="Xem trước khoản vay"
+                                        onPress={handlePreview}
+                                        loading={loadingPreview}
+                                        icon="calculator"
+                                        style={styles.previewBtn}
+                                    />
+                                )}
+
+                                <View style={{ height: 20 }} />
+                            </ScrollView>
+                        </TouchableWithoutFeedback>
+                        {preview && (
+                            <View
+                                style={[
+                                    styles.modalFooter,
+                                    {
+                                        backgroundColor: theme.colors.background,
+                                        borderTopColor: theme.colors.border,
+                                    },
+                                ]}
+                            >
                                 <CommonButton
-                                    title="Xem trước khoản vay"
-                                    onPress={handlePreview}
-                                    loading={loadingPreview}
-                                    icon="calculator"
-                                    style={styles.previewBtn}
+                                    title="Xác nhận vay ngay"
+                                    onPress={handleCreateLoan}
+                                    loading={creating}
+                                    icon="arrow-right"
+                                    style={styles.submitBtn}
                                 />
-                            )}
-
-                            <View style={{ height: 120 }} />
-                        </ScrollView>
-                    </TouchableWithoutFeedback>
-
-                    {/* Footer Submit Button */}
-                    {preview && (
-                        <View
-                            style={[
-                                styles.modalFooter,
-                                {
-                                    backgroundColor: theme.colors.background,
-                                    borderTopColor: theme.colors.border,
-                                },
-                            ]}
-                        >
-                            <CommonButton
-                                title="Xác nhận vay ngay"
-                                onPress={handleCreateLoan}
-                                loading={creating}
-                                icon="arrow-right"
-                                style={styles.submitBtn}
-                            />
-                        </View>
-                    )}
+                            </View>
+                        )}
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
         </View >
@@ -688,11 +768,30 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 20,
-        paddingBottom: 40,
         paddingHorizontal: 20,
         width: '100%',
         maxWidth: '100%',
     },
+
+    // Membership Tier
+    tierSection: { marginBottom: 20, width: '100%' },
+    tierCard: { padding: 18 },
+    tierHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    tierLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    tierIconWrap: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    tierName: { fontSize: 16, fontWeight: '700' },
+    tierSub: { fontSize: 12, marginTop: 1 },
+    tierBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+    tierBadgeText: { fontSize: 11, fontWeight: '600' },
+    tierLevels: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    tierLevelItem: { alignItems: 'center', gap: 4 },
+    tierLevelDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+    tierLevelLabel: { fontSize: 9, fontWeight: '500', textAlign: 'center' },
+    tierConnector: { flex: 1, height: 2, marginBottom: 16, marginHorizontal: 2 },
+    tierDivider: { height: 1, marginBottom: 12 },
+    tierLimitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    tierLimitLabel: { fontSize: 13 },
+    tierLimitValue: { fontSize: 16, fontWeight: '700' },
     walletCard: {
         marginBottom: 24,
         width: '100%',
@@ -1129,15 +1228,54 @@ const styles = StyleSheet.create({
 
     // Modal Footer
     modalFooter: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
         padding: 20,
         paddingBottom: 30,
         borderTopWidth: 1,
     },
     submitBtn: {},
+
+    // Wallet card redesign styles
+    walletHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    tierPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
+    },
+    tierPillText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    repayBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 13,
+        borderRadius: 10,
+        marginTop: 16,
+    },
+    repayBtnText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#000',
+    },
+
+    // Transaction history styles
+    txCard: { marginBottom: 24, width: '100%' },
+    txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+    txIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+    txInfo: { flex: 1, minWidth: 0 },
+    txDesc: { fontSize: 13, fontWeight: '600', marginBottom: 2, flexShrink: 1 },
+    txDate: { fontSize: 11 },
+    txAmount: { fontSize: 14, fontWeight: '700', flexShrink: 0 },
     submitBtnContent: {
         flexDirection: 'row',
         alignItems: 'center',

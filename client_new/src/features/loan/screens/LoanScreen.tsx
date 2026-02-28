@@ -138,8 +138,8 @@ export default function LoanScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
-    headerSection: { marginTop: 20, marginBottom: 16 },
+    scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
+    headerSection: { marginTop: 24, marginBottom: 20 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
     sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
     sectionSubtitle: { fontSize: 14 },
