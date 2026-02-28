@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
     View,
     Text,
@@ -38,6 +38,13 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     const { theme, themeMode, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const insets = useSafeAreaInsets();
 
+    // Cache the initial top inset to avoid header jumping after keyboard dismiss
+    const cachedTopInset = useRef<number | null>(null);
+    if (cachedTopInset.current === null && insets.top > 0) {
+        cachedTopInset.current = insets.top;
+    }
+    const stableTop = cachedTopInset.current ?? insets.top;
+
     const handleThemePress = (e: any) => {
         if (Platform.OS === 'web' && e?.nativeEvent) {
             const ne = e.nativeEvent as { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
@@ -66,7 +73,7 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
         </TouchableOpacity>
     );
 
-    const topPadding = Platform.OS === 'ios' ? insets.top : Math.max(insets.top, (StatusBar.currentHeight || 0)) + 12;
+    const topPadding = Platform.OS === 'ios' ? stableTop : Math.max(stableTop, (StatusBar.currentHeight || 0)) + 12;
 
     if (mode === 'dashboard') {
         return (

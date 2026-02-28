@@ -167,11 +167,11 @@ export default function BNPLEarlyRepayScreen() {
 
             {/* Swipe to Pay (fixed at bottom) */}
             <View style={[styles.sliderContainer, { paddingBottom: Math.max(insets.bottom, 20) + 8, backgroundColor: c.background }]}>
-                <View style={[styles.sliderTrack, { backgroundColor: c.primary }]}>
+                <View style={[styles.sliderTrack, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#F0F0F0' }]}>
                     {/* Hint text */}
                     <Animated.View style={[styles.sliderTextWrap, { opacity: sliderTextOpacity }]}>
-                        <Text style={styles.sliderText}>Trượt để thanh toán</Text>
-                        <MaterialCommunityIcons name="chevron-triple-right" size={18} color="rgba(0,0,0,0.4)" />
+                        <Text style={[styles.sliderText, { color: theme.mode === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)' }]}>Trượt để thanh toán</Text>
+                        <MaterialCommunityIcons name="chevron-triple-right" size={16} color={theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'} />
                     </Animated.View>
 
                     {/* Thumb */}
@@ -181,14 +181,14 @@ export default function BNPLEarlyRepayScreen() {
                             styles.sliderThumb,
                             {
                                 transform: [{ translateX: pan }],
-                                backgroundColor: '#fff',
+                                backgroundColor: c.primary,
                             },
                         ]}
                     >
                         {processing ? (
-                            <MaterialCommunityIcons name="loading" size={22} color={c.primary} />
+                            <MaterialCommunityIcons name="loading" size={22} color="#000" />
                         ) : (
-                            <MaterialCommunityIcons name="arrow-right" size={22} color={c.primary} />
+                            <MaterialCommunityIcons name="arrow-right" size={22} color="#000" />
                         )}
                     </Animated.View>
                 </View>
@@ -223,20 +223,21 @@ const styles = StyleSheet.create({
         borderRadius: TRACK_HEIGHT / 2,
         justifyContent: 'center',
         overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.04)',
     },
     sliderTextWrap: {
         position: 'absolute',
-        left: 0,
-        right: 0,
+        left: THUMB_SIZE + 8,
+        right: 16,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
     },
     sliderText: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: 'rgba(0,0,0,0.6)',
+        fontSize: 13,
+        fontWeight: '600',
     },
     sliderThumb: {
         width: THUMB_SIZE,
@@ -247,8 +248,8 @@ const styles = StyleSheet.create({
         marginLeft: 3,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
         elevation: 4,
     },
 

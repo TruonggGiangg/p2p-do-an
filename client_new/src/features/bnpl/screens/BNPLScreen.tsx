@@ -784,7 +784,7 @@ export default function BNPLScreen() {
                         style={styles.createBtn}
                     />
 
-                    {/* ── Transaction History ── */}
+                    {/* ── Transaction History (Timeline) ── */}
                     {displayTransactions.length > 0 && (
                         <>
                             <View style={styles.sectionHeader}>
@@ -800,34 +800,46 @@ export default function BNPLScreen() {
                                             grouped[dateKey].push(tx);
                                         });
                                         return Object.entries(grouped).map(([date, txs], gIdx) => (
-                                            <View key={date}>
-                                                <Text style={{ fontSize: 12, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 8, marginTop: gIdx > 0 ? 16 : 0 }}>{date}</Text>
-                                                <CommonCard style={[styles.txCard, { marginBottom: 0 }]}>
-                                                    {txs.map((tx, idx) => (
-                                                        <View
-                                                            key={tx.id || idx}
-                                                            style={[
-                                                                styles.txRow,
-                                                                idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
-                                                            ]}
-                                                        >
-                                                            <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
-                                                                <MaterialCommunityIcons
-                                                                    name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                                                    size={20}
-                                                                    color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
-                                                                />
+                                            <View key={date} style={{ marginBottom: 8 }}>
+                                                {/* Date header */}
+                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 10, marginTop: gIdx > 0 ? 12 : 0, marginLeft: 4 }}>{date}</Text>
+                                                {/* Timeline items */}
+                                                <CommonCard style={[styles.txCard, { marginBottom: 0, paddingVertical: 4 }]}>
+                                                    {txs.map((tx, idx) => {
+                                                        const isPositive = tx.amount >= 0;
+                                                        const dotColor = isPositive ? '#0ECB81' : '#F6465D';
+                                                        return (
+                                                            <View key={tx.id || idx} style={{ flexDirection: 'row', minHeight: 52 }}>
+                                                                {/* Timeline rail */}
+                                                                <View style={{ width: 28, alignItems: 'center', paddingTop: 4 }}>
+                                                                    {/* Dot */}
+                                                                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginTop: 8, zIndex: 2 }} />
+                                                                    {/* Vertical line */}
+                                                                    {idx < txs.length - 1 && (
+                                                                        <View style={{ flex: 1, width: 1.5, backgroundColor: theme.colors.border, marginTop: 2 }} />
+                                                                    )}
+                                                                </View>
+                                                                {/* Content */}
+                                                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingBottom: idx < txs.length - 1 ? 14 : 8, gap: 10 }}>
+                                                                    <View style={[styles.txIconWrap, { backgroundColor: isPositive ? '#0ECB8112' : '#F6465D12' }]}>
+                                                                        <MaterialCommunityIcons
+                                                                            name={isPositive ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+                                                                            size={20}
+                                                                            color={dotColor}
+                                                                        />
+                                                                    </View>
+                                                                    <View style={styles.txInfo}>
+                                                                        <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                                                            {tx.description || tx.type || 'Giao dịch'}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <Text style={[styles.txAmount, { color: dotColor }]}>
+                                                                        {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                                                    </Text>
+                                                                </View>
                                                             </View>
-                                                            <View style={styles.txInfo}>
-                                                                <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                                                    {tx.description || tx.type || 'Giao dịch'}
-                                                                </Text>
-                                                            </View>
-                                                            <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
-                                                                {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                                                            </Text>
-                                                        </View>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </CommonCard>
                                             </View>
                                         ));
