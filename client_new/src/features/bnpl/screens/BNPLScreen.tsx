@@ -76,6 +76,7 @@ export default function BNPLScreen() {
     const [creating, setCreating] = useState(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [successLoan, setSuccessLoan] = useState<BnplLoan | null>(null);
     // BNPL flow state machine
     type BnplFlowStatus = 'loading' | 'no_wallet' | 'registration' | 'pending_approval' | 'pending_signature' | 'active';
     const [bnplStatus, setBnplStatus] = useState<BnplFlowStatus>('loading');
@@ -217,11 +218,7 @@ export default function BNPLScreen() {
         setNumberOfRepayments(3);
         setPreview(null);
         setTimeout(() => {
-            Alert.alert(
-                '✅ Tạo khoản vay thành công!',
-                `Khoản vay ${formatCurrency(amount)} đã được giải ngân.\nSố tiền đã được cộng vào tài khoản của bạn.`,
-                [{ text: 'OK' }]
-            );
+            setSuccessLoan(mockLoan);
         }, 300);
     }, [amountRaw, numberOfRepayments, loanDescription, wallet]);
 
@@ -709,20 +706,20 @@ export default function BNPLScreen() {
                             </View>
                             <Text style={[styles.walletLabel, { color: theme.colors.textMuted, marginTop: 12 }]}>Hạn mức khả dụng</Text>
                             <Text style={[styles.walletBalance, { color: theme.colors.textPrimary }]}>
-                                {balanceVisible ? formatCurrency(wallet!.availableCredit) : '• • • • • •'}
+                                {balanceVisible ? formatCurrency(wallet!.availableCredit) : '*** *** VND'}
                             </Text>
                             <View style={styles.walletRow}>
                                 <View style={styles.walletRowItem}>
                                     <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Tổng hạn mức</Text>
                                     <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                        {balanceVisible ? formatCurrency(wallet!.creditLimit) : '- - -'}
+                                        {balanceVisible ? formatCurrency(wallet!.creditLimit) : '*** ***'}
                                     </Text>
                                 </View>
                                 <View style={[styles.walletRowItemDivider, { backgroundColor: theme.colors.border }]} />
                                 <View style={styles.walletRowItem}>
                                     <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Đã sử dụng</Text>
                                     <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                        {balanceVisible ? formatCurrency(wallet!.usedCredit) : '- - -'}
+                                        {balanceVisible ? formatCurrency(wallet!.usedCredit) : '*** ***'}
                                     </Text>
                                 </View>
                             </View>
@@ -763,7 +760,7 @@ export default function BNPLScreen() {
                                         Đã dùng {progressPercentage.toFixed(0)}%
                                     </Text>
                                     <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
-                                        Còn lại {balanceVisible ? formatCurrency(wallet!.availableCredit) : '- - -'}
+                                        Còn lại {balanceVisible ? formatCurrency(wallet!.availableCredit) : '*** ***'}
                                     </Text>
                                 </View>
                             </View>
@@ -793,36 +790,50 @@ export default function BNPLScreen() {
                             <View style={styles.sectionHeader}>
                                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch sử giao dịch</Text>
                             </View>
-                            <CommonCard style={styles.txCard}>
-                                {displayTransactions.slice(0, 10).map((tx, idx) => (
-                                    <View
-                                        key={tx.id || idx}
-                                        style={[
-                                            styles.txRow,
-                                            idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
-                                        ]}
-                                    >
-                                        <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
-                                            <MaterialCommunityIcons
-                                                name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                                size={20}
-                                                color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
-                                            />
-                                        </View>
-                                        <View style={styles.txInfo}>
-                                            <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                                {tx.description || tx.type || 'Giao dịch'}
-                                            </Text>
-                                            <Text style={[styles.txDate, { color: theme.colors.textMuted }]}>
-                                                {tx.date || tx.createdAt || ''}
-                                            </Text>
-                                        </View>
-                                        <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
-                                            {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                                        </Text>
-                                    </View>
-                                ))}
-                            </CommonCard>
+                            <View style={{ maxHeight: 420 }}>
+                                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                    {(() => {
+                                        const grouped: Record<string, typeof displayTransactions> = {};
+                                        displayTransactions.slice(0, 15).forEach(tx => {
+                                            const dateKey = tx.date || (tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('vi-VN') : 'Khác');
+                                            if (!grouped[dateKey]) grouped[dateKey] = [];
+                                            grouped[dateKey].push(tx);
+                                        });
+                                        return Object.entries(grouped).map(([date, txs], gIdx) => (
+                                            <View key={date}>
+                                                <Text style={{ fontSize: 12, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 8, marginTop: gIdx > 0 ? 16 : 0 }}>{date}</Text>
+                                                <CommonCard style={[styles.txCard, { marginBottom: 0 }]}>
+                                                    {txs.map((tx, idx) => (
+                                                        <View
+                                                            key={tx.id || idx}
+                                                            style={[
+                                                                styles.txRow,
+                                                                idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
+                                                            ]}
+                                                        >
+                                                            <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
+                                                                <MaterialCommunityIcons
+                                                                    name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+                                                                    size={20}
+                                                                    color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
+                                                                />
+                                                            </View>
+                                                            <View style={styles.txInfo}>
+                                                                <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                                                    {tx.description || tx.type || 'Giao dịch'}
+                                                                </Text>
+                                                            </View>
+                                                            <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
+                                                                {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                                            </Text>
+                                                        </View>
+                                                    ))}
+                                                </CommonCard>
+                                            </View>
+                                        ));
+                                    })()}
+                                </ScrollView>
+                            </View>
                         </>
                     )}
 
@@ -881,65 +892,104 @@ export default function BNPLScreen() {
                                     {loans.length} khoản
                                 </Text>
                             </View>
-                            {loans.map((loan) => (
-                                <TouchableOpacity
-                                    key={loan.id}
-                                    activeOpacity={0.85}
-                                    onPress={() => navigation.navigate('BNPLLoanDetail', { loan })}
-                                >
-                                    <CommonCard style={[styles.loanCard, { overflow: 'hidden' }]}>
-                                        <View style={styles.loanHeader}>
-                                            <Text style={[styles.loanId, { color: theme.colors.textMuted }]}>
-                                                #{loan.fineractLoanId}
-                                            </Text>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                <View
-                                                    style={[
-                                                        styles.loanStatusBadge,
-                                                        {
-                                                            backgroundColor: getStatusColor(loan.status, theme) === theme.colors.success
-                                                                ? theme.colors.successGlass
-                                                                : theme.colors.warningGlass,
-                                                            borderRadius: theme.radius.sm,
-                                                        },
-                                                    ]}
-                                                >
-                                                    <Text style={[styles.loanStatus, { color: getStatusColor(loan.status, theme) }]}>
-                                                        {loan.status}
+                            <View style={{ maxHeight: 500 }}>
+                                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                    {loans.map((loan) => (
+                                        <TouchableOpacity
+                                            key={loan.id}
+                                            activeOpacity={0.85}
+                                            onPress={() => navigation.navigate('BNPLLoanDetail', { loan })}
+                                        >
+                                            <CommonCard style={[styles.loanCard, { overflow: 'hidden' }]}>
+                                                <View style={styles.loanHeader}>
+                                                    <Text style={[styles.loanId, { color: theme.colors.textMuted }]}>
+                                                        #{loan.fineractLoanId}
+                                                    </Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <View
+                                                            style={[
+                                                                styles.loanStatusBadge,
+                                                                {
+                                                                    backgroundColor: getStatusColor(loan.status, theme) === theme.colors.success
+                                                                        ? theme.colors.successGlass
+                                                                        : theme.colors.warningGlass,
+                                                                    borderRadius: theme.radius.sm,
+                                                                },
+                                                            ]}
+                                                        >
+                                                            <Text style={[styles.loanStatus, { color: getStatusColor(loan.status, theme) }]}>
+                                                                {getStatusLabel(loan.status)}
+                                                            </Text>
+                                                        </View>
+                                                        <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
+                                                    </View>
+                                                </View>
+                                                <Text style={[styles.loanAmount, { color: theme.colors.textPrimary }]}>
+                                                    {formatCurrency(loan.principal)}
+                                                </Text>
+                                                <View style={styles.loanRow}>
+                                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Tổng phải trả</Text>
+                                                    <Text style={[styles.loanValue, { color: theme.colors.textPrimary }]}>
+                                                        {formatCurrency(loan.totalRepayment)}
                                                     </Text>
                                                 </View>
-                                                <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
-                                            </View>
-                                        </View>
-                                        <Text style={[styles.loanAmount, { color: theme.colors.textPrimary }]}>
-                                            {formatCurrency(loan.principal)}
-                                        </Text>
-                                        <View style={styles.loanRow}>
-                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Tổng phải trả</Text>
-                                            <Text style={[styles.loanValue, { color: theme.colors.textPrimary }]}>
-                                                {formatCurrency(loan.totalRepayment)}
-                                            </Text>
-                                        </View>
-                                        <View style={styles.loanRow}>
-                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Đã trả</Text>
-                                            <Text style={[styles.loanValue, { color: theme.colors.success }]}>
-                                                {formatCurrency(loan.paidAmount)}
-                                            </Text>
-                                        </View>
-                                        <View style={styles.loanRow}>
-                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Còn nợ</Text>
-                                            <Text style={[styles.loanValue, { color: theme.colors.error }]}>
-                                                {formatCurrency(loan.outstandingBalance)}
-                                            </Text>
-                                        </View>
-                                    </CommonCard>
-                                </TouchableOpacity>
-                            ))}
+                                                <View style={styles.loanRow}>
+                                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Đã trả</Text>
+                                                    <Text style={[styles.loanValue, { color: theme.colors.success }]}>
+                                                        {formatCurrency(loan.paidAmount)}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.loanRow}>
+                                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Còn nợ</Text>
+                                                    <Text style={[styles.loanValue, { color: theme.colors.error }]}>
+                                                        {formatCurrency(loan.outstandingBalance)}
+                                                    </Text>
+                                                </View>
+                                            </CommonCard>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
                         </>
                     )}
 
                     <View style={{ height: 40 }} />
                 </FintechPullToRefresh>
+            )}
+
+            {/* ==================== SUCCESS SCREEN ==================== */}
+            {successLoan && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: c.background, zIndex: 100, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
+                    <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: '#0ECB8118', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }}>
+                        <MaterialCommunityIcons name="check-circle" size={64} color="#0ECB81" />
+                    </View>
+                    <Text style={{ fontSize: 22, fontWeight: '800', color: c.textPrimary, marginBottom: 10, textAlign: 'center' }}>Tạo khoản vay thành công!</Text>
+                    <Text style={{ fontSize: 14, lineHeight: 22, color: c.textSecondary, textAlign: 'center', marginBottom: 8 }}>
+                        Khoản vay {formatCurrency(successLoan.principal)} đã được giải ngân thành công.
+                    </Text>
+                    <Text style={{ fontSize: 13, color: c.textDim, textAlign: 'center', marginBottom: 32 }}>
+                        Số tiền đã được cộng vào tài khoản của bạn. Bạn có thể xem chi tiết khoản vay bên dưới.
+                    </Text>
+                    <View style={{ width: '100%', padding: 16, backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border, marginBottom: 24 }}>
+                        {[
+                            { label: 'Mã khoản vay', value: `#${successLoan.fineractLoanId}` },
+                            { label: 'Số tiền vay', value: formatCurrency(successLoan.principal) },
+                            { label: 'Số kỳ trả', value: `${successLoan.numberOfRepayments} kỳ` },
+                        ].map((row, idx, arr) => (
+                            <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: c.border }}>
+                                <Text style={{ fontSize: 13, color: c.textSecondary }}>{row.label}</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>{row.value}</Text>
+                            </View>
+                        ))}
+                    </View>
+                    <TouchableOpacity
+                        style={{ backgroundColor: c.primary, paddingVertical: 16, paddingHorizontal: 40, borderRadius: 14, width: '100%', alignItems: 'center' }}
+                        activeOpacity={0.85}
+                        onPress={() => setSuccessLoan(null)}
+                    >
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#000' }}>Quay lại</Text>
+                    </TouchableOpacity>
+                </View>
             )}
 
             {/* ==================== CREATE LOAN MODAL ==================== */}
@@ -1178,6 +1228,15 @@ const getStatusColor = (status: string, theme: any): string => {
             return theme.colors.warning;
         default:
             return theme.colors.textMuted;
+    }
+};
+
+const getStatusLabel = (status: string): string => {
+    switch (status.toLowerCase()) {
+        case 'active': return 'Hoạt động';
+        case 'closed': return 'Đã tất toán';
+        case 'pending': return 'Chờ duyệt';
+        default: return status;
     }
 };
 
