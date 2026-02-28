@@ -158,6 +158,73 @@ export default function BNPLScreen() {
         await fetchData();
     }, []);
 
+    // ==================== MOCK CREATE HANDLER (no API) ====================
+    const handleMockCreateLoan = useCallback(() => {
+        const amount = parseInt(amountRaw) || 0;
+        if (!amount || amount < 500_000) {
+            Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
+            return;
+        }
+        if (amount > (wallet?.availableCredit ?? 50_000_000)) {
+            Alert.alert('Vượt hạn mức', `Số tiền vay vượt hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet?.availableCredit ?? 0)}`);
+            return;
+        }
+        const monthlyRate = 0.018;
+        const n = numberOfRepayments;
+        const r = monthlyRate;
+        const monthlyPayment = amount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+        const totalRepayment = monthlyPayment * n;
+        const totalInterest = totalRepayment - amount;
+        const now = new Date();
+        const mockLoan: BnplLoan = {
+            id: `mock-${Date.now()}`,
+            fineractLoanId: `BNP${Math.floor(1000 + Math.random() * 9000)}`,
+            principal: amount,
+            totalInterest,
+            totalRepayment,
+            paidAmount: 0,
+            outstandingBalance: totalRepayment,
+            numberOfRepayments: n,
+            status: 'active',
+            description: loanDescription || undefined,
+            disbursedAt: now.toISOString(),
+            repaymentSchedule: Array.from({ length: n }, (_, i) => ({
+                period: i + 1,
+                principal: amount / n,
+                interest: totalInterest / n,
+                total: monthlyPayment,
+                dueDate: new Date(now.getFullYear(), now.getMonth() + i + 1, now.getDate()).toLocaleDateString('vi-VN'),
+                status: 'pending',
+            })),
+        };
+        setLoans(prev => [mockLoan, ...prev]);
+        setWallet(prev => prev ? {
+            ...prev,
+            usedCredit: prev.usedCredit + amount,
+            availableCredit: prev.availableCredit - amount,
+        } : prev);
+        setTransactions(prev => [{
+            id: `tx-${Date.now()}`,
+            type: 'disbursement',
+            amount: amount,
+            description: `Giải ngân khoản vay ${loanDescription || 'BNPL'}`,
+            date: now.toLocaleDateString('vi-VN'),
+            createdAt: now.toISOString(),
+        }, ...prev]);
+        setCreateModalVisible(false);
+        setAmountRaw('5000000');
+        setLoanDescription('');
+        setNumberOfRepayments(3);
+        setPreview(null);
+        setTimeout(() => {
+            Alert.alert(
+                '✅ Tạo khoản vay thành công!',
+                `Khoản vay ${formatCurrency(amount)} đã được giải ngân.\nSố tiền đã được cộng vào tài khoản của bạn.`,
+                [{ text: 'OK' }]
+            );
+        }, 300);
+    }, [amountRaw, numberOfRepayments, loanDescription, wallet]);
+
     // ==================== PREVIEW HANDLER ====================
     const handlePreview = useCallback(async () => {
         const amount = parseInt(amountRaw) || 0;
@@ -604,7 +671,7 @@ export default function BNPLScreen() {
                 <View style={[styles.dropdownMenu, { backgroundColor: c.surface, borderColor: c.border, shadowColor: '#000' }]}>
                     {[
                         { icon: 'format-list-bulleted', label: 'Xem danh sách khoản vay', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
-                        { icon: 'calendar-month-outline', label: 'Xem lịch trả nợ', action: () => { setMenuVisible(false); Alert.alert('Lịch trả nợ', 'Xem phần "Lịch trả nợ tháng này" bên dưới.'); } },
+                        { icon: 'calendar-month-outline', label: 'Xem lịch trả nợ', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
                         { icon: 'information-outline', label: 'Thông tin ví', action: () => { setMenuVisible(false); Alert.alert('Ví Trả Sau', `Hạn mức: ${formatCurrency(wallet?.creditLimit || 0)}\nĐã dùng: ${formatCurrency(wallet?.usedCredit || 0)}\nHạng: ${currentTier.label}`); } },
                     ].map((item) => (
                         <TouchableOpacity key={item.label} style={[styles.dropdownItem, { borderBottomColor: c.border }]} onPress={item.action}>
@@ -1073,38 +1140,27 @@ export default function BNPLScreen() {
                                             )}
                                         </CommonCard>
                                     </Animated.View>
-                                ) : (
-                                    <CommonButton
-                                        title="Xem trước khoản vay"
-                                        onPress={handlePreview}
-                                        loading={loadingPreview}
-                                        icon="calculator"
-                                        style={styles.previewBtn}
-                                    />
-                                )}
+                                ) : null}
 
                                 <View style={{ height: 20 }} />
                             </ScrollView>
                         </TouchableWithoutFeedback>
-                        {preview && (
-                            <View
-                                style={[
-                                    styles.modalFooter,
-                                    {
-                                        backgroundColor: theme.colors.background,
-                                        borderTopColor: theme.colors.border,
-                                    },
-                                ]}
-                            >
-                                <CommonButton
-                                    title="Xác nhận vay ngay"
-                                    onPress={handleCreateLoan}
-                                    loading={creating}
-                                    icon="arrow-right"
-                                    style={styles.submitBtn}
-                                />
-                            </View>
-                        )}
+                        <View
+                            style={[
+                                styles.modalFooter,
+                                {
+                                    backgroundColor: theme.colors.background,
+                                    borderTopColor: theme.colors.border,
+                                },
+                            ]}
+                        >
+                            <CommonButton
+                                title="Tạo khoản vay"
+                                onPress={handleMockCreateLoan}
+                                icon="plus-circle"
+                                style={styles.submitBtn}
+                            />
+                        </View>
                     </KeyboardAvoidingView>
                 </View>
             </Modal>

@@ -100,11 +100,11 @@ export default function LoanScreen() {
             >
                 <View style={styles.headerSection}>
                     <View style={styles.headerRow}>
-                        <View>
+                        <View style={{ flex: 1 }}>
                             <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Gói vay ưu đãi</Text>
                             <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>Chọn gói vay phù hợp với nhu cầu của bạn</Text>
                         </View>
-                        <TouchableOpacity style={[styles.historyLink, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '40' }]} onPress={navToHistory}>
+                        <TouchableOpacity style={[styles.historyLink, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '40', flexShrink: 0 }]} onPress={navToHistory}>
                             <MaterialCommunityIcons name="history" size={18} color={theme.colors.primary} />
                             <Text style={[styles.historyLinkText, { color: theme.colors.primary }]}>Lịch sử</Text>
                         </TouchableOpacity>
