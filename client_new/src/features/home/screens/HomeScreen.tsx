@@ -118,7 +118,7 @@ export default function HomeScreen() {
                             </View>
                             <View style={styles.balanceRow}>
                                 <Text style={[styles.balanceAmount, { color: c.textPrimary }]}>
-                                    {balanceVisible ? formatCurrency(totalBalance) : 'x x x x x x'}
+                                    {balanceVisible ? formatCurrency(totalBalance) : '*** *** VND'}
                                 </Text>
                                 <View style={[styles.changeBadge, { backgroundColor: '#0ECB8115' }]}>
                                     <MaterialCommunityIcons name="trending-up" size={12} color="#0ECB81" />

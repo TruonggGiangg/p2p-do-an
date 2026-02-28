@@ -669,7 +669,6 @@ export default function BNPLScreen() {
                     {[
                         { icon: 'format-list-bulleted', label: 'Xem danh sách khoản vay', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
                         { icon: 'calendar-month-outline', label: 'Xem lịch trả nợ', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
-                        { icon: 'information-outline', label: 'Thông tin ví', action: () => { setMenuVisible(false); Alert.alert('Ví Trả Sau', `Hạn mức: ${formatCurrency(wallet?.creditLimit || 0)}\nĐã dùng: ${formatCurrency(wallet?.usedCredit || 0)}\nHạng: ${currentTier.label}`); } },
                     ].map((item) => (
                         <TouchableOpacity key={item.label} style={[styles.dropdownItem, { borderBottomColor: c.border }]} onPress={item.action}>
                             <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
@@ -804,39 +803,34 @@ export default function BNPLScreen() {
                                                 {/* Date header */}
                                                 <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 10, marginTop: gIdx > 0 ? 12 : 0, marginLeft: 4 }}>{date}</Text>
                                                 {/* Timeline items */}
-                                                <CommonCard style={[styles.txCard, { marginBottom: 0, paddingVertical: 4 }]}>
+                                                <CommonCard style={[styles.txCard, { marginBottom: 0, paddingVertical: 6, paddingLeft: 0 }]}>
                                                     {txs.map((tx, idx) => {
                                                         const isPositive = tx.amount >= 0;
                                                         const dotColor = isPositive ? '#0ECB81' : '#F6465D';
                                                         return (
-                                                            <View key={tx.id || idx} style={{ flexDirection: 'row', minHeight: 52 }}>
-                                                                {/* Timeline rail */}
-                                                                <View style={{ width: 28, alignItems: 'center', paddingTop: 4 }}>
-                                                                    {/* Dot */}
-                                                                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginTop: 8, zIndex: 2 }} />
-                                                                    {/* Vertical line */}
-                                                                    {idx < txs.length - 1 && (
-                                                                        <View style={{ flex: 1, width: 1.5, backgroundColor: theme.colors.border, marginTop: 2 }} />
-                                                                    )}
+                                                            <View key={tx.id || idx} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingRight: 12 }}>
+                                                                {/* Timeline dot */}
+                                                                <View style={{ width: 32, alignItems: 'center' }}>
+                                                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
                                                                 </View>
-                                                                {/* Content */}
-                                                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingBottom: idx < txs.length - 1 ? 14 : 8, gap: 10 }}>
-                                                                    <View style={[styles.txIconWrap, { backgroundColor: isPositive ? '#0ECB8112' : '#F6465D12' }]}>
-                                                                        <MaterialCommunityIcons
-                                                                            name={isPositive ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                                                            size={20}
-                                                                            color={dotColor}
-                                                                        />
-                                                                    </View>
-                                                                    <View style={styles.txInfo}>
-                                                                        <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                                                            {tx.description || tx.type || 'Giao dịch'}
-                                                                        </Text>
-                                                                    </View>
-                                                                    <Text style={[styles.txAmount, { color: dotColor }]}>
-                                                                        {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                                                {/* Icon */}
+                                                                <View style={[styles.txIconWrap, { backgroundColor: isPositive ? '#0ECB8112' : '#F6465D12' }]}>
+                                                                    <MaterialCommunityIcons
+                                                                        name={isPositive ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+                                                                        size={20}
+                                                                        color={dotColor}
+                                                                    />
+                                                                </View>
+                                                                {/* Description */}
+                                                                <View style={[styles.txInfo, { marginLeft: 10 }]}>
+                                                                    <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                                                        {tx.description || tx.type || 'Giao dịch'}
                                                                     </Text>
                                                                 </View>
+                                                                {/* Amount */}
+                                                                <Text style={[styles.txAmount, { color: dotColor }]}>
+                                                                    {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                                                </Text>
                                                             </View>
                                                         );
                                                     })}
@@ -1098,6 +1092,35 @@ export default function BNPLScreen() {
                                             </TouchableOpacity>
                                         ))}
                                     </ScrollView>
+                                </View>
+
+                                {/* Quick Amount Badges */}
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+                                    {[500000, 1000000, 2000000, 3000000, 5000000, 10000000].map((amt) => (
+                                        <TouchableOpacity
+                                            key={amt}
+                                            onPress={() => {
+                                                setAmountRaw(String(amt));
+                                                setPreview(null);
+                                            }}
+                                            style={{
+                                                paddingHorizontal: 14,
+                                                paddingVertical: 8,
+                                                borderRadius: 20,
+                                                borderWidth: 1,
+                                                borderColor: parseInt(amountRaw) === amt ? theme.colors.primaryBorder : theme.colors.border,
+                                                backgroundColor: parseInt(amountRaw) === amt ? theme.colors.primaryGlass : theme.colors.glassLight,
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: parseInt(amountRaw) === amt ? theme.colors.primary : theme.colors.textSecondary,
+                                            }}>
+                                                {amt >= 1000000 ? `${amt / 1000000}M` : `${amt / 1000}K`}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
                                 </View>
 
                                 {/* Description (Optional) */}

@@ -24,9 +24,8 @@ type RouteParams = { loan: BnplLoan };
 /** strip trailing ₫/đ from Intl output */
 const fmt = (n: number) => formatCurrency(n).replace(/\s*[₫đ]/g, '').trim();
 
-const SLIDER_WIDTH = Dimensions.get('window').width - 80;
-const THUMB_SIZE = 52;
-const TRACK_HEIGHT = 58;
+const THUMB_SIZE = 48;
+const TRACK_HEIGHT = 54;
 
 export default function BNPLEarlyRepayScreen() {
     const { theme } = useTheme();
@@ -38,34 +37,39 @@ export default function BNPLEarlyRepayScreen() {
 
     const [success, setSuccess] = useState(false);
     const [processing, setProcessing] = useState(false);
+    const [sliderWidth, setSliderWidth] = useState(0);
 
     // Slider state
     const pan = useRef(new Animated.Value(0)).current;
     const sliderComplete = useRef(false);
 
+    const getMaxX = useCallback(() => Math.max(sliderWidth - THUMB_SIZE - 6, 1), [sliderWidth]);
+
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => !sliderComplete.current && !processing,
-            onMoveShouldSetPanResponder: () => !sliderComplete.current && !processing,
+            onMoveShouldSetPanResponder: (_, g) => !sliderComplete.current && !processing && Math.abs(g.dx) > 5,
             onPanResponderGrant: () => {
-                pan.setOffset(0);
+                pan.setOffset((pan as any).__getValue?.() || 0);
                 pan.setValue(0);
             },
             onPanResponderMove: (_, gesture) => {
-                const maxX = SLIDER_WIDTH - THUMB_SIZE;
-                const x = Math.max(0, Math.min(gesture.dx, maxX));
+                const maxX = Dimensions.get('window').width - 80 - THUMB_SIZE - 6;
+                const x = Math.max(0, Math.min(gesture.dx + ((pan as any).__getOffset?.() || 0), maxX));
+                pan.setOffset(0);
                 pan.setValue(x);
             },
             onPanResponderRelease: (_, gesture) => {
                 pan.flattenOffset();
-                const maxX = SLIDER_WIDTH - THUMB_SIZE;
-                if (gesture.dx >= maxX * 0.85) {
+                const maxX = Dimensions.get('window').width - 80 - THUMB_SIZE - 6;
+                const currentX = (pan as any).__getValue?.() || 0;
+                if (currentX >= maxX * 0.8) {
                     sliderComplete.current = true;
-                    Animated.spring(pan, { toValue: maxX, useNativeDriver: false }).start(() => {
+                    Animated.spring(pan, { toValue: maxX, useNativeDriver: false, friction: 8, tension: 40 }).start(() => {
                         handleConfirmPayment();
                     });
                 } else {
-                    Animated.spring(pan, { toValue: 0, useNativeDriver: false, friction: 6 }).start();
+                    Animated.spring(pan, { toValue: 0, useNativeDriver: false, friction: 7, tension: 50 }).start();
                 }
             },
         })
@@ -115,9 +119,9 @@ export default function BNPLEarlyRepayScreen() {
     }
 
     // Slider text opacity
-    const maxX = SLIDER_WIDTH - THUMB_SIZE;
+    const estimatedMaxX = Dimensions.get('window').width - 80 - THUMB_SIZE - 6;
     const sliderTextOpacity = pan.interpolate({
-        inputRange: [0, maxX * 0.4],
+        inputRange: [0, estimatedMaxX * 0.4],
         outputRange: [1, 0],
         extrapolate: 'clamp',
     });
@@ -167,11 +171,14 @@ export default function BNPLEarlyRepayScreen() {
 
             {/* Swipe to Pay (fixed at bottom) */}
             <View style={[styles.sliderContainer, { paddingBottom: Math.max(insets.bottom, 20) + 8, backgroundColor: c.background }]}>
-                <View style={[styles.sliderTrack, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#F0F0F0' }]}>
+                <View
+                    style={[styles.sliderTrack, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#ECECEC' }]}
+                    onLayout={(e) => setSliderWidth(e.nativeEvent.layout.width)}
+                >
                     {/* Hint text */}
                     <Animated.View style={[styles.sliderTextWrap, { opacity: sliderTextOpacity }]}>
-                        <Text style={[styles.sliderText, { color: theme.mode === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)' }]}>Trượt để thanh toán</Text>
-                        <MaterialCommunityIcons name="chevron-triple-right" size={16} color={theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'} />
+                        <Text style={[styles.sliderText, { color: theme.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)' }]}>Trượt để thanh toán</Text>
+                        <MaterialCommunityIcons name="chevron-triple-right" size={14} color={theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'} />
                     </Animated.View>
 
                     {/* Thumb */}
@@ -186,9 +193,9 @@ export default function BNPLEarlyRepayScreen() {
                         ]}
                     >
                         {processing ? (
-                            <MaterialCommunityIcons name="loading" size={22} color="#000" />
+                            <MaterialCommunityIcons name="loading" size={20} color="#000" />
                         ) : (
-                            <MaterialCommunityIcons name="arrow-right" size={22} color="#000" />
+                            <MaterialCommunityIcons name="arrow-right" size={20} color="#000" />
                         )}
                     </Animated.View>
                 </View>
@@ -215,25 +222,22 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        paddingHorizontal: 24,
-        paddingTop: 12,
+        paddingHorizontal: 20,
+        paddingTop: 16,
     },
     sliderTrack: {
         height: TRACK_HEIGHT,
         borderRadius: TRACK_HEIGHT / 2,
         justifyContent: 'center',
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.04)',
     },
     sliderTextWrap: {
         position: 'absolute',
-        left: THUMB_SIZE + 8,
+        left: THUMB_SIZE + 12,
         right: 16,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        gap: 4,
     },
     sliderText: {
         fontSize: 13,
@@ -247,10 +251,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginLeft: 3,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
 
     // Success
