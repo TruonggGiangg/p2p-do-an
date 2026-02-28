@@ -17,10 +17,12 @@ import {
     Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
@@ -62,6 +64,8 @@ interface PreviewData {
 export default function BNPLScreen() {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
+    const navigation = useNavigation<any>();
+    const { user } = useAuth();
     const [wallet, setWallet] = useState<BnplWalletInfo | null>(null);
     const [loans, setLoans] = useState<BnplLoan[]>([]);
     const [schedule, setSchedule] = useState<ConsolidatedScheduleItem[]>([]);
@@ -72,6 +76,23 @@ export default function BNPLScreen() {
     const [creating, setCreating] = useState(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
     const [transactions, setTransactions] = useState<any[]>([]);
+    // BNPL flow state machine
+    type BnplFlowStatus = 'loading' | 'no_wallet' | 'registration' | 'pending_approval' | 'pending_signature' | 'active';
+    const [bnplStatus, setBnplStatus] = useState<BnplFlowStatus>('loading');
+    const [menuVisible, setMenuVisible] = useState(false);
+    // Registration form
+    const [regForm, setRegForm] = useState({
+        fullName: user?.name || `${user?.profile?.firstName || ''} ${user?.profile?.lastName || ''}`.trim(),
+        cccd: '',
+        address: '',
+        purpose: '',
+        occupation: '',
+        income: '',
+    });
+    const [submittingReg, setSubmittingReg] = useState(false);
+    // Terms & signature
+    const [termsAccepted, setTermsAccepted] = useState(false);
+    const [signatureChecked, setSignatureChecked] = useState(false);
 
     // Form state
     const [amountRaw, setAmountRaw] = useState('5000000');
@@ -111,12 +132,20 @@ export default function BNPLScreen() {
                     setSchedule(scheduleData.schedule);
                     setScheduleSummary(scheduleData.summary);
                     setTransactions(transData.transactions);
+                    setBnplStatus('active');
                 })()
             ]);
         } catch (error: any) {
             console.error('Failed to fetch BNPL data:', error);
-            if (error.response?.status && error.response.status >= 500) {
+            const is404 = error.response?.status === 404;
+            if (is404 || !error.response?.status) {
+                // No wallet found → show registration flow
+                setBnplStatus('no_wallet');
+            } else if (error.response?.status >= 500) {
                 Alert.alert('Lỗi', 'Không thể tải dữ liệu. Vui lòng thử lại sau.');
+                setBnplStatus('no_wallet');
+            } else {
+                setBnplStatus('no_wallet');
             }
         } finally {
             setLoading(false);
@@ -256,261 +285,595 @@ export default function BNPLScreen() {
         ? Math.min((wallet.usedCredit / wallet.creditLimit) * 100, 100)
         : 0;
 
-    const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
+    const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : Math.max(70, 56 + insets.bottom);
     const currentTier = wallet ? getTier(wallet.creditLimit) : TIERS[0];
     const c = theme.colors;
 
+    // ── fallback: show schedule items as transactions when empty
+    const displayTransactions = transactions.length > 0
+        ? transactions
+        : schedule.slice(0, 10).map((s, i) => ({
+            id: `sched-${i}`,
+            amount: -s.totalDue,
+            description: `Trả kỳ ${i + 1} - ${s.month}`,
+            date: s.dueDate,
+            type: 'payment',
+        }));
+
+    // ── Registration form submit
+    const handleSubmitRegistration = async () => {
+        if (!regForm.fullName.trim() || !regForm.cccd.trim() || !regForm.address.trim()) {
+            Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin bắt buộc.');
+            return;
+        }
+        setSubmittingReg(true);
+        setTimeout(() => {
+            setSubmittingReg(false);
+            setBnplStatus('pending_approval');
+        }, 1200);
+    };
+
+    // ── Signature submit
+    const handleSignAndActivate = () => {
+        if (!termsAccepted || !signatureChecked) {
+            Alert.alert('Chưa xác nhận', 'Vui lòng đọc điều khoản và xác nhận chữ ký số.');
+            return;
+        }
+        // Simulate wallet activation with mock data
+        setWallet({
+            id: 'mock-wallet-001',
+            creditLimit: 10000000,
+            usedCredit: 0,
+            availableCredit: 10000000,
+            status: 'active',
+            tier: 'SILVER',
+        } as any);
+        setBnplStatus('active');
+    };
+
+    // ── Render: No Wallet
+    const renderNoWallet = () => (
+        <View style={styles.flowContainer}>
+            <View style={styles.flowIllustration}>
+                <MaterialCommunityIcons name="wallet-plus-outline" size={80} color={c.primary} />
+            </View>
+            <Text style={[styles.flowTitle, { color: c.textPrimary }]}>Ví Trả Sau BNPL</Text>
+            <Text style={[styles.flowDesc, { color: c.textMuted }]}>
+                Mua trước, trả sau với hạn mức lên đến 50 triệu đồng. Lãi suất ưu đãi, duyệt nhanh trong 24 giờ.
+            </Text>
+            <View style={styles.flowFeatureList}>
+                {['Hạn mức đến 50 triệu đồng', 'Lãi suất từ 1.8%/tháng', 'Duyệt trong 24 giờ làm việc', 'Không cần tài sản thế chấp'].map((f) => (
+                    <View key={f} style={styles.flowFeatureRow}>
+                        <MaterialCommunityIcons name="check-circle" size={16} color={c.success} />
+                        <Text style={[styles.flowFeatureText, { color: c.textSecondary }]}>{f}</Text>
+                    </View>
+                ))}
+            </View>
+            <TouchableOpacity
+                style={[styles.flowBtn, { backgroundColor: c.primary }]}
+                activeOpacity={0.85}
+                onPress={() => setBnplStatus('registration')}
+            >
+                <Text style={styles.flowBtnText}>Đăng ký Ví Trả Sau</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    // ── Render: Registration Form
+    const renderRegistration = () => (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <ScrollView
+                    contentContainerStyle={[styles.regScrollContent, { paddingBottom: tabBarHeight + 32 }]}
+                    showsVerticalScrollIndicator={false}
+                >
+                    <Text style={[styles.regTitle, { color: c.textPrimary }]}>Thông tin đăng ký</Text>
+                    <Text style={[styles.regDesc, { color: c.textMuted }]}>Vui lòng điền đầy đủ thông tin để đăng ký Ví Trả Sau</Text>
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Họ và tên <Text style={{ color: c.error }}>*</Text></Text>
+                    <TextInput
+                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                        value={regForm.fullName}
+                        onChangeText={v => setRegForm(f => ({ ...f, fullName: v }))}
+                        placeholder="Nhập họ tên đầy đủ"
+                        placeholderTextColor={c.textMuted}
+                    />
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Số CCCD / CMND <Text style={{ color: c.error }}>*</Text></Text>
+                    <TextInput
+                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                        value={regForm.cccd}
+                        onChangeText={v => setRegForm(f => ({ ...f, cccd: v }))}
+                        placeholder="Nhập số CCCD / CMND"
+                        placeholderTextColor={c.textMuted}
+                        keyboardType="numeric"
+                        maxLength={12}
+                    />
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Địa chỉ thường trú <Text style={{ color: c.error }}>*</Text></Text>
+                    <TextInput
+                        style={[styles.regInput, styles.regInputMulti, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                        value={regForm.address}
+                        onChangeText={v => setRegForm(f => ({ ...f, address: v }))}
+                        placeholder="Nhập địa chỉ thường trú"
+                        placeholderTextColor={c.textMuted}
+                        multiline
+                        numberOfLines={2}
+                    />
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Mục đích vay</Text>
+                    <View style={styles.regPillRow}>
+                        {['Tiêu dùng', 'Mua sắm', 'Du lịch', 'Giáo dục', 'Y tế', 'Khác'].map(p => (
+                            <TouchableOpacity
+                                key={p}
+                                style={[styles.regPill, regForm.purpose === p && { backgroundColor: c.primary + '30', borderColor: c.primary }]}
+                                onPress={() => setRegForm(f => ({ ...f, purpose: p }))}
+                            >
+                                <Text style={[styles.regPillText, { color: regForm.purpose === p ? c.primary : c.textSecondary }]}>{p}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Nghề nghiệp</Text>
+                    <TextInput
+                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                        value={regForm.occupation}
+                        onChangeText={v => setRegForm(f => ({ ...f, occupation: v }))}
+                        placeholder="VD: Nhân viên văn phòng, Kinh doanh..."
+                        placeholderTextColor={c.textMuted}
+                    />
+
+                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Thu nhập hàng tháng (đ)</Text>
+                    <TextInput
+                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                        value={regForm.income}
+                        onChangeText={v => setRegForm(f => ({ ...f, income: v.replace(/\D/g, '') }))}
+                        placeholder="Nhập thu nhập ước tính"
+                        placeholderTextColor={c.textMuted}
+                        keyboardType="numeric"
+                    />
+
+                    <TouchableOpacity
+                        style={[styles.flowBtn, { backgroundColor: c.primary, marginTop: 24 }]}
+                        activeOpacity={0.85}
+                        onPress={handleSubmitRegistration}
+                        disabled={submittingReg}
+                    >
+                        {submittingReg
+                            ? <ActivityIndicator color="#000" />
+                            : <Text style={styles.flowBtnText}>Nộp đơn đăng ký</Text>
+                        }
+                    </TouchableOpacity>
+                    <TouchableOpacity style={{ alignItems: 'center', marginTop: 12 }} onPress={() => setBnplStatus('no_wallet')}>
+                        <Text style={[{ color: c.textMuted, fontSize: 13 }]}>Hủy đăng ký</Text>
+                    </TouchableOpacity>
+                </ScrollView>
+            </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+    );
+
+    // ── Render: Pending Approval
+    const renderPendingApproval = () => (
+        <View style={styles.flowContainer}>
+            <View style={[styles.flowIllustration, { backgroundColor: c.warning + '15' }]}>
+                <MaterialCommunityIcons name="clock-time-four-outline" size={72} color={c.warning} />
+            </View>
+            <Text style={[styles.flowTitle, { color: c.textPrimary }]}>Đang xử lý hồ sơ</Text>
+            <Text style={[styles.flowDesc, { color: c.textMuted }]}>
+                Hồ sơ đăng ký của bạn đang được xem xét. Thời gian phê duyệt thường mất{' '}
+                <Text style={{ fontWeight: '700', color: c.textPrimary }}>ít nhất 24 giờ làm việc</Text>.
+            </Text>
+            <CommonCard style={{ width: '100%', marginTop: 20 }}>
+                <View style={styles.pendingInfoRow}>
+                    <MaterialCommunityIcons name="account-outline" size={18} color={c.textMuted} />
+                    <Text style={[styles.pendingInfoText, { color: c.textSecondary }]}>{regForm.fullName || 'Khách hàng'}</Text>
+                </View>
+                <View style={styles.pendingInfoRow}>
+                    <MaterialCommunityIcons name="calendar-outline" size={18} color={c.textMuted} />
+                    <Text style={[styles.pendingInfoText, { color: c.textSecondary }]}>
+                        Nộp đơn: {new Date().toLocaleDateString('vi-VN')}
+                    </Text>
+                </View>
+                <View style={styles.pendingInfoRow}>
+                    <MaterialCommunityIcons name="information-outline" size={18} color={c.warning} />
+                    <Text style={[styles.pendingInfoText, { color: c.warning }]}>Chờ phê duyệt</Text>
+                </View>
+            </CommonCard>
+            <Text style={[{ color: c.textMuted, fontSize: 12, textAlign: 'center', marginTop: 16, lineHeight: 18 }]}>
+                Bạn sẽ nhận được thông báo qua ứng dụng và email khi hồ sơ được phê duyệt.
+            </Text>
+            {/* DEV helper – tap to advance to signature step */}
+            <TouchableOpacity
+                style={[styles.flowBtn, { backgroundColor: c.primaryGlass, marginTop: 24 }]}
+                onPress={() => setBnplStatus('pending_signature')}
+            >
+                <Text style={[styles.flowBtnText, { color: c.primary }]}>Mô phỏng: Đã được duyệt →</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    // ── Render: Pending Signature (Terms + Digital Sign)
+    const renderPendingSignature = () => (
+        <ScrollView
+            contentContainerStyle={[styles.regScrollContent, { paddingBottom: tabBarHeight + 48 }]}
+            showsVerticalScrollIndicator={false}
+        >
+            <Text style={[styles.regTitle, { color: c.textPrimary }]}>Ký hợp đồng điện tử</Text>
+            <Text style={[styles.regDesc, { color: c.textMuted }]}>
+                Vui lòng đọc kỹ điều khoản dịch vụ và xác nhận chữ ký số để kích hoạt Ví Trả Sau.
+            </Text>
+
+            {/* Contract preview box */}
+            <CommonCard style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    <MaterialCommunityIcons name="file-document-outline" size={24} color={c.primary} />
+                    <Text style={[{ marginLeft: 10, fontWeight: '700', fontSize: 15, color: c.textPrimary }]}>
+                        Hợp đồng dịch vụ Ví Trả Sau
+                    </Text>
+                </View>
+                <Text style={[{ color: c.textMuted, fontSize: 12, lineHeight: 20 }]}>
+                    Đây là hợp đồng cung cấp dịch vụ tín dụng tiêu dùng giữa Bên A (VentoPay) và Bên B (Khách hàng).{'\n\n'}
+                    <Text style={{ fontWeight: '600', color: c.textSecondary }}>Lãi suất:</Text> 1.8%/tháng{'\n'}
+                    <Text style={{ fontWeight: '600', color: c.textSecondary }}>Hạn mức khởi đầu:</Text> 10,000,000 đ{'\n'}
+                    <Text style={{ fontWeight: '600', color: c.textSecondary }}>Phí trả nợ trước hạn:</Text> 2% số dư còn lại{'\n'}
+                    <Text style={{ fontWeight: '600', color: c.textSecondary }}>Thời gian vay tối đa:</Text> 12 tháng{'\n\n'}
+                    Khách hàng đồng ý tuân thủ các điều khoản và điều kiện của hợp đồng, bao gồm nhưng không giới hạn: thanh toán đúng hạn, thông báo khi thay đổi thông tin cá nhân, và chịu trách nhiệm về các khoản vay phát sinh.
+                </Text>
+                <TouchableOpacity
+                    style={[{ flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 10, borderRadius: 8, backgroundColor: c.primaryGlass }]}
+                    onPress={() => Alert.alert('PDF', 'Mở file PDF hợp đồng...')}
+                >
+                    <MaterialCommunityIcons name="file-pdf-box" size={20} color={c.primary} />
+                    <Text style={[{ marginLeft: 8, color: c.primary, fontWeight: '600', fontSize: 13 }]}>Xem hợp đồng đầy đủ (PDF)</Text>
+                </TouchableOpacity>
+            </CommonCard>
+
+            {/* Terms checkbox */}
+            <TouchableOpacity
+                style={[styles.checkRow]}
+                onPress={() => setTermsAccepted(v => !v)}
+                activeOpacity={0.8}
+            >
+                <View style={[styles.checkbox, termsAccepted && { backgroundColor: c.primary, borderColor: c.primary }]}>
+                    {termsAccepted && <MaterialCommunityIcons name="check" size={14} color="#000" />}
+                </View>
+                <Text style={[styles.checkLabel, { color: c.textSecondary }]}>
+                    Tôi đã đọc và đồng ý với{' '}
+                    <Text style={{ color: c.primary, fontWeight: '600' }}>Điều khoản dịch vụ</Text>
+                    {' '}và{' '}
+                    <Text style={{ color: c.primary, fontWeight: '600' }}>Chính sách bảo mật</Text>
+                </Text>
+            </TouchableOpacity>
+
+            {/* Signature checkbox */}
+            <TouchableOpacity
+                style={[styles.checkRow, { marginTop: 10 }]}
+                onPress={() => setSignatureChecked(v => !v)}
+                activeOpacity={0.8}
+            >
+                <View style={[styles.checkbox, signatureChecked && { backgroundColor: c.primary, borderColor: c.primary }]}>
+                    {signatureChecked && <MaterialCommunityIcons name="check" size={14} color="#000" />}
+                </View>
+                <Text style={[styles.checkLabel, { color: c.textSecondary }]}>
+                    Tôi xác nhận <Text style={{ fontWeight: '600', color: c.textPrimary }}>chữ ký số</Text> dưới đây là hợp lệ và mang giá trị pháp lý
+                </Text>
+            </TouchableOpacity>
+
+            {/* Mock digital signature */}
+            <View style={[styles.signatureBox, { borderColor: c.border, backgroundColor: c.surface }]}>
+                <Text style={[{ color: c.textMuted, fontSize: 12, marginBottom: 8 }]}>Chữ ký số của bạn:</Text>
+                <Text style={[{ color: c.primary, fontSize: 22, fontStyle: 'italic', fontFamily: 'serif' }]}>
+                    {regForm.fullName || 'Chữ ký'}
+                </Text>
+                <Text style={[{ color: c.textMuted, fontSize: 10, marginTop: 6 }]}>
+                    Ký bằng mã OTP xác thực tại {new Date().toLocaleString('vi-VN')}
+                </Text>
+            </View>
+
+            <TouchableOpacity
+                style={[styles.flowBtn, { backgroundColor: termsAccepted && signatureChecked ? c.primary : c.border, marginTop: 24 }]}
+                activeOpacity={0.85}
+                onPress={handleSignAndActivate}
+            >
+                <Text style={[styles.flowBtnText, { color: termsAccepted && signatureChecked ? '#000' : c.textMuted }]}>
+                    Xác nhận & Kích hoạt ví
+                </Text>
+            </TouchableOpacity>
+        </ScrollView>
+    );
+
     return (
         <View style={[styles.container, { backgroundColor: c.background }]}>
-            <BinanceHeader title="Ví Trả Sau (BNPL)" />
-            <FintechPullToRefresh
-                onRefresh={onRefresh}
-                refreshing={refreshing}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
-            >
-                {/* ── Wallet Info Card ── */}
-                {wallet && (
-                    <CommonCard style={styles.walletCard}>
-                        {/* Tier badge + balance visibility toggle */}
-                        <View style={styles.walletHeaderRow}>
-                            <View style={[styles.tierPill, { backgroundColor: currentTier.color + '25' }]}>
-                                <MaterialCommunityIcons name={currentTier.icon} size={13} color={currentTier.color} />
-                                <Text style={[styles.tierPillText, { color: currentTier.color }]}>{currentTier.label}</Text>
+            <BinanceHeader
+                title="Ví Trả Sau (BNPL)"
+                rightComponents={
+                    bnplStatus === 'active' ? (
+                        <TouchableOpacity
+                            onPress={() => setMenuVisible(v => !v)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            style={{ padding: 4 }}
+                        >
+                            <MaterialCommunityIcons name="dots-vertical" size={22} color={c.textPrimary} />
+                        </TouchableOpacity>
+                    ) : undefined
+                }
+            />
+
+            {/* ── 3-dot dropdown menu ── */}
+            {menuVisible && (
+                <View style={[styles.dropdownMenu, { backgroundColor: c.surface, borderColor: c.border, shadowColor: '#000' }]}>
+                    {[
+                        { icon: 'format-list-bulleted', label: 'Xem danh sách khoản vay', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
+                        { icon: 'calendar-month-outline', label: 'Xem lịch trả nợ', action: () => { setMenuVisible(false); Alert.alert('Lịch trả nợ', 'Xem phần "Lịch trả nợ tháng này" bên dưới.'); } },
+                        { icon: 'information-outline', label: 'Thông tin ví', action: () => { setMenuVisible(false); Alert.alert('Ví Trả Sau', `Hạn mức: ${formatCurrency(wallet?.creditLimit || 0)}\nĐã dùng: ${formatCurrency(wallet?.usedCredit || 0)}\nHạng: ${currentTier.label}`); } },
+                    ].map((item) => (
+                        <TouchableOpacity key={item.label} style={[styles.dropdownItem, { borderBottomColor: c.border }]} onPress={item.action}>
+                            <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
+                            <Text style={[styles.dropdownItemText, { color: c.textPrimary }]}>{item.label}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            )}
+
+            {/* ── State machine routing ── */}
+            {bnplStatus === 'no_wallet' && renderNoWallet()}
+            {bnplStatus === 'registration' && renderRegistration()}
+            {bnplStatus === 'pending_approval' && renderPendingApproval()}
+            {bnplStatus === 'pending_signature' && renderPendingSignature()}
+
+            {bnplStatus === 'active' && (
+                <FintechPullToRefresh
+                    onRefresh={onRefresh}
+                    refreshing={refreshing}
+                    contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + insets.bottom + 32 }]}
+                >
+                    {/* ── Wallet Info Card ── */}
+                    {wallet && (
+                        <CommonCard style={styles.walletCard}>
+                            {/* Tier badge + balance visibility toggle */}
+                            <View style={styles.walletHeaderRow}>
+                                <View style={[styles.tierPill, { backgroundColor: currentTier.color + '25' }]}>
+                                    <MaterialCommunityIcons name={currentTier.icon} size={13} color={currentTier.color} />
+                                    <Text style={[styles.tierPillText, { color: currentTier.color }]}>{currentTier.label}</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setBalanceVisible(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                    <MaterialCommunityIcons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={18} color={c.textDim} />
+                                </TouchableOpacity>
                             </View>
-                            <TouchableOpacity onPress={() => setBalanceVisible(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <MaterialCommunityIcons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={18} color={c.textDim} />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={[styles.walletLabel, { color: theme.colors.textMuted, marginTop: 12 }]}>Hạn mức khả dụng</Text>
-                        <Text style={[styles.walletBalance, { color: theme.colors.textPrimary }]}>
-                            {balanceVisible ? formatCurrency(wallet!.availableCredit) : '• • • • • •'}
-                        </Text>
-                        <View style={styles.walletRow}>
-                            <View style={styles.walletRowItem}>
-                                <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Tổng hạn mức</Text>
-                                <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                    {balanceVisible ? formatCurrency(wallet!.creditLimit) : '- - -'}
-                                </Text>
+                            <Text style={[styles.walletLabel, { color: theme.colors.textMuted, marginTop: 12 }]}>Hạn mức khả dụng</Text>
+                            <Text style={[styles.walletBalance, { color: theme.colors.textPrimary }]}>
+                                {balanceVisible ? formatCurrency(wallet!.availableCredit) : '• • • • • •'}
+                            </Text>
+                            <View style={styles.walletRow}>
+                                <View style={styles.walletRowItem}>
+                                    <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Tổng hạn mức</Text>
+                                    <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
+                                        {balanceVisible ? formatCurrency(wallet!.creditLimit) : '- - -'}
+                                    </Text>
+                                </View>
+                                <View style={[styles.walletRowItemDivider, { backgroundColor: theme.colors.border }]} />
+                                <View style={styles.walletRowItem}>
+                                    <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Đã sử dụng</Text>
+                                    <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
+                                        {balanceVisible ? formatCurrency(wallet!.usedCredit) : '- - -'}
+                                    </Text>
+                                </View>
                             </View>
-                            <View style={[styles.walletRowItemDivider, { backgroundColor: theme.colors.border }]} />
-                            <View style={styles.walletRowItem}>
-                                <Text style={[styles.walletRowLabel, { color: theme.colors.textMuted }]}>Đã sử dụng</Text>
-                                <Text style={[styles.walletRowValue, { color: theme.colors.textPrimary }]}>
-                                    {balanceVisible ? formatCurrency(wallet!.usedCredit) : '- - -'}
-                                </Text>
-                            </View>
-                        </View>
-                        {/* Enhanced Progress Bar */}
-                        <View style={styles.walletProgressContainer}>
-                            <View
-                                style={[
-                                    styles.walletProgressBg,
-                                    {
-                                        backgroundColor: theme.mode === 'dark'
-                                            ? 'rgba(255, 255, 255, 0.1)'
-                                            : 'rgba(139, 92, 246, 0.1)',
-                                        borderRadius: theme.radius.full,
-                                    },
-                                ]}
-                            >
-                                <LinearGradient
-                                    colors={
-                                        (progressPercentage > 80
-                                            ? theme.gradients.error
-                                            : progressPercentage > 50
-                                                ? theme.gradients.warning
-                                                : theme.gradients.primary) as any
-                                    }
+                            {/* Enhanced Progress Bar */}
+                            <View style={styles.walletProgressContainer}>
+                                <View
                                     style={[
-                                        styles.walletProgressFill,
+                                        styles.walletProgressBg,
                                         {
-                                            width: `${progressPercentage}%`,
+                                            backgroundColor: theme.mode === 'dark'
+                                                ? 'rgba(255, 255, 255, 0.1)'
+                                                : 'rgba(139, 92, 246, 0.1)',
                                             borderRadius: theme.radius.full,
                                         },
                                     ]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                />
-                            </View>
-                            <View style={styles.progressLabelRow}>
-                                <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
-                                    Đã dùng {progressPercentage.toFixed(0)}%
-                                </Text>
-                                <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
-                                    Còn lại {balanceVisible ? formatCurrency(wallet!.availableCredit) : '- - -'}
-                                </Text>
-                            </View>
-                        </View>
-                        {/* Repay button */}
-                        <TouchableOpacity
-                            style={[styles.repayBtn, { backgroundColor: c.primary }]}
-                            activeOpacity={0.8}
-                        >
-                            <MaterialCommunityIcons name="credit-card-refresh-outline" size={16} color="#000" />
-                            <Text style={styles.repayBtnText}>Thanh toán dư nợ</Text>
-                        </TouchableOpacity>
-                    </CommonCard>
-                )}
-
-                {/* Create Loan Button */}
-                <CommonButton
-                    title="Tạo khoản vay mới"
-                    onPress={() => setCreateModalVisible(true)}
-                    icon="plus-circle"
-                    style={styles.createBtn}
-                />
-
-                {/* ── Transaction History ── */}
-                {transactions.length > 0 && (
-                    <>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch sử giao dịch</Text>
-                        </View>
-                        <CommonCard style={styles.txCard}>
-                            {transactions.slice(0, 10).map((tx, idx) => (
-                                <View
-                                    key={tx.id || idx}
-                                    style={[
-                                        styles.txRow,
-                                        idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
-                                    ]}
                                 >
-                                    <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
-                                        <MaterialCommunityIcons
-                                            name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                            size={20}
-                                            color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
-                                        />
-                                    </View>
-                                    <View style={styles.txInfo}>
-                                        <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                            {tx.description || tx.type || 'Giao dịch'}
-                                        </Text>
-                                        <Text style={[styles.txDate, { color: theme.colors.textMuted }]}>
-                                            {tx.date || tx.createdAt || ''}
-                                        </Text>
-                                    </View>
-                                    <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
-                                        {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                                    </Text>
-                                </View>
-                            ))}
-                        </CommonCard>
-                    </>
-                )}
-
-                {/* Consolidated Schedule */}
-                {schedule.length > 0 && (
-                    <>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                                Lịch trả nợ tháng này
-                            </Text>
-                            {scheduleSummary && (
-                                <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                                    {scheduleSummary.totalMonths} kỳ
-                                </Text>
-                            )}
-                        </View>
-                        <CommonCard style={styles.scheduleCard}>
-                            {schedule.map((item, index) => (
-                                <View
-                                    key={index}
-                                    style={[
-                                        styles.scheduleRow,
-                                        index < schedule.length - 1 && { borderBottomColor: theme.colors.border },
-                                    ]}
-                                >
-                                    <View style={styles.scheduleLeft}>
-                                        <Text style={[styles.scheduleDate, { color: theme.colors.textPrimary }]}>
-                                            {item.dueDate}
-                                        </Text>
-                                        <Text style={[styles.scheduleMonth, { color: theme.colors.textMuted }]}>
-                                            {item.month}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.scheduleRight}>
-                                        <Text style={[styles.scheduleAmount, { color: theme.colors.success }]}>
-                                            {formatCurrency(item.totalDue)}
-                                        </Text>
-                                        <Text style={[styles.scheduleDetail, { color: theme.colors.textMuted }]}>
-                                            Gốc: {formatCurrency(item.principal)} | Lãi: {formatCurrency(item.interest)}
-                                        </Text>
-                                    </View>
-                                </View>
-                            ))}
-                        </CommonCard>
-                    </>
-                )}
-
-                {/* Active Loans */}
-                {loans.length > 0 && (
-                    <>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                                Khoản vay đang hoạt động
-                            </Text>
-                            <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                                {loans.length} khoản
-                            </Text>
-                        </View>
-                        {loans.map((loan) => (
-                            <CommonCard key={loan.id} style={styles.loanCard}>
-                                <View style={styles.loanHeader}>
-                                    <Text style={[styles.loanId, { color: theme.colors.textMuted }]}>
-                                        #{loan.fineractLoanId}
-                                    </Text>
-                                    <View
+                                    <LinearGradient
+                                        colors={
+                                            (progressPercentage > 80
+                                                ? theme.gradients.error
+                                                : progressPercentage > 50
+                                                    ? theme.gradients.warning
+                                                    : theme.gradients.primary) as any
+                                        }
                                         style={[
-                                            styles.loanStatusBadge,
+                                            styles.walletProgressFill,
                                             {
-                                                backgroundColor: getStatusColor(loan.status, theme) === theme.colors.success
-                                                    ? theme.colors.successGlass
-                                                    : theme.colors.warningGlass,
-                                                borderRadius: theme.radius.sm,
+                                                width: `${progressPercentage}%`,
+                                                borderRadius: theme.radius.full,
                                             },
                                         ]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    />
+                                </View>
+                                <View style={styles.progressLabelRow}>
+                                    <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
+                                        Đã dùng {progressPercentage.toFixed(0)}%
+                                    </Text>
+                                    <Text style={[styles.progressLabel, { color: theme.colors.textMuted }]}>
+                                        Còn lại {balanceVisible ? formatCurrency(wallet!.availableCredit) : '- - -'}
+                                    </Text>
+                                </View>
+                            </View>
+                            {/* Repay button */}
+                            <TouchableOpacity
+                                style={[styles.repayBtn, { backgroundColor: c.primary }]}
+                                activeOpacity={0.8}
+                                onPress={() => navigation.navigate('BNPLLoanList', { loans })}
+                            >
+                                <MaterialCommunityIcons name="credit-card-refresh-outline" size={16} color="#000" />
+                                <Text style={styles.repayBtnText}>Thanh toán dư nợ</Text>
+                            </TouchableOpacity>
+                        </CommonCard>
+                    )}
+
+                    {/* Create Loan Button */}
+                    <CommonButton
+                        title="Tạo khoản vay mới"
+                        onPress={() => setCreateModalVisible(true)}
+                        icon="plus-circle"
+                        style={styles.createBtn}
+                    />
+
+                    {/* ── Transaction History ── */}
+                    {displayTransactions.length > 0 && (
+                        <>
+                            <View style={styles.sectionHeader}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch sử giao dịch</Text>
+                            </View>
+                            <CommonCard style={styles.txCard}>
+                                {displayTransactions.slice(0, 10).map((tx, idx) => (
+                                    <View
+                                        key={tx.id || idx}
+                                        style={[
+                                            styles.txRow,
+                                            idx > 0 && { borderTopWidth: 1, borderTopColor: theme.colors.border },
+                                        ]}
                                     >
-                                        <Text
-                                            style={[
-                                                styles.loanStatus,
-                                                {
-                                                    color: getStatusColor(loan.status, theme),
-                                                },
-                                            ]}
-                                        >
-                                            {loan.status}
+                                        <View style={[styles.txIconWrap, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
+                                            <MaterialCommunityIcons
+                                                name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+                                                size={20}
+                                                color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
+                                            />
+                                        </View>
+                                        <View style={styles.txInfo}>
+                                            <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                                {tx.description || tx.type || 'Giao dịch'}
+                                            </Text>
+                                            <Text style={[styles.txDate, { color: theme.colors.textMuted }]}>
+                                                {tx.date || tx.createdAt || ''}
+                                            </Text>
+                                        </View>
+                                        <Text style={[styles.txAmount, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
+                                            {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
                                         </Text>
                                     </View>
-                                </View>
-                                <Text style={[styles.loanAmount, { color: theme.colors.textPrimary }]}>
-                                    {formatCurrency(loan.principal)}
-                                </Text>
-                                <View style={styles.loanRow}>
-                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Tổng phải trả</Text>
-                                    <Text style={[styles.loanValue, { color: theme.colors.textPrimary }]}>
-                                        {formatCurrency(loan.totalRepayment)}
-                                    </Text>
-                                </View>
-                                <View style={styles.loanRow}>
-                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Đã trả</Text>
-                                    <Text style={[styles.loanValue, { color: theme.colors.success }]}>
-                                        {formatCurrency(loan.paidAmount)}
-                                    </Text>
-                                </View>
-                                <View style={styles.loanRow}>
-                                    <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Còn nợ</Text>
-                                    <Text style={[styles.loanValue, { color: theme.colors.error }]}>
-                                        {formatCurrency(loan.outstandingBalance)}
-                                    </Text>
-                                </View>
+                                ))}
                             </CommonCard>
-                        ))}
-                    </>
-                )}
+                        </>
+                    )}
 
-                <View style={{ height: 40 }} />
-            </FintechPullToRefresh>
+                    {/* Consolidated Schedule */}
+                    {schedule.length > 0 && (
+                        <>
+                            <View style={styles.sectionHeader}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+                                    Lịch trả nợ tháng này
+                                </Text>
+                                {scheduleSummary && (
+                                    <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                                        {scheduleSummary.totalMonths} kỳ
+                                    </Text>
+                                )}
+                            </View>
+                            <CommonCard style={styles.scheduleCard}>
+                                {schedule.map((item, index) => (
+                                    <View
+                                        key={index}
+                                        style={[
+                                            styles.scheduleRow,
+                                            index < schedule.length - 1 && { borderBottomColor: theme.colors.border },
+                                        ]}
+                                    >
+                                        <View style={styles.scheduleLeft}>
+                                            <Text style={[styles.scheduleDate, { color: theme.colors.textPrimary }]}>
+                                                {item.dueDate}
+                                            </Text>
+                                            <Text style={[styles.scheduleMonth, { color: theme.colors.textMuted }]}>
+                                                {item.month}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.scheduleRight}>
+                                            <Text style={[styles.scheduleAmount, { color: theme.colors.success }]}>
+                                                {formatCurrency(item.totalDue)}
+                                            </Text>
+                                            <Text style={[styles.scheduleDetail, { color: theme.colors.textMuted }]}>
+                                                Gốc: {formatCurrency(item.principal)} | Lãi: {formatCurrency(item.interest)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))}
+                            </CommonCard>
+                        </>
+                    )}
+
+                    {/* Active Loans */}
+                    {loans.length > 0 && (
+                        <>
+                            <View style={styles.sectionHeader}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+                                    Khoản vay đang hoạt động
+                                </Text>
+                                <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                                    {loans.length} khoản
+                                </Text>
+                            </View>
+                            {loans.map((loan) => (
+                                <TouchableOpacity
+                                    key={loan.id}
+                                    activeOpacity={0.85}
+                                    onPress={() => navigation.navigate('BNPLLoanDetail', { loan })}
+                                >
+                                    <CommonCard style={[styles.loanCard, { overflow: 'hidden' }]}>
+                                        <View style={styles.loanHeader}>
+                                            <Text style={[styles.loanId, { color: theme.colors.textMuted }]}>
+                                                #{loan.fineractLoanId}
+                                            </Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <View
+                                                    style={[
+                                                        styles.loanStatusBadge,
+                                                        {
+                                                            backgroundColor: getStatusColor(loan.status, theme) === theme.colors.success
+                                                                ? theme.colors.successGlass
+                                                                : theme.colors.warningGlass,
+                                                            borderRadius: theme.radius.sm,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <Text style={[styles.loanStatus, { color: getStatusColor(loan.status, theme) }]}>
+                                                        {loan.status}
+                                                    </Text>
+                                                </View>
+                                                <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.loanAmount, { color: theme.colors.textPrimary }]}>
+                                            {formatCurrency(loan.principal)}
+                                        </Text>
+                                        <View style={styles.loanRow}>
+                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Tổng phải trả</Text>
+                                            <Text style={[styles.loanValue, { color: theme.colors.textPrimary }]}>
+                                                {formatCurrency(loan.totalRepayment)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.loanRow}>
+                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Đã trả</Text>
+                                            <Text style={[styles.loanValue, { color: theme.colors.success }]}>
+                                                {formatCurrency(loan.paidAmount)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.loanRow}>
+                                            <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Còn nợ</Text>
+                                            <Text style={[styles.loanValue, { color: theme.colors.error }]}>
+                                                {formatCurrency(loan.outstandingBalance)}
+                                            </Text>
+                                        </View>
+                                    </CommonCard>
+                                </TouchableOpacity>
+                            ))}
+                        </>
+                    )}
+
+                    <View style={{ height: 40 }} />
+                </FintechPullToRefresh>
+            )}
 
             {/* ==================== CREATE LOAN MODAL ==================== */}
             <Modal
@@ -1292,5 +1655,182 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_700Bold',
         color: '#fff',
         flexShrink: 1,
+    },
+
+    // ── Flow state screens
+    flowContainer: {
+        flex: 1,
+        paddingHorizontal: 24,
+        paddingTop: 40,
+        alignItems: 'center',
+    },
+    flowIllustration: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: 'rgba(245, 197, 24, 0.12)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    flowTitle: {
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
+        textAlign: 'center',
+        marginBottom: 12,
+    },
+    flowDesc: {
+        fontSize: 14,
+        lineHeight: 22,
+        textAlign: 'center',
+        marginBottom: 24,
+    },
+    flowFeatureList: {
+        width: '100%',
+        marginBottom: 32,
+        gap: 10,
+    },
+    flowFeatureRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    flowFeatureText: {
+        fontSize: 14,
+    },
+    flowBtn: {
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    flowBtnText: {
+        fontSize: 16,
+        fontFamily: 'Poppins_700Bold',
+        color: '#000',
+    },
+
+    // ── Registration form
+    regScrollContent: {
+        paddingHorizontal: 20,
+        paddingTop: 16,
+    },
+    regTitle: {
+        fontSize: 20,
+        fontFamily: 'Poppins_700Bold',
+        marginBottom: 6,
+    },
+    regDesc: {
+        fontSize: 13,
+        lineHeight: 20,
+        marginBottom: 20,
+    },
+    regLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 6,
+        marginTop: 14,
+    },
+    regInput: {
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        fontSize: 14,
+    },
+    regInputMulti: {
+        minHeight: 72,
+        textAlignVertical: 'top',
+        paddingTop: 12,
+    },
+    regPillRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 4,
+    },
+    regPill: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(150,150,150,0.3)',
+    },
+    regPillText: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+
+    // ── Pending approval
+    pendingInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 8,
+    },
+    pendingInfoText: {
+        fontSize: 14,
+    },
+
+    // ── Terms & signature
+    checkRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        marginTop: 20,
+    },
+    checkbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        borderWidth: 1.5,
+        borderColor: 'rgba(150,150,150,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginTop: 1,
+    },
+    checkLabel: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 20,
+    },
+    signatureBox: {
+        width: '100%',
+        borderWidth: 1.5,
+        borderRadius: 12,
+        padding: 20,
+        marginTop: 24,
+        alignItems: 'center',
+        borderStyle: 'dashed',
+    },
+
+    // ── Dropdown menu
+    dropdownMenu: {
+        position: 'absolute',
+        top: 56,
+        right: 16,
+        zIndex: 999,
+        borderRadius: 12,
+        borderWidth: 1,
+        overflow: 'hidden',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        elevation: 8,
+        minWidth: 220,
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        gap: 12,
+        borderBottomWidth: 1,
+    },
+    dropdownItemText: {
+        fontSize: 14,
+        fontWeight: '500',
     },
 });

@@ -10,8 +10,12 @@ import LoanCreateScreen from '../features/loan/screens/LoanCreateScreen';
 import LoanConfirmScreen from '../features/loan/screens/LoanConfirmScreen';
 import LoanHistoryScreen from '../features/loan/screens/LoanHistoryScreen';
 import LoanDetailScreen from '../features/loan/screens/LoanDetailScreen';
+import BNPLLoanListScreen from '../features/bnpl/screens/BNPLLoanListScreen';
+import BNPLLoanDetailScreen from '../features/bnpl/screens/BNPLLoanDetailScreen';
+import BNPLEarlyRepayScreen from '../features/bnpl/screens/BNPLEarlyRepayScreen';
 import type { LoanProduct } from '../features/loan/services/loan.service';
 import type { LoanProductConfig, LoanScheduleResult } from '../features/loan/services/loan.service';
+import type { BnplLoan } from '../features/bnpl/api/bnpl.api';
 
 export type RootStackParamList = {
     Auth: undefined;
@@ -32,6 +36,9 @@ export type RootStackParamList = {
         monthlyRatePercent?: number;
         schedule: LoanScheduleResult;
     };
+    BNPLLoanList: { loans: BnplLoan[] };
+    BNPLLoanDetail: { loan: BnplLoan };
+    BNPLEarlyRepay: { loan: BnplLoan };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -54,6 +61,9 @@ export default function RootNavigator() {
                     <Stack.Screen name="LoanProductDetail" component={LoanProductDetailScreen} />
                     <Stack.Screen name="LoanCreate" component={LoanCreateScreen} />
                     <Stack.Screen name="LoanConfirm" component={LoanConfirmScreen} />
+                    <Stack.Screen name="BNPLLoanList" component={BNPLLoanListScreen} />
+                    <Stack.Screen name="BNPLLoanDetail" component={BNPLLoanDetailScreen} />
+                    <Stack.Screen name="BNPLEarlyRepay" component={BNPLEarlyRepayScreen} />
                 </>
             )}
         </Stack.Navigator>
