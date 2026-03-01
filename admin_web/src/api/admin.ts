@@ -43,12 +43,31 @@ export interface CustomerDto {
   profile?: { firstName?: string; lastName?: string; avatar?: string };
   fineractClientId?: string;
   status: string;
+  kycStatus?: 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
   createdAt: string;
   // Fineract enrichment
   fineractStatus?: FineractStatus | null;
   officeName?: string;
   activationDate?: string | null;
   displayName?: string;
+}
+
+export interface KycPendingUserDto {
+  _id: string;
+  username: string;
+  email?: string;
+  profile?: { firstName?: string; lastName?: string; avatar?: string };
+  fineractClientId?: string;
+  kycStatus: string;
+  kycCompletedAt?: string;
+  displayName?: string;
+}
+
+export interface KycDetailDto {
+  user: { _id: string; username: string; email?: string; profile?: any; fineractClientId?: string; kycStatus: string };
+  ocr: { fullName?: string; ssn?: string; dateOfBirth?: string; address?: string; sex?: string };
+  metadata: { kycCompletedAt?: string; faceMatchingResult?: any; fineractIdentifiers?: any; fineractClientDocs?: any };
+  documents: { id: number; name: string; entityType: string; entityId: number; label: string }[];
 }
 
 export interface LoanDto {
@@ -179,4 +198,20 @@ export const adminApi = {
     api.get<{ data: { canApprove: boolean; missingRequired: string[] } }>(
       `/api/admin/loans/${fineractLoanId}/can-approve`
     ).then((r) => r.data.data),
+
+  // ── KYC Approvals ──────────────────────────────────────────────────────────
+  getPendingKyc: () =>
+    api.get<{ data: { users: KycPendingUserDto[] } }>('/api/admin/kyc/pending').then((r) => r.data.data.users),
+
+  getKycDetail: (userId: string) =>
+    api.get<{ data: KycDetailDto }>(`/api/admin/kyc/${userId}`).then((r) => r.data.data),
+
+  approveKyc: (userId: string) =>
+    api.post<{ data: { kycStatus: string; userId: string } }>(`/api/admin/kyc/${userId}/approve`).then((r) => r.data.data),
+
+  rejectKyc: (userId: string) =>
+    api.post<{ data: { kycStatus: string; userId: string } }>(`/api/admin/kyc/${userId}/reject`).then((r) => r.data.data),
+
+  downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
+    api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
 };

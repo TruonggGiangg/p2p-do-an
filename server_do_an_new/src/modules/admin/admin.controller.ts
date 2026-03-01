@@ -225,4 +225,53 @@ export class AdminController {
     res.setHeader('Content-Disposition', response.headers['content-disposition'] || 'inline');
     res.send(response.data);
   }
+
+  // ── KYC Approvals ──────────────────────────────────────────────────────────
+
+  @Get('kyc/pending')
+  @ApiOperation({ summary: 'Danh sách KYC chờ phê duyệt' })
+  @ApiResponse({ status: 200 })
+  async getPendingKyc() {
+    const list = await this.adminService.getPendingKycUsers();
+    return { statusCode: 200, message: 'OK', data: { users: list } };
+  }
+
+  @Get('kyc/:userId')
+  @ApiOperation({ summary: 'Chi tiết KYC (OCR + tài liệu)' })
+  @ApiResponse({ status: 200 })
+  async getKycDetail(@Param('userId') userId: string) {
+    const detail = await this.adminService.getKycDetail(userId);
+    return { statusCode: 200, message: 'OK', data: detail };
+  }
+
+  @Post('kyc/:userId/approve')
+  @ApiOperation({ summary: 'Phê duyệt KYC' })
+  @ApiResponse({ status: 200 })
+  async approveKyc(@Param('userId') userId: string) {
+    const result = await this.adminService.approveKyc(userId);
+    return { statusCode: 200, message: 'Đã phê duyệt KYC', data: result };
+  }
+
+  @Post('kyc/:userId/reject')
+  @ApiOperation({ summary: 'Từ chối KYC' })
+  @ApiResponse({ status: 200 })
+  async rejectKyc(@Param('userId') userId: string) {
+    const result = await this.adminService.rejectKyc(userId);
+    return { statusCode: 200, message: 'Đã từ chối KYC', data: result };
+  }
+
+  @Get('kyc/:userId/documents/:entityType/:entityId/:documentId')
+  @ApiOperation({ summary: 'Tải tài liệu KYC (CCCD) từ Fineract' })
+  async getKycDocumentStream(
+    @Param('userId') userId: string,
+    @Param('entityType') entityType: string,
+    @Param('entityId', ParseIntPipe) entityId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Res() res: Response,
+  ) {
+    const response = await this.adminService.getKycDocumentStream(userId, entityType, entityId, documentId);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', response.headers['content-disposition'] || 'inline');
+    res.send(response.data);
+  }
 }

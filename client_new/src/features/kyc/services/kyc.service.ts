@@ -94,6 +94,50 @@ class KycService {
         });
 
         console.log('[KycService] processFaceMatching raw response:', JSON.stringify(response.data));
+        return response.data?.data ?? response.data;
+    }
+
+    /**
+     * Save KYC Data Flow
+     */
+    async saveKYC(
+        frontImageUri: string,
+        backImageUri: string,
+        ocrData: {
+            frontOCRData: any;
+            backOCRData: any;
+            faceMatchingResult: any;
+            livenessResult: any;
+        }
+    ): Promise<any> {
+        const formData = new FormData();
+
+        // Thêm hình ảnh dạng file
+        formData.append("frontImage", {
+            uri: frontImageUri,
+            type: "image/jpeg",
+            name: "front_cccd.jpg",
+        } as any);
+
+        formData.append("backImage", {
+            uri: backImageUri,
+            type: "image/jpeg",
+            name: "back_cccd.jpg",
+        } as any);
+
+        // Thêm dữ liệu JSON dạng chuỗi
+        formData.append("frontOCRData", JSON.stringify(ocrData.frontOCRData));
+        formData.append("backOCRData", JSON.stringify(ocrData.backOCRData));
+        formData.append("faceMatchingResult", JSON.stringify(ocrData.faceMatchingResult));
+        formData.append("livenessResult", JSON.stringify(ocrData.livenessResult));
+
+        const response = await api.post("/api/ekyc/save", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+
+        console.log("[KycService] saveKYC raw response:", JSON.stringify(response.data));
         return response.data;
     }
 }

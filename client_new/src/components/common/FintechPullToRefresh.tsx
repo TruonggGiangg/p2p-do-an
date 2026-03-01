@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { StyleSheet, View, Dimensions, ViewStyle, StyleProp, Platform, Vibration } from 'react-native';
+import { StyleSheet, View, ViewStyle, StyleProp, Platform, Vibration } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     Gesture,
@@ -22,20 +22,21 @@ import Animated, {
     Easing,
     useAnimatedReaction
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import VentoUltimateLoading from './VentoSVGLoading';
 import { useTheme } from '../../contexts/ThemeContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const REFRESH_THRESHOLD = 50; // Match reference
+const REFRESH_THRESHOLD = 55;
 const HEADER_HEIGHT = 150;
 const REFRESH_SHOW_HEIGHT = 100;
 
-// scrollY <= PULL_ZONE_THRESHOLD mới hiện chữ loading khi kéo. Tăng lên để ổn định hơn khi scroll nhanh
-const PULL_ZONE_THRESHOLD = 25;
-
+// Vùng cho phép kéo: scrollY <= này mới nhận pull. Đủ lớn để lần kéo thứ 2+ vẫn hoạt động
+const PULL_ZONE_THRESHOLD = 80;
 const EASING_OUT = Easing.bezier(0.33, 1, 0.68, 1);
+
+// Dây rút: 12 nấc haptic từ 0 → 1 (cảm giác kéo từng nấc)
+const DRAWSTRING_NOTCHES = 12;
+const DRAWSTRING_STEPS = Array.from({ length: DRAWSTRING_NOTCHES }, (_, i) => (i + 1) / DRAWSTRING_NOTCHES);
 
 // DEBUG: Bật true để xem log khi lướt xuống pull-to-refresh
 const DEBUG_PULL_TO_REFRESH = false;
@@ -58,22 +59,22 @@ interface FloatingParticleProps {
  * FloatingParticle: Small drifting dot
  */
 const FloatingParticle: React.FC<FloatingParticleProps & { color: string }> = ({ index, pullProgress, color }) => {
-    const x = useSharedValue(Math.random() * 160 - 80);
-    const y = useSharedValue(24); // Start lower (below logo)
-    const scale = useSharedValue(Math.random() * 2 + 0.8);
+    const x = useSharedValue(Math.random() * 140 - 70);
+    const y = useSharedValue(24);
+    const scale = useSharedValue(Math.random() * 0.9 + 0.5);
     const sparkleValue = useSharedValue(1);
 
     useEffect(() => {
         y.value = withRepeat(
-            withDelay(index * 150,
-                withTiming(-140, { duration: 3200 + Math.random() * 1000 }) // Float up through logo
+            withDelay(index * 100,
+                withTiming(-220, { duration: 2600 + Math.random() * 600 })
             ),
             -1,
             false
         );
 
         sparkleValue.value = withRepeat(
-            withTiming(1.5, { duration: 400 + Math.random() * 400 }),
+            withTiming(1.4, { duration: 400 + Math.random() * 250 }),
             -1,
             true
         );
@@ -81,13 +82,15 @@ const FloatingParticle: React.FC<FloatingParticleProps & { color: string }> = ({
 
     const style = useAnimatedStyle(() => {
         const p = pullProgress.value;
+        const sparkle = p > 0.5 ? sparkleValue.value : 1;
+        const scaleMult = p > 0.85 ? 1.2 : (p > 0.5 ? sparkle / 1.1 : 1);
         return {
             transform: [
                 { translateX: x.value },
                 { translateY: y.value },
-                { scale: scale.value * (p > 0.5 ? sparkleValue.value / 1.2 : 1) }
+                { scale: scale.value * scaleMult },
             ],
-            opacity: interpolate(p, [0.3, 0.8], [0, 0.7], Extrapolate.CLAMP),
+            opacity: interpolate(p, [0.25, 0.6, 0.9], [0, 0.45, 0.8], Extrapolate.CLAMP),
         };
     });
 
@@ -155,7 +158,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         }
     );
 
-    const MIN_DISPLAY_MS = 700;
+    const MIN_DISPLAY_MS = 350; // Giảm để kéo lại ngay sau refresh, không phải đợi lâu
 
     useEffect(() => {
         if (refreshing) {
@@ -167,8 +170,12 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             isRefreshingValue.value = true;
             setIsRefreshingUI(true);
             setShowParticles(true);
-            translationY.value = withSpring(REFRESH_SHOW_HEIGHT, { damping: 20, stiffness: 120 });
-            pullProgress.value = withTiming(1, { duration: 250 });
+            translationY.value = withSpring(REFRESH_SHOW_HEIGHT, {
+                damping: 18,
+                stiffness: 130,
+                mass: 0.7,
+            });
+            pullProgress.value = withTiming(1, { duration: 220 });
         } else {
             const minDisplayDuration = MIN_DISPLAY_MS;
             const elapsed = showStartRef.current ? Date.now() - showStartRef.current : minDisplayDuration;
@@ -179,8 +186,9 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                 isRefreshingValue.value = false;
                 setIsRefreshingUI(false);
                 setShowParticles(false);
-                translationY.value = withTiming(0, { duration: 320, easing: EASING_OUT });
-                pullProgress.value = withTiming(0, { duration: 280, easing: EASING_OUT });
+                scrollY.value = 0; // Reset để lần kéo sau nhận diện đúng
+                translationY.value = withTiming(0, { duration: 220, easing: EASING_OUT });
+                pullProgress.value = withTiming(0, { duration: 200, easing: EASING_OUT });
             };
 
             if (delay > 0) {
@@ -199,26 +207,33 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         if (onRefresh) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             if (Platform.OS === 'android') {
-                Vibration.vibrate([0, 40, 60, 40]); // Rung khi refresh thành công
+                // Rung thỏa mãn khi thả - như kéo dây rút xong
+                Vibration.vibrate([0, 25, 30, 35, 50, 40, 30]);
             }
             onRefresh();
         }
     }, [onRefresh]);
 
-    const triggerHapticStep = useCallback((step: number) => {
-        if (step <= 0.33) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        else if (step <= 0.66) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Dây rút: mỗi nấc kéo = 1 tick haptic nhẹ
+    const triggerDrawstringTick = useCallback(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (Platform.OS === 'android') {
+            Vibration.vibrate([0, 8, 6]); // Tick ngắn - cảm giác nấc răng
+        }
     }, []);
 
     const triggerPullStartHaptic = useCallback(() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (Platform.OS === 'android') {
+            Vibration.vibrate([0, 10, 8]);
+        }
     }, []);
 
+    // Đạt ngưỡng - "cạch" mạnh như dây rút chốt vào
     const triggerThresholdReachedHaptic = useCallback(() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         if (Platform.OS === 'android') {
-            Vibration.vibrate([0, 30, 50, 30]); // Rung mạnh khi đạt ngưỡng - thả ra để refresh
+            Vibration.vibrate([0, 20, 15, 35, 25, 20]); // Rung mạnh ấn tượng
         }
     }, []);
 
@@ -243,28 +258,29 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             // Chỉ hiện loading khi ở gần đầu list (scrollY <= PULL_ZONE_THRESHOLD)
             if (scrollY.value <= PULL_ZONE_THRESHOLD && event.translationY > 0) {
                 const input = event.translationY;
-                const resistance = 0.5;
-                const dampened = 200 * (1 - Math.exp(-input * resistance / 350));
+                // Đàn hồi dây rút: kháng lực tăng dần, cảm giác kéo có "nấc"
+                const resistance = 0.55;
+                const dampened = 220 * (1 - Math.exp(-input * resistance / 320));
 
-                const newProgress = interpolate(dampened, [20, REFRESH_THRESHOLD], [0, 1], Extrapolate.CLAMP);
+                const newProgress = interpolate(dampened, [15, REFRESH_THRESHOLD], [0, 1], Extrapolate.CLAMP);
 
-                // Haptic: Cảm giác tại đầu ngón tay khi bắt đầu kéo
-                if (!hasTriggeredPullStart.value && newProgress > 0.05) {
+                // Haptic: Bắt đầu kéo
+                if (!hasTriggeredPullStart.value && newProgress > 0.04) {
                     hasTriggeredPullStart.value = true;
                     runOnJS(triggerPullStartHaptic)();
                 }
 
-                // Haptic: Rung tăng dần theo mức kéo (33%, 66%, 100%)
-                const steps = [0.33, 0.66, 1];
-                for (let i = steps.length - 1; i >= 0; i--) {
-                    if (newProgress >= steps[i] && lastHapticStep.value < steps[i]) {
-                        lastHapticStep.value = steps[i];
-                        runOnJS(triggerHapticStep)(steps[i]);
+                // Dây rút: mỗi nấc = 1 tick haptic
+                for (let i = DRAWSTRING_STEPS.length - 1; i >= 0; i--) {
+                    const step = DRAWSTRING_STEPS[i];
+                    if (newProgress >= step && lastHapticStep.value < step) {
+                        lastHapticStep.value = step;
+                        runOnJS(triggerDrawstringTick)();
                         break;
                     }
                 }
 
-                // Haptic + rung mạnh khi vượt ngưỡng (sẵn sàng thả)
+                // Đạt ngưỡng - "cạch" mạnh
                 if (dampened >= REFRESH_THRESHOLD && lastHapticStep.value < 1.5) {
                     lastHapticStep.value = 1.5;
                     runOnJS(triggerThresholdReachedHaptic)();
@@ -273,8 +289,8 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                 translationY.value = dampened;
                 pullProgress.value = newProgress;
             } else if (translationY.value > 0) {
-                translationY.value = withTiming(0, { duration: 280, easing: EASING_OUT });
-                pullProgress.value = withTiming(0, { duration: 240, easing: EASING_OUT });
+                translationY.value = withSpring(0, { damping: 20, stiffness: 260 });
+                pullProgress.value = withTiming(0, { duration: 220, easing: EASING_OUT });
             }
         })
         .onEnd(() => {
@@ -290,50 +306,69 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 
             if (translationY.value >= REFRESH_THRESHOLD) {
                 translationY.value = withSpring(REFRESH_SHOW_HEIGHT, {
-                    damping: 18,
-                    stiffness: 100
+                    damping: 16,
+                    stiffness: 140,
+                    mass: 0.8,
                 });
                 runOnJS(debugLog)('>>> onPullTrigger - gọi onRefresh');
                 runOnJS(onPullTrigger)();
             } else {
-                translationY.value = withTiming(0, { duration: 280, easing: EASING_OUT });
-                pullProgress.value = withTiming(0, { duration: 240, easing: EASING_OUT });
+                // Snap back đàn hồi như dây rút bật lại
+                translationY.value = withSpring(0, {
+                    damping: 22,
+                    stiffness: 280,
+                    mass: 0.6,
+                });
+                pullProgress.value = withTiming(0, { duration: 200, easing: EASING_OUT });
             }
         })
-        .activeOffsetY(5)
-        .failOffsetY(-10)
-        .shouldCancelWhenOutside(true);
+        .activeOffsetY(2)
+        .failOffsetY(-15)
+        .minDistance(0)
+        .shouldCancelWhenOutside(false);
 
     const nativeGesture = Gesture.Native();
     const composedGesture = Gesture.Simultaneous(panGesture, nativeGesture);
 
     const animatedHeaderStyle = useAnimatedStyle(() => {
-        const scale = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [0.7, 1.1], Extrapolate.CLAMP);
-        const transY = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [-50, 0], Extrapolate.CLAMP);
+        const t = translationY.value;
+        const p = pullProgress.value;
+        const scale = interpolate(t, [0, REFRESH_THRESHOLD], [0.65, 1.15], Extrapolate.CLAMP);
+        const transY = interpolate(t, [0, REFRESH_THRESHOLD], [-55, 0], Extrapolate.CLAMP);
         const baseOffset = Platform.OS === 'ios' ? safeTop : 0;
+        // Góc xoay nhẹ khi kéo - cảm giác "nghiêng" theo lực
+        const rotateZ = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [0, 1.5, 0], Extrapolate.CLAMP);
+        // Glow pulse khi gần đạt ngưỡng
+        const glowScale = interpolate(p, [0.85, 1], [1, 1.08], Extrapolate.CLAMP);
 
         return {
             transform: [
-                { translateY: translationY.value - HEADER_HEIGHT + transY + topOffset + baseOffset },
-                { scale }
+                { translateY: t - HEADER_HEIGHT + transY + topOffset + baseOffset },
+                { scale: scale * glowScale },
+                { rotateZ: `${rotateZ}deg` },
             ],
-            opacity: interpolate(translationY.value, [0, 35], [0, 1], Extrapolate.CLAMP),
+            opacity: interpolate(t, [0, 28], [0, 1], Extrapolate.CLAMP),
+            shadowOpacity: interpolate(p, [0.7, 1], [0, 0.3], Extrapolate.CLAMP),
+            shadowRadius: interpolate(p, [0.7, 1], [0, 24], Extrapolate.CLAMP),
+            shadowOffset: { width: 0, height: 4 },
         };
     });
 
     const animatedContentStyle = useAnimatedStyle(() => {
+        const t = translationY.value;
+        // Đàn hồi cao su: giãn mạnh hơn khi kéo, cảm giác "dây rút" căng
+        const scaleY = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [1, 1.015, 1.035], Extrapolate.CLAMP);
         return {
             transform: [
-                { translateY: translationY.value },
-                // Cảm giác đàn hồi: nội dung hơi "giãn" khi kéo
-                { scaleY: interpolate(translationY.value, [0, REFRESH_THRESHOLD], [1, 1.02], Extrapolate.CLAMP) },
+                { translateY: t },
+                { scaleY },
             ],
         };
     });
 
     const renderParticles = () => {
         if (!showParticles) return null;
-        return Array.from({ length: 12 }).map((_, i) => (
+        return Array.from({ length: 14 }).map((_, i) => (
             <FloatingParticle key={i} index={i} pullProgress={pullProgress} color={activePrimary} />
         ));
     };
@@ -366,7 +401,14 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                 </Animated.View>
             </GestureDetector>
 
-            <Animated.View pointerEvents="none" style={[styles.header, animatedHeaderStyle]}>
+            <Animated.View
+                pointerEvents="none"
+                style={[
+                    styles.header,
+                    { shadowColor: activePrimary },
+                    animatedHeaderStyle,
+                ]}
+            >
                 <View style={styles.indicatorWrapper}>
                     <VentoUltimateLoading
                         size={100}
@@ -406,9 +448,9 @@ const styles = StyleSheet.create({
     },
     particle: {
         position: 'absolute',
-        width: 3.5,
-        height: 3.5,
-        borderRadius: 2,
+        width: 2.5,
+        height: 2.5,
+        borderRadius: 1.25,
         zIndex: 11,
     },
     content: { flex: 1, zIndex: 1 },

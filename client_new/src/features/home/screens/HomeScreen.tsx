@@ -43,7 +43,6 @@ export default function HomeScreen() {
     const [transferModalVisible, setTransferModalVisible] = useState(false);
     const [qrCodeVisible, setQrCodeVisible] = useState(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
-    const [recentTxs, setRecentTxs] = useState<WalletTransaction[]>([]);
 
     const fetchWallets = async () => {
         setWalletsLoading(true);
@@ -64,24 +63,17 @@ export default function HomeScreen() {
         }
     };
 
-    const fetchTransactions = async () => {
-        try {
-            const res = await walletAPI.getTransactions(5);
-            setRecentTxs(res.transactions || []);
-        } catch { /* silent fail */ }
-    };
-
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         try {
             await walletAPI.syncWallets().catch(() => { });
-            await Promise.all([refreshUser(), fetchWallets(), fetchTransactions()]);
+            await Promise.all([refreshUser(), fetchWallets()]);
         } finally {
             setRefreshing(false);
         }
     }, [refreshUser]);
 
-    useEffect(() => { fetchWallets(); fetchTransactions(); }, []);
+    useEffect(() => { fetchWallets(); }, []);
 
     const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
     const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
@@ -174,16 +166,18 @@ export default function HomeScreen() {
                             {INSIGHTS.map((ins, idx) => (
                                 <TouchableOpacity key={idx} activeOpacity={0.85}>
                                     <CommonCard style={[styles.insightCard, { borderWidth: 1, borderColor: c.border }]}>
-                                        <View style={styles.insightTop}>
-                                            <View style={[styles.insightIconWrap, { backgroundColor: ins.color + '18' }]}>
-                                                <MaterialCommunityIcons name={ins.icon} size={22} color={ins.color} />
+                                        <View>
+                                            <View style={styles.insightTop}>
+                                                <View style={[styles.insightIconWrap, { backgroundColor: ins.color + '18' }]}>
+                                                    <MaterialCommunityIcons name={ins.icon} size={22} color={ins.color} />
+                                                </View>
+                                                <View style={[styles.insightBadge, { backgroundColor: c.primaryGlass }]}>
+                                                    <Text style={[styles.insightBadgeText, { color: c.primary }]}>{ins.badge}</Text>
+                                                </View>
                                             </View>
-                                            <View style={[styles.insightBadge, { backgroundColor: c.primaryGlass }]}>
-                                                <Text style={[styles.insightBadgeText, { color: c.primary }]}>{ins.badge}</Text>
-                                            </View>
+                                            <Text style={[styles.insightTitle, { color: c.textPrimary }]}>{ins.title}</Text>
+                                            <Text style={[styles.insightDesc, { color: c.textSecondary }]} numberOfLines={3}>{ins.desc}</Text>
                                         </View>
-                                        <Text style={[styles.insightTitle, { color: c.textPrimary }]}>{ins.title}</Text>
-                                        <Text style={[styles.insightDesc, { color: c.textSecondary }]}>{ins.desc}</Text>
                                         <TouchableOpacity style={[styles.insightBtn, { backgroundColor: c.primary }]}>
                                             <Text style={styles.insightBtnText}>{ins.action}</Text>
                                         </TouchableOpacity>
@@ -193,42 +187,6 @@ export default function HomeScreen() {
                         </ScrollView>
                     </View>
 
-                    {/* Recent Transactions */}
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Lịch sử gần đây</Text>
-                            <MaterialCommunityIcons name="history" size={18} color={c.primary} />
-                        </View>
-                        <CommonCard>
-                            {recentTxs.length === 0 ? (
-                                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                                    <MaterialCommunityIcons name="history" size={32} color={c.textDim} />
-                                    <Text style={[{ color: c.textDim, fontSize: 13, marginTop: 8 }]}>Chưa có giao dịch nào</Text>
-                                </View>
-                            ) : (
-                                recentTxs.map((tx, idx) => (
-                                    <View key={tx.id} style={[styles.txRow, idx > 0 && { borderTopWidth: 1, borderTopColor: c.border }]}>
-                                        <View style={[styles.txIcon, { backgroundColor: tx.amount >= 0 ? '#0ECB8115' : '#F6465D15' }]}>
-                                            <MaterialCommunityIcons
-                                                name={tx.amount >= 0 ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                                size={20}
-                                                color={tx.amount >= 0 ? '#0ECB81' : '#F6465D'}
-                                            />
-                                        </View>
-                                        <View style={styles.txInfo}>
-                                            <Text style={[styles.txDesc, { color: c.textPrimary }]} numberOfLines={1}>
-                                                {tx.description || tx.type || 'Giao dịch'}
-                                            </Text>
-                                            <Text style={[styles.txDate, { color: c.textDim }]}>{tx.date}</Text>
-                                        </View>
-                                        <Text style={[styles.txAmt, { color: tx.amount >= 0 ? '#0ECB81' : '#F6465D' }]}>
-                                            {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                                        </Text>
-                                    </View>
-                                ))
-                            )}
-                        </CommonCard>
-                    </View>
                 </FintechPullToRefresh>
             )}
 
@@ -269,7 +227,7 @@ const styles = StyleSheet.create({
     sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
     sectionTitle: { fontSize: 17, fontWeight: '700' },
     insightListContent: { paddingRight: 16 },
-    insightCard: { width: 220, marginRight: 12, padding: 18 },
+    insightCard: { width: 220, marginRight: 12, padding: 18, height: 210, justifyContent: 'space-between' },
     insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     insightIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
     insightBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },

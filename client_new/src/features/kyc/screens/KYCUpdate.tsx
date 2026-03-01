@@ -1,20 +1,28 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
-    Image,
     Alert,
+    Image,
+    ScrollView,
     ActivityIndicator,
-    SafeAreaView,
+    LogBox,
+    Linking,
+    Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../../../contexts/ThemeContext';
 import { kycService } from '../services/kyc.service';
+
+LogBox.ignoreLogs([
+    'Non-serializable values were found in the navigation state',
+]);
 import { themes } from '../../../theme/themes';
 
 const theme = themes.dark; // Using dark theme as requested for premium feel
@@ -57,6 +65,18 @@ const KYCUpdate: React.FC = () => {
     };
 
     const captureImage = async (type: 'front' | 'back') => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert(
+                'Quyền truy cập camera',
+                `Vui lòng cho phép truy cập camera trong cài đặt ${Platform.OS === 'ios' ? 'iOS' : 'Android'} để chụp ảnh CCCD.`,
+                [
+                    { text: 'Quay lại', style: 'cancel' },
+                    { text: 'Mở cài đặt', onPress: () => Linking.openSettings() },
+                ]
+            );
+            return;
+        }
         const result = await ImagePicker.launchCameraAsync({
             mediaTypes: 'images',
             allowsEditing: true,
@@ -150,6 +170,31 @@ const KYCUpdate: React.FC = () => {
         }
     };
 
+    /** Map Back OCR response (Python eKYC old/new format) to UI format */
+    const mapBackOCRToUI = (raw: any): { issueDate?: string; issueLoc?: string; expiryDate?: string; placeOfBirth?: string; address?: string } => {
+        if (!raw) return {};
+        let d: any = raw?.result ?? raw?.data ?? raw;
+        if (Array.isArray(d)) d = d[0];
+        if (d?.result) d = d.result;
+        if (d?.data && typeof d.data === 'object' && !Array.isArray(d.data)) {
+            d = { ...d, ...d.data };
+        }
+        const pick = (...keys: string[]): string | undefined => {
+            for (const k of keys) {
+                const v = d?.[k];
+                if (v != null && String(v).trim() !== '') return String(v).trim();
+            }
+            return undefined;
+        };
+        return {
+            issueDate: pick('issueDate', 'issue_date', 'init_date', 'cdate_of_issue', 'Date of issue'),
+            issueLoc: pick('issueLoc', 'issue_loc', 'place_of_issue', 'place', 'Issuer'),
+            expiryDate: pick('expiryDate', 'expiry_date', 'cdate_of_expiry', 'Date of expirty'),
+            placeOfBirth: pick('placeOfBirth', 'place_of_birth', 'cplace_of_birth'),
+            address: pick('address', 'address_1', 'address_2'),
+        };
+    };
+
     const handleOCRBack = async (uri: string) => {
         setLoading(true);
         try {
@@ -158,32 +203,13 @@ const KYCUpdate: React.FC = () => {
             const isSuccess = res && (res.success === true || res.errorCode === 0 || res.errorCode === "0");
 
             if (isSuccess) {
-                let payload = res.data;
-                let dataToMerge = Array.isArray(payload) ? payload[0] : (payload?.result || payload?.data || payload);
-                if (Array.isArray(dataToMerge)) dataToMerge = dataToMerge[0];
-                if (dataToMerge?.result) dataToMerge = dataToMerge.result;
-
-                // Map fields from FPT AI format to UI format
-                const name = dataToMerge?.fullName || dataToMerge?.name;
-                const id = dataToMerge?.idNumber || dataToMerge?.id;
-
-                const mappedData = {
-                    ...dataToMerge,
-                    name,
-                    id,
-                };
-
-                console.log('[KYC] Back ID OCR result:', mappedData);
-                setOcrData((prev: any) => {
-                    const newState = { ...prev };
-                    if (name) newState.name = name;
-                    if (id) newState.id = id;
-                    if (dataToMerge?.issueDate || dataToMerge?.issue_date || dataToMerge?.init_date)
-                        newState.issueDate = dataToMerge.issueDate || dataToMerge.issue_date || dataToMerge.init_date;
-                    if (dataToMerge?.issueLoc || dataToMerge?.issue_loc)
-                        newState.issueLoc = dataToMerge.issueLoc || dataToMerge.issue_loc;
-                    return newState;
-                });
+                const payload = res.data ?? res;
+                const mapped = mapBackOCRToUI(payload);
+                console.log('[KYC] Back ID OCR mapped:', mapped);
+                setOcrData((prev: any) => ({
+                    ...prev,
+                    ...mapped,
+                }));
             } else {
                 const errorMsg = res?.errorMessage || res?.error || res?.message || 'Không thể nhận diện mặt sau';
                 Alert.alert('Lỗi OCR', errorMsg);
@@ -203,11 +229,14 @@ const KYCUpdate: React.FC = () => {
                 if (frontImage) {
                     try {
                         const matchRes = await kycService.processFaceMatching(uris, frontImage);
-                        if (matchRes.success && matchRes.face_matching) {
+                        const ok = matchRes?.success && matchRes?.face_matching;
+                        const okAlt = matchRes?.data?.success && matchRes?.data?.face_matching;
+                        const passed = ok || okAlt;
+                        if (passed) {
                             setIsFaceVerified(true);
                             return { success: true };
                         } else {
-                            return { success: false, error: 'Khuôn mặt không khớp với ảnh CCCD' };
+                            return { success: false, error: matchRes?.error || matchRes?.data?.error || 'Khuôn mặt không khớp với ảnh CCCD' };
                         }
                     } catch (err) {
                         return { success: false, error: 'Lỗi xác thực hệ thống' };
@@ -242,18 +271,46 @@ const KYCUpdate: React.FC = () => {
         }
     };
 
-    const handleFinalSubmit = () => {
-        Alert.alert('Hoàn tất', 'Hồ sơ eKYC của bạn đã được gửi đi và đang chờ phê duyệt.', [
-            { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+    const handleFinalSubmit = async () => {
+        if (!frontImage || !backImage || !ocrData) {
+            Alert.alert('Lỗi', 'Thông tin hồ sơ không đầy đủ');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await kycService.saveKYC(
+                frontImage,
+                backImage,
+                {
+                    frontOCRData: ocrData,
+                    backOCRData: ocrData, // Depending on how you want to structure it, for now we pass the combined
+                    faceMatchingResult: { success: true },
+                    livenessResult: { success: true },
+                }
+            );
+
+            if (res?.success) {
+                Alert.alert('Hoàn tất', res.message || 'Hồ sơ eKYC của bạn đã được gửi đi và đang chờ phê duyệt.', [
+                    { text: 'OK', onPress: () => navigation.goBack() },
+                ]);
+            } else {
+                Alert.alert('Lỗi', res?.message || 'Không thể gửi hồ sơ');
+            }
+        } catch (error: any) {
+            Alert.alert('Lỗi', error.message || 'Lỗi kết nối máy chủ khi lữu trữ eKYC');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderStepContent = () => {
         switch (currentStep) {
             case KYCStep.FRONT_ID:
                 return (
-                    <View style={styles.stepContainer}>
+                    <ScrollView style={styles.stepScroll} contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
                         <Text style={styles.stepTitle}>Chụp mặt trước CCCD</Text>
+                        <Text style={[styles.stepSubtitle, { color: theme.colors.textSecondary }]}>Ảnh mặt trước (có ảnh, họ tên, số CCCD)</Text>
                         <TouchableOpacity style={styles.imagePlaceholder} onPress={() => pickImage('front')}>
                             {frontImage ? (
                                 <Image source={{ uri: frontImage }} style={styles.capturedImage} />
@@ -263,16 +320,22 @@ const KYCUpdate: React.FC = () => {
                         </TouchableOpacity>
                         {ocrData && currentStep === KYCStep.FRONT_ID && (
                             <View style={styles.ocrPreview}>
-                                <Text style={styles.ocrText}>Họ tên: {ocrData.name}</Text>
-                                <Text style={styles.ocrText}>Số CCCD: {ocrData.id}</Text>
+                                <Text style={styles.ocrText}>Họ tên: {ocrData.name || '---'}</Text>
+                                <Text style={styles.ocrText}>Số CCCD: {ocrData.id || '---'}</Text>
+                                <Text style={styles.ocrText}>Ngày sinh: {ocrData.dob || '---'}</Text>
+                                <Text style={styles.ocrText}>Giới tính: {ocrData.gender || '---'}</Text>
+                                <Text style={styles.ocrText}>Quốc tịch: {ocrData.nationality || '---'}</Text>
+                                <Text style={styles.ocrText}>Quê quán: {ocrData.birthplace || '---'}</Text>
+                                <Text style={styles.ocrText}>Địa chỉ: {ocrData.address || '---'}</Text>
                             </View>
                         )}
-                    </View>
+                    </ScrollView>
                 );
             case KYCStep.BACK_ID:
                 return (
-                    <View style={styles.stepContainer}>
+                    <ScrollView style={styles.stepScroll} contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
                         <Text style={styles.stepTitle}>Chụp mặt sau CCCD</Text>
+                        <Text style={[styles.stepSubtitle, { color: theme.colors.textSecondary }]}>Ảnh mặt sau (có ngày cấp, nơi cấp)</Text>
                         <TouchableOpacity style={styles.imagePlaceholder} onPress={() => pickImage('back')}>
                             {backImage ? (
                                 <Image source={{ uri: backImage }} style={styles.capturedImage} />
@@ -284,9 +347,11 @@ const KYCUpdate: React.FC = () => {
                             <View style={styles.ocrPreview}>
                                 <Text style={styles.ocrText}>Ngày cấp: {ocrData.issueDate || '---'}</Text>
                                 <Text style={styles.ocrText}>Nơi cấp: {ocrData.issueLoc || '---'}</Text>
+                                <Text style={styles.ocrText}>Ngày hết hạn: {ocrData.expiryDate || '---'}</Text>
+                                <Text style={styles.ocrText}>Nơi sinh: {ocrData.placeOfBirth || '---'}</Text>
                             </View>
                         )}
-                    </View>
+                    </ScrollView>
                 );
             case KYCStep.FACE_MATCHING:
                 return (
@@ -327,6 +392,18 @@ const KYCUpdate: React.FC = () => {
                                 <Text style={styles.infoValue}>{ocrData?.dob || '---'}</Text>
                             </View>
                             <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Giới tính</Text>
+                                <Text style={styles.infoValue}>{ocrData?.gender || '---'}</Text>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Quốc tịch</Text>
+                                <Text style={styles.infoValue}>{ocrData?.nationality || '---'}</Text>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Quê quán</Text>
+                                <Text style={styles.infoValue}>{ocrData?.birthplace || '---'}</Text>
+                            </View>
+                            <View style={styles.infoRow}>
                                 <Text style={styles.infoLabel}>Địa chỉ</Text>
                                 <Text style={styles.infoValue}>{ocrData?.address || '---'}</Text>
                             </View>
@@ -337,6 +414,14 @@ const KYCUpdate: React.FC = () => {
                             <View style={styles.infoRow}>
                                 <Text style={styles.infoLabel}>Nơi cấp</Text>
                                 <Text style={styles.infoValue}>{ocrData?.issueLoc || '---'}</Text>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Ngày hết hạn</Text>
+                                <Text style={styles.infoValue}>{ocrData?.expiryDate || '---'}</Text>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.infoLabel}>Nơi sinh</Text>
+                                <Text style={styles.infoValue}>{ocrData?.placeOfBirth || '---'}</Text>
                             </View>
                             <View style={styles.statusBox}>
                                 <Ionicons name="shield-checkmark" size={24} color={theme.colors.success} />
@@ -452,15 +537,22 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 24,
     },
-    stepContainer: {
+    stepScroll: {
         flex: 1,
+    },
+    stepContainer: {
         alignItems: 'center',
+        paddingBottom: 24,
     },
     stepTitle: {
         fontSize: 20,
         fontWeight: 'bold',
         color: theme.colors.text,
-        marginBottom: 30,
+        marginBottom: 8,
+    },
+    stepSubtitle: {
+        fontSize: 14,
+        marginBottom: 20,
         textAlign: 'center',
     },
     imagePlaceholder: {

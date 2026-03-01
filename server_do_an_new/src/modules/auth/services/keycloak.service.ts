@@ -145,6 +145,48 @@ export class KeycloakService {
   }
 
   /**
+   * Update user attributes in Keycloak
+   */
+  async updateUser(userId: string, attributes: Record<string, string | string[]>): Promise<void> {
+    const token = await this.getAdminToken();
+
+    try {
+      // Fetch current user details first because we need to send the whole object to update properly
+      const userResponse = await this.httpClient.get(`/admin/realms/${this.realm}/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const user = userResponse.data;
+
+      // Merge attributes
+      if (!user.attributes) user.attributes = {};
+
+      for (const [key, value] of Object.entries(attributes)) {
+        if (Array.isArray(value)) {
+          user.attributes[key] = value;
+        } else {
+          user.attributes[key] = [value];
+        }
+      }
+
+      await this.httpClient.put(
+        `/admin/realms/${this.realm}/users/${userId}`,
+        user,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      this.logger.log(`Updated user ${userId} attributes in Keycloak`);
+    } catch (error: any) {
+      this.logger.error(`Failed to update Keycloak user ${userId}`, error.response?.data || error.message);
+      throw new InternalServerErrorException('Không thể cập nhật hồ sơ định danh Keycloak');
+    }
+  }
+
+  /**
    * Find single user by username
    */
   async findUserByUsername(username: string): Promise<any | null> {

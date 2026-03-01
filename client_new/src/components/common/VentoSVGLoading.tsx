@@ -28,13 +28,13 @@ interface PathData {
     fillRule?: "evenodd" | "nonzero";
 }
 
-// --- FINTECH STYLE PATH ---
+// --- VENTO: Cải thiện tỷ lệ & đường cong
 const VENTO_PATHS: PathData[] = [
-    { d: 'M20 30 L45 85 L70 30', length: 140 }, // V: L->R
-    { d: 'M80 30 L110 30 M80 30 L80 85 L110 85 M80 57 L105 57', length: 155 }, // E: Fixed to L->R flow
-    { d: 'M125 85 L125 30 L165 85 L165 30', length: 180 }, // N: L->R
-    { d: 'M180 30 L230 30 M205 30 L205 85', length: 110 }, // T: L->R
-    { d: 'M250 30 L280 30 L295 57 L280 85 L250 85 L235 57 Z', length: 175 }, // O: L->R
+    { d: 'M22 30 L47 82 L72 30', length: 140 }, // V: cân đối
+    { d: 'M82 30 L112 30 M82 30 L82 82 L112 82 M82 56 L108 56', length: 155 }, // E
+    { d: 'M127 82 L127 30 L167 82 L167 30', length: 180 }, // N
+    { d: 'M182 30 L232 30 M207 30 L207 82', length: 110 }, // T
+    { d: 'M252 30 L282 30 L297 56 L282 82 L252 82 L237 56 Z', length: 175 }, // O: oval hài hòa
 ];
 
 const DECO_PATHS: PathData[] = [
@@ -135,10 +135,10 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
                 d={d}
                 fill="none"
                 stroke={primaryColor}
-                strokeWidth={strokeWidth * 1.8}
+                strokeWidth={strokeWidth * 1.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity={0.08}
+                opacity={0.06}
                 animatedProps={animatedProps}
                 fillRule={fillRule}
             />
@@ -156,8 +156,8 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
             <AnimatedPath
                 d={d}
                 fill="none"
-                stroke="#FFF8DC"
-                strokeWidth={strokeWidth * 1.2}
+                stroke="#FFFBF0"
+                strokeWidth={strokeWidth * 1.05}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 animatedProps={headProps}

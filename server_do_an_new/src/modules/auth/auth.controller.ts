@@ -129,7 +129,13 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Trả về thông tin user hiện tại' })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async getProfile(@CurrentUser() user: UserPayload) {
-    return { data: user };
+    const mongoProfile = user._id ? await this.userSyncService.getProfileWithKyc(user._id) : null;
+    const data = {
+      ...user,
+      profile: mongoProfile?.profile,
+      kycStatus: mongoProfile?.kycStatus ?? 'NONE',
+    };
+    return { data };
   }
 
   @Public()

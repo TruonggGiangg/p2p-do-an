@@ -10,6 +10,7 @@ import {
   LogoutOutlined,
   SunOutlined,
   MoonOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 
@@ -20,6 +21,7 @@ const menuItems = [
   { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
+  { key: '/kyc-approvals', icon: <IdcardOutlined />, label: 'Phê duyệt KYC' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
 ];

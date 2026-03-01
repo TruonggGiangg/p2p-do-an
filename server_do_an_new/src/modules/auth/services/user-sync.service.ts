@@ -144,6 +144,14 @@ export class UserSyncService {
     await mongoUser.save();
   }
 
+  /**
+   * Get user profile with kycStatus from MongoDB (for /auth/me)
+   */
+  async getProfileWithKyc(userId: string): Promise<{ profile?: any; kycStatus?: string } | null> {
+    const user = await this.userModel.findById(userId).select('profile kycStatus').lean();
+    return user ? { profile: user.profile, kycStatus: user.kycStatus } : null;
+  }
+
   private async syncWallets(mongoUser: User, fineractClientId: number, username: string): Promise<void> {
     const accounts = await this.fineractService.getSavingsAccounts(fineractClientId);
 

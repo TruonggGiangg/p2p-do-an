@@ -51,6 +51,12 @@ export default () => ({
     currencyMultiples: parseInt(process.env.BNPL_CURRENCY_MULTIPLES || '1000', 10),
   },
 
+  ekyc: {
+    serviceUrl: process.env.EKYC_SERVICE_URL || 'http://localhost:8000',
+    timeout: parseInt(process.env.EKYC_TIMEOUT || '20000', 10),
+    bypassFaceMatch: process.env.EKYC_BYPASS_FACE_MATCH === 'true',
+  },
+
   security: {
     corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['*'],
     cookieSecure: process.env.COOKIE_SECURE === 'true',

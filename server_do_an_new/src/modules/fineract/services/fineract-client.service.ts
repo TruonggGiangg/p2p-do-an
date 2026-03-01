@@ -153,4 +153,125 @@ export class FineractClientService extends FineractBaseService {
         }
         return result;
     }
+
+    /**
+     * Update client information in Fineract (PUT /clients/{clientId})
+     */
+    async updateClient(clientId: number, data: Record<string, any>): Promise<void> {
+        try {
+            const payload: any = { ...this.getCommonLocaleParams('display') };
+            const allowed = ['firstname', 'lastname', 'dateOfBirth', 'externalId', 'mobileNo', 'emailAddress'];
+            for (const k of allowed) {
+                if (data[k] != null) payload[k] = data[k];
+            }
+            if (Object.keys(payload).length <= 2) return;
+            await this.client.put(`/clients/${clientId}`, payload);
+            this.logger.log(`[updateClient] Updated client ${clientId}`);
+        } catch (error: any) {
+            this.logger.warn(`[updateClient] Failed to update client ${clientId}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get client identifiers for a specific Fineract client
+     */
+    async getClientIdentifiers(clientId: number): Promise<any[]> {
+        try {
+            const response = await this.client.get(`/clients/${clientId}/identifiers`);
+            return response.data || [];
+        } catch (error: any) {
+            this.handleError(error, `Failed to get identifiers for client ${clientId}`);
+            return [];
+        }
+    }
+
+    /**
+     * Create a new client identifier in Fineract
+     */
+    async createClientIdentifier(clientId: number, documentTypeId: number, documentKey: string, description: string): Promise<number> {
+        try {
+            const response = await this.client.post(`/clients/${clientId}/identifiers`, {
+                documentTypeId,
+                documentKey,
+                description,
+                status: 'Active',
+            });
+            return response.data?.resourceId;
+        } catch (error: any) {
+            this.handleError(error, `Failed to create identifier for client ${clientId}`);
+        }
+    }
+
+    /**
+     * Delete a generic Fineract Document attached to an entity
+     */
+    async deleteDocument(entityType: string, entityId: number, documentId: number): Promise<void> {
+        try {
+            await this.client.delete(`/${entityType}/${entityId}/documents/${documentId}`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to delete document ${documentId} for ${entityType} ${entityId}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Download/stream document content from Fineract (clients or client_identifiers)
+     */
+    async downloadDocument(entityType: string, entityId: number, documentId: number): Promise<any> {
+        try {
+            this.logger.log(`[downloadDocument] entityType=${entityType} entityId=${entityId} documentId=${documentId}`);
+            const response = await this.client.get(`/${entityType}/${entityId}/documents/${documentId}/attachment`, {
+                responseType: 'arraybuffer',
+            });
+            return response;
+        } catch (error: any) {
+            this.logger.error(`[downloadDocument] FAILED ${entityType}/${entityId}/documents/${documentId}: ${error.message}`);
+            this.handleError(error, `Failed to download document ${documentId}`);
+        }
+    }
+
+    /**
+     * Get documents attached to a specific entity
+     */
+    async getEntityDocuments(entityType: string, entityId: number): Promise<any[]> {
+        try {
+            const response = await this.client.get(`/${entityType}/${entityId}/documents`);
+            return response.data || [];
+        } catch (error: any) {
+            this.logger.warn(`Failed to get documents for ${entityType} ${entityId}: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Upload a document to an entity in Fineract (e.g., client_identifiers)
+     */
+    async uploadDocument(entityType: string, entityId: number, name: string, description: string, fileBuffer: Buffer, filename: string): Promise<number> {
+        try {
+            // Check if document with same name exists and delete it
+            const existingDocs = await this.getEntityDocuments(entityType, entityId);
+            const oldDoc = existingDocs.find(d => d.name === name);
+            if (oldDoc) {
+                await this.deleteDocument(entityType, entityId, oldDoc.id);
+            }
+
+            const FormData = require('form-data');
+            const formData = new FormData();
+
+            formData.append('name', name);
+            formData.append('description', description);
+            formData.append('file', fileBuffer, {
+                filename,
+                contentType: 'image/jpeg',
+            });
+
+            const response = await this.client.post(`/${entityType}/${entityId}/documents`, formData, {
+                headers: formData.getHeaders(),
+            });
+
+            return response.data?.resourceId;
+        } catch (error: any) {
+            this.handleError(error, `Failed to upload document ${name} to ${entityType} ${entityId}`);
+        }
+    }
 }

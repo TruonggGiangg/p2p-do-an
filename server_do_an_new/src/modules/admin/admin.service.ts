@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { FineractClientService } from '../fineract/services/fineract-client.service';
+import { KeycloakService } from '../auth/services/keycloak.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
@@ -31,6 +32,7 @@ export class AdminService {
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
+    private readonly keycloakService: KeycloakService,
   ) { }
 
   // ---------- Loan products (from Fineract) ----------
@@ -219,7 +221,7 @@ export class AdminService {
     const clientIds = uniqueClients.map(c => c.id);
     const mongoUsers = await this.userModel
       .find({ fineractClientId: { $in: clientIds.map(String) } })
-      .select('username email profile fineractClientId status createdAt')
+      .select('username email profile fineractClientId status kycStatus createdAt')
       .lean();
 
     const userMap = new Map<string, any>();
@@ -252,6 +254,7 @@ export class AdminService {
         officeName: fc?.officeName ?? 'Head Office',
         activationDate: fc?.activationDate ?? null,
         displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
+        kycStatus: u?.kycStatus ?? 'NONE',
       };
     });
 
@@ -262,14 +265,14 @@ export class AdminService {
     let user: any = null;
     if (Types.ObjectId.isValid(userId)) {
       user = await this.userModel.findById(userId)
-        .select('username email profile fineractClientId status createdAt metadata')
+        .select('username email profile fineractClientId status kycStatus createdAt metadata')
         .lean();
     }
 
     // If not found by Mongo ID, maybe userId is actually a fineractClientId
     if (!user) {
       user = await this.userModel.findOne({ fineractClientId: userId })
-        .select('username email profile fineractClientId status createdAt metadata')
+        .select('username email profile fineractClientId status kycStatus createdAt metadata')
         .lean();
     }
 
@@ -287,6 +290,7 @@ export class AdminService {
       profile: user?.profile ?? { firstName: fc?.firstname, lastName: fc?.lastname },
       fineractClientId: user?.fineractClientId ?? String(fineractClientId),
       status: user?.status ?? 'active',
+      kycStatus: user?.kycStatus ?? 'NONE',
       createdAt: (user as any)?.createdAt ?? (fc as any)?.activationDate ?? null,
       // Fineract enrichment
       fineractStatus: fc?.status ?? null,
@@ -562,5 +566,165 @@ export class AdminService {
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
     this.logger.log(`[getLoanDocumentStream] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
     return this.fineractLoanService.downloadDocument(fineractLoanId, documentId);
+  }
+
+  // ---------- KYC Approvals ----------
+
+  /** Danh sách user có kycStatus = PENDING */
+  async getPendingKycUsers() {
+    const users = await this.userModel
+      .find({ kycStatus: 'PENDING' })
+      .select('username email profile fineractClientId kycStatus kycData createdAt')
+      .sort({ 'kycData.metadata.kycCompletedAt': -1 })
+      .lean();
+
+    return users.map((u: any) => ({
+      _id: u._id?.toString(),
+      username: u.username,
+      email: u.email,
+      profile: u.profile,
+      fineractClientId: u.fineractClientId,
+      kycStatus: u.kycStatus,
+      kycCompletedAt: u.kycData?.metadata?.kycCompletedAt,
+      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
+    }));
+  }
+
+  /** Chi tiết KYC của user (OCR + danh sách tài liệu từ Fineract) */
+  async getKycDetail(userId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId).lean();
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ fineractClientId: userId }).lean();
+    }
+    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
+
+    const kycData = user.kycData || {};
+    const metadata = kycData.metadata || {};
+    const fineractIdentifiers = metadata.fineractIdentifiers || {};
+    const fineractClientDocs = metadata.fineractClientDocs || {};
+
+    const documents: { id: number; name: string; entityType: string; entityId: number; label: string }[] = [];
+
+    const clientId = user.fineractClientId ? parseInt(user.fineractClientId) : null;
+    if (clientId) {
+      const clientDocs = await this.fineractClientService.getEntityDocuments('clients', clientId);
+      for (const d of clientDocs || []) {
+        documents.push({
+          id: d.id,
+          name: d.name || d.fileName || 'document',
+          entityType: 'clients',
+          entityId: clientId,
+          label: d.description || d.name || 'CCCD',
+        });
+      }
+      const identifierId = fineractIdentifiers.identifierId;
+      if (identifierId) {
+        const idDocs = await this.fineractClientService.getEntityDocuments('client_identifiers', identifierId);
+        for (const d of idDocs || []) {
+          documents.push({
+            id: d.id,
+            name: d.name || d.fileName || 'document',
+            entityType: 'client_identifiers',
+            entityId: identifierId,
+            label: d.description || d.name || 'CCCD',
+          });
+        }
+      }
+    }
+
+    return {
+      user: {
+        _id: user._id?.toString(),
+        username: user.username,
+        email: user.email,
+        profile: user.profile,
+        fineractClientId: user.fineractClientId,
+        kycStatus: user.kycStatus,
+      },
+      ocr: {
+        fullName: kycData.fullName,
+        ssn: kycData.ssn,
+        dateOfBirth: kycData.dateOfBirth,
+        address: kycData.address,
+        sex: kycData.sex,
+      },
+      metadata: {
+        kycCompletedAt: metadata.kycCompletedAt,
+        faceMatchingResult: metadata.faceMatchingResult,
+        fineractIdentifiers,
+        fineractClientDocs,
+      },
+      documents,
+    };
+  }
+
+  /** Phê duyệt KYC: cập nhật MongoDB + Keycloak */
+  async approveKyc(userId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId);
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ fineractClientId: userId });
+    }
+    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
+    if (user.kycStatus !== 'PENDING') {
+      throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}, không thể phê duyệt`);
+    }
+
+    user.kycStatus = 'VERIFIED';
+    await user.save();
+
+    if (user.keycloakId) {
+      try {
+        await this.keycloakService.updateUser(user.keycloakId, { kycStatus: 'verified' });
+        this.logger.log(`[approveKyc] Updated Keycloak kycStatus for ${user.keycloakId}`);
+      } catch (err: any) {
+        this.logger.warn(`[approveKyc] Keycloak update failed: ${err.message}`);
+      }
+    }
+
+    return { kycStatus: 'VERIFIED', userId: user._id?.toString() };
+  }
+
+  /** Từ chối KYC */
+  async rejectKyc(userId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId);
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ fineractClientId: userId });
+    }
+    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
+    if (user.kycStatus !== 'PENDING') {
+      throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}`);
+    }
+
+    user.kycStatus = 'REJECTED';
+    await user.save();
+
+    if (user.keycloakId) {
+      try {
+        await this.keycloakService.updateUser(user.keycloakId, { kycStatus: 'rejected' });
+      } catch (err: any) {
+        this.logger.warn(`[rejectKyc] Keycloak update failed: ${err.message}`);
+      }
+    }
+
+    return { kycStatus: 'REJECTED', userId: user._id?.toString() };
+  }
+
+  /** Stream tài liệu KYC từ Fineract */
+  async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) {
+    const detail = await this.getKycDetail(userId);
+    const doc = detail.documents.find(
+      (d: any) => d.entityType === entityType && Number(d.entityId) === Number(entityId) && Number(d.id) === Number(documentId),
+    );
+    if (!doc) throw new NotFoundException('Tài liệu không tồn tại');
+    return this.fineractClientService.downloadDocument(entityType, entityId, documentId);
   }
 }

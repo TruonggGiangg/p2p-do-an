@@ -207,6 +207,12 @@ export default function CustomerDetailPage() {
                             <Descriptions.Item label="TT Fineract">
                                 <FineractStatusBadge status={customer.fineractStatus} />
                             </Descriptions.Item>
+                            <Descriptions.Item label="Trạng thái KYC">
+                                {customer.kycStatus === 'VERIFIED' && <Tag color="success">Đã xác minh</Tag>}
+                                {customer.kycStatus === 'PENDING' && <Tag color="processing">Chờ phê duyệt</Tag>}
+                                {customer.kycStatus === 'REJECTED' && <Tag color="error">Từ chối</Tag>}
+                                {(customer.kycStatus === 'NONE' || !customer.kycStatus) && <Tag>Chưa xác minh</Tag>}
+                            </Descriptions.Item>
                             <Descriptions.Item label={<><BankOutlined /> Fineract ID</>}>
                                 {customer.fineractClientId
                                     ? <Tag color="blue" style={{ fontFamily: 'monospace' }}>{customer.fineractClientId}</Tag>

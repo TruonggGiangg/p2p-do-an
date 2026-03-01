@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -21,30 +21,61 @@ export default function NotificationScreen() {
     const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const [offset, setOffset] = useState(0);
+    const LIMIT = 10;
+    const loadingMoreRef = useRef(false);
+    const offsetRef = useRef(0);
 
-    const fetchTransactions = async () => {
+    const fetchTransactions = useCallback(async (isLoadMore = false) => {
         try {
-            const response = await walletAPI.getTransactions(50, 0);
-            setTransactions(response.transactions || []);
+            const currentOffset = isLoadMore ? offsetRef.current : 0;
+            const response = await walletAPI.getTransactions(LIMIT, currentOffset);
+            const newTxs = response.transactions || [];
+
+            if (isLoadMore) {
+                setTransactions(prev => [...prev, ...newTxs]);
+            } else {
+                setTransactions(newTxs);
+            }
+
+            const nextOffset = currentOffset + LIMIT;
+            offsetRef.current = nextOffset;
+            setOffset(nextOffset);
+            setHasMore(newTxs.length === LIMIT);
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
+            setLoadingMore(false);
+            loadingMoreRef.current = false;
         }
-    };
-
-    useEffect(() => {
-        fetchTransactions();
     }, []);
 
-    const onRefresh = () => {
+    useEffect(() => {
+        fetchTransactions(false);
+    }, [fetchTransactions]);
+
+    const onRefresh = useCallback(() => {
         setRefreshing(true);
-        fetchTransactions();
-    };
+        offsetRef.current = 0;
+        setOffset(0);
+        setHasMore(true);
+        fetchTransactions(false);
+    }, [fetchTransactions]);
+
+    const handleLoadMore = useCallback(() => {
+        if (loadingMoreRef.current || !hasMore || loading || refreshing) return;
+        if (transactions.length < LIMIT) return; // Tránh gọi khi list ngắn chưa đủ 1 trang
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+        fetchTransactions(true);
+    }, [hasMore, loading, refreshing, fetchTransactions, transactions.length]);
 
     const renderNotificationItem = ({ item }: { item: WalletTransaction }) => {
-        const isIncome = item.type === 'deposit' || item.type === 'transfer_in';
+        const isIncome = item.amount >= 0;
         const date = new Date(item.date);
         const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -53,11 +84,11 @@ export default function NotificationScreen() {
             <TouchableOpacity activeOpacity={0.7} style={styles.notificationWrapper}>
                 <CommonCard style={styles.notificationCard}>
                     <View style={styles.notificationInner}>
-                        <View style={[styles.iconContainer, { backgroundColor: isIncome ? theme.colors.success + '15' : theme.colors.error + '15' }]}>
+                        <View style={[styles.iconContainer, { backgroundColor: isIncome ? '#0ECB8115' : '#F6465D15' }]}>
                             <MaterialCommunityIcons
-                                name={isIncome ? 'arrow-bottom-left' : 'arrow-top-right'}
+                                name={isIncome ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
                                 size={22}
-                                color={isIncome ? theme.colors.success : theme.colors.error}
+                                color={isIncome ? '#0ECB81' : '#F6465D'}
                             />
                         </View>
                         <View style={styles.contentContainer}>
@@ -66,24 +97,18 @@ export default function NotificationScreen() {
                                     style={[styles.title, { color: theme.colors.textPrimary }]}
                                     numberOfLines={1}
                                 >
-                                    {isIncome ? 'Nhận tiền' : 'Chuyển tiền'}
+                                    {item.description || item.type || 'Giao dịch'}
                                 </Text>
-                                <Text style={[styles.amount, { color: isIncome ? theme.colors.success : theme.colors.error }]}>
-                                    {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+                                <Text style={[styles.amount, { color: isIncome ? '#0ECB81' : '#F6465D' }]}>
+                                    {isIncome ? '+' : ''}{formatCurrency(Math.abs(item.amount))}
                                 </Text>
                             </View>
                             <Text
                                 style={[styles.description, { color: theme.colors.textSecondary }]}
                                 numberOfLines={1}
                             >
-                                {item.description || (isIncome ? 'Nạp tiền vào tài khoản' : 'Thanh toán/Chuyển tiền')}
+                                {timeStr} • {dateStr}
                             </Text>
-                            <View style={styles.footerRow}>
-                                <Text style={[styles.time, { color: theme.colors.textDim }]}>
-                                    {timeStr} • {dateStr}
-                                </Text>
-                                <MaterialCommunityIcons name="chevron-right" size={16} color={theme.colors.textDim} />
-                            </View>
                         </View>
                     </View>
                 </CommonCard>
@@ -110,6 +135,13 @@ export default function NotificationScreen() {
                             keyExtractor={(item: WalletTransaction) => item.id}
                             renderItem={renderNotificationItem}
                             contentContainerStyle={styles.listContent}
+                            onEndReached={handleLoadMore}
+                            onEndReachedThreshold={0.2}
+                            ListFooterComponent={
+                                <View style={{ padding: 16 }}>
+                                    {loadingMore && <ActivityIndicator color={theme.colors.primary} />}
+                                </View>
+                            }
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer}>
                                     <MaterialCommunityIcons name="bell-off-outline" size={64} color={theme.colors.textDim} />

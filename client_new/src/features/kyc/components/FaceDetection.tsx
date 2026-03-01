@@ -8,6 +8,9 @@ import {
     TouchableOpacity,
     Animated,
     ActivityIndicator,
+    ScrollView,
+    Linking,
+    Platform,
 } from 'react-native';
 import { Camera, CameraView, CameraType, PermissionStatus } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,7 +79,7 @@ const FaceDetection: React.FC = () => {
         return () => animation.stop();
     }, [pulseAnim]);
 
-    // Check permissions
+    // Check permissions on mount
     useEffect(() => {
         (async () => {
             const { status } = await Camera.getCameraPermissionsAsync();
@@ -219,16 +222,18 @@ const FaceDetection: React.FC = () => {
     if (hasPermission === null) {
         return (
             <View style={styles.container}>
-                <View style={styles.permissionContainer}>
-                    <Ionicons name="camera" size={48} color={COLORS.primary} />
-                    <Text style={styles.permissionTitle}>Quyền Truy Cập Camera</Text>
-                    <Text style={styles.permissionDesc}>
-                        Ứng dụng cần quyền sử dụng camera để thực hiện xác thực khuôn mặt.
-                    </Text>
-                    <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-                        <Text style={styles.permissionButtonText}>Cho phép truy cập</Text>
-                    </TouchableOpacity>
-                </View>
+                <ScrollView contentContainerStyle={styles.permissionScroll} showsVerticalScrollIndicator={false}>
+                    <View style={styles.permissionContainer}>
+                        <Ionicons name="camera" size={48} color={COLORS.primary} />
+                        <Text style={styles.permissionTitle}>Quyền Truy Cập Camera</Text>
+                        <Text style={styles.permissionDesc}>
+                            Ứng dụng cần quyền sử dụng camera để thực hiện xác thực khuôn mặt.
+                        </Text>
+                        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+                            <Text style={styles.permissionButtonText}>Cho phép truy cập</Text>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
             </View>
         );
     }
@@ -236,16 +241,21 @@ const FaceDetection: React.FC = () => {
     if (hasPermission === false) {
         return (
             <View style={styles.container}>
-                <View style={styles.permissionContainer}>
-                    <Ionicons name={"camera-off" as any} size={64} color={COLORS.error} />
-                    <Text style={styles.permissionTitle}>Quyền bị từ chối</Text>
-                    <Text style={styles.permissionDesc}>
-                        Vui lòng cho phép truy cập camera trong cài đặt điện thoại.
-                    </Text>
-                    <TouchableOpacity style={styles.permissionButton} onPress={() => navigation.goBack()}>
-                        <Text style={styles.permissionButtonText}>Quay lại</Text>
-                    </TouchableOpacity>
-                </View>
+                <ScrollView contentContainerStyle={styles.permissionScroll} showsVerticalScrollIndicator={false}>
+                    <View style={styles.permissionContainer}>
+                        <Ionicons name="alert-circle-outline" size={64} color={COLORS.error} />
+                        <Text style={styles.permissionTitle}>Quyền bị từ chối</Text>
+                        <Text style={styles.permissionDesc}>
+                            Vui lòng cho phép truy cập camera trong cài đặt {Platform.OS === 'ios' ? 'iOS' : 'Android'} để chụp ảnh xác thực.
+                        </Text>
+                        <TouchableOpacity style={styles.permissionButton} onPress={() => Linking.openSettings()}>
+                            <Text style={styles.permissionButtonText}>Mở cài đặt</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.permissionButton, { marginTop: 12, backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.grayLight }]} onPress={() => navigation.goBack()}>
+                            <Text style={[styles.permissionButtonText, { color: COLORS.grayLight }]}>Quay lại</Text>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
             </View>
         );
     }
@@ -407,8 +417,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
     },
+    permissionScroll: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        paddingVertical: 40,
+    },
     permissionContainer: {
-        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 30,

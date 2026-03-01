@@ -27,6 +27,10 @@ export class FineractService {
     return this.clientService.createClient(data);
   }
 
+  async updateClient(clientId: number, data: Record<string, any>): Promise<void> {
+    return this.clientService.updateClient(clientId, data);
+  }
+
   async findClientByIdentifier(identifier: string): Promise<any | null> {
     return this.clientService.findClientByIdentifier(identifier);
   }

@@ -1,6 +1,7 @@
 import {
     Controller,
     Post,
+    Req,
     UploadedFiles,
     UseInterceptors,
     BadRequestException,
@@ -55,5 +56,49 @@ export class EkycController {
 
         const portraitBuffers = portraitFiles.map((f) => f.buffer);
         return this.ekycService.checkLiveness(portraitBuffers, frontIDFile.buffer);
+    }
+
+    @Post('save')
+    @UseInterceptors(AnyFilesInterceptor())
+    async saveKyc(@Req() req: any, @UploadedFiles() files: any[]) {
+        const userId = req.user.id || req.user._id || req.user.keycloakUserId; // Map from JWT Payload
+        if (!userId) {
+            throw new BadRequestException('Không tìm thấy thông tin định danh người dùng');
+        }
+
+        const body = req.body;
+
+        let frontOCRData: any = body.frontOCRData;
+        let backOCRData: any = body.backOCRData;
+        let faceMatchingResult: any = body.faceMatchingResult;
+        let livenessResult: any = body.livenessResult;
+
+        // Parse JSON strings if they were sent as form fields
+        if (typeof frontOCRData === 'string') try { frontOCRData = JSON.parse(frontOCRData); } catch (e) { }
+        if (typeof backOCRData === 'string') try { backOCRData = JSON.parse(backOCRData); } catch (e) { }
+        if (typeof faceMatchingResult === 'string') try { faceMatchingResult = JSON.parse(faceMatchingResult); } catch (e) { }
+        if (typeof livenessResult === 'string') try { livenessResult = JSON.parse(livenessResult); } catch (e) { }
+
+        if (!frontOCRData) {
+            throw new BadRequestException('Thiếu thông tin OCR mặt trước CCCD');
+        }
+
+        const frontFile = files?.find((f) => f.fieldname === 'frontImage');
+        const backFile = files?.find((f) => f.fieldname === 'backImage');
+        const frontImageBuffer = frontFile?.buffer;
+        const backImageBuffer = backFile?.buffer;
+        if (files?.length) {
+            this.logger.log(`[saveKyc] Files: ${files.map((f) => `${f.fieldname}(${f.buffer?.length || 0}b)`).join(', ')}`);
+        }
+
+        return this.ekycService.saveKycData(
+            userId,
+            frontOCRData,
+            backOCRData,
+            frontImageBuffer,
+            backImageBuffer,
+            faceMatchingResult,
+            livenessResult
+        );
     }
 }

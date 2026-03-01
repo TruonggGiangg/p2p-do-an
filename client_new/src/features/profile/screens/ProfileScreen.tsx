@@ -169,12 +169,24 @@ export default function ProfileScreen() {
                     <SettingItem
                         icon="shield-check-outline"
                         title="Xác minh danh tính"
-                        subtitle={(user as any)?.kycStatus === 'VERIFIED' ? 'Đã xác minh (eKYC)' : 'Chưa xác minh'}
+                        subtitle={
+                            (user as any)?.kycStatus === 'VERIFIED'
+                                ? 'Đã xác minh (eKYC)'
+                                : (user as any)?.kycStatus === 'PENDING'
+                                ? 'Đang chờ phê duyệt'
+                                : 'Chưa xác minh'
+                        }
                         onPress={() => {
                             console.log('eKYC SettingItem pressed');
                             (navigation as any).getParent()?.navigate('KYCUpdate');
                         }}
-                        color={(user as any)?.kycStatus === 'VERIFIED' ? theme.colors.success : theme.colors.warning}
+                        color={
+                            (user as any)?.kycStatus === 'VERIFIED'
+                                ? theme.colors.success
+                                : (user as any)?.kycStatus === 'PENDING'
+                                ? theme.colors.primary
+                                : theme.colors.warning
+                        }
                     />
                     <View style={{ height: 12 }} />
                     <SmartOTPSection />
