@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { StyleSheet, View, Dimensions, ViewStyle, StyleProp } from 'react-native';
+import { StyleSheet, View, Dimensions, ViewStyle, StyleProp, Platform, Vibration } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     Gesture,
     GestureDetector,
-    GestureHandlerRootView
+    GestureHandlerRootView,
+    ScrollView as GHScrollView,
 } from 'react-native-gesture-handler';
 import Animated, {
     useSharedValue,
@@ -16,7 +18,9 @@ import Animated, {
     useAnimatedScrollHandler,
     withRepeat,
     withDelay,
-    SharedValue
+    SharedValue,
+    Easing,
+    useAnimatedReaction
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
@@ -24,9 +28,27 @@ import VentoUltimateLoading from './VentoSVGLoading';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const REFRESH_THRESHOLD = 110;
-const HEADER_HEIGHT = 150; // More compact header
+const REFRESH_THRESHOLD = 50; // Match reference
+const HEADER_HEIGHT = 150;
+const REFRESH_SHOW_HEIGHT = 100;
 
+// scrollY <= PULL_ZONE_THRESHOLD mới hiện chữ loading khi kéo. Tăng lên để ổn định hơn khi scroll nhanh
+const PULL_ZONE_THRESHOLD = 25;
+
+const EASING_OUT = Easing.bezier(0.33, 1, 0.68, 1);
+
+// DEBUG: Bật true để xem log khi lướt xuống pull-to-refresh
+const DEBUG_PULL_TO_REFRESH = false;
+const debugLog = (...args: unknown[]) => {
+    if (DEBUG_PULL_TO_REFRESH) {
+        console.log('[FintechPullToRefresh]', ...args);
+    }
+};
+
+// iOS: Dùng ScrollView từ gesture-handler để gesture Pan + Native scroll hoạt động đồng thời
+const AnimatedGHScrollView = Animated.createAnimatedComponent(GHScrollView);
+
+// ... (FloatingParticle is fine as is)
 interface FloatingParticleProps {
     index: number;
     pullProgress: SharedValue<number>;
@@ -80,7 +102,6 @@ interface FintechPullToRefreshProps {
     showsVerticalScrollIndicator?: boolean;
     topOffset?: number;
     style?: StyleProp<ViewStyle>;
-    // New props for Flexibility
     renderScrollComponent?: (props: any) => ReactNode;
     scrollProps?: any;
     primaryColor?: string;
@@ -104,6 +125,8 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     glowColor,
 }) => {
     const { theme } = useTheme();
+    const insets = useSafeAreaInsets();
+    const safeTop = Platform.OS === 'ios' ? insets.top : 0;
     const activePrimary = primaryColor || theme.colors.primary;
     const activeGlow = glowColor || theme.colors.primaryLight;
 
@@ -111,146 +134,247 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     const scrollY = useSharedValue(0);
     const isRefreshingValue = useSharedValue(false);
     const pullProgress = useSharedValue(0);
+    const lastHapticStep = useSharedValue(-1);
+    const hasTriggeredPullStart = useSharedValue(false);
 
     const [isRefreshingUI, setIsRefreshingUI] = useState(false);
+    const [showParticles, setShowParticles] = useState(false);
+    const showStartRef = React.useRef<number | null>(null);
+    const pendingHideRef = React.useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        isRefreshingValue.value = refreshing;
-        setIsRefreshingUI(refreshing);
+        if (DEBUG_PULL_TO_REFRESH) {
+            debugLog('Mount', { Platform: Platform.OS });
+        }
+    }, []);
+
+    useAnimatedReaction(
+        () => (pullProgress.value > 0.08 || isRefreshingValue.value),
+        (shouldShow) => {
+            runOnJS(setShowParticles)(shouldShow);
+        }
+    );
+
+    const MIN_DISPLAY_MS = 700;
+
+    useEffect(() => {
         if (refreshing) {
-            // Ensure snap to resting position if refreshing is triggered externally
-            translationY.value = withSpring(85, { damping: 18, stiffness: 50 });
-            pullProgress.value = 1;
+            if (pendingHideRef.current) {
+                clearTimeout(pendingHideRef.current);
+                pendingHideRef.current = null;
+            }
+            showStartRef.current = Date.now();
+            isRefreshingValue.value = true;
+            setIsRefreshingUI(true);
+            setShowParticles(true);
+            translationY.value = withSpring(REFRESH_SHOW_HEIGHT, { damping: 20, stiffness: 120 });
+            pullProgress.value = withTiming(1, { duration: 250 });
         } else {
-            // Quick snap back after load
-            translationY.value = withTiming(0, { duration: 300 });
-            pullProgress.value = withTiming(0, { duration: 300 });
+            const minDisplayDuration = MIN_DISPLAY_MS;
+            const elapsed = showStartRef.current ? Date.now() - showStartRef.current : minDisplayDuration;
+            const delay = Math.max(0, minDisplayDuration - elapsed);
+
+            const doHide = () => {
+                pendingHideRef.current = null;
+                isRefreshingValue.value = false;
+                setIsRefreshingUI(false);
+                setShowParticles(false);
+                translationY.value = withTiming(0, { duration: 320, easing: EASING_OUT });
+                pullProgress.value = withTiming(0, { duration: 280, easing: EASING_OUT });
+            };
+
+            if (delay > 0) {
+                pendingHideRef.current = setTimeout(doHide, delay);
+            } else {
+                doHide();
+            }
+            return () => {
+                if (pendingHideRef.current) clearTimeout(pendingHideRef.current);
+            };
         }
     }, [refreshing]);
 
     const onPullTrigger = useCallback(() => {
+        debugLog('onPullTrigger - onRefresh được gọi');
         if (onRefresh) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            if (Platform.OS === 'android') {
+                Vibration.vibrate([0, 40, 60, 40]); // Rung khi refresh thành công
+            }
             onRefresh();
         }
     }, [onRefresh]);
 
+    const triggerHapticStep = useCallback((step: number) => {
+        if (step <= 0.33) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        else if (step <= 0.66) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }, []);
+
+    const triggerPullStartHaptic = useCallback(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }, []);
+
+    const triggerThresholdReachedHaptic = useCallback(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        if (Platform.OS === 'android') {
+            Vibration.vibrate([0, 30, 50, 30]); // Rung mạnh khi đạt ngưỡng - thả ra để refresh
+        }
+    }, []);
+
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => {
-            scrollY.value = event.contentOffset.y;
+            const y = event.contentOffset.y;
+            scrollY.value = y;
+            // Log khi ở gần đầu list (vùng có thể pull)
+            if (DEBUG_PULL_TO_REFRESH && y <= 15 && y >= -5) {
+                runOnJS(debugLog)('onScroll (gần top)', { scrollY: y });
+            }
         },
     });
 
     const panGesture = Gesture.Pan()
+        .onStart(() => {
+            runOnJS(debugLog)('Pan onStart', { scrollY: scrollY.value, isRefreshing: isRefreshingValue.value });
+        })
         .onUpdate((event) => {
             if (isRefreshingValue.value) return;
 
-            // Only pull if we are at the top and pulling down
-            if (scrollY.value <= 4 && event.translationY > 0) {
-                // Progressive dampening for a "heavy" fintech feel
+            // Chỉ hiện loading khi ở gần đầu list (scrollY <= PULL_ZONE_THRESHOLD)
+            if (scrollY.value <= PULL_ZONE_THRESHOLD && event.translationY > 0) {
                 const input = event.translationY;
-                const resistance = 0.65; // High resistance
-                const dampened = 180 * (1 - Math.exp(-input * resistance / 380));
+                const resistance = 0.5;
+                const dampened = 200 * (1 - Math.exp(-input * resistance / 350));
 
-                // Trigger subtle haptic "ticks" while pulling
-                const newProgress = interpolate(dampened, [25, REFRESH_THRESHOLD], [0, 1], Extrapolate.CLAMP);
-                if (Math.floor(newProgress * 10) > Math.floor(pullProgress.value * 10)) {
-                    runOnJS(Haptics.selectionAsync)();
+                const newProgress = interpolate(dampened, [20, REFRESH_THRESHOLD], [0, 1], Extrapolate.CLAMP);
+
+                // Haptic: Cảm giác tại đầu ngón tay khi bắt đầu kéo
+                if (!hasTriggeredPullStart.value && newProgress > 0.05) {
+                    hasTriggeredPullStart.value = true;
+                    runOnJS(triggerPullStartHaptic)();
+                }
+
+                // Haptic: Rung tăng dần theo mức kéo (33%, 66%, 100%)
+                const steps = [0.33, 0.66, 1];
+                for (let i = steps.length - 1; i >= 0; i--) {
+                    if (newProgress >= steps[i] && lastHapticStep.value < steps[i]) {
+                        lastHapticStep.value = steps[i];
+                        runOnJS(triggerHapticStep)(steps[i]);
+                        break;
+                    }
+                }
+
+                // Haptic + rung mạnh khi vượt ngưỡng (sẵn sàng thả)
+                if (dampened >= REFRESH_THRESHOLD && lastHapticStep.value < 1.5) {
+                    lastHapticStep.value = 1.5;
+                    runOnJS(triggerThresholdReachedHaptic)();
                 }
 
                 translationY.value = dampened;
                 pullProgress.value = newProgress;
             } else if (translationY.value > 0) {
-                // Smoothly return if we were pulling and then went past boundaries
-                translationY.value = withSpring(0, { damping: 20, stiffness: 100 });
-                pullProgress.value = withTiming(0, { duration: 400 });
+                translationY.value = withTiming(0, { duration: 280, easing: EASING_OUT });
+                pullProgress.value = withTiming(0, { duration: 240, easing: EASING_OUT });
             }
         })
         .onEnd(() => {
+            lastHapticStep.value = -1;
+            hasTriggeredPullStart.value = false;
+            runOnJS(debugLog)('Pan onEnd', {
+                translationY: translationY.value,
+                scrollY: scrollY.value,
+                threshold: REFRESH_THRESHOLD,
+                willTrigger: translationY.value >= REFRESH_THRESHOLD,
+            });
             if (isRefreshingValue.value) return;
 
             if (translationY.value >= REFRESH_THRESHOLD) {
-                // Professional SNAP: Overshoot and settle (The "khựng" effect)
-                translationY.value = withSpring(85, {
-                    damping: 12, // Lower damping for a bit of bounce
-                    stiffness: 90,
-                    mass: 0.8,
-                    velocity: 15
+                translationY.value = withSpring(REFRESH_SHOW_HEIGHT, {
+                    damping: 18,
+                    stiffness: 100
                 });
+                runOnJS(debugLog)('>>> onPullTrigger - gọi onRefresh');
                 runOnJS(onPullTrigger)();
             } else {
-                translationY.value = withSpring(0, { damping: 20, stiffness: 100 });
-                pullProgress.value = withTiming(0, { duration: 400 });
+                translationY.value = withTiming(0, { duration: 280, easing: EASING_OUT });
+                pullProgress.value = withTiming(0, { duration: 240, easing: EASING_OUT });
             }
         })
-        .activeOffsetY(20) // Only trigger on downward pull > 20
-        .failOffsetY(-10) // Fail on upward swipe to allow normal scrolling
+        .activeOffsetY(5)
+        .failOffsetY(-10)
         .shouldCancelWhenOutside(true);
 
+    const nativeGesture = Gesture.Native();
+    const composedGesture = Gesture.Simultaneous(panGesture, nativeGesture);
+
     const animatedHeaderStyle = useAnimatedStyle(() => {
-        // Logo pops in and tilts a bit during pull for 3D depth
         const scale = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [0.7, 1.1], Extrapolate.CLAMP);
-        const rotateX = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [20, 0], Extrapolate.CLAMP);
-        const transY = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [-60, 0], Extrapolate.CLAMP);
+        const transY = interpolate(translationY.value, [0, REFRESH_THRESHOLD], [-50, 0], Extrapolate.CLAMP);
+        const baseOffset = Platform.OS === 'ios' ? safeTop : 0;
 
         return {
             transform: [
-                { translateY: translationY.value - HEADER_HEIGHT + transY + topOffset + 50 },
-                { scale: scale },
-                { rotateX: `${rotateX}deg` }
+                { translateY: translationY.value - HEADER_HEIGHT + transY + topOffset + baseOffset },
+                { scale }
             ],
-            opacity: interpolate(translationY.value, [0, 40], [0, 1], Extrapolate.CLAMP),
+            opacity: interpolate(translationY.value, [0, 35], [0, 1], Extrapolate.CLAMP),
         };
     });
 
     const animatedContentStyle = useAnimatedStyle(() => {
         return {
-            transform: [{ translateY: translationY.value }],
+            transform: [
+                { translateY: translationY.value },
+                // Cảm giác đàn hồi: nội dung hơi "giãn" khi kéo
+                { scaleY: interpolate(translationY.value, [0, REFRESH_THRESHOLD], [1, 1.02], Extrapolate.CLAMP) },
+            ],
         };
     });
 
     const renderParticles = () => {
-        return Array.from({ length: 18 }).map((_, i) => ( // More particles
+        if (!showParticles) return null;
+        return Array.from({ length: 12 }).map((_, i) => (
             <FloatingParticle key={i} index={i} pullProgress={pullProgress} color={activePrimary} />
         ));
     };
 
     return (
-        <GestureHandlerRootView style={styles.container}>
-            {/* Gesture-captured Content Layer */}
-            <GestureDetector gesture={panGesture}>
+        <GestureHandlerRootView style={styles.container} collapsable={false}>
+            <GestureDetector gesture={composedGesture}>
                 <Animated.View style={[styles.content, animatedContentStyle, customStyle]}>
                     {renderScrollComponent ? (
                         renderScrollComponent({
                             onScroll: scrollHandler,
                             scrollEventThrottle: 1,
                             style: { flex: 1 },
+                            bounces: true,
                             ...scrollProps
                         })
                     ) : (
-                        <Animated.ScrollView
+                        <AnimatedGHScrollView
                             onScroll={scrollHandler}
                             scrollEventThrottle={1}
                             style={{ flex: 1 }}
+                            bounces={true}
                             contentContainerStyle={contentContainerStyle}
                             showsVerticalScrollIndicator={showsVerticalScrollIndicator}
                             {...scrollProps}
                         >
                             {children}
-                        </Animated.ScrollView>
+                        </AnimatedGHScrollView>
                     )}
                 </Animated.View>
             </GestureDetector>
 
-            {/* Refresh Indicator Layer - Moved to front (after content) or higher zIndex */}
             <Animated.View pointerEvents="none" style={[styles.header, animatedHeaderStyle]}>
                 <View style={styles.indicatorWrapper}>
                     <VentoUltimateLoading
-                        size={120}
+                        size={100}
                         staggerScale={0.4}
                         strokeWidth={9}
                         showLabel={false}
-                        progress={isRefreshingUI ? null : pullProgress}
+                        progress={pullProgress}
+                        isRefreshing={isRefreshingUI}
                         primaryColor={activePrimary}
                         glowColor={activeGlow}
                     />
@@ -262,7 +386,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'transparent', overflow: 'visible' },
+    container: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
     header: {
         position: 'absolute',
         top: 0,
@@ -271,7 +395,7 @@ const styles = StyleSheet.create({
         height: HEADER_HEIGHT,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 10, // Higher Z
+        zIndex: 10,
         overflow: 'visible',
     },
     indicatorWrapper: {

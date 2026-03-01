@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  py-ekyc-service:
+    build: .
+    ports:
+      - '8000:8000'
+    image: py-ekyc-service:latest
+    container_name: py-ekyc-service
+    environment:
+      - PYTORCH_NO_CUDA_MEMORY_CACHING=1
+      - MALLOC_TRIM_THRESHOLD_=102400
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - VECLIB_MAXIMUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+    volumes:
+      - .:/app
+      - ./ekyc/models/weights:/app/ekyc/models/weights:ro
+    deploy:
+      resources:
+        limits:
+          memory: 3600M
+    restart: always

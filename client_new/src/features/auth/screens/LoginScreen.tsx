@@ -158,7 +158,7 @@ export default function LoginScreen() {
 
                         <CommonButton
                             title="Log In"
-                            onPress={handleLogin}
+                            onPress={() => handleLogin()}
                             loading={isLoading}
                             disabled={isLoading || !username.trim() || !password.trim()}
                             variant="primary"

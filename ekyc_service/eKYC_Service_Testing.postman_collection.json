@@ -1,0 +1,149 @@
+{
+    "info": {
+        "_postman_id": "7a35c5b4-d5d5-45c1-9f9b-6b8a8e1e9a22",
+        "name": "eKYC Service Testing",
+        "description": "Bộ sưu tập các request để test dịch vụ eKYC đã tối ưu hóa.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Front ID OCR",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "frontID",
+                            "type": "file",
+                            "src": [],
+                            "description": "Ảnh mặt trước CCCD"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "http://localhost:8000/api/ekyc/frontID",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "api",
+                        "ekyc",
+                        "frontID"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "2. Back ID OCR",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "backID",
+                            "type": "file",
+                            "src": [],
+                            "description": "Ảnh mặt sau CCCD"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "http://localhost:8000/api/ekyc/backID",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "api",
+                        "ekyc",
+                        "backID"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "3. Orientation Detection",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "frame",
+                            "type": "file",
+                            "src": [],
+                            "description": "Ảnh khuôn mặt (frame)"
+                        },
+                        {
+                            "key": "expected",
+                            "value": "straight",
+                            "type": "text",
+                            "description": "Hướng yêu cầu: straight, left, right, up, down"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "http://localhost:8000/api/ekyc/detection",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "api",
+                        "ekyc",
+                        "detection"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "4. Full eKYC Process",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "frontID",
+                            "type": "file",
+                            "src": [],
+                            "description": "Ảnh mặt trước CCCD"
+                        },
+                        {
+                            "key": "portraitImages",
+                            "type": "file",
+                            "src": [],
+                            "description": "Gửi 7 file ảnh khuôn mặt (Multi-file)"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "http://localhost:8000/api/ekyc-process",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "api",
+                        "ekyc-process"
+                    ]
+                }
+            },
+            "response": []
+        }
+    ]
+}

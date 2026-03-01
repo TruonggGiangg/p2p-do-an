@@ -202,6 +202,7 @@ export class FineractSavingsService extends FineractBaseService {
                 params: {
                     limit: Math.min(limit, 200),
                     offset,
+                    ...this.getCommonLocaleParams('strict'),
                 },
             });
 
@@ -229,7 +230,10 @@ export class FineractSavingsService extends FineractBaseService {
     ): Promise<{ pageItems: any[]; totalFilteredRecords: number }> {
         try {
             const response = await this.client.get(`/savingsaccounts/${savingsAccountId}`, {
-                params: { associations: 'all' },
+                params: {
+                    associations: 'all',
+                    ...this.getCommonLocaleParams('strict'),
+                },
             });
 
             const txns = response.data.transactions || [];

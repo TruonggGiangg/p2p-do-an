@@ -1,0 +1,50 @@
+[project]
+name = "py-ekyc-service"
+version = "0.1.0"
+description = ""
+authors = [
+    { name = "Tinh Pham", email = "TinhPT@hdbankamc.com.vn" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pendulum (>=3.1.0,<4.0.0)",
+    "dependency-injector (>=4.47.1,<5.0.0)",
+    "flask (>=3.1.1,<4.0.0)",
+    "flask-cors (>=4.0.0,<5.0.0)",
+    # Pin PyTorch stack CPU-only, tương thích với facenet-pytorch (yêu cầu torchvision <0.18)
+    "torch (==2.2.2)",
+    "torchvision (==0.17.2)",
+    "torchaudio (==2.2.2)",
+    "typing-extensions (>=4.14.0,<5.0.0)",
+    "gunicorn (>=23.0.0,<24.0.0)",
+    "imutils (>=0.5.4,<0.6.0)",
+    # "dlib (>=20.0.0,<21.0.0)",
+    "vietocr (>=0.3.13,<0.4.0)",
+    "facenet-pytorch (>=2.6.0,<3.0.0)",
+    "yolov5 (>=7.0.14,<8.0.0)",
+    "ultralytics (>=8.3.169,<9.0.0)",
+    "onnx (>=1.16.1)",
+    "onnxruntime (>=1.18.0)",
+]
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
+[tool.poetry.dependencies]
+torch = { version = "2.2.2", source = "pytorch-cpu" }
+torchvision = { version = "0.17.2", source = "pytorch-cpu" }
+torchaudio = { version = "2.2.2", source = "pytorch-cpu" }
+
+[tool.poetry]
+readme = "README.md"
+packages = [{ include = "ekyc"}]
+
+[tool.poetry.scripts]
+ekyc = "app:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -30,11 +30,11 @@ interface PathData {
 
 // --- FINTECH STYLE PATH ---
 const VENTO_PATHS: PathData[] = [
-    { d: 'M20 30 L45 85 L70 30', length: 140 },
-    { d: 'M110 30 L80 30 L80 85 L110 85 M80 57 L105 57', length: 150 },
-    { d: 'M125 85 L125 30 L165 85 L165 30', length: 180 },
-    { d: 'M180 30 L230 30 M205 30 L205 85', length: 110 },
-    { d: 'M250 30 L280 30 L295 57 L280 85 L250 85 L235 57 Z', length: 175 },
+    { d: 'M20 30 L45 85 L70 30', length: 140 }, // V: L->R
+    { d: 'M80 30 L110 30 M80 30 L80 85 L110 85 M80 57 L105 57', length: 155 }, // E: Fixed to L->R flow
+    { d: 'M125 85 L125 30 L165 85 L165 30', length: 180 }, // N: L->R
+    { d: 'M180 30 L230 30 M205 30 L205 85', length: 110 }, // T: L->R
+    { d: 'M250 30 L280 30 L295 57 L280 85 L250 85 L235 57 Z', length: 175 }, // O: L->R
 ];
 
 const DECO_PATHS: PathData[] = [
@@ -75,23 +75,29 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
         const pathSpan = 1 / (totalPaths * (1 - staggerScale) + staggerScale);
         const startDraw = index * pathSpan * (1 - staggerScale);
         const endDraw = startDraw + pathSpan;
-        const startErase = 1 + startDraw;
-        const endErase = 1 + endDraw;
+
+        // REVERSE ERASURE: Logo disappears from Right to Left (O -> T -> N -> E -> V)
+        const reverseIndex = totalPaths - 1 - index;
+        const startErase = 1 + reverseIndex * pathSpan * (1 - staggerScale);
+        const endErase = startErase + pathSpan;
 
         const pathProgress = interpolate(
             progress.value,
             [0, startDraw, endDraw, 1, startErase, endErase, 2],
-            [0, 0, 1, 1, 1, 2, 2],
+            [0, 0, 1, 1, 1, 0, 0], // Use 1 -> 0 to shrink back R->L
             Extrapolate.CLAMP
         );
 
-        const strokeDashoffset = interpolate(
+        // Standard strokeDashoffset logic: pathLength (hidden) -> 0 (visible)
+        const offset = interpolate(
             pathProgress,
-            [0, 1, 2],
-            [pathLength, 0, -pathLength],
+            [0, 1],
+            [pathLength, 0],
             Extrapolate.CLAMP
         );
+        const strokeDashoffset = Math.max(0, offset);
 
+        // iOS: Luôn trả về giá trị xác định (tránh undefined khiến animation không chạy)
         return {
             strokeDashoffset,
         };
@@ -102,20 +108,24 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
         const startDraw = index * pathSpan * (1 - staggerScale);
         const endDraw = startDraw + pathSpan;
 
-        const headProgress = interpolate(
+        const headLength = pathLength * 0.4;
+        const dashArraySecond = pathLength * 2;
+
+        // During drawing phase
+        const drawHeadPos = interpolate(
             progress.value,
             [startDraw, endDraw],
-            [0, 1],
+            [pathLength, -headLength],
             Extrapolate.CLAMP
         );
 
-        const headLength = pathLength * 0.4;
-        const offset = pathLength - (headProgress * (pathLength + headLength));
+        // iOS: strokeDasharray dùng array [number, number] - format chuẩn cho native
+        const headOpacity = interpolate(progress.value, [startDraw, endDraw, endDraw + 0.1], [0, 1, 0], Extrapolate.CLAMP);
 
         return {
-            strokeDashoffset: offset,
-            strokeDasharray: `${headLength}, ${pathLength * 2}`,
-            opacity: interpolate(progress.value, [startDraw, endDraw, endDraw + 0.1], [0, 1, 0], Extrapolate.CLAMP),
+            strokeDashoffset: drawHeadPos,
+            strokeDasharray: [headLength, dashArraySecond],
+            opacity: headOpacity,
         };
     });
 
@@ -139,7 +149,7 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeDasharray={`${pathLength}, ${pathLength}`}
+                strokeDasharray={[pathLength, pathLength]}
                 animatedProps={animatedProps}
                 fillRule={fillRule}
             />
@@ -163,7 +173,8 @@ export interface VentoUltimateLoadingProps {
     staggerScale?: number;
     strokeWidth?: number;
     showLabel?: boolean;
-    progress?: SharedValue<number> | null;
+    progress?: SharedValue<number>;
+    isRefreshing?: boolean;
     style?: ViewStyle;
     primaryColor?: string;
     glowColor?: string;
@@ -179,6 +190,7 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     strokeWidth = 10,
     showLabel = true,
     progress: manualProgress,
+    isRefreshing = false,
     style: customStyle,
     primaryColor,
     glowColor,
@@ -191,28 +203,41 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     const labelOpacity = useSharedValue(0.5);
 
     useEffect(() => {
-        labelOpacity.value = withRepeat(
-            withSequence(
-                withTiming(1, { duration: 800 }),
-                withTiming(0.5, { duration: 800 })
-            ),
-            -1,
-            true
-        );
+        if (showLabel) {
+            labelOpacity.value = withRepeat(
+                withSequence(
+                    withTiming(1, { duration: 800 }),
+                    withTiming(0.5, { duration: 800 })
+                ),
+                -1,
+                true
+            );
+        }
 
-        if (manualProgress !== undefined && manualProgress !== null) return;
+        // Start animation if we are in auto-refresh mode OR if no manual progress is provided (loading screen mode)
+        const shouldAnimate = isRefreshing || manualProgress === undefined;
 
-        internalMasterAnim.value = withRepeat(
-            withSequence(
-                withTiming(1, { duration, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
-                withDelay(300, withTiming(2, { duration: duration * 0.9, easing: Easing.bezier(0.4, 0, 0.2, 1) })),
-                withDelay(500, withTiming(0, { duration: 0 }))
-            ),
-            -1
-        );
-    }, [manualProgress, duration]);
+        if (shouldAnimate) {
+            internalMasterAnim.value = withRepeat(
+                withSequence(
+                    withTiming(1, { duration, easing: Easing.bezier(0.4, 0, 0.2, 1) }),
+                    withDelay(300, withTiming(2, { duration: duration * 0.9, easing: Easing.bezier(0.4, 0, 0.2, 1) })),
+                    withDelay(500, withTiming(0, { duration: 0 }))
+                ),
+                -1
+            );
+        } else {
+            cancelAnimation(internalMasterAnim);
+            internalMasterAnim.value = 0;
+        }
 
-    const master = (manualProgress !== undefined && manualProgress !== null) ? manualProgress : internalMasterAnim;
+        return () => {
+            cancelAnimation(internalMasterAnim);
+            cancelAnimation(labelOpacity);
+        };
+    }, [isRefreshing, manualProgress === undefined, duration, showLabel]);
+
+    const master = (isRefreshing || manualProgress === undefined) ? internalMasterAnim : manualProgress!;
 
     const viewBoxWidth = 320;
     const viewBoxHeight = 120;
@@ -223,7 +248,10 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     const labelStyle = useAnimatedStyle(() => ({
         opacity: labelOpacity.value,
         color: activePrimary,
-        transform: [{ translateY: interpolate(master.value, [0, 1], [0, 5], Extrapolate.CLAMP) }]
+        transform: [
+            { translateY: interpolate(master.value, [0, 1], [0, 5], Extrapolate.CLAMP) },
+            { translateX: interpolate(labelOpacity.value, [0.5, 1], [-2, 2]) } // Subtle running effect
+        ]
     }));
 
     const animatedContainerStyle = useAnimatedStyle(() => {
@@ -240,7 +268,7 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     });
 
     return (
-        <View style={[styles.container, customStyle]}>
+        <View style={[styles.container, customStyle]} collapsable={false}>
             <Animated.View style={animatedContainerStyle}>
                 <Svg width={width} height={height} viewBox={`0 15 ${viewBoxWidth} ${viewBoxHeight}`}>
                     <Defs>
@@ -272,7 +300,7 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
 
             {showLabel && (
                 <Animated.Text style={[styles.label, labelStyle]}>
-                    {(manualProgress !== undefined && manualProgress !== null) ? 'PULL TO REFRESH' : 'INITIALIZING...'}
+                    {isRefreshing ? 'REFRESHING...' : (manualProgress ? 'PULL TO REFRESH' : 'INITIALIZING...')}
                 </Animated.Text>
             )}
         </View>

@@ -68,7 +68,8 @@ export class AuthController {
     // 3. Sync with Local Database & Fineract
     const mongoUser = await this.userSyncService.syncUser(keycloakUser);
 
-    // 3.1 Check 2FA Status
+    // 3.1 Check 2FA Status - DISABLED as per user request (login shouldn't require OTP)
+    /*
     const is2faEnabled = await this.twoFactorService.isEnabled(mongoUser._id.toString());
     if (is2faEnabled) {
       if (!body.twoFactorToken) {
@@ -89,6 +90,7 @@ export class AuthController {
         throw new UnauthorizedException('Mã 2FA không chính xác');
       }
     }
+    */
 
     // 4. Generate Internal Session
     const userSession = {

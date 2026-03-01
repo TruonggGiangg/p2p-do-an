@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
@@ -28,14 +29,17 @@ function AppContent() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ThemeTransitionStyles />
-      <ThemeProvider>
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <>
+      <ReducedMotionConfig mode={ReduceMotion.Never} />
+      <SafeAreaProvider>
+        <ThemeTransitionStyles />
+        <ThemeProvider>
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </>
   );
 }
 

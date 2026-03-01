@@ -166,6 +166,17 @@ export default function ProfileScreen() {
 
                 <View style={styles.menuSection}>
                     <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SECURITY</Text>
+                    <SettingItem
+                        icon="shield-check-outline"
+                        title="Xác minh danh tính"
+                        subtitle={(user as any)?.kycStatus === 'VERIFIED' ? 'Đã xác minh (eKYC)' : 'Chưa xác minh'}
+                        onPress={() => {
+                            console.log('eKYC SettingItem pressed');
+                            (navigation as any).getParent()?.navigate('KYCUpdate');
+                        }}
+                        color={(user as any)?.kycStatus === 'VERIFIED' ? theme.colors.success : theme.colors.warning}
+                    />
+                    <View style={{ height: 12 }} />
                     <SmartOTPSection />
                     <View style={{ height: 12 }} />
                     <TwoFactorSection />

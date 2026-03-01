@@ -515,6 +515,8 @@ export class WalletsService {
         description = txn.transfer.note;
       } else if (txn.paymentDetailData?.paymentType?.name) {
         description = txn.paymentDetailData.paymentType.name;
+      } else if (txn.transactionType?.value) {
+        description = txn.transactionType.value;
       }
 
       // Parse date from Fineract format [year, month, day]

@@ -19,7 +19,7 @@ export class TwoFactorService {
   constructor(
     @InjectModel(User.name)
     private userModel: Model<User>,
-  ) {}
+  ) { }
 
   /**
    * Generate 2FA secret và QR code
@@ -140,14 +140,14 @@ export class TwoFactorService {
     const updatedUser = await this.userModel.findById(userId);
     const twoFactorData = (updatedUser as any)?.twoFactor;
     const isActuallyEnabled = !!twoFactorData?.enabled;
-    
+
     this.logger.log(`========== 2FA ENABLE VERIFICATION ==========`);
     this.logger.log(`User ID: ${userId}`);
     this.logger.log(`Updated user found: ${!!updatedUser}`);
     this.logger.log(`TwoFactor data after update: ${JSON.stringify(twoFactorData)}`);
     this.logger.log(`Verified enabled: ${isActuallyEnabled}`);
     this.logger.log(`==========================================`);
-    
+
     if (!isActuallyEnabled) {
       this.logger.error(`2FA was not properly saved for user ${userId}`);
       throw new BadRequestException('2FA không được lưu đúng cách');
@@ -165,10 +165,16 @@ export class TwoFactorService {
       throw new BadRequestException('User not found');
     }
 
-    // Lấy secret từ user (cần thêm field twoFactor.secret vào User schema)
+    // Lấy secret từ user
     const secret = (user as any).twoFactor?.secret;
     if (!secret) {
       throw new BadRequestException('2FA chưa được kích hoạt');
+    }
+
+    // Validate token format (must be 6 digits) to prevent otplib internal errors
+    if (!token || typeof token !== 'string' || token.length !== 6 || !/^\d{6}$/.test(token)) {
+      this.logger.warn(`Invalid 2FA token format: "${token}" (length: ${token?.length})`);
+      return false;
     }
 
     const result = verifySync({ token, secret });
@@ -230,10 +236,10 @@ export class TwoFactorService {
       this.logger.warn(`User not found for 2FA status check: ${userId} (ObjectId: ${queryId})`);
       return false;
     }
-    
+
     const twoFactorData = (user as any)?.twoFactor;
     const enabled = !!twoFactorData?.enabled;
-    
+
     this.logger.log(`========== 2FA STATUS CHECK ==========`);
     this.logger.log(`User ID (string): ${userId}`);
     this.logger.log(`User ID (ObjectId): ${queryId}`);
@@ -242,7 +248,7 @@ export class TwoFactorService {
     this.logger.log(`TwoFactor data: ${JSON.stringify(twoFactorData)}`);
     this.logger.log(`Enabled: ${enabled}`);
     this.logger.log(`==========================================`);
-    
+
     return enabled;
   }
 }

@@ -27,6 +27,7 @@ export interface User {
     profile?: UserProfile;
     metadata?: UserMetadata;
     status?: 'active' | 'inactive' | 'suspended';
+    kycStatus?: 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
     createdAt?: string;
     updatedAt?: string;
 }

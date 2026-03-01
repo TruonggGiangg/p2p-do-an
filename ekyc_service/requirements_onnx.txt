@@ -1,0 +1,25 @@
+# Core ML (Sử dụng bản mới nhất cho Python 3.13)
+torch
+torchvision
+torchaudio
+
+# ONNX Conversion & Runtime
+onnx
+onnxruntime
+onnxscript
+# Nếu có GPU CUDA, hãy cài onnxruntime-gpu thay thế
+
+# Image Processing
+opencv-python
+Pillow>=11.0.0
+numpy
+
+# EKYC Models (Bỏ pin version để pip tự tìm bản tương thích 3.13)
+vietocr
+facenet-pytorch
+yolov5
+ultralytics
+
+# Utilities
+pathlib
+tqdm

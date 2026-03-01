@@ -42,6 +42,16 @@ export class User extends Document {
   })
   status: UserStatus;
 
+  @Prop({
+    type: String,
+    enum: ['NONE', 'PENDING', 'VERIFIED', 'REJECTED'],
+    default: 'NONE',
+  })
+  kycStatus: string;
+
+  @Prop({ type: Object, default: null, required: false })
+  kycData?: any;
+
   @Prop({ type: Object, default: {}, required: false })
   metadata?: Record<string, any>; // Optional metadata for extensibility
 
