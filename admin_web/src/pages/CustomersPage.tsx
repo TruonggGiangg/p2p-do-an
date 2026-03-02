@@ -121,7 +121,7 @@ export default function CustomersPage() {
                 const db = b.activationDate ? new Date(b.activationDate).getTime() : 0;
                 return da - db;
             },
-            render: (dom, record) => {
+            render: (_, record) => {
                 const v = record.activationDate;
                 if (!v) return <Tag color="default">Chưa kích hoạt</Tag>;
                 const d = new Date(v);

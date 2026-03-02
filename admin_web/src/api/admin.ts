@@ -249,7 +249,4 @@ export const adminApi = {
 
   downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
     api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
-
-  downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
-    api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
 };
