@@ -69,9 +69,12 @@ export default function CustomersPage() {
             title: 'Ngày kích hoạt',
             dataIndex: 'activationDate',
             key: 'activationDate',
-            valueType: 'date',
             search: false,
-            render: v => v ? new Date(v as string).toLocaleDateString('vi-VN') : '–',
+            render: (v: string | null) => {
+                if (!v) return '–';
+                const d = new Date(v);
+                return !isNaN(d.getTime()) ? d.toLocaleDateString('vi-VN') : '–';
+            },
         },
         {
             title: 'Trạng thái KYC',

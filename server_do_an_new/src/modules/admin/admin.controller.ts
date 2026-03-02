@@ -149,6 +149,14 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: user };
   }
 
+  @Get('customers/:id/detail')
+  @ApiOperation({ summary: 'Chi tiết đầy đủ khách hàng (như Mifos: summary, savings, charges)' })
+  @ApiResponse({ status: 200 })
+  async getCustomerDetail(@Param('id') id: string) {
+    const detail = await this.adminService.getCustomerDetail(id);
+    return { statusCode: 200, message: 'OK', data: detail };
+  }
+
   @Get('customers/:id/loans')
   @ApiOperation({ summary: 'Khoản vay của khách hàng (chỉ sản phẩm P*)' })
   @ApiResponse({ status: 200 })

@@ -50,9 +50,20 @@ export interface CustomerDto {
   officeName?: string;
   activationDate?: string | null;
   displayName?: string;
+  mobileNo?: string | null;
+  staffName?: string | null;
+  externalId?: string | null;
   // Pending approval specific fields
   kycCompletedAt?: string | null;
   hasKycData?: boolean;
+}
+
+export interface CustomerDetailDto {
+  customer: CustomerDto;
+  loans: LoanDto[];
+  summary: { loanCycles: number; activeLoans: number; lastLoanAmount: number; activeSavings: number; totalSavings: number };
+  savingsAccounts: { id: number; accountNo?: string; productName?: string; accountBalance?: number; status?: any }[];
+  charges: { id: number; name?: string; amount?: number; amountPaid?: number; amountWaived?: number; amountOutstanding?: number; dueDate?: number[] }[];
 }
 
 export interface KycPendingUserDto {
@@ -69,7 +80,7 @@ export interface KycPendingUserDto {
 export interface KycDetailDto {
   user: { _id: string; username: string; email?: string; profile?: any; fineractClientId?: string; kycStatus: string };
   ocr: { fullName?: string; ssn?: string; dateOfBirth?: string; address?: string; sex?: string };
-  metadata: { kycCompletedAt?: string; faceMatchingResult?: any; fineractIdentifiers?: any; fineractClientDocs?: any };
+  metadata: { kycCompletedAt?: string; fineractClientDocs?: { front?: number; back?: number } };
   documents: { id: number; name: string; entityType: string; entityId: number; label: string }[];
 }
 
@@ -156,6 +167,9 @@ export const adminApi = {
 
   getCustomer: (id: string) =>
     api.get<{ data: CustomerDto }>(`/api/admin/customers/${id}`).then((r) => r.data.data),
+
+  getCustomerDetail: (id: string) =>
+    api.get<{ data: CustomerDetailDto }>(`/api/admin/customers/${id}/detail`).then((r) => r.data.data),
 
   getCustomerLoans: (userId: string) =>
     api.get<{ data: { loans: LoanDto[] } }>(`/api/admin/customers/${userId}/loans`).then((r) => r.data.data.loans),

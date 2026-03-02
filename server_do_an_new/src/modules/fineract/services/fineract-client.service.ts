@@ -63,18 +63,37 @@ export class FineractClientService extends FineractBaseService {
     }
 
     /**
-     * Activate an existing client in Fineract (uses command=activate API)
+     * Activate an existing client in Fineract (uses command=activate API).
+     * Uses client's submittedOnDate for activationDate to satisfy Fineract validation
+     * (submittedOnDate cannot be after activationDate). Uses max(submitted, today).
      */
     async activateClient(clientId: number): Promise<void> {
-        const today = this.getTodayFormatted('iso'); // Use ISO format for API consistency
-
         try {
+            const today = this.getTodayFormatted('iso');
+            const client = await this.getClientById(clientId);
+            const submitted = client?.timeline?.submittedOnDate ?? client?.submittedOnDate;
+            let submittedStr = today;
+
+            if (submitted) {
+                if (Array.isArray(submitted) && submitted.length >= 3) {
+                    const [y, m, d] = submitted;
+                    submittedStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                } else if (typeof submitted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(submitted)) {
+                    submittedStr = submitted;
+                } else if (typeof submitted === 'string') {
+                    const parsed = new Date(submitted);
+                    if (!isNaN(parsed.getTime())) submittedStr = parsed.toISOString().split('T')[0];
+                }
+            }
+
+            const activationDate = submittedStr > today ? submittedStr : today;
+
             await this.client.post(`/clients/${clientId}?command=activate`, {
-                activationDate: today,
+                activationDate,
                 locale: 'en',
                 dateFormat: 'yyyy-MM-dd',
             });
-            this.logger.log(`[activateClient] Activated client ${clientId}`);
+            this.logger.log(`[activateClient] Activated client ${clientId} with activationDate=${activationDate}`);
         } catch (error: any) {
             this.handleError(error, `Failed to activate Fineract client ${clientId}`);
         }
@@ -200,16 +219,59 @@ export class FineractClientService extends FineractBaseService {
     }
 
     /**
-     * Get client identifiers for a specific Fineract client
+     * Get client charges (pending payment)
      */
-    async getClientIdentifiers(clientId: number): Promise<any[]> {
+    async getClientCharges(clientId: number, pendingPayment = true): Promise<any[]> {
         try {
-            const response = await this.client.get(`/clients/${clientId}/identifiers`);
-            return response.data || [];
-        } catch (error: any) {
-            this.handleError(error, `Failed to get identifiers for client ${clientId}`);
+            const response = await this.client.get(`/clients/${clientId}/charges`, {
+                params: { pendingPayment: pendingPayment ? 'true' : 'false' },
+            });
+            return response.data?.pageItems ?? response.data ?? [];
+        } catch {
             return [];
         }
+    }
+
+    /**
+     * Get a single client by ID (optionally with associations like identifiers)
+     */
+    async getClientById(clientId: number, associations?: string): Promise<any> {
+        try {
+            const params = associations ? { associations } : undefined;
+            const response = await this.client.get(`/clients/${clientId}`, { params });
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, `Failed to get client ${clientId}`);
+        }
+    }
+
+    /**
+     * Get client identifiers for a specific Fineract client.
+     * Tries: 1) GET /clients/{id}/identifiers, 2) GET /clients/{id}?associations=identifiers
+     */
+    async getClientIdentifiers(clientId: number): Promise<any[]> {
+        let items: any[] = [];
+        try {
+            const response = await this.client.get(`/clients/${clientId}/identifiers`);
+            const data = response.data;
+            if (Array.isArray(data)) items = data;
+            else if (data?.pageItems) items = data.pageItems;
+            else if (data) items = Array.isArray(data) ? data : [data];
+        } catch (_) {
+            // Identifiers endpoint may not exist or return different format in some Fineract versions
+        }
+
+        if (items.length > 0) return items;
+
+        // Fallback: fetch client with associations (identifiers may be embedded in client response)
+        try {
+            const client = await this.getClientById(clientId, 'identifiers');
+            const embedded = client?.identifiers ?? client?.clientIdentifiers;
+            if (Array.isArray(embedded) && embedded.length > 0) return embedded;
+        } catch (e: any) {
+            this.logger.warn(`[getClientIdentifiers] Fallback getClientById failed for ${clientId}: ${e.message}`);
+        }
+        return [];
     }
 
     /**

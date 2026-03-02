@@ -12,7 +12,7 @@ import {
     ArrowLeftOutlined, UserOutlined, BankOutlined, CalendarOutlined,
     DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined
 } from '@ant-design/icons';
-import { adminApi, CustomerDto, LoanDto } from '../api/admin';
+import { adminApi, CustomerDto, LoanDto, CustomerDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 
 const { Title, Text } = Typography;
@@ -21,10 +21,15 @@ export default function CustomerDetailPage() {
     const { token } = theme.useToken();
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const [customer, setCustomer] = useState<CustomerDto | null>(null);
-    const [loans, setLoans] = useState<LoanDto[]>([]);
+    const [detail, setDetail] = useState<CustomerDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+
+    const customer = detail?.customer ?? null;
+    const loans = detail?.loans ?? [];
+    const summary = detail?.summary;
+    const savingsAccounts = detail?.savingsAccounts ?? [];
+    const charges = detail?.charges ?? [];
 
     // Detailed Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,8 +42,8 @@ export default function CustomerDetailPage() {
     useEffect(() => {
         if (!id) return;
         setLoading(true);
-        Promise.all([adminApi.getCustomer(id), adminApi.getCustomerLoans(id)])
-            .then(([c, l]) => { setCustomer(c); setLoans(l); })
+        adminApi.getCustomerDetail(id)
+            .then(setDetail)
             .catch(() => setError('Không thể tải thông tin khách hàng'))
             .finally(() => setLoading(false));
     }, [id]);
@@ -182,43 +187,95 @@ export default function CustomerDetailPage() {
                 </Button>
             </Space>
 
+            {/* Header giống Mifos */}
+            <Card bordered={false} style={{ marginBottom: 24, background: token.colorPrimary, color: '#fff', borderRadius: 12 }}>
+                <Row gutter={[24, 16]} align="middle">
+                    <Col flex="none">
+                        <Avatar size={64} icon={<UserOutlined />} style={{ background: 'rgba(255,255,255,0.2)', fontSize: 28 }} />
+                    </Col>
+                    <Col flex="auto">
+                        <Title level={3} style={{ margin: 0, color: '#fff' }}>{customer.displayName || customer.username}</Title>
+                        <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13 }}>
+                            <Space size={16} wrap>
+                                <span>Văn phòng: {customer.officeName || 'Head Office'}</span>
+                                <span>Khách hàng: {customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</span>
+                                <span>ID bên ngoài: {customer.externalId || customer.username || '–'}</span>
+                                <span>Nhân viên: {customer.staffName || 'Chưa phân công'}</span>
+                            </Space>
+                        </div>
+                        <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13 }}>
+                            <Space size={16} wrap>
+                                <span>Số điện thoại: {customer.mobileNo || customer.username || '–'}</span>
+                                <span>Email: {customer.email || '–'}</span>
+                            </Space>
+                        </div>
+                    </Col>
+                    <Col flex="none">
+                        <FineractStatusBadge status={customer.fineractStatus} />
+                        {customer.kycStatus === 'VERIFIED' && <Tag color="success" style={{ marginLeft: 8 }}>Đã xác minh</Tag>}
+                        {customer.kycStatus === 'PENDING' && <Tag color="processing" style={{ marginLeft: 8 }}>Chờ phê duyệt</Tag>}
+                    </Col>
+                </Row>
+            </Card>
+
+            {/* Lịch sử hiệu suất */}
+            {summary && (
+                <Card title="Lịch sử hiệu suất" bordered={false} style={{ marginBottom: 24, borderRadius: 12 }}>
+                    <Row gutter={[24, 16]}>
+                        <Col span={12}>
+                            <p style={{ margin: 0, lineHeight: 1.8 }}>
+                                Số chu kỳ vay: <strong>{summary.loanCycles}</strong><br />
+                                Số khoản vay đang hoạt động: <strong>{summary.activeLoans}</strong><br />
+                                Số tiền vay cuối cùng: <strong>{fmtVND(summary.lastLoanAmount)}</strong>
+                            </p>
+                        </Col>
+                        <Col span={12}>
+                            <p style={{ margin: 0, lineHeight: 1.8 }}>
+                                Số tiết kiệm đang hoạt động: <strong>{summary.activeSavings}</strong><br />
+                                Tổng tiết kiệm: <strong>{fmtVND(summary.totalSavings)}</strong>
+                            </p>
+                        </Col>
+                    </Row>
+                </Card>
+            )}
+
+            {/* Các khoản phí sắp tới */}
+            {charges.length > 0 && (
+                <Card title="Các khoản phí sắp tới" bordered={false} style={{ marginBottom: 24, borderRadius: 12 }}>
+                    <Table
+                        dataSource={charges}
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                        columns={[
+                            { title: 'Tên', dataIndex: 'name', key: 'name' },
+                            { title: 'Đến hạn', dataIndex: 'dueDate', key: 'dueDate', render: (v: number[]) => v ? v.reverse().join('/') : '–' },
+                            { title: 'Phải trả', dataIndex: 'amount', key: 'amount', align: 'right', render: (v: number) => fmtVND(v) },
+                            { title: 'Đã trả', dataIndex: 'amountPaid', key: 'amountPaid', align: 'right', render: (v: number) => fmtVND(v || 0) },
+                            { title: 'Đã miễn', dataIndex: 'amountWaived', key: 'amountWaived', align: 'right', render: (v: number) => fmtVND(v || 0) },
+                            { title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right', render: (v: number) => fmtVND(v || 0) },
+                        ]}
+                    />
+                </Card>
+            )}
+
             <Row gutter={[16, 16]}>
                 <Col xs={24} md={7}>
-                    <Card bordered={false} style={{ borderRadius: 12, marginBottom: 16 }}>
-                        <Statistic title={<><FileTextOutlined /> Sản phẩm</>} value={new Set(loans.map(l => l.productShortName)).size} suffix="loại" />
-                    </Card>
                     <Card bordered={false} style={{ borderRadius: 12 }}>
-                        <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                            <Avatar size={72} icon={<UserOutlined />}
-                                style={{ background: token.colorPrimaryBg, color: token.colorPrimary, fontSize: 32 }} />
-                            <Title level={4} style={{ margin: '12px 0 4px' }}>{customer.displayName || customer.username}</Title>
-                            <Text type="secondary" style={{ fontSize: 12 }}>{customer.username}</Text>
-                        </div>
-                        <Divider style={{ margin: '12px 0' }} />
-                        <Descriptions
-                            column={1}
-                            size="small"
-                            labelStyle={{ color: token.colorTextSecondary, fontSize: 12 }}
-                        >
+                        <Descriptions column={1} size="small" labelStyle={{ color: token.colorTextSecondary, fontSize: 12 }}>
                             <Descriptions.Item label="Email">{customer.email || '–'}</Descriptions.Item>
-                            <Descriptions.Item label="Văn phòng">
-                                <Tag color="gold">{customer.officeName || 'Head Office'}</Tag>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="TT Fineract">
-                                <FineractStatusBadge status={customer.fineractStatus} />
-                            </Descriptions.Item>
+                            <Descriptions.Item label="Văn phòng"><Tag color="gold">{customer.officeName || 'Head Office'}</Tag></Descriptions.Item>
+                            <Descriptions.Item label="TT Fineract"><FineractStatusBadge status={customer.fineractStatus} /></Descriptions.Item>
                             <Descriptions.Item label="Trạng thái KYC">
                                 {customer.kycStatus === 'VERIFIED' && <Tag color="success">Đã xác minh</Tag>}
                                 {customer.kycStatus === 'PENDING' && <Tag color="processing">Chờ phê duyệt</Tag>}
                                 {customer.kycStatus === 'REJECTED' && <Tag color="error">Từ chối</Tag>}
                                 {(customer.kycStatus === 'NONE' || !customer.kycStatus) && <Tag>Chưa xác minh</Tag>}
                             </Descriptions.Item>
-                            <Descriptions.Item label={<><BankOutlined /> Fineract ID</>}>
-                                {customer.fineractClientId
-                                    ? <Tag color="blue" style={{ fontFamily: 'monospace' }}>{customer.fineractClientId}</Tag>
-                                    : '–'}
+                            <Descriptions.Item label="Fineract ID">
+                                {customer.fineractClientId ? <Tag color="blue" style={{ fontFamily: 'monospace' }}>{customer.fineractClientId}</Tag> : '–'}
                             </Descriptions.Item>
-                            <Descriptions.Item label={<><CalendarOutlined /> Kích hoạt</>}>
+                            <Descriptions.Item label="Ngày kích hoạt">
                                 {customer.activationDate ? new Date(customer.activationDate).toLocaleDateString('vi-VN') : '–'}
                             </Descriptions.Item>
                         </Descriptions>
@@ -226,6 +283,24 @@ export default function CustomerDetailPage() {
                 </Col>
 
                 <Col xs={24} md={17}>
+                    {/* Tài khoản tiết kiệm */}
+                    {savingsAccounts.length > 0 && (
+                        <Card title="Tài khoản tiết kiệm" bordered={false} style={{ marginBottom: 16, borderRadius: 12 }}>
+                            <Table
+                                dataSource={savingsAccounts}
+                                rowKey={(r: any) => r.id ?? r.savingsId ?? r.accountNo ?? String(Math.random())}
+                                size="small"
+                                pagination={false}
+                                columns={[
+                                    { title: 'Số tài khoản', dataIndex: 'accountNo', key: 'accountNo', render: (v: string) => v || '–' },
+                                    { title: 'Sản phẩm', dataIndex: 'productName', key: 'productName', render: (v: string) => v || '–' },
+                                    { title: 'Số dư', key: 'balance', align: 'right', render: (_: any, r: any) => fmtVND(r.accountBalance ?? r.balance ?? 0) },
+                                    { title: 'Trạng thái', key: 'status', render: (_: any, r: any) => r.status?.value ?? r.status?.code ?? '–' },
+                                ]}
+                            />
+                        </Card>
+                    )}
+
                     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
                         <Col span={8}>
                             <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg, border: `1px solid ${token.colorPrimaryBorder}` }}>
@@ -252,11 +327,11 @@ export default function CustomerDetailPage() {
                     </Row>
 
                     {loans.length === 0
-                        ? <Card bordered={false} style={{ borderRadius: 12 }}><Empty description="Chưa có khoản vay" /></Card>
+                        ? <Card title="Các tài khoản vay" bordered={false} style={{ borderRadius: 12 }}><Empty description="Chưa có khoản vay" /></Card>
                         : (
                             <ProTable<LoanDto>
                                 rowKey={(r) => r._id || `FL_${r.fineractLoanId}`}
-                                headerTitle="Danh sách khoản vay"
+                                headerTitle="Các tài khoản vay"
                                 columns={loanColumns}
                                 dataSource={loans}
                                 search={false}

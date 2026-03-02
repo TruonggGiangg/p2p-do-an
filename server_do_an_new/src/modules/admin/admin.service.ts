@@ -19,6 +19,21 @@ import { Wallet } from '../wallets/schemas/wallet.schema';
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
 
+/** Parse Fineract date (array [y,m,d] or string) to ISO yyyy-MM-dd */
+function parseFineractDate(val: any): string | null {
+  if (!val) return null;
+  if (Array.isArray(val) && val.length >= 3) {
+    const [y, m, d] = val;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  if (typeof val === 'string') {
+    const parsed = new Date(val);
+    return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : null;
+  }
+  return null;
+}
+
 const SNAPSHOT_SCOPE = 'default';
 
 @Injectable()
@@ -261,7 +276,7 @@ export class AdminService {
         // Fineract enrichment
         fineractStatus: fc?.status ?? null,
         officeName: fc?.officeName ?? 'Head Office',
-        activationDate: fc?.activationDate ?? null,
+        activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
         displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
         // KYC data if available
         kycCompletedAt: u?.kycData?.metadata?.kycCompletedAt ?? null,
@@ -333,9 +348,12 @@ export class AdminService {
         // Fineract enrichment
         fineractStatus: fc?.status ?? null,
         officeName: fc?.officeName ?? 'Head Office',
-        activationDate: fc?.activationDate ?? null,
+        activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
         displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
         kycStatus: u?.kycStatus ?? 'NONE',
+        mobileNo: fc?.mobileNo ?? null,
+        staffName: fc?.staffName ?? fc?.staffDisplayName ?? null,
+        externalId: fc?.externalId ?? null,
       };
     });
 
@@ -372,12 +390,64 @@ export class AdminService {
       fineractClientId: user?.fineractClientId ?? String(fineractClientId),
       status: user?.status ?? 'active',
       kycStatus: user?.kycStatus ?? 'NONE',
-      createdAt: (user as any)?.createdAt ?? (fc as any)?.activationDate ?? null,
+      createdAt: (user as any)?.createdAt ?? null,
       // Fineract enrichment
       fineractStatus: fc?.status ?? null,
       officeName: fc?.officeName ?? 'Head Office',
-      activationDate: fc?.activationDate ?? null,
+      activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
       displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || user?.username || `FC_${fineractClientId}`,
+      mobileNo: fc?.mobileNo ?? fc?.phoneNumber ?? null,
+      staffName: fc?.staffName ?? (fc?.staffDisplayName ?? 'Chưa phân công'),
+      externalId: fc?.externalId ?? null,
+    };
+  }
+
+  /**
+   * Get full customer detail (client info + summary + savings + charges) - like Mifos.
+   */
+  async getCustomerDetail(userId: string) {
+    const customer = await this.getCustomerById(userId);
+    const loans = await this.getCustomerLoans(userId);
+    const clientId = customer.fineractClientId ? parseInt(customer.fineractClientId) : null;
+
+    let savingsAccounts: any[] = [];
+    let charges: any[] = [];
+
+    if (clientId) {
+      try {
+        const accountsRes = await this.fineractSavingsService.getSavingsAccounts(clientId);
+        savingsAccounts = Array.isArray(accountsRes) ? accountsRes : [];
+      } catch { /* ignore */ }
+      try {
+        charges = await this.fineractClientService.getClientCharges(clientId, true);
+      } catch { /* ignore */ }
+    }
+
+    const activeLoans = loans.filter((l: any) => {
+      const code = l.status?.code ?? l.status;
+      return String(code || '').includes('active') || String(code || '').includes('disbursed');
+    });
+    const totalSavings = savingsAccounts
+      .filter((s: any) => s.status?.active)
+      .reduce((sum: number, s: any) => sum + (Number(s.accountBalance) || 0), 0);
+    const lastLoanAmount = loans.length > 0
+      ? Math.max(...loans.map((l: any) => l.capital || 0))
+      : 0;
+
+    const summary = {
+      loanCycles: loans.length,
+      activeLoans: activeLoans.length,
+      lastLoanAmount,
+      activeSavings: savingsAccounts.filter((s: any) => s.status?.active).length,
+      totalSavings,
+    };
+
+    return {
+      customer,
+      loans,
+      summary,
+      savingsAccounts,
+      charges,
     };
   }
 
@@ -684,7 +754,6 @@ export class AdminService {
 
     const kycData = user.kycData || {};
     const metadata = kycData.metadata || {};
-    const fineractIdentifiers = metadata.fineractIdentifiers || {};
     const fineractClientDocs = metadata.fineractClientDocs || {};
 
     const documents: { id: number; name: string; entityType: string; entityId: number; label: string }[] = [];
@@ -700,19 +769,6 @@ export class AdminService {
           entityId: clientId,
           label: d.description || d.name || 'CCCD',
         });
-      }
-      const identifierId = fineractIdentifiers.identifierId;
-      if (identifierId) {
-        const idDocs = await this.fineractClientService.getEntityDocuments('client_identifiers', identifierId);
-        for (const d of idDocs || []) {
-          documents.push({
-            id: d.id,
-            name: d.name || d.fileName || 'document',
-            entityType: 'client_identifiers',
-            entityId: identifierId,
-            label: d.description || d.name || 'CCCD',
-          });
-        }
       }
     }
 
@@ -734,8 +790,6 @@ export class AdminService {
       },
       metadata: {
         kycCompletedAt: metadata.kycCompletedAt,
-        faceMatchingResult: metadata.faceMatchingResult,
-        fineractIdentifiers,
         fineractClientDocs,
       },
       documents,

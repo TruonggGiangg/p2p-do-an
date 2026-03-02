@@ -165,11 +165,8 @@ export class EkycService {
                 sex: ocrData.gender,
             };
 
-            const kycMetadata = {
+            const kycMetadata: Record<string, any> = {
                 kycCompletedAt: new Date(),
-                faceMatchingResult,
-                livenessResult,
-                fineractIdentifiers: { front: null, back: null, identifierId: null },
                 fineractClientDocs: { front: null, back: null },
             };
 
@@ -194,37 +191,8 @@ export class EkycService {
                     this.logger.warn(`[EkycService] Fineract updateClient failed (continuing with docs): ${updateErr.message}`);
                 }
 
-                // B. Upload documents - chạy dù updateClient fail
+                // B. Upload CCCD to clients/{id}/documents
                 try {
-                    // B1. Check for existing Passport identifier (documentTypeId = 1 = Passport/ID)
-                    const identifiers = await clientService.getClientIdentifiers(clientIdNum);
-                    let identifierId = identifiers.find((id: any) => id.documentType?.id === 1 || id.documentTypeId === 1)?.id;
-
-                    if (!identifierId) {
-                        identifierId = await clientService.createClientIdentifier(
-                            clientIdNum,
-                            1,
-                            'CCCD',
-                            `CCCD - ${extractedData.ssn || extractedData.fullName}`
-                        );
-                    }
-                    kycMetadata.fineractIdentifiers.identifierId = identifierId;
-
-                    // C. Upload CCCD to client_identifiers (identifier documents)
-                    if (identifierId) {
-                        if (frontImageBuffer) {
-                            kycMetadata.fineractIdentifiers.front = await clientService.uploadDocument(
-                                'client_identifiers', identifierId, 'CCCD_FRONT', `CCCD mặt trước - ${extractedData.ssn}`, frontImageBuffer, 'front_cccd.jpg'
-                            );
-                        }
-                        if (backImageBuffer) {
-                            kycMetadata.fineractIdentifiers.back = await clientService.uploadDocument(
-                                'client_identifiers', identifierId, 'CCCD_BACK', 'CCCD mặt sau', backImageBuffer, 'back_cccd.jpg'
-                            );
-                        }
-                    }
-
-                    // D. Upload documents to client (clients/{id}/documents) - tài liệu người dùng
                     if (frontImageBuffer) {
                         kycMetadata.fineractClientDocs.front = await clientService.uploadDocument(
                             'clients', clientIdNum, 'CCCD_FRONT', `CCCD mặt trước - ${extractedData.ssn}`, frontImageBuffer, 'front_cccd.jpg'
@@ -235,10 +203,15 @@ export class EkycService {
                             'clients', clientIdNum, 'CCCD_BACK', 'CCCD mặt sau', backImageBuffer, 'back_cccd.jpg'
                         );
                     }
-
-                    this.logger.log(`[EkycService] Fineract sync done: identifiers + client docs`);
+                    this.logger.log(`[EkycService] Fineract sync done: client docs`);
                 } catch (docErr: any) {
-                    this.logger.warn(`[EkycService] Fineract document upload failed: ${docErr.message}`);
+                    const errDetail = docErr.response?.data || docErr.message;
+                    this.logger.error(
+                        `[EkycService] Fineract document upload failed: ${docErr.message}`,
+                        typeof errDetail === 'object' ? JSON.stringify(errDetail) : errDetail,
+                    );
+                    // Lưu lỗi vào metadata để debug (không throw - user vẫn có kycStatus PENDING)
+                    kycMetadata.uploadError = docErr.response?.data?.errors?.[0]?.defaultUserMessage || docErr.message;
                 }
             }
 
@@ -264,8 +237,8 @@ export class EkycService {
                     if (extractedData.address) updateAttributes.address = extractedData.address;
                     if (extractedData.sex) updateAttributes.sex = extractedData.sex;
 
-                    if (kycMetadata.fineractIdentifiers.front) updateAttributes.ssnFrontImg = String(kycMetadata.fineractIdentifiers.front);
-                    if (kycMetadata.fineractIdentifiers.back) updateAttributes.ssnBackImg = String(kycMetadata.fineractIdentifiers.back);
+                    if (kycMetadata.fineractClientDocs?.front) updateAttributes.ssnFrontImg = String(kycMetadata.fineractClientDocs.front);
+                    if (kycMetadata.fineractClientDocs?.back) updateAttributes.ssnBackImg = String(kycMetadata.fineractClientDocs.back);
 
                     await this.keycloakService.updateUser(user.keycloakId, updateAttributes);
                 } catch (kcError: any) {
@@ -273,11 +246,23 @@ export class EkycService {
                 }
             }
 
-            // 3. Update MongoDB User Document
+            // 3. Update MongoDB User Document - chỉ lưu dữ liệu cần thiết
             user.kycStatus = 'PENDING';
+            const meta = kycMetadata as Record<string, any>;
+            const hasClientDocs = meta.fineractClientDocs?.front ?? meta.fineractClientDocs?.back;
+            const metadata: Record<string, any> = {
+                kycCompletedAt: meta.kycCompletedAt,
+            };
+            if (hasClientDocs) metadata.fineractClientDocs = meta.fineractClientDocs;
+            if (meta.uploadError) metadata.uploadError = meta.uploadError;
+
             user.kycData = {
-                ...extractedData,
-                metadata: kycMetadata,
+                fullName: extractedData.fullName,
+                ssn: extractedData.ssn,
+                dateOfBirth: extractedData.dateOfBirth,
+                address: extractedData.address,
+                sex: extractedData.sex,
+                metadata,
             };
 
             await user.save();
@@ -288,8 +273,8 @@ export class EkycService {
                 message: 'Hồ sơ đã được gửi lưu trữ thành công và đang chờ phê duyệt.',
                 data: {
                     kycStatus: user.kycStatus,
-                    fineractIdentifiers: kycMetadata.fineractIdentifiers
-                }
+                    fineractClientDocs: kycMetadata.fineractClientDocs,
+                },
             };
         } catch (error: any) {
             this.logger.error(`[EkycService] saveKycData error: ${error.message}`);
