@@ -403,11 +403,18 @@ export class AdminService {
   }
 
   /**
-   * Get full customer detail (client info + summary + savings + charges) - like Mifos.
+   * Get full customer detail (client info + summary + savings + charges + KYC) - like Mifos.
    */
   async getCustomerDetail(userId: string) {
     const customer = await this.getCustomerById(userId);
     const loans = await this.getCustomerLoans(userId);
+    // KYC is optional - may not exist for all customers
+    let kycDetail: any = null;
+    try {
+      kycDetail = await this.getKycDetail(userId);
+    } catch {
+      // Ignore KYC not found errors
+    }
     const clientId = customer.fineractClientId ? parseInt(customer.fineractClientId) : null;
 
     let savingsAccounts: any[] = [];
@@ -448,6 +455,7 @@ export class AdminService {
       summary,
       savingsAccounts,
       charges,
+      kyc: kycDetail,
     };
   }
 

@@ -5,17 +5,26 @@ import type { ProColumns } from '@ant-design/pro-components';
 import {
     Card, Typography, Tag, Descriptions, Button, Space,
     Skeleton, Statistic, Row, Col, Avatar, Divider, message, theme,
-    Drawer, Tabs, Table, Badge, Alert, Empty
+    Drawer, Tabs, Table, Badge, Alert, Empty, Image
 } from 'antd';
 import { CloseOutlined, EyeOutlined } from '@ant-design/icons';
 import {
-    ArrowLeftOutlined, UserOutlined, BankOutlined, CalendarOutlined,
-    DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined
+    ArrowLeftOutlined, UserOutlined, BankOutlined,
+    DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined,
+    IdcardOutlined, PhoneOutlined, MailOutlined, HomeOutlined, TeamOutlined,
+    CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
-import { adminApi, CustomerDto, LoanDto, CustomerDetailDto } from '../api/admin';
+import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 
 const { Title, Text } = Typography;
+
+// Tab items type
+interface TabItem {
+    key: string;
+    label: React.ReactNode;
+    children: React.ReactNode;
+}
 
 export default function CustomerDetailPage() {
     const { token } = theme.useToken();
@@ -24,14 +33,20 @@ export default function CustomerDetailPage() {
     const [detail, setDetail] = useState<CustomerDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [activeTab, setActiveTab] = useState('general');
+
+    // KYC Document view states
+    const [kycDocImages, setKycDocImages] = useState<Record<string, string>>({});
+    const [viewingKycDoc, setViewingKycDoc] = useState<{entityType: string; entityId: number; documentId: number; name: string} | null>(null);
 
     const customer = detail?.customer ?? null;
     const loans = detail?.loans ?? [];
     const summary = detail?.summary;
     const savingsAccounts = detail?.savingsAccounts ?? [];
     const charges = detail?.charges ?? [];
+    const kyc = detail?.kyc;
 
-    // Detailed Modal States
+    // Modal states for loan details
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalLoading, setModalLoading] = useState(false);
     const [loanDetails, setLoanDetails] = useState<any>(null);
@@ -47,6 +62,34 @@ export default function CustomerDetailPage() {
             .catch(() => setError('Không thể tải thông tin khách hàng'))
             .finally(() => setLoading(false));
     }, [id]);
+
+    // Load KYC document images when tab is KYC
+    useEffect(() => {
+        if (activeTab !== 'kyc' || !kyc?.documents?.length || !id) return;
+        
+        const loadImages = async () => {
+            const urls: Record<string, string> = {};
+            for (const doc of kyc.documents) {
+                const key = `${doc.entityType}-${doc.entityId}-${doc.id}`;
+                try {
+                    const response = await adminApi.downloadKycDocument(id, doc.entityType, doc.entityId, doc.id);
+                    const contentType = response.headers['content-type'] || 'image/jpeg';
+                    if (['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+                        const blob = new Blob([response.data], { type: contentType });
+                        urls[key] = window.URL.createObjectURL(blob);
+                    }
+                } catch {
+                    // skip failed
+                }
+            }
+            setKycDocImages(urls);
+        };
+        loadImages();
+
+        return () => {
+            Object.values(kycDocImages).forEach(u => window.URL.revokeObjectURL(u));
+        };
+    }, [activeTab, kyc, id]);
 
     const handleViewDetails = async (fineractLoanId: number) => {
         setIsModalOpen(true);
@@ -106,11 +149,7 @@ export default function CustomerDetailPage() {
                 const num = typeof id === 'number' ? id : (typeof id === 'object' && id != null && 'id' in id ? (id as { id: number }).id : Number(id));
                 const valid = num != null && !Number.isNaN(num);
                 return valid ? (
-                    <Tag
-                        color="blue"
-                        style={{ fontFamily: 'monospace', cursor: 'pointer' }}
-                        onClick={() => handleViewDetails(num)}
-                    >
+                    <Tag color="blue" style={{ fontFamily: 'monospace', cursor: 'pointer' }} onClick={() => handleViewDetails(num)}>
                         #{num}
                     </Tag>
                 ) : '–';
@@ -173,75 +212,342 @@ export default function CustomerDetailPage() {
         },
     ];
 
-    if (loading) return <Skeleton active />;
-    if (error) return <Alert type="error" message={error} />;
+    if (loading) return (
+        <div style={{ padding: 24 }}>
+            <Card><Skeleton active /></Card>
+        </div>
+    );
+    
+    if (error) return (
+        <div style={{ padding: 24 }}>
+            <Alert type="error" message={error} />
+        </div>
+    );
+    
     if (!customer) return null;
 
     const totalCapital = loans.reduce((s, l) => s + (l.capital || 0), 0);
 
-    return (
-        <div>
-            <Space style={{ marginBottom: 16 }}>
-                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/customers')}>
-                    Quay lại
-                </Button>
-            </Space>
-
-            {/* Header giống Mifos */}
-            <Card bordered={false} style={{ marginBottom: 24, background: token.colorPrimary, color: '#fff', borderRadius: 12 }}>
-                <Row gutter={[24, 16]} align="middle">
-                    <Col flex="none">
-                        <Avatar size={64} icon={<UserOutlined />} style={{ background: 'rgba(255,255,255,0.2)', fontSize: 28 }} />
-                    </Col>
-                    <Col flex="auto">
-                        <Title level={3} style={{ margin: 0, color: '#fff' }}>{customer.displayName || customer.username}</Title>
-                        <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13 }}>
-                            <Space size={16} wrap>
-                                <span>Văn phòng: {customer.officeName || 'Head Office'}</span>
-                                <span>Khách hàng: {customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</span>
-                                <span>ID bên ngoài: {customer.externalId || customer.username || '–'}</span>
-                                <span>Nhân viên: {customer.staffName || 'Chưa phân công'}</span>
-                            </Space>
-                        </div>
-                        <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13 }}>
-                            <Space size={16} wrap>
-                                <span>Số điện thoại: {customer.mobileNo || customer.username || '–'}</span>
-                                <span>Email: {customer.email || '–'}</span>
-                            </Space>
-                        </div>
-                    </Col>
-                    <Col flex="none">
+    // Header card with client info (like Mifos)
+    const HeaderCard = () => (
+        <Card 
+            bordered={false} 
+            style={{ 
+                marginBottom: 24, 
+                background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`, 
+                color: '#fff', 
+                borderRadius: 16,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+            }}
+        >
+            <Row gutter={[24, 16]} align="middle">
+                <Col flex="none">
+                    <Avatar 
+                        size={80} 
+                        icon={<UserOutlined />} 
+                        style={{ 
+                            background: 'rgba(255,255,255,0.25)', 
+                            fontSize: 36,
+                            border: '3px solid rgba(255,255,255,0.5)'
+                        }} 
+                    />
+                </Col>
+                <Col flex="auto">
+                    <Title level={3} style={{ margin: 0, color: '#fff', fontWeight: 600 }}>
+                        {customer.displayName || customer.username}
+                    </Title>
+                    <div style={{ marginTop: 12, opacity: 0.95, fontSize: 14, lineHeight: 2 }}>
+                        <Row gutter={[32, 8]}>
+                            <Col>
+                                <Space><HomeOutlined /> <strong>Văn phòng:</strong> {customer.officeName || 'Head Office'}</Space>
+                            </Col>
+                            <Col>
+                                <Space><TeamOutlined /> <strong>Khách hàng:</strong> {customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</Space>
+                            </Col>
+                            <Col>
+                                <Space><IdcardOutlined /> <strong>ID bên ngoài:</strong> {customer.externalId || customer.username || '–'}</Space>
+                            </Col>
+                            <Col>
+                                <Space><UserOutlined /> <strong>Nhân viên:</strong> {customer.staffName || 'Chưa phân công'}</Space>
+                            </Col>
+                        </Row>
+                        <Row gutter={[32, 8]} style={{ marginTop: 4 }}>
+                            <Col>
+                                <Space><PhoneOutlined /> <strong>Số điện thoại:</strong> {customer.mobileNo || customer.username || '–'}</Space>
+                            </Col>
+                            <Col>
+                                <Space><MailOutlined /> <strong>Email:</strong> {customer.email || '–'}</Space>
+                            </Col>
+                        </Row>
+                    </div>
+                </Col>
+                <Col flex="none" style={{ textAlign: 'right' }}>
+                    <div style={{ marginBottom: 12 }}>
                         <FineractStatusBadge status={customer.fineractStatus} />
-                        {customer.kycStatus === 'VERIFIED' && <Tag color="success" style={{ marginLeft: 8 }}>Đã xác minh</Tag>}
-                        {customer.kycStatus === 'PENDING' && <Tag color="processing" style={{ marginLeft: 8 }}>Chờ phê duyệt</Tag>}
+                    </div>
+                    {customer.kycStatus === 'VERIFIED' && (
+                        <Tag color="success" icon={<CheckCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
+                            Đã xác minh KYC
+                        </Tag>
+                    )}
+                    {customer.kycStatus === 'PENDING' && (
+                        <Tag color="warning" icon={<ExclamationCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
+                            Chờ duyệt KYC
+                        </Tag>
+                    )}
+                    {customer.kycStatus === 'REJECTED' && (
+                        <Tag color="error" icon={<CloseCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
+                            Từ chối KYC
+                        </Tag>
+                    )}
+                    {(customer.kycStatus === 'NONE' || !customer.kycStatus) && (
+                        <Tag style={{ fontSize: 13, padding: '4px 12px' }}>
+                            Chưa KYC
+                        </Tag>
+                    )}
+                </Col>
+            </Row>
+        </Card>
+    );
+
+    // Performance History Section
+    const PerformanceSection = () => (
+        <Card 
+            title={<Space><InfoCircleOutlined /> Lịch sử hiệu suất</Space>} 
+            bordered={false} 
+            style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+        >
+            {summary ? (
+                <Row gutter={[48, 24]}>
+                    <Col span={12}>
+                        <Statistic 
+                            title="Số chu kỳ vay" 
+                            value={summary.loanCycles} 
+                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }}
+                        />
+                        <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
+                            Số khoản vay đang hoạt động: <strong style={{ color: token.colorText }}>{summary.activeLoans}</strong><br />
+                            Số tiền vay cuối cùng: <strong style={{ color: token.colorText }}>{fmtVND(summary.lastLoanAmount)}</strong>
+                        </div>
+                    </Col>
+                    <Col span={12}>
+                        <Statistic 
+                            title="Số tiết kiệm đang hoạt động" 
+                            value={summary.activeSavings} 
+                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }}
+                        />
+                        <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
+                            Tổng tiết kiệm: <strong style={{ color: token.colorText, fontSize: 18 }}>{fmtVND(summary.totalSavings)}</strong>
+                        </div>
                     </Col>
                 </Row>
+            ) : (
+                <Empty description="Chưa có dữ liệu hiệu suất" />
+            )}
+        </Card>
+    );
+
+    // General Tab Content
+    const GeneralTab = () => (
+        <>
+            <PerformanceSection />
+            
+            {/* Quick Stats */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                <Col span={8}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg, textAlign: 'center' }}>
+                        <Statistic 
+                            title="Khoản vay" 
+                            value={loans.length} 
+                            prefix={<DollarOutlined />} 
+                            valueStyle={{ color: token.colorPrimary, fontSize: 32 }} 
+                        />
+                    </Card>
+                </Col>
+                <Col span={8}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorSuccessBg, textAlign: 'center' }}>
+                        <Statistic 
+                            title="Tổng vốn" 
+                            value={totalCapital} 
+                            formatter={v => fmtVND(Number(v))} 
+                            valueStyle={{ color: token.colorSuccess, fontSize: 24 }} 
+                        />
+                    </Card>
+                </Col>
+                <Col span={8}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorWarningBg, textAlign: 'center' }}>
+                        <Statistic
+                            title="Chờ duyệt"
+                            value={loans.filter(l => {
+                                const code = l.status && typeof l.status === 'object' ? l.status.code : l.status;
+                                return String(code || '').includes('pending');
+                            }).length}
+                            valueStyle={{ color: token.colorWarning, fontSize: 32 }}
+                        />
+                    </Card>
+                </Col>
+            </Row>
+
+            {/* Loan Accounts */}
+            <Card 
+                title={<Space><BankOutlined /> Các tài khoản vay</Space>} 
+                bordered={false} 
+                style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+            >
+                {loans.length === 0 ? (
+                    <Empty description="Chưa có khoản vay" />
+                ) : (
+                    <ProTable<LoanDto>
+                        rowKey={(r) => r._id || `FL_${r.fineractLoanId}`}
+                        columns={loanColumns}
+                        dataSource={loans}
+                        search={false}
+                        pagination={{ pageSize: 10 }}
+                        options={false}
+                        scroll={{ x: 1300 }}
+                    />
+                )}
+            </Card>
+        </>
+    );
+
+    // KYC Tab Content
+    const KycTab = () => {
+        if (!kyc) {
+            return (
+                <Card bordered={false} style={{ borderRadius: 12 }}>
+                    <Empty description="Chưa có dữ liệu KYC" />
+                </Card>
+            );
+        }
+
+        const { ocr, metadata, documents } = kyc;
+
+        return (
+            <>
+                {/* OCR Information */}
+                <Card 
+                    title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>} 
+                    bordered={false} 
+                    style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                >
+                    <Descriptions column={2} bordered size="small">
+                        <Descriptions.Item label="Họ tên" span={1}>{ocr?.fullName || '–'}</Descriptions.Item>
+                        <Descriptions.Item label="Số CCCD" span={1}>{ocr?.ssn || '–'}</Descriptions.Item>
+                        <Descriptions.Item label="Ngày sinh" span={1}>{ocr?.dateOfBirth || '–'}</Descriptions.Item>
+                        <Descriptions.Item label="Giới tính" span={1}>{ocr?.sex || '–'}</Descriptions.Item>
+                        <Descriptions.Item label="Địa chỉ" span={2}>{ocr?.address || '–'}</Descriptions.Item>
+                        <Descriptions.Item label="Ngày hoàn thành KYC" span={2}>
+                            {metadata?.kycCompletedAt ? new Date(metadata.kycCompletedAt).toLocaleString('vi-VN') : '–'}
+                        </Descriptions.Item>
+                    </Descriptions>
+                </Card>
+
+                {/* KYC Documents */}
+                <Card 
+                    title={<Space><FileTextOutlined /> Hình ảnh CCCD (từ Fineract)</Space>} 
+                    bordered={false} 
+                    style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                >
+                    {documents && documents.length > 0 ? (
+                        <Row gutter={[24, 24]}>
+                            {documents.map((doc: { id: number; name: string; entityType: string; entityId: number; label: string }) => {
+                                const key = `${doc.entityType}-${doc.entityId}-${doc.id}`;
+                                const imgUrl = kycDocImages[key];
+                                return (
+                                    <Col xs={24} sm={12} md={8} key={key}>
+                                        <Card 
+                                            hoverable
+                                            cover={
+                                                imgUrl ? (
+                                                    <Image 
+                                                        src={imgUrl} 
+                                                        alt={doc.label}
+                                                        style={{ height: 200, objectFit: 'cover' }}
+                                                        preview={{ mask: 'Xem ảnh' }}
+                                                    />
+                                                ) : (
+                                                    <div style={{ 
+                                                        height: 200, 
+                                                        background: token.colorFillAlter, 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        justifyContent: 'center' 
+                                                    }}>
+                                                        <Text type="secondary">Đang tải...</Text>
+                                                    </div>
+                                                )
+                                            }
+                                            actions={[
+                                                <Button 
+                                                    type="link" 
+                                                    icon={<EyeOutlined />}
+                                                    onClick={() => setViewingKycDoc({
+                                                        entityType: doc.entityType,
+                                                        entityId: doc.entityId,
+                                                        documentId: doc.id,
+                                                        name: doc.name
+                                                    })}
+                                                >
+                                                    Xem / Tải
+                                                </Button>
+                                            ]}
+                                        >
+                                            <Card.Meta 
+                                                title={doc.label} 
+                                                description={doc.name}
+                                            />
+                                        </Card>
+                                    </Col>
+                                );
+                            })}
+                        </Row>
+                    ) : (
+                        <Empty description="Chưa có tài liệu CCCD trong Fineract" />
+                    )}
+                </Card>
+            </>
+        );
+    };
+
+    // Savings & Charges Tab
+    const AccountsTab = () => (
+        <>
+            {/* Savings Accounts */}
+            <Card 
+                title={<Space><BankOutlined /> Tài khoản tiết kiệm</Space>} 
+                bordered={false} 
+                style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+            >
+                {savingsAccounts.length > 0 ? (
+                    <Table
+                        dataSource={savingsAccounts}
+                        rowKey={(r: any) => r.id ?? r.savingsId ?? r.accountNo ?? String(Math.random())}
+                        size="small"
+                        pagination={false}
+                        columns={[
+                            { title: 'Số tài khoản', dataIndex: 'accountNo', key: 'accountNo', render: (v: string) => v || '–' },
+                            { title: 'Sản phẩm', dataIndex: 'productName', key: 'productName', render: (v: string) => v || '–' },
+                            { title: 'Số dư', key: 'balance', align: 'right', render: (_: any, r: any) => fmtVND(r.accountBalance ?? r.balance ?? 0) },
+                            { title: 'Trạng thái', key: 'status', render: (_: any, r: any) => (
+                                <Tag color={r.status?.active ? 'success' : 'default'}>
+                                    {r.status?.value ?? r.status?.code ?? '–'}
+                                </Tag>
+                            )},
+                        ]}
+                    />
+                ) : (
+                    <Empty description="Chưa có tài khoản tiết kiệm" />
+                )}
             </Card>
 
-            {/* Lịch sử hiệu suất */}
-            {summary && (
-                <Card title="Lịch sử hiệu suất" bordered={false} style={{ marginBottom: 24, borderRadius: 12 }}>
-                    <Row gutter={[24, 16]}>
-                        <Col span={12}>
-                            <p style={{ margin: 0, lineHeight: 1.8 }}>
-                                Số chu kỳ vay: <strong>{summary.loanCycles}</strong><br />
-                                Số khoản vay đang hoạt động: <strong>{summary.activeLoans}</strong><br />
-                                Số tiền vay cuối cùng: <strong>{fmtVND(summary.lastLoanAmount)}</strong>
-                            </p>
-                        </Col>
-                        <Col span={12}>
-                            <p style={{ margin: 0, lineHeight: 1.8 }}>
-                                Số tiết kiệm đang hoạt động: <strong>{summary.activeSavings}</strong><br />
-                                Tổng tiết kiệm: <strong>{fmtVND(summary.totalSavings)}</strong>
-                            </p>
-                        </Col>
-                    </Row>
-                </Card>
-            )}
-
-            {/* Các khoản phí sắp tới */}
+            {/* Charges */}
             {charges.length > 0 && (
-                <Card title="Các khoản phí sắp tới" bordered={false} style={{ marginBottom: 24, borderRadius: 12 }}>
+                <Card 
+                    title={<Space><DollarOutlined /> Các khoản phí sắp tới</Space>} 
+                    bordered={false} 
+                    style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                >
                     <Table
                         dataSource={charges}
                         rowKey="id"
@@ -253,97 +559,78 @@ export default function CustomerDetailPage() {
                             { title: 'Phải trả', dataIndex: 'amount', key: 'amount', align: 'right', render: (v: number) => fmtVND(v) },
                             { title: 'Đã trả', dataIndex: 'amountPaid', key: 'amountPaid', align: 'right', render: (v: number) => fmtVND(v || 0) },
                             { title: 'Đã miễn', dataIndex: 'amountWaived', key: 'amountWaived', align: 'right', render: (v: number) => fmtVND(v || 0) },
-                            { title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right', render: (v: number) => fmtVND(v || 0) },
+                            { title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right', render: (v: number) => (
+                                <Text type={v > 0 ? 'danger' : 'success'} strong>{fmtVND(v || 0)}</Text>
+                            )},
                         ]}
                     />
                 </Card>
             )}
+        </>
+    );
 
-            <Row gutter={[16, 16]}>
-                <Col xs={24} md={7}>
-                    <Card bordered={false} style={{ borderRadius: 12 }}>
-                        <Descriptions column={1} size="small" labelStyle={{ color: token.colorTextSecondary, fontSize: 12 }}>
-                            <Descriptions.Item label="Email">{customer.email || '–'}</Descriptions.Item>
-                            <Descriptions.Item label="Văn phòng"><Tag color="gold">{customer.officeName || 'Head Office'}</Tag></Descriptions.Item>
-                            <Descriptions.Item label="TT Fineract"><FineractStatusBadge status={customer.fineractStatus} /></Descriptions.Item>
-                            <Descriptions.Item label="Trạng thái KYC">
-                                {customer.kycStatus === 'VERIFIED' && <Tag color="success">Đã xác minh</Tag>}
-                                {customer.kycStatus === 'PENDING' && <Tag color="processing">Chờ phê duyệt</Tag>}
-                                {customer.kycStatus === 'REJECTED' && <Tag color="error">Từ chối</Tag>}
-                                {(customer.kycStatus === 'NONE' || !customer.kycStatus) && <Tag>Chưa xác minh</Tag>}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Fineract ID">
-                                {customer.fineractClientId ? <Tag color="blue" style={{ fontFamily: 'monospace' }}>{customer.fineractClientId}</Tag> : '–'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Ngày kích hoạt">
-                                {customer.activationDate ? new Date(customer.activationDate).toLocaleDateString('vi-VN') : '–'}
-                            </Descriptions.Item>
-                        </Descriptions>
-                    </Card>
-                </Col>
+    const tabItems: TabItem[] = [
+        {
+            key: 'general',
+            label: (
+                <Space>
+                    <InfoCircleOutlined />
+                    Chung
+                </Space>
+            ),
+            children: <GeneralTab />
+        },
+        {
+            key: 'kyc',
+            label: (
+                <Space>
+                    <IdcardOutlined />
+                    KYC
+                    {customer.kycStatus === 'PENDING' && <Badge count="!" style={{ backgroundColor: '#faad14' }} />}
+                </Space>
+            ),
+            children: <KycTab />
+        },
+        {
+            key: 'accounts',
+            label: (
+                <Space>
+                    <BankOutlined />
+                    Tài khoản & Phí
+                </Space>
+            ),
+            children: <AccountsTab />
+        },
+    ];
 
-                <Col xs={24} md={17}>
-                    {/* Tài khoản tiết kiệm */}
-                    {savingsAccounts.length > 0 && (
-                        <Card title="Tài khoản tiết kiệm" bordered={false} style={{ marginBottom: 16, borderRadius: 12 }}>
-                            <Table
-                                dataSource={savingsAccounts}
-                                rowKey={(r: any) => r.id ?? r.savingsId ?? r.accountNo ?? String(Math.random())}
-                                size="small"
-                                pagination={false}
-                                columns={[
-                                    { title: 'Số tài khoản', dataIndex: 'accountNo', key: 'accountNo', render: (v: string) => v || '–' },
-                                    { title: 'Sản phẩm', dataIndex: 'productName', key: 'productName', render: (v: string) => v || '–' },
-                                    { title: 'Số dư', key: 'balance', align: 'right', render: (_: any, r: any) => fmtVND(r.accountBalance ?? r.balance ?? 0) },
-                                    { title: 'Trạng thái', key: 'status', render: (_: any, r: any) => r.status?.value ?? r.status?.code ?? '–' },
-                                ]}
-                            />
-                        </Card>
-                    )}
+    return (
+        <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+            {/* Back Button */}
+            <Space style={{ marginBottom: 24 }}>
+                <Button 
+                    icon={<ArrowLeftOutlined />} 
+                    onClick={() => navigate('/customers')}
+                    size="large"
+                >
+                    Quay lại danh sách
+                </Button>
+            </Space>
 
-                    <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-                        <Col span={8}>
-                            <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg, border: `1px solid ${token.colorPrimaryBorder}` }}>
-                                <Statistic title="Khoản vay" value={loans.length} prefix={<DollarOutlined />} valueStyle={{ color: token.colorPrimary }} />
-                            </Card>
-                        </Col>
-                        <Col span={8}>
-                            <Card bordered={false} style={{ borderRadius: 12 }}>
-                                <Statistic title="Tổng vốn" value={totalCapital} formatter={v => fmtVND(Number(v))} valueStyle={{ fontSize: 14, color: token.colorSuccess }} />
-                            </Card>
-                        </Col>
-                        <Col span={8}>
-                            <Card bordered={false} style={{ borderRadius: 12 }}>
-                                <Statistic
-                                    title="Chờ duyệt"
-                                    value={loans.filter(l => {
-                                        const code = l.status && typeof l.status === 'object' ? l.status.code : l.status;
-                                        return String(code || '').includes('pending');
-                                    }).length}
-                                    valueStyle={{ color: token.colorWarning }}
-                                />
-                            </Card>
-                        </Col>
-                    </Row>
+            {/* Header */}
+            <HeaderCard />
 
-                    {loans.length === 0
-                        ? <Card title="Các tài khoản vay" bordered={false} style={{ borderRadius: 12 }}><Empty description="Chưa có khoản vay" /></Card>
-                        : (
-                            <ProTable<LoanDto>
-                                rowKey={(r) => r._id || `FL_${r.fineractLoanId}`}
-                                headerTitle="Các tài khoản vay"
-                                columns={loanColumns}
-                                dataSource={loans}
-                                search={false}
-                                pagination={{ pageSize: 10 }}
-                                options={false}
-                                scroll={{ x: 1300 }}
-                            />
-                        )
-                    }
-                </Col>
-            </Row >
+            {/* Tabs */}
+            <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <Tabs 
+                    activeKey={activeTab} 
+                    onChange={setActiveTab}
+                    items={tabItems}
+                    size="large"
+                    type="card"
+                />
+            </Card>
 
+            {/* Loan Detail Drawer */}
             <Drawer
                 title={loanDetails ? `Chi tiết khoản vay #${loanDetails.id}` : 'Đang tải...'}
                 open={isModalOpen}
@@ -361,7 +648,7 @@ export default function CustomerDetailPage() {
                     <Tabs defaultActiveKey="overview" items={[
                         {
                             key: 'overview',
-                            label: 'Chung',
+                            label: 'Tổng quan',
                             children: (
                                 <div style={{ padding: '8px 0' }}>
                                     <div style={{
@@ -635,28 +922,28 @@ export default function CustomerDetailPage() {
                                 />
                             )
                         },
-                        {
-                            key: 'raw',
-                            label: 'Dữ liệu thô',
-                            children: (
-                                <pre style={{
-                                    background: token.colorFillAlter,
-                                    padding: 12,
-                                    borderRadius: 4,
-                                    fontSize: '11px',
-                                    maxHeight: '400px',
-                                    overflow: 'auto',
-                                    border: `1px solid ${token.colorBorderSecondary}`,
-                                    color: token.colorText
-                                }}>
-                                    {JSON.stringify(loanDetails, null, 2)}
-                                </pre>
-                            )
-                        }
                     ]} />
                 )}
             </Drawer>
-        </div >
+
+            {/* KYC Document Viewer Modal */}
+            <Drawer
+                title={viewingKycDoc?.name || 'Tài liệu KYC'}
+                open={!!viewingKycDoc}
+                onClose={() => setViewingKycDoc(null)}
+                width={800}
+                destroyOnClose
+            >
+                {viewingKycDoc && id && (
+                    <div style={{ textAlign: 'center' }}>
+                        <Image
+                            src={kycDocImages[`${viewingKycDoc.entityType}-${viewingKycDoc.entityId}-${viewingKycDoc.documentId}`]}
+                            alt={viewingKycDoc.name}
+                            style={{ maxWidth: '100%' }}
+                        />
+                    </div>
+                )}
+            </Drawer>
+        </div>
     );
 }
-

@@ -1,51 +1,90 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag } from 'antd';
-import { EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import {
+    Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
+    Card, Row, Col, Statistic, Select, DatePicker, Form, Input
+} from 'antd';
+import {
+    EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
+    ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
+    BankOutlined, FileSearchOutlined
+} from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
+import dayjs from 'dayjs';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
-type ViewMode = 'all' | 'pending' | 'active';
+type ViewMode = 'all' | 'pending' | 'active' | 'inactive';
+type KycFilter = 'all' | 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+type FineractFilter = 'all' | 'active' | 'inactive' | 'pending';
+
+interface FilterState {
+    kycStatus: KycFilter;
+    fineractStatus: FineractFilter;
+    dateRange: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null;
+    searchText: string;
+}
 
 export default function CustomersPage() {
     const { token } = theme.useToken();
     const navigate = useNavigate();
     const actionRef = useRef<ActionType>();
     const [viewMode, setViewMode] = useState<ViewMode>('all');
+    const [pendingCount, setPendingCount] = useState(0);
+    const [showFilters, setShowFilters] = useState(false);
+    const [filters, setFilters] = useState<FilterState>({
+        kycStatus: 'all',
+        fineractStatus: 'all',
+        dateRange: null,
+        searchText: '',
+    });
+    const [stats, setStats] = useState({
+        total: 0,
+        active: 0,
+        pendingKyc: 0,
+        verifiedKyc: 0,
+    });
+
+    // Load pending count for badge
+    useEffect(() => {
+        adminApi.getPendingApprovalCustomers(1, 1).then(res => {
+            setPendingCount(res.total);
+        }).catch(() => {});
+    }, []);
 
     const columns: ProColumns<CustomerDto>[] = [
-        {
-            title: 'Tìm kiếm',
-            dataIndex: 'keyword',
-            key: 'keyword',
-            hideInTable: true,
-            search: { transform: (v) => v?.trim() || undefined },
-            fieldProps: { placeholder: 'Tên, username, email...' },
-        },
         {
             title: 'Khách hàng',
             dataIndex: 'displayName',
             key: 'name',
-            search: false,
+            fixed: 'left',
+            width: 220,
             render: (_, r) => (
                 <Space>
                     <Avatar
                         icon={<UserOutlined />}
-                        size="small"
+                        size="large"
                         style={{
-                            background: token.colorPrimaryBg,
-                            color: token.colorPrimary
+                            background: r.kycStatus === 'VERIFIED' ? token.colorSuccess : token.colorPrimaryBg,
+                            color: r.kycStatus === 'VERIFIED' ? '#fff' : token.colorPrimary,
+                            border: r.kycStatus === 'VERIFIED' ? `2px solid ${token.colorSuccess}` : 'none'
                         }}
                     />
                     <div>
-                        <Text strong style={{ display: 'block', fontSize: 13 }}>{r.displayName || r.username}</Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                            <PhoneOutlined style={{ marginRight: 4 }} />{r.username}
-                        </Text>
+                        <Text strong style={{ display: 'block', fontSize: 14 }}>{r.displayName || r.username}</Text>
+                        <Space size={4}>
+                            <PhoneOutlined style={{ fontSize: 11, color: token.colorTextSecondary }} />
+                            <Text type="secondary" style={{ fontSize: 12 }}>{r.username}</Text>
+                        </Space>
+                        {r.externalId && (
+                            <div>
+                                <Text type="secondary" style={{ fontSize: 11 }}>ID: {r.externalId}</Text>
+                            </div>
+                        )}
                     </div>
                 </Space>
             ),
@@ -54,26 +93,44 @@ export default function CustomersPage() {
             title: 'Email',
             dataIndex: 'email',
             key: 'email',
-            search: false,
+            width: 200,
             ellipsis: true,
             render: v => v || <Text type="secondary">–</Text>,
         },
         {
-            title: 'Văn phòng',
-            dataIndex: 'officeName',
-            key: 'officeName',
-            render: v => <Badge color="gold" text={v || 'Head Office'} />,
-            search: false,
+            title: 'Văn phòng / Nhân viên',
+            key: 'officeStaff',
+            width: 180,
+            render: (_, r) => (
+                <Space direction="vertical" size={2}>
+                    <Badge color="gold" text={r.officeName || 'Head Office'} />
+                    {r.staffName && r.staffName !== 'Chưa phân công' && (
+                        <Text type="secondary" style={{ fontSize: 11 }}><TeamOutlined /> {r.staffName}</Text>
+                    )}
+                </Space>
+            ),
         },
         {
             title: 'Ngày kích hoạt',
             dataIndex: 'activationDate',
             key: 'activationDate',
-            search: false,
-            render: (v: string | null) => {
-                if (!v) return '–';
+            width: 130,
+            align: 'center',
+            sorter: (a, b) => {
+                const da = a.activationDate ? new Date(a.activationDate).getTime() : 0;
+                const db = b.activationDate ? new Date(b.activationDate).getTime() : 0;
+                return da - db;
+            },
+            render: (dom, record) => {
+                const v = record.activationDate;
+                if (!v) return <Tag color="default">Chưa kích hoạt</Tag>;
                 const d = new Date(v);
-                return !isNaN(d.getTime()) ? d.toLocaleDateString('vi-VN') : '–';
+                return !isNaN(d.getTime()) ? (
+                    <Space direction="vertical" size={0} style={{ textAlign: 'center' }}>
+                        <Text>{d.toLocaleDateString('vi-VN')}</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(d).format('DD/MM/YYYY')}</Text>
+                    </Space>
+                ) : '–';
             },
         },
         {
@@ -81,17 +138,38 @@ export default function CustomersPage() {
             dataIndex: 'kycStatus',
             key: 'kycStatus',
             align: 'center',
-            search: false,
+            width: 140,
+            filters: [
+                { text: 'Chưa KYC', value: 'NONE' },
+                { text: 'Chờ duyệt', value: 'PENDING' },
+                { text: 'Đã duyệt', value: 'VERIFIED' },
+                { text: 'Từ chối', value: 'REJECTED' },
+            ],
+            onFilter: (value, record) => (record.kycStatus || 'NONE') === value,
             render: (_, r) => {
                 const v = r.kycStatus || 'NONE';
-                const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
-                    'NONE': { color: 'default', icon: null, text: 'Chưa KYC' },
-                    'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Chờ duyệt' },
-                    'VERIFIED': { color: 'success', icon: <CheckCircleOutlined />, text: 'Đã duyệt' },
-                    'REJECTED': { color: 'error', icon: null, text: 'Từ chối' },
+                const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string; bg: string }> = {
+                    'NONE': { color: 'default', icon: null, text: 'Chưa KYC', bg: token.colorFillTertiary },
+                    'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Chờ duyệt', bg: token.colorWarningBg },
+                    'VERIFIED': { color: 'success', icon: <CheckCircleOutlined />, text: 'Đã duyệt', bg: token.colorSuccessBg },
+                    'REJECTED': { color: 'error', icon: null, text: 'Từ chối', bg: token.colorErrorBg },
                 };
                 const s = statusMap[v] || statusMap['NONE'];
-                return <Tag color={s.color} icon={s.icon}>{s.text}</Tag>;
+                return (
+                    <Tag
+                        color={s.color}
+                        icon={s.icon}
+                        style={{
+                            padding: '4px 12px',
+                            borderRadius: 12,
+                            fontWeight: 500,
+                            background: s.bg,
+                            border: 'none'
+                        }}
+                    >
+                        {s.text}
+                    </Tag>
+                );
             },
         },
         {
@@ -99,22 +177,22 @@ export default function CustomersPage() {
             dataIndex: 'fineractStatus',
             key: 'fineractStatus',
             align: 'center',
-            search: false,
+            width: 140,
             render: (_, r) => <FineractStatusBadge status={r.fineractStatus} />,
         },
         {
-            title: '',
+            title: 'Thao tác',
             key: 'actions',
-            align: 'right',
-            search: false,
+            align: 'center',
+            fixed: 'right',
+            width: 120,
             render: (_, r) => (
-                <Tooltip title="Xem chi tiết & khoản vay">
+                <Tooltip title="Xem chi tiết">
                     <Button
                         type="primary"
-                        size="small"
-                        ghost
                         icon={<EyeOutlined />}
                         onClick={(e) => { e.stopPropagation(); navigate(`/customers/${r._id || r.fineractClientId}`); }}
+                        style={{ borderRadius: 8 }}
                     >
                         Chi tiết
                     </Button>
@@ -123,27 +201,59 @@ export default function CustomersPage() {
         },
     ];
 
-    // Filter columns based on view mode
-    const getFilteredColumns = (): ProColumns<CustomerDto>[] => {
-        if (viewMode === 'pending') {
-            // For pending view, show KYC completed date and highlight hasKycData
-            return columns.map(col => {
-                if (col.key === 'activationDate') {
-                    return {
-                        ...col,
-                        title: 'Ngày đăng ký',
-                        dataIndex: 'createdAt',
-                    };
-                }
-                return col;
-            });
-        }
-        return columns;
-    };
-
     const handleTabChange = (key: string) => {
         setViewMode(key as ViewMode);
+        // Reset filters when changing tabs
+        setFilters({
+            kycStatus: 'all',
+            fineractStatus: 'all',
+            dateRange: null,
+            searchText: '',
+        });
         actionRef.current?.reload();
+    };
+
+    const applyFilters = (users: CustomerDto[]): CustomerDto[] => {
+        let filtered = [...users];
+
+        // KYC Status filter
+        if (filters.kycStatus !== 'all') {
+            filtered = filtered.filter(u => (u.kycStatus || 'NONE') === filters.kycStatus);
+        }
+
+        // Fineract Status filter
+        if (filters.fineractStatus !== 'all') {
+            filtered = filtered.filter(u => {
+                const status = u.fineractStatus?.code || u.fineractStatus;
+                if (filters.fineractStatus === 'active') return String(status).includes('active');
+                if (filters.fineractStatus === 'inactive') return String(status).includes('inactive');
+                if (filters.fineractStatus === 'pending') return String(status).includes('pending');
+                return true;
+            });
+        }
+
+        // Date range filter
+        if (filters.dateRange && filters.dateRange[0] && filters.dateRange[1]) {
+            const start = filters.dateRange[0].startOf('day').valueOf();
+            const end = filters.dateRange[1].endOf('day').valueOf();
+            filtered = filtered.filter(u => {
+                const date = u.activationDate ? new Date(u.activationDate).getTime() : 0;
+                return date >= start && date <= end;
+            });
+        }
+
+        // Search text filter (across multiple fields)
+        if (filters.searchText) {
+            const search = filters.searchText.toLowerCase();
+            filtered = filtered.filter(u =>
+                (u.displayName?.toLowerCase().includes(search)) ||
+                (u.username?.toLowerCase().includes(search)) ||
+                (u.email?.toLowerCase().includes(search)) ||
+                (u.externalId?.toLowerCase().includes(search))
+            );
+        }
+
+        return filtered;
     };
 
     const fetchData = async (params: any) => {
@@ -156,66 +266,283 @@ export default function CustomersPage() {
             res = await adminApi.getPendingApprovalCustomers(page, limit, keyword);
         } else {
             res = await adminApi.getCustomers(page, limit, keyword);
-            // Filter active/inactive for 'all' and 'active' views
+
+            // Apply view mode filter
             if (viewMode === 'active') {
                 res.users = res.users.filter(u => u.status === 'active');
-                res.total = res.users.length;
+            } else if (viewMode === 'inactive') {
+                res.users = res.users.filter(u => u.status !== 'active');
             }
         }
 
-        return { data: res.users, success: true, total: res.total };
+        // Apply advanced filters
+        const filteredUsers = applyFilters(res.users);
+
+        // Update stats based on current data
+        setStats({
+            total: res.total,
+            active: res.users.filter(u => u.status === 'active').length,
+            pendingKyc: res.users.filter(u => u.kycStatus === 'PENDING').length,
+            verifiedKyc: res.users.filter(u => u.kycStatus === 'VERIFIED').length,
+        });
+
+        return { data: filteredUsers, success: true, total: filteredUsers.length };
     };
 
     const getHeaderTitle = () => {
         switch (viewMode) {
-            case 'pending':
-                return 'Khách hàng chờ phê duyệt';
-            case 'active':
-                return 'Khách hàng đã kích hoạt';
-            default:
-                return 'Tất cả khách hàng';
+            case 'pending': return 'Khách hàng chờ phê duyệt KYC';
+            case 'active': return 'Khách hàng đang hoạt động';
+            case 'inactive': return 'Khách hàng chưa kích hoạt';
+            default: return 'Tất cả khách hàng';
         }
     };
 
+    const tabItems = [
+        {
+            key: 'all',
+            label: (
+                <Space>
+                    <TeamOutlined />
+                    Tất cả
+                    <Badge count={stats.total} style={{ backgroundColor: token.colorPrimary }} />
+                </Space>
+            ),
+        },
+        {
+            key: 'pending',
+            label: (
+                <Space>
+                    <ClockCircleOutlined />
+                    Chờ phê duyệt
+                    <Badge count={pendingCount} style={{ backgroundColor: '#faad14' }} />
+                </Space>
+            ),
+        },
+        {
+            key: 'active',
+            label: (
+                <Space>
+                    <CheckCircleOutlined />
+                    Đang hoạt động
+                    <Badge count={stats.active} style={{ backgroundColor: token.colorSuccess }} />
+                </Space>
+            ),
+        },
+        {
+            key: 'inactive',
+            label: (
+                <Space>
+                    <BankOutlined />
+                    Chưa kích hoạt
+                </Space>
+            ),
+        },
+    ];
+
     return (
-        <>
-            <Tabs
-                activeKey={viewMode}
-                onChange={handleTabChange}
-                style={{ marginBottom: 16, padding: '0 24px', background: '#fff' }}
-                items={[
-                    {
-                        key: 'all',
-                        label: 'Tất cả',
-                    },
-                    {
-                        key: 'pending',
-                        label: (
-                            <span>
-                                Chờ phê duyệt
-                                <Badge count="inactive" style={{ marginLeft: 8, backgroundColor: '#faad14' }} />
-                            </span>
-                        ),
-                    },
-                    {
-                        key: 'active',
-                        label: 'Đã kích hoạt',
-                    },
-                ]}
-            />
+        <div style={{ padding: '24px' }}>
+            {/* Stats Cards */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                <Col xs={24} sm={12} md={6}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg }}>
+                        <Statistic
+                            title="Tổng khách hàng"
+                            value={stats.total}
+                            prefix={<TeamOutlined />}
+                            valueStyle={{ color: token.colorPrimary }}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorSuccessBg }}>
+                        <Statistic
+                            title="Đang hoạt động"
+                            value={stats.active}
+                            prefix={<CheckCircleOutlined />}
+                            valueStyle={{ color: token.colorSuccess }}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorWarningBg }}>
+                        <Statistic
+                            title="Chờ duyệt KYC"
+                            value={stats.pendingKyc}
+                            prefix={<ClockCircleOutlined />}
+                            valueStyle={{ color: token.colorWarning }}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorInfoBg }}>
+                        <Statistic
+                            title="Đã xác minh KYC"
+                            value={stats.verifiedKyc}
+                            prefix={<FileSearchOutlined />}
+                            valueStyle={{ color: token.colorInfo }}
+                        />
+                    </Card>
+                </Col>
+            </Row>
+
+            {/* Tabs */}
+            <Card
+                bordered={false}
+                style={{
+                    borderRadius: 12,
+                    marginBottom: 16,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                }}
+                bodyStyle={{ padding: '16px 24px' }}
+            >
+                <Tabs
+                    activeKey={viewMode}
+                    onChange={handleTabChange}
+                    items={tabItems}
+                    size="large"
+                    tabBarStyle={{ marginBottom: 0 }}
+                />
+            </Card>
+
+            {/* Advanced Filters */}
+            <Card
+                bordered={false}
+                style={{
+                    borderRadius: 12,
+                    marginBottom: 16,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    display: showFilters ? 'block' : 'none'
+                }}
+                title={
+                    <Space>
+                        <FilterOutlined />
+                        Bộ lọc nâng cao
+                    </Space>
+                }
+                extra={
+                    <Button
+                        type="link"
+                        onClick={() => {
+                            setFilters({
+                                kycStatus: 'all',
+                                fineractStatus: 'all',
+                                dateRange: null,
+                                searchText: '',
+                            });
+                            actionRef.current?.reload();
+                        }}
+                    >
+                        Xóa bộ lọc
+                    </Button>
+                }
+            >
+                <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} md={6}>
+                        <Form.Item label="Trạng thái KYC" style={{ marginBottom: 0 }}>
+                            <Select
+                                value={filters.kycStatus}
+                                onChange={(v) => {
+                                    setFilters({ ...filters, kycStatus: v });
+                                    actionRef.current?.reload();
+                                }}
+                                style={{ width: '100%' }}
+                                options={[
+                                    { value: 'all', label: 'Tất cả' },
+                                    { value: 'NONE', label: 'Chưa KYC' },
+                                    { value: 'PENDING', label: 'Chờ duyệt' },
+                                    { value: 'VERIFIED', label: 'Đã duyệt' },
+                                    { value: 'REJECTED', label: 'Từ chối' },
+                                ]}
+                            />
+                        </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Form.Item label="Trạng thái Fineract" style={{ marginBottom: 0 }}>
+                            <Select
+                                value={filters.fineractStatus}
+                                onChange={(v) => {
+                                    setFilters({ ...filters, fineractStatus: v });
+                                    actionRef.current?.reload();
+                                }}
+                                style={{ width: '100%' }}
+                                options={[
+                                    { value: 'all', label: 'Tất cả' },
+                                    { value: 'active', label: 'Hoạt động' },
+                                    { value: 'inactive', label: 'Không hoạt động' },
+                                    { value: 'pending', label: 'Chờ xử lý' },
+                                ]}
+                            />
+                        </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Form.Item label="Khoảng thời gian" style={{ marginBottom: 0 }}>
+                            <RangePicker
+                                value={filters.dateRange}
+                                onChange={(dates) => {
+                                    setFilters({ ...filters, dateRange: dates as any });
+                                    actionRef.current?.reload();
+                                }}
+                                style={{ width: '100%' }}
+                                format="DD/MM/YYYY"
+                            />
+                        </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                        <Form.Item label="Tìm kiếm" style={{ marginBottom: 0 }}>
+                            <Input.Search
+                                placeholder="Tên, email, ID..."
+                                value={filters.searchText}
+                                onChange={(e) => setFilters({ ...filters, searchText: e.target.value })}
+                                onSearch={() => actionRef.current?.reload()}
+                                allowClear
+                            />
+                        </Form.Item>
+                    </Col>
+                </Row>
+            </Card>
+
+            {/* Table */}
             <ProTable<CustomerDto>
                 actionRef={actionRef}
                 rowKey={(r) => r._id || r.fineractClientId || 'unknown'}
-                columns={getFilteredColumns()}
+                columns={columns}
                 request={fetchData}
                 onRow={(r) => ({ onClick: () => navigate(`/customers/${r._id || r.fineractClientId}`), style: { cursor: 'pointer' } })}
                 pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} khách hàng` }}
-                search={{ labelWidth: 'auto', defaultCollapsed: false }}
-                toolBarRender={() => []}
-                headerTitle={getHeaderTitle()}
-                options={{ reload: true, density: true, fullScreen: true, setting: true }}
+                search={false}
+                toolBarRender={() => [
+                    <Button
+                        key="filter"
+                        icon={<FilterOutlined />}
+                        onClick={() => setShowFilters(!showFilters)}
+                        type={showFilters ? 'primary' : 'default'}
+                    >
+                        Bộ lọc
+                    </Button>,
+                    <Button
+                        key="refresh"
+                        icon={<ReloadOutlined />}
+                        onClick={() => actionRef.current?.reload()}
+                    >
+                        Làm mới
+                    </Button>,
+                ]}
+                headerTitle={
+                    <Space>
+                        <Title level={5} style={{ margin: 0 }}>{getHeaderTitle()}</Title>
+                    </Space>
+                }
+                options={{ reload: false, density: true, fullScreen: true, setting: true }}
                 columnsState={{ persistenceKey: `customers-table-${viewMode}`, persistenceType: 'localStorage' }}
+                scroll={{ x: 1200 }}
+                cardProps={{
+                    style: {
+                        borderRadius: 12,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                    }
+                }}
             />
-        </>
+        </div>
     );
 }

@@ -58,12 +58,20 @@ export interface CustomerDto {
   hasKycData?: boolean;
 }
 
+export interface KycDetailDto {
+  user: { _id: string; username: string; email?: string; profile?: any; fineractClientId?: string; kycStatus: string };
+  ocr: { fullName?: string; ssn?: string; dateOfBirth?: string; address?: string; sex?: string };
+  metadata: { kycCompletedAt?: string; fineractClientDocs?: { front?: number; back?: number } };
+  documents: { id: number; name: string; entityType: string; entityId: number; label: string }[];
+}
+
 export interface CustomerDetailDto {
   customer: CustomerDto;
   loans: LoanDto[];
   summary: { loanCycles: number; activeLoans: number; lastLoanAmount: number; activeSavings: number; totalSavings: number };
   savingsAccounts: { id: number; accountNo?: string; productName?: string; accountBalance?: number; status?: any }[];
   charges: { id: number; name?: string; amount?: number; amountPaid?: number; amountWaived?: number; amountOutstanding?: number; dueDate?: number[] }[];
+  kyc?: KycDetailDto;
 }
 
 export interface KycPendingUserDto {
@@ -238,6 +246,9 @@ export const adminApi = {
 
   rejectKyc: (userId: string) =>
     api.post<{ data: { kycStatus: string; userId: string } }>(`/api/admin/kyc/${userId}/reject`).then((r) => r.data.data),
+
+  downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
+    api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
 
   downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
     api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
