@@ -65,64 +65,44 @@ export class FineractSignupService {
       // Step 2: Assign role
       await this.keycloakService.assignRole(keycloakUserId, userType);
 
-      // Step 3: Create Fineract client
+      // Step 3: Create Fineract client (inactive - pending approval)
       this.logger.log(`[SIGNUP] Creating Fineract client for: ${username}`);
       const fineractClientId = await this.fineractService.createClient({
         firstName: data.firstName,
         lastName: data.lastName,
         phoneNumber: data.phoneNumber,
         email: data.email,
+        active: false, // Client created as inactive, pending admin approval
       });
 
-      // Step 4: Create e-wallet (Digital Wallet) in Fineract
-      this.logger.log(`[SIGNUP] Creating e-wallet for client ${fineractClientId}`);
       if (!fineractClientId) {
         throw new Error('Không thể tạo Client trên Fineract');
       }
 
-      const ewalletProductId = this.configService.getOrThrow<number>('defaults.ewalletProductId');
-      const savingsAccountId = await this.fineractService.createSavingsAccount(fineractClientId, ewalletProductId);
+      // Note: Savings account will be created after admin approves KYC
+      // Because Fineract requires client to be active before creating savings account
+      this.logger.log(`[SIGNUP] Client ${fineractClientId} created (inactive). E-wallet will be created after KYC approval.`);
 
-      if (!savingsAccountId) {
-        throw new Error('Không thể tạo tài khoản tiết kiệm trên Fineract');
-      }
-      this.logger.log(`[SIGNUP] Created e-wallet ${savingsAccountId} for client ${fineractClientId}`);
-
-      // Step 5: Automatically Approve and Activate the savings account
-      this.logger.log(`[SIGNUP] Automatically approving and activating wallet ${savingsAccountId}`);
-      try {
-        await this.fineractService.approveSavingsAccount(savingsAccountId);
-        await this.fineractService.activateSavingsAccount(savingsAccountId);
-        this.logger.log(`[SIGNUP] Wallet ${savingsAccountId} is now ACTIVE`);
-      } catch (activationError: any) {
-        // We log the error but don't fail the whole signup if activation fails,
-        // although in a real setup we might want to handle this more strictly.
-        this.logger.error(`[SIGNUP] Failed to auto-activate wallet ${savingsAccountId}: ${activationError.message}`);
-      }
-
-      // Step 5: Save user to MongoDB
+      // Step 4: Save user to MongoDB (inactive status - pending KYC and approval)
       const mongoUser = await this.userModel.create({
         keycloakId: keycloakUserId,
         fineractClientId: fineractClientId.toString(),
         username,
         email: data.email || `${data.phoneNumber}@${emailDomain}`,
         profile: { firstName: data.firstName, lastName: data.lastName },
-        status: UserStatus.ACTIVE,
+        status: UserStatus.INACTIVE, // User starts as inactive until KYC is approved
+        kycStatus: 'NONE',
         metadata: {
           userType,
-          syncStatus: 'registered',
+          syncStatus: 'registered_pending_approval',
           registeredAt: new Date(),
         },
       });
 
-      // Step 6: Create wallet reference in MongoDB
-      await this.walletModel.create({
-        userId: mongoUser._id,
-        fineractSavingsId: savingsAccountId.toString(),
-      });
-      this.logger.log(`[SIGNUP] Created wallet reference in MongoDB for savings account ${savingsAccountId}`);
+      // No wallet created yet - will be created after KYC approval
+      this.logger.log(`[SIGNUP] User saved to MongoDB. Wallet will be created after KYC approval.`);
 
-      this.logger.log(`[SIGNUP] Completed for ${username} - Created client ${fineractClientId} and e-wallet ${savingsAccountId}`);
+      this.logger.log(`[SIGNUP] Completed for ${username} - Created client ${fineractClientId} (pending approval)`);
       return { username, keycloakUserId, fineractClientId };
     } catch (error: any) {
       this.logger.error(`[SIGNUP] Failed for ${username}: ${error.message}`);

@@ -23,11 +23,15 @@ export class FineractBaseService {
         const now = new Date();
         if (format === 'ca') return now.toLocaleDateString('en-CA'); // yyyy-mm-dd
         if (format === 'display') {
-            return now.toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric',
-            });
+            // Format as "dd MMMM yyyy" - ensure 2-digit day
+            const day = String(now.getDate()).padStart(2, '0');
+            const monthNames = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            const month = monthNames[now.getMonth()];
+            const year = now.getFullYear();
+            return `${day} ${month} ${year}`;
         }
         return now.toISOString().split('T')[0]; // yyyy-MM-dd (ISO)
     }

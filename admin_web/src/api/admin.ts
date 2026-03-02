@@ -50,6 +50,9 @@ export interface CustomerDto {
   officeName?: string;
   activationDate?: string | null;
   displayName?: string;
+  // Pending approval specific fields
+  kycCompletedAt?: string | null;
+  hasKycData?: boolean;
 }
 
 export interface KycPendingUserDto {
@@ -137,6 +140,16 @@ export const adminApi = {
     return api
       .get<{ data: { users: CustomerDto[]; total: number; page: number; limit: number } }>(
         `/api/admin/customers?${params.toString()}`
+      )
+      .then((r) => r.data.data);
+  },
+
+  getPendingApprovalCustomers: (page = 1, limit = 20, keyword?: string) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (keyword?.trim()) params.set('keyword', keyword.trim());
+    return api
+      .get<{ data: { users: CustomerDto[]; total: number; page: number; limit: number } }>(
+        `/api/admin/customers/pending-approval?${params.toString()}`
       )
       .then((r) => r.data.data);
   },

@@ -78,7 +78,7 @@ export default function App() {
             colorWarning: p.warning,
             colorError: p.error,
             colorBgContainer: isDarkMode ? p.bgContainer : p.bgContainer,
-            colorBgElevated: isDarkMode ? p.bgElevated : '#FFFFFF',
+            colorBgElevated: isDarkMode ? p.bgLayout : '#FFFFFF',
             colorBgLayout: isDarkMode ? p.bgLayout : p.bgLayout,
             borderRadius: 10,
             borderRadiusLG: 12,

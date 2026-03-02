@@ -6,6 +6,7 @@ import { LoanProductSnapshot, LoanProductSnapshotSchema } from './schemas/loan-p
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
+import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { FineractModule } from '../fineract/fineract.module';
@@ -20,6 +21,7 @@ import { FineractModule } from '../fineract/fineract.module';
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
+      { name: Wallet.name, schema: WalletSchema },
     ]),
   ],
   controllers: [AdminController],

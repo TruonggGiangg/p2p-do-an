@@ -1,18 +1,21 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Button, Space, Avatar, Typography, Tooltip, Badge, theme } from 'antd';
-import { EyeOutlined, UserOutlined, PhoneOutlined } from '@ant-design/icons';
+import { Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag } from 'antd';
+import { EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
 
 const { Text } = Typography;
 
+type ViewMode = 'all' | 'pending' | 'active';
+
 export default function CustomersPage() {
     const { token } = theme.useToken();
     const navigate = useNavigate();
     const actionRef = useRef<ActionType>();
+    const [viewMode, setViewMode] = useState<ViewMode>('all');
 
     const columns: ProColumns<CustomerDto>[] = [
         {
@@ -71,6 +74,24 @@ export default function CustomersPage() {
             render: v => v ? new Date(v as string).toLocaleDateString('vi-VN') : '–',
         },
         {
+            title: 'Trạng thái KYC',
+            dataIndex: 'kycStatus',
+            key: 'kycStatus',
+            align: 'center',
+            search: false,
+            render: (_, r) => {
+                const v = r.kycStatus || 'NONE';
+                const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
+                    'NONE': { color: 'default', icon: null, text: 'Chưa KYC' },
+                    'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Chờ duyệt' },
+                    'VERIFIED': { color: 'success', icon: <CheckCircleOutlined />, text: 'Đã duyệt' },
+                    'REJECTED': { color: 'error', icon: null, text: 'Từ chối' },
+                };
+                const s = statusMap[v] || statusMap['NONE'];
+                return <Tag color={s.color} icon={s.icon}>{s.text}</Tag>;
+            },
+        },
+        {
             title: 'Trạng thái Fineract',
             dataIndex: 'fineractStatus',
             key: 'fineractStatus',
@@ -99,25 +120,99 @@ export default function CustomersPage() {
         },
     ];
 
+    // Filter columns based on view mode
+    const getFilteredColumns = (): ProColumns<CustomerDto>[] => {
+        if (viewMode === 'pending') {
+            // For pending view, show KYC completed date and highlight hasKycData
+            return columns.map(col => {
+                if (col.key === 'activationDate') {
+                    return {
+                        ...col,
+                        title: 'Ngày đăng ký',
+                        dataIndex: 'createdAt',
+                    };
+                }
+                return col;
+            });
+        }
+        return columns;
+    };
+
+    const handleTabChange = (key: string) => {
+        setViewMode(key as ViewMode);
+        actionRef.current?.reload();
+    };
+
+    const fetchData = async (params: any) => {
+        const page = params.current ?? 1;
+        const limit = params.pageSize ?? 20;
+        const keyword = params.keyword as string | undefined;
+
+        let res;
+        if (viewMode === 'pending') {
+            res = await adminApi.getPendingApprovalCustomers(page, limit, keyword);
+        } else {
+            res = await adminApi.getCustomers(page, limit, keyword);
+            // Filter active/inactive for 'all' and 'active' views
+            if (viewMode === 'active') {
+                res.users = res.users.filter(u => u.status === 'active');
+                res.total = res.users.length;
+            }
+        }
+
+        return { data: res.users, success: true, total: res.total };
+    };
+
+    const getHeaderTitle = () => {
+        switch (viewMode) {
+            case 'pending':
+                return 'Khách hàng chờ phê duyệt';
+            case 'active':
+                return 'Khách hàng đã kích hoạt';
+            default:
+                return 'Tất cả khách hàng';
+        }
+    };
+
     return (
-        <ProTable<CustomerDto>
-            actionRef={actionRef}
-            rowKey={(r) => r._id || r.fineractClientId || 'unknown'}
-            columns={columns}
-            request={async (params) => {
-                const page = params.current ?? 1;
-                const limit = params.pageSize ?? 20;
-                const keyword = params.keyword as string | undefined;
-                const res = await adminApi.getCustomers(page, limit, keyword);
-                return { data: res.users, success: true, total: res.total };
-            }}
-            onRow={(r) => ({ onClick: () => navigate(`/customers/${r._id || r.fineractClientId}`), style: { cursor: 'pointer' } })}
-            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} khách hàng (Head Office)` }}
-            search={{ labelWidth: 'auto', defaultCollapsed: false }}
-            toolBarRender={() => []}
-            headerTitle="Khách hàng – Head Office"
-            options={{ reload: true, density: true, fullScreen: true, setting: true }}
-            columnsState={{ persistenceKey: 'customers-table', persistenceType: 'localStorage' }}
-        />
+        <>
+            <Tabs
+                activeKey={viewMode}
+                onChange={handleTabChange}
+                style={{ marginBottom: 16, padding: '0 24px', background: '#fff' }}
+                items={[
+                    {
+                        key: 'all',
+                        label: 'Tất cả',
+                    },
+                    {
+                        key: 'pending',
+                        label: (
+                            <span>
+                                Chờ phê duyệt
+                                <Badge count="inactive" style={{ marginLeft: 8, backgroundColor: '#faad14' }} />
+                            </span>
+                        ),
+                    },
+                    {
+                        key: 'active',
+                        label: 'Đã kích hoạt',
+                    },
+                ]}
+            />
+            <ProTable<CustomerDto>
+                actionRef={actionRef}
+                rowKey={(r) => r._id || r.fineractClientId || 'unknown'}
+                columns={getFilteredColumns()}
+                request={fetchData}
+                onRow={(r) => ({ onClick: () => navigate(`/customers/${r._id || r.fineractClientId}`), style: { cursor: 'pointer' } })}
+                pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} khách hàng` }}
+                search={{ labelWidth: 'auto', defaultCollapsed: false }}
+                toolBarRender={() => []}
+                headerTitle={getHeaderTitle()}
+                options={{ reload: true, density: true, fullScreen: true, setting: true }}
+                columnsState={{ persistenceKey: `customers-table-${viewMode}`, persistenceType: 'localStorage' }}
+            />
+        </>
     );
 }

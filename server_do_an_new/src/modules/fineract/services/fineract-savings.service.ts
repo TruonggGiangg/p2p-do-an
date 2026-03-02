@@ -56,11 +56,13 @@ export class FineractSavingsService extends FineractBaseService {
         const ewalletProductId = productId || this.getDefaultConfig<number>('ewalletProductId');
 
         try {
+            // Use strict date format (yyyy-MM-dd) for savings accounts to avoid locale issues
             const response = await this.client.post('/savingsaccounts', {
                 clientId,
                 productId: ewalletProductId,
-                submittedOnDate: this.getTodayFormatted('display'),
-                ...this.getCommonLocaleParams('display'),
+                submittedOnDate: this.getTodayFormatted('iso'),
+                locale: 'en',
+                dateFormat: 'yyyy-MM-dd',
             });
 
             const savingsId = response.data.savingsId || response.data.resourceId;
@@ -81,8 +83,9 @@ export class FineractSavingsService extends FineractBaseService {
     async approveSavingsAccount(savingsId: number): Promise<void> {
         try {
             await this.client.post(`/savingsaccounts/${savingsId}?command=approve`, {
-                approvedOnDate: this.getTodayFormatted('display'),
-                ...this.getCommonLocaleParams('display'),
+                approvedOnDate: this.getTodayFormatted('iso'),
+                locale: 'en',
+                dateFormat: 'yyyy-MM-dd',
             });
             this.logger.log(`Approved savings account ${savingsId}`);
         } catch (error: any) {
@@ -96,8 +99,9 @@ export class FineractSavingsService extends FineractBaseService {
     async activateSavingsAccount(savingsId: number): Promise<void> {
         try {
             await this.client.post(`/savingsaccounts/${savingsId}?command=activate`, {
-                activatedOnDate: this.getTodayFormatted('display'),
-                ...this.getCommonLocaleParams('display'),
+                activatedOnDate: this.getTodayFormatted('iso'),
+                locale: 'en',
+                dateFormat: 'yyyy-MM-dd',
             });
             this.logger.log(`Activated savings account ${savingsId}`);
         } catch (error: any) {

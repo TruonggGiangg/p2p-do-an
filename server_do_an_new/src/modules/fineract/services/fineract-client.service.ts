@@ -12,6 +12,7 @@ export interface FineractClientData {
     email?: string;
     officeId?: number;
     legalFormId?: number;
+    active?: boolean;
 }
 
 /**
@@ -33,9 +34,10 @@ export class FineractClientService extends FineractBaseService {
         const today = this.getTodayFormatted('display');
         const officeId = data.officeId || this.getDefaultConfig<number>('officeId');
         const legalFormId = data.legalFormId || this.getDefaultConfig<number>('legalFormId');
+        const isActive = data.active ?? false; // Default to inactive for pending approval
 
         try {
-            const response = await this.client.post('/clients', {
+            const payload: any = {
                 officeId,
                 legalFormId,
                 firstname: data.firstName,
@@ -43,14 +45,38 @@ export class FineractClientService extends FineractBaseService {
                 externalId: data.phoneNumber,
                 mobileNo: data.phoneNumber,
                 emailAddress: data.email,
-                active: true,
-                activationDate: today,
+                active: isActive,
                 ...this.getCommonLocaleParams('display'),
-            });
+            };
+
+            // Only add activationDate if client is active
+            if (isActive) {
+                payload.activationDate = today;
+            }
+
+            const response = await this.client.post('/clients', payload);
 
             return response.data.resourceId || response.data.clientId;
         } catch (error: any) {
             this.handleError(error, 'Failed to create Fineract client');
+        }
+    }
+
+    /**
+     * Activate an existing client in Fineract (uses command=activate API)
+     */
+    async activateClient(clientId: number): Promise<void> {
+        const today = this.getTodayFormatted('iso'); // Use ISO format for API consistency
+
+        try {
+            await this.client.post(`/clients/${clientId}?command=activate`, {
+                activationDate: today,
+                locale: 'en',
+                dateFormat: 'yyyy-MM-dd',
+            });
+            this.logger.log(`[activateClient] Activated client ${clientId}`);
+        } catch (error: any) {
+            this.handleError(error, `Failed to activate Fineract client ${clientId}`);
         }
     }
 

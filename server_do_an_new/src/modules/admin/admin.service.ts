@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { FineractClientService } from '../fineract/services/fineract-client.service';
+import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
 import { KeycloakService } from '../auth/services/keycloak.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
@@ -13,6 +14,7 @@ import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
+import { Wallet } from '../wallets/schemas/wallet.schema';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -30,8 +32,10 @@ export class AdminService {
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
+    @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
+    private readonly fineractSavingsService: FineractSavingsService,
     private readonly keycloakService: KeycloakService,
   ) { }
 
@@ -191,6 +195,83 @@ export class AdminService {
   }
 
   // ---------- Customers (Fineract-First) ----------
+
+  /**
+   * Get inactive Fineract clients (pending approval) enriched with MongoDB data.
+   * These are clients with active=false status in Fineract.
+   */
+  async getPendingApprovalClients(page = 1, limit = 20, keyword?: string) {
+    // 1. Fetch all Head Office clients from Fineract
+    const headOfficeClientsMap = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
+
+    // Filter unique clients and only inactive ones (active === false)
+    let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
+      (c, index, self) => self.findIndex(t => t.id === c.id) === index
+    );
+
+    // Filter only inactive clients (pending approval)
+    uniqueClients = uniqueClients.filter((fc: any) => fc.active === false);
+
+    // Filter by keyword (displayName, username, email, firstname, lastname, externalId)
+    if (keyword) {
+      const q = keyword.toLowerCase();
+      uniqueClients = uniqueClients.filter((fc: any) => {
+        const first = (fc.firstname || '').toLowerCase();
+        const last = (fc.lastname || '').toLowerCase();
+        const ext = (fc.externalId || '').toLowerCase();
+        const email = (fc.emailAddress || '').toLowerCase();
+        const display = `${first} ${last}`.trim() || ext;
+        return first.includes(q) || last.includes(q) || ext.includes(q) || email.includes(q) || display.includes(q);
+      });
+    }
+
+    // 2. Fetch MongoDB users associated with these clients to enrich data
+    const clientIds = uniqueClients.map(c => c.id);
+    const mongoUsers = await this.userModel
+      .find({ fineractClientId: { $in: clientIds.map(String) } })
+      .select('username email profile fineractClientId status kycStatus createdAt kycData')
+      .lean();
+
+    const userMap = new Map<string, any>();
+    for (const u of mongoUsers) {
+      if (u.fineractClientId) userMap.set(String(u.fineractClientId), u);
+    }
+
+    // 3. Paginate the list (after keyword filter)
+    const total = uniqueClients.length;
+    const skip = (page - 1) * limit;
+    const pagedClients = uniqueClients.slice(skip, skip + limit);
+
+    // 4. Transform and enrich
+    const users = pagedClients.map((fc: any) => {
+      const u = userMap.get(String(fc.id));
+      return {
+        _id: u?._id?.toString() ?? null,
+        username: u?.username ?? fc?.externalId ?? `FC_${fc.id}`,
+        email: u?.email ?? (fc?.emailAddress || null),
+        profile: u?.profile ?? {
+          firstName: fc?.firstname,
+          lastName: fc?.lastname,
+          avatar: null,
+        },
+        fineractClientId: String(fc.id),
+        status: u?.status ?? 'inactive',
+        kycStatus: u?.kycStatus ?? 'NONE',
+        createdAt: u?.createdAt ?? fc?.submittedOnDate ?? null,
+        // Fineract enrichment
+        fineractStatus: fc?.status ?? null,
+        officeName: fc?.officeName ?? 'Head Office',
+        activationDate: fc?.activationDate ?? null,
+        displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
+        // KYC data if available
+        kycCompletedAt: u?.kycData?.metadata?.kycCompletedAt ?? null,
+        hasKycData: !!u?.kycData,
+      };
+    });
+
+    return { users, total, page, limit };
+  }
+
   /**
    * Get all Fineract clients from Head Office (officeId=1) as primary list.
    * Enriches each client with MongoDB user data (profiles, emails) where available.
@@ -661,7 +742,7 @@ export class AdminService {
     };
   }
 
-  /** Phê duyệt KYC: cập nhật MongoDB + Keycloak */
+  /** Phê duyệt KYC: kích hoạt client trên Fineract + tạo savings account + cập nhật MongoDB + Keycloak */
   async approveKyc(userId: string) {
     let user: any = null;
     if (Types.ObjectId.isValid(userId)) {
@@ -675,19 +756,69 @@ export class AdminService {
       throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}, không thể phê duyệt`);
     }
 
+    // 1. Activate client on Fineract
+    if (user.fineractClientId) {
+      try {
+        const clientIdNum = parseInt(user.fineractClientId);
+        await this.fineractClientService.activateClient(clientIdNum);
+        this.logger.log(`[approveKyc] Activated Fineract client ${clientIdNum}`);
+      } catch (err: any) {
+        this.logger.error(`[approveKyc] Failed to activate Fineract client: ${err.message}`);
+        throw new BadRequestException(`Không thể kích hoạt client trên Fineract: ${err.message}`);
+      }
+    }
+
+    // 2. Create savings account (e-wallet) after client is activated (if not already exists)
+    let savingsAccountId: number | null = null;
+    if (user.fineractClientId) {
+      const existingWallet = await this.walletModel.findOne({ userId: user._id }).lean();
+      if (existingWallet) {
+        this.logger.log(`[approveKyc] User already has wallet ${existingWallet.fineractSavingsId}, skipping creation`);
+        const parsed = parseInt(existingWallet.fineractSavingsId, 10);
+        savingsAccountId = Number.isFinite(parsed) ? parsed : null;
+      } else {
+        try {
+          const clientIdNum = parseInt(user.fineractClientId);
+          savingsAccountId = await this.fineractSavingsService.createSavingsAccount(clientIdNum);
+          this.logger.log(`[approveKyc] Created savings account ${savingsAccountId} for client ${clientIdNum}`);
+
+          // Create wallet reference in MongoDB
+          await this.walletModel.create({
+            userId: user._id,
+            fineractSavingsId: savingsAccountId.toString(),
+          });
+          this.logger.log(`[approveKyc] Created wallet reference in MongoDB for savings account ${savingsAccountId}`);
+        } catch (err: any) {
+          this.logger.error(`[approveKyc] Failed to create savings account: ${err.message}`);
+          // Don't fail the approval if wallet creation fails, but log it
+        }
+      }
+    }
+
+    // 3. Update MongoDB
     user.kycStatus = 'VERIFIED';
+    user.status = 'active';
     await user.save();
 
+    // 4. Update Keycloak
     if (user.keycloakId) {
       try {
-        await this.keycloakService.updateUser(user.keycloakId, { kycStatus: 'verified' });
-        this.logger.log(`[approveKyc] Updated Keycloak kycStatus for ${user.keycloakId}`);
+        await this.keycloakService.updateUser(user.keycloakId, {
+          kycStatus: 'verified',
+          clientStatus: 'active'
+        });
+        this.logger.log(`[approveKyc] Updated Keycloak kycStatus and clientStatus for ${user.keycloakId}`);
       } catch (err: any) {
         this.logger.warn(`[approveKyc] Keycloak update failed: ${err.message}`);
       }
     }
 
-    return { kycStatus: 'VERIFIED', userId: user._id?.toString() };
+    return {
+      kycStatus: 'VERIFIED',
+      status: 'active',
+      userId: user._id?.toString(),
+      savingsAccountId: savingsAccountId?.toString() || null,
+    };
   }
 
   /** Từ chối KYC */

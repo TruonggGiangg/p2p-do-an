@@ -125,6 +125,22 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: result };
   }
 
+  @Get('customers/pending-approval')
+  @ApiOperation({ summary: 'Danh sách khách hàng chờ phê duyệt (inactive clients)' })
+  @ApiResponse({ status: 200 })
+  async getPendingApprovalCustomers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const result = await this.adminService.getPendingApprovalClients(
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+      keyword?.trim() || undefined,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
   @Get('customers/:id')
   @ApiOperation({ summary: 'Chi tiết khách hàng' })
   @ApiResponse({ status: 200 })

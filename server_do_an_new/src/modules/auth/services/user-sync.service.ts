@@ -78,8 +78,13 @@ export class UserSyncService {
         username,
         email: email || kcUser?.email || `${username}@${emailDomain}`,
         profile: { firstName, lastName },
-        status: UserStatus.ACTIVE,
-        metadata: { syncStatus: 'initialized', lastSyncAt: new Date() },
+        status: UserStatus.INACTIVE, // User starts as inactive until KYC is approved
+        kycStatus: 'NONE',
+        metadata: {
+          syncStatus: 'registered_pending_approval',
+          registeredAt: new Date(),
+          lastSyncAt: new Date(),
+        },
       });
 
       return mongoUser;
@@ -128,7 +133,11 @@ export class UserSyncService {
             mongoUser.metadata = {};
           }
           mongoUser.metadata.syncStatus = 'synced';
-          await mongoUser.save();
+          // Use updateOne to avoid overwriting status (user stays inactive until KYC approved)
+          await this.userModel.updateOne(
+            { _id: mongoUser._id },
+            { $set: { fineractClientId: client.id.toString(), 'metadata.syncStatus': 'synced' } },
+          );
           this.logger.log(`[SYNC] Linked ${username} to Fineract Client ${client.id}`);
           return;
         }
@@ -137,11 +146,10 @@ export class UserSyncService {
     }
 
     this.logger.warn(`[SYNC] No unclaimed Fineract Client found for ${username}`);
-    if (!mongoUser.metadata) {
-      mongoUser.metadata = {};
-    }
-    mongoUser.metadata.syncStatus = 'no_fineract_client';
-    await mongoUser.save();
+    await this.userModel.updateOne(
+      { _id: mongoUser._id },
+      { $set: { 'metadata.syncStatus': 'no_fineract_client' } },
+    );
   }
 
   /**
@@ -175,11 +183,15 @@ export class UserSyncService {
       }
     }
 
+    // Update metadata only - NEVER overwrite status (user stays inactive until admin approves KYC)
     if (!mongoUser.metadata) {
       mongoUser.metadata = {};
     }
     mongoUser.metadata.syncStatus = 'complete';
     mongoUser.metadata.lastSyncAt = new Date();
-    await mongoUser.save();
+    await this.userModel.updateOne(
+      { _id: mongoUser._id },
+      { $set: { 'metadata.syncStatus': 'complete', 'metadata.lastSyncAt': new Date() } },
+    );
   }
 }

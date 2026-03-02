@@ -38,7 +38,7 @@ export class User extends Document {
   @Prop({
     type: String,
     enum: UserStatus,
-    default: UserStatus.ACTIVE,
+    default: UserStatus.INACTIVE, // User starts inactive until KYC approved
   })
   status: UserStatus;
 
