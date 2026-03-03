@@ -629,7 +629,6 @@ export default function LoanCreateScreen() {
                                                 <Text style={[styles.rateDefaultBadgeText, { color: theme.colors.success }]}>Khuyến nghị</Text>
                                             </View>
                                         </View>
-                                        </Text>
                                         <TouchableOpacity
                                             style={[styles.rateCustomLink, { borderColor: theme.colors.border }]}
                                             onPress={() => setRateMode('custom')}
@@ -638,81 +637,81 @@ export default function LoanCreateScreen() {
                                             <Text style={[styles.rateCustomLinkText, { color: theme.colors.textDim }]}>Tùy chỉnh</Text>
                                         </TouchableOpacity>
                                     </View>
-                        ) : (
-                        <View>
-                            <RateStepper
-                                value={customRate}
-                                onChange={setCustomRate}
-                                min={rateMin}
-                                max={rateMax}
-                                step={0.1}
-                                primaryColor={theme.colors.primary}
-                                textColor={theme.colors.textPrimary}
-                                borderColor={theme.colors.border}
-                                dimColor={theme.colors.textDim}
-                                isProductAnnual={config.isAnnual}
-                            />
-                            <TouchableOpacity onPress={() => setRateMode('default')} style={styles.rateResetLink}>
-                                <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>← Dùng lãi mặc định</Text>
-                            </TouchableOpacity>
-                        </View>
+                                ) : (
+                                    <View>
+                                        <RateStepper
+                                            value={customRate}
+                                            onChange={setCustomRate}
+                                            min={rateMin}
+                                            max={rateMax}
+                                            step={0.1}
+                                            primaryColor={theme.colors.primary}
+                                            textColor={theme.colors.textPrimary}
+                                            borderColor={theme.colors.border}
+                                            dimColor={theme.colors.textDim}
+                                            isProductAnnual={config.isAnnual}
+                                        />
+                                        <TouchableOpacity onPress={() => setRateMode('default')} style={styles.rateResetLink}>
+                                            <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>← Dùng lãi mặc định</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 )}
-                    </>
+                            </>
                         )}
 
-                    {/* Kết quả ước tính */}
-                    {loadingPreview ? (
-                        <View style={[styles.resultBox, { backgroundColor: theme.colors.surfaceLight }]}>
-                            <ActivityIndicator size="small" color={theme.colors.primary} />
-                            <Text style={[styles.resultLabel, { color: theme.colors.textDim }]}>Đang tính...</Text>
-                        </View>
-                    ) : schedule && capitalNum >= 100000 ? (
-                        <View style={[styles.resultBox, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '25' }]}>
-                            <Text style={[styles.resultLabel, { color: theme.colors.textSecondary }]}>Trả hàng tháng</Text>
-                            <Text style={[styles.resultAmount, { color: theme.colors.primary }]}>
-                                {schedule.monthlyPay.toLocaleString('vi-VN')} đ
-                            </Text>
-                            <Text style={[styles.resultTotal, { color: theme.colors.textDim }]}>
-                                Tổng trả: {schedule.entirelyPay.toLocaleString('vi-VN')} đ
-                            </Text>
-                        </View>
-                    ) : null}
-                </CommonCard>
+                        {/* Kết quả ước tính */}
+                        {loadingPreview ? (
+                            <View style={[styles.resultBox, { backgroundColor: theme.colors.surfaceLight }]}>
+                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                                <Text style={[styles.resultLabel, { color: theme.colors.textDim }]}>Đang tính...</Text>
+                            </View>
+                        ) : schedule && capitalNum >= 100000 ? (
+                            <View style={[styles.resultBox, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '25' }]}>
+                                <Text style={[styles.resultLabel, { color: theme.colors.textSecondary }]}>Trả hàng tháng</Text>
+                                <Text style={[styles.resultAmount, { color: theme.colors.primary }]}>
+                                    {schedule.monthlyPay.toLocaleString('vi-VN')} đ
+                                </Text>
+                                <Text style={[styles.resultTotal, { color: theme.colors.textDim }]}>
+                                    Tổng trả: {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                                </Text>
+                            </View>
+                        ) : null}
+                    </CommonCard>
 
-                <View style={{ height: 100 }} />
-            </ScrollView>
+                    <View style={{ height: 100 }} />
+                </ScrollView>
 
-            {/* ── Sticky Bottom Bar ── */}
-            <View style={[styles.stickyBar, {
-                backgroundColor: theme.colors.surface,
-                borderTopColor: theme.colors.border,
-                paddingBottom: Math.max(insets.bottom, 12),
-            }]}>
-                {schedule && capitalNum >= 100000 ? (
-                    <View style={styles.stickyBarInfo}>
-                        <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Tổng trả ước tính</Text>
-                        <Text style={[styles.stickyValue, { color: theme.colors.textPrimary }]}>
-                            {schedule.entirelyPay.toLocaleString('vi-VN')} đ
-                        </Text>
-                    </View>
-                ) : (
-                    <View style={styles.stickyBarInfo}>
-                        <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
-                            {capitalNum < 100000 ? 'Số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
-                        </Text>
-                    </View>
-                )}
-                <TouchableOpacity
-                    style={[styles.nextBtn, { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border }]}
-                    onPress={handleNext}
-                    disabled={!canProceed}
-                    activeOpacity={0.85}
-                >
-                    <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
-                    <MaterialCommunityIcons name="arrow-right" size={18} color={canProceed ? '#000' : theme.colors.textDim} />
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+                {/* ── Sticky Bottom Bar ── */}
+                <View style={[styles.stickyBar, {
+                    backgroundColor: theme.colors.surface,
+                    borderTopColor: theme.colors.border,
+                    paddingBottom: Math.max(insets.bottom, 12),
+                }]}>
+                    {schedule && capitalNum >= 100000 ? (
+                        <View style={styles.stickyBarInfo}>
+                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Tổng trả ước tính</Text>
+                            <Text style={[styles.stickyValue, { color: theme.colors.textPrimary }]}>
+                                {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                            </Text>
+                        </View>
+                    ) : (
+                        <View style={styles.stickyBarInfo}>
+                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
+                                {capitalNum < 100000 ? 'Số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
+                            </Text>
+                        </View>
+                    )}
+                    <TouchableOpacity
+                        style={[styles.nextBtn, { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border }]}
+                        onPress={handleNext}
+                        disabled={!canProceed}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
+                        <MaterialCommunityIcons name="arrow-right" size={18} color={canProceed ? '#000' : theme.colors.textDim} />
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
 
         </View >
     );

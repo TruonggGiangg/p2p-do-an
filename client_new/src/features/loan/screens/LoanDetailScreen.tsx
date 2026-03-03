@@ -25,6 +25,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
 import { loanService, LoanHistoryItem } from '../services/loan.service';
+import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 // ---- Type Helpers ----
 interface OutstandingInfo {
@@ -337,6 +338,20 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         </View>
                     )}
                 </View>
+
+                {/* Contract Button */}
+                <TouchableOpacity
+                    style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.primary + '40', flexDirection: 'row', alignItems: 'center', padding: 16 }]}
+                    onPress={() => navigation.navigate('LoanContractDetail' as any, { loanId: loan.id })}
+                    activeOpacity={0.7}
+                >
+                    <MaterialCommunityIcons name="file-document-check-outline" size={24} color={colors.primary} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text }]}>Hợp đồng vay</Text>
+                        <Text style={[{ fontSize: 12, color: colors.textMuted, marginTop: 2 }]}>Xem và ký hợp đồng vay</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
             </>
         );
     };

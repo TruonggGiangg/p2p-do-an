@@ -136,6 +136,101 @@ export interface ProductCharge {
   currency?: string;
 }
 
+// =============================================
+// LOAN CONTRACT Interfaces
+// =============================================
+
+export type LoanContractStatus =
+  | "pending_signature"
+  | "signed"
+  | "active"
+  | "completed"
+  | "cancelled";
+
+export interface BorrowerInfo {
+  fullName: string;
+  idNumber: string;
+  dateOfBirth?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface RepaymentScheduleContractItem {
+  period: number;
+  dueDate: string;
+  principalAmount: number;
+  interestAmount: number;
+  totalAmount: number;
+  remainingBalance: number;
+}
+
+export interface FeeStructureItem {
+  name: string;
+  amount: number;
+  type: string;
+  description?: string;
+}
+
+export interface LoanContract {
+  _id: string;
+  contractId: string;
+  loanId: string;
+  userId: string;
+  fineractLoanId?: number;
+  borrowerInfo: BorrowerInfo;
+  principalAmount: number;
+  interestRate: number;
+  tenure: number;
+  repaymentSchedule: RepaymentScheduleContractItem[];
+  totalPayable: number;
+  monthlyPayment: number;
+  feeStructure: FeeStructureItem[];
+  productName?: string;
+  status: LoanContractStatus;
+  signedAt?: string;
+  signatureData?: string;
+  legalApprovalAt?: string;
+  disbursementDate?: string;
+  firstRepaymentDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// =============================================
+// NOTIFICATION Interfaces
+// =============================================
+
+export type NotificationType =
+  | "loan_approved"
+  | "contract_ready"
+  | "contract_signed"
+  | "loan_disbursed"
+  | "repayment_reminder"
+  | "repayment_success"
+  | "loan_overdue"
+  | "system";
+
+export interface AppNotification {
+  _id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  read: boolean;
+  data?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationListResponse {
+  notifications: AppNotification[];
+  total: number;
+  page: number;
+  pageSize: number;
+  unreadCount: number;
+}
+
 class LoanService {
   /**
    * Fetch all loan products available for borrowing
@@ -380,6 +475,104 @@ class LoanService {
       data: { charges: ProductCharge[] };
     }>(`/api/loan/products/${productId}/charges`);
     return response.data.data?.charges ?? [];
+  }
+
+  // =============================================
+  // LOAN CONTRACT Methods
+  // =============================================
+
+  /**
+   * Lấy danh sách hợp đồng vay của user
+   */
+  async getContracts(): Promise<LoanContract[]> {
+    const response = await api.get<{
+      statusCode: number;
+      data: { contracts: LoanContract[] };
+    }>("/api/loan/contracts");
+    return response.data.data?.contracts ?? [];
+  }
+
+  /**
+   * Lấy chi tiết hợp đồng vay
+   */
+  async getContractById(contractId: string): Promise<LoanContract> {
+    const response = await api.get<{
+      statusCode: number;
+      data: { contract: LoanContract };
+    }>(`/api/loan/contracts/${contractId}`);
+    return response.data.data.contract;
+  }
+
+  /**
+   * Lấy hợp đồng theo khoản vay
+   */
+  async getContractByLoanId(loanId: string): Promise<LoanContract | null> {
+    try {
+      const response = await api.get<{
+        statusCode: number;
+        data: { contract: LoanContract };
+      }>(`/api/loan/contracts/by-loan/${loanId}`);
+      return response.data.data.contract;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Lấy HTML hợp đồng để render PDF
+   */
+  async getContractHTML(contractId: string): Promise<string> {
+    const response = await api.get<{
+      statusCode: number;
+      data: { html: string };
+    }>(`/api/loan/contracts/${contractId}/html`);
+    return response.data.data.html;
+  }
+
+  /**
+   * Ký xác nhận hợp đồng vay
+   */
+  async signContract(
+    contractId: string,
+    signatureData?: string,
+  ): Promise<LoanContract> {
+    const response = await api.post<{
+      statusCode: number;
+      data: { contract: LoanContract };
+    }>(`/api/loan/contracts/${contractId}/sign`, { signatureData });
+    return response.data.data.contract;
+  }
+
+  // =============================================
+  // NOTIFICATION Methods
+  // =============================================
+
+  /**
+   * Lấy danh sách thông báo
+   */
+  async getNotifications(
+    page = 1,
+    pageSize = 20,
+  ): Promise<NotificationListResponse> {
+    const response = await api.get<{
+      statusCode: number;
+      data: NotificationListResponse;
+    }>(`/api/loan/notifications?page=${page}&pageSize=${pageSize}`);
+    return response.data.data;
+  }
+
+  /**
+   * Đánh dấu thông báo đã đọc
+   */
+  async markNotificationRead(notificationId: string): Promise<void> {
+    await api.post(`/api/loan/notifications/${notificationId}/read`);
+  }
+
+  /**
+   * Đánh dấu tất cả thông báo đã đọc
+   */
+  async markAllNotificationsRead(): Promise<void> {
+    await api.post("/api/loan/notifications/read-all");
   }
 }
 

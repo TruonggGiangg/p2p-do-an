@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
@@ -15,6 +15,7 @@ import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { Wallet } from '../wallets/schemas/wallet.schema';
+import { ContractService } from '../loan/contract.service';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -52,6 +53,7 @@ export class AdminService {
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
     private readonly keycloakService: KeycloakService,
+    @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
   ) {}
 
   // ---------- Loan products (from Fineract) ----------
@@ -633,6 +635,15 @@ export class AdminService {
 
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
     await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'approved' } });
+
+    // Tạo hợp đồng vay + gửi thông báo cho người vay
+    try {
+      await this.contractService.createContractOnApproval(fineractLoanId);
+    } catch (err) {
+      this.logger.warn(`[approveLoan] Failed to create contract: ${err?.message}`);
+      // Không block việc approve nếu tạo contract thất bại
+    }
+
     return { fineractLoanId, status: 'approved' };
   }
 

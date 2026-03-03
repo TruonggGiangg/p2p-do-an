@@ -1,0 +1,122 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+
+/**
+ * Trạng thái hợp đồng vay
+ * - pending_signature: Chờ người vay ký xác nhận
+ * - signed: Đã ký xác nhận
+ * - active: Đang hoạt động (sau khi giải ngân)
+ * - completed: Đã hoàn thành
+ * - cancelled: Đã hủy
+ */
+export type LoanContractStatus = 'pending_signature' | 'signed' | 'active' | 'completed' | 'cancelled';
+
+export interface BorrowerInfo {
+  fullName: string;
+  idNumber: string; // CCCD / CMND
+  dateOfBirth?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface RepaymentScheduleItem {
+  period: number;
+  dueDate: string;
+  principal: number;
+  interest: number;
+  total: number;
+  remainingAfter: number;
+}
+
+export interface FeeStructureItem {
+  name: string;
+  amount: number;
+  type: 'fixed' | 'percentage';
+  percentage?: number;
+  chargeTime: string; // e.g. 'disbursement', 'monthly'
+}
+
+@Schema({ timestamps: true, collection: 'loan_contracts' })
+export class LoanContract extends Document {
+  /** Mã hợp đồng duy nhất: P2P-LC-{timestamp}-{random} */
+  @Prop({ required: true, unique: true, index: true })
+  contractId: string;
+
+  /** Reference đến LoanApplication */
+  @Prop({ type: Types.ObjectId, ref: 'LoanApplication', required: true, index: true })
+  loanId: Types.ObjectId;
+
+  /** userId của người vay */
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  userId: Types.ObjectId;
+
+  /** Fineract loan ID */
+  @Prop({ required: false })
+  fineractLoanId?: number;
+
+  /** Thông tin người vay */
+  @Prop({ type: Object, required: true })
+  borrowerInfo: BorrowerInfo;
+
+  /** Số tiền gốc vay */
+  @Prop({ required: true })
+  principalAmount: number;
+
+  /** Lãi suất (%/tháng) */
+  @Prop({ required: true })
+  interestRate: number;
+
+  /** Kỳ hạn vay (số tháng) */
+  @Prop({ required: true })
+  tenure: number;
+
+  /** Lịch trả nợ chi tiết */
+  @Prop({ type: [Object], default: [] })
+  repaymentSchedule: RepaymentScheduleItem[];
+
+  /** Tổng số tiền phải trả (gốc + lãi + phí) */
+  @Prop({ required: true })
+  totalPayable: number;
+
+  /** Số tiền trả hàng tháng */
+  @Prop({ required: true })
+  monthlyPayment: number;
+
+  /** Cấu trúc phí */
+  @Prop({ type: [Object], default: [] })
+  feeStructure: FeeStructureItem[];
+
+  /** Tên sản phẩm vay */
+  @Prop({ required: false })
+  productName?: string;
+
+  /** Trạng thái hợp đồng */
+  @Prop({ type: String, default: 'pending_signature' })
+  status: LoanContractStatus;
+
+  /** Thời điểm người vay ký hợp đồng */
+  @Prop({ required: false })
+  signedAt?: Date;
+
+  /** Chữ ký số (base64 image hoặc signature hash) – để trống chờ ký */
+  @Prop({ required: false })
+  signatureData?: string;
+
+  /** Thời điểm phê duyệt pháp lý (admin approve) */
+  @Prop({ required: false })
+  legalApprovalAt?: Date;
+
+  /** Ngày giải ngân dự kiến */
+  @Prop({ required: false })
+  disbursementDate?: string;
+
+  /** Ngày bắt đầu trả nợ */
+  @Prop({ required: false })
+  firstRepaymentDate?: string;
+}
+
+export const LoanContractSchema = SchemaFactory.createForClass(LoanContract);
+LoanContractSchema.index({ userId: 1, status: 1 });
+LoanContractSchema.index({ contractId: 1 });
+LoanContractSchema.index({ createdAt: -1 });
