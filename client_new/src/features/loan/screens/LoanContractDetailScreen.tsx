@@ -53,7 +53,7 @@ const getStatusConfig = (status: LoanContractStatus) => {
         case 'pending_signature':
             return { text: 'Chờ ký', color: '#F59E0B', bg: '#F59E0B15' };
         case 'signed':
-            return { text: 'Đã ký', color: '#3B82F6', bg: '#3B82F615' };
+            return { text: 'Chờ giải ngân', color: '#8B5CF6', bg: '#8B5CF615' };
         case 'active':
             return { text: 'Đang hiệu lực', color: '#10B981', bg: '#10B98115' };
         case 'completed':
@@ -132,17 +132,12 @@ export default function LoanContractDetailScreen() {
             const updated = await loanService.signContract(contract.contractId || contract._id);
             setContract(updated);
 
-            Animated.spring(successAnim, {
-                toValue: 1,
-                useNativeDriver: true,
-                friction: 6,
-            }).start();
-
-            Alert.alert(
-                'Thành công',
-                'Bạn đã ký xác nhận hợp đồng vay thành công!',
-                [{ text: 'OK' }],
-            );
+            // Navigate to signing success screen
+            navigation.replace('SigningSuccess' as any, {
+                contractId: contract.contractId || contract._id,
+                principalAmount: contract.principalAmount,
+                tenure: contract.tenure,
+            });
         } catch (err: any) {
             Alert.alert('Lỗi', err?.response?.data?.message || err?.message || 'Không thể ký hợp đồng');
         } finally {

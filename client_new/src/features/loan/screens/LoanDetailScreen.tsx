@@ -91,10 +91,12 @@ const getStatusInfo = (statusObj: any, status: string) => {
         if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
         if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
         if (statusObj.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', bgColor: '#8B5CF615' };
+        if (statusObj.approved) return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
         if (statusObj.rejected || statusObj.withdrawnByClient) return { text: 'Thất bại', color: '#EF4444', bgColor: '#EF444415' };
     }
     if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
     if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#3B82F615' };
+    if (status === 'approved') return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
     if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
     return { text: status || 'N/A', color: '#6B7280', bgColor: '#6B728015' };
 };

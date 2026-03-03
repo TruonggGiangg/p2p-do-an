@@ -12,6 +12,7 @@ import LoanHistoryScreen from '../features/loan/screens/LoanHistoryScreen';
 import LoanDetailScreen from '../features/loan/screens/LoanDetailScreen';
 import LoanContractListScreen from '../features/loan/screens/LoanContractListScreen';
 import LoanContractDetailScreen from '../features/loan/screens/LoanContractDetailScreen';
+import SigningSuccessScreen from '../features/loan/screens/SigningSuccessScreen';
 import BNPLLoanListScreen from '../features/bnpl/screens/BNPLLoanListScreen';
 import BNPLLoanDetailScreen from '../features/bnpl/screens/BNPLLoanDetailScreen';
 import BNPLEarlyRepayScreen from '../features/bnpl/screens/BNPLEarlyRepayScreen';
@@ -41,6 +42,7 @@ export type RootStackParamList = {
     };
     LoanContractList: undefined;
     LoanContractDetail: { contractId?: string; loanId?: string };
+    SigningSuccess: { contractId?: string; principalAmount?: number; tenure?: number };
     BNPLLoanList: { loans: BnplLoan[] };
     BNPLLoanDetail: { loan: BnplLoan };
     BNPLEarlyRepay: { loan: BnplLoan };
@@ -75,6 +77,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="LoanConfirm" component={LoanConfirmScreen} />
                     <Stack.Screen name="LoanContractList" component={LoanContractListScreen} />
                     <Stack.Screen name="LoanContractDetail" component={LoanContractDetailScreen} />
+                    <Stack.Screen name="SigningSuccess" component={SigningSuccessScreen} />
                     <Stack.Screen name="BNPLLoanList" component={BNPLLoanListScreen} />
                     <Stack.Screen name="BNPLLoanDetail" component={BNPLLoanDetailScreen} />
                     <Stack.Screen name="BNPLEarlyRepay" component={BNPLEarlyRepayScreen} />

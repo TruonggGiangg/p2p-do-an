@@ -640,7 +640,7 @@ export default function LoanCreateScreen() {
 
                     {/* ── Preview kết quả ── */}
                     {loadingPreview ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.border }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08' }]}>
                             <ActivityIndicator size="small" color={theme.colors.primary} />
                             <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
                         </View>

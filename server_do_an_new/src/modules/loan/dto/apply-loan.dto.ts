@@ -15,6 +15,11 @@ export class DocumentItemDto {
   @IsOptional()
   @IsString()
   uri?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fieldType?: string;
 }
 
 export class ApplyLoanDto {

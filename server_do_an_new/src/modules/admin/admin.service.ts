@@ -15,6 +15,8 @@ import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { Wallet } from '../wallets/schemas/wallet.schema';
+import { Notification } from '../loan/schemas/notification.schema';
+import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { ContractService } from '../loan/contract.service';
 
 /** officeId=1 = Head Office in default Fineract setup */
@@ -49,6 +51,8 @@ export class AdminService {
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
+    @InjectModel(Notification.name) private notificationModel: Model<Notification>,
+    @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
@@ -617,14 +621,34 @@ export class AdminService {
    */
   async approveLoan(fineractLoanId: number) {
     this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
+
+    // Auto-approve all pending documents that have been uploaded
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+
+    let docAutoApproved = 0;
+    if (app.documents?.length) {
+      for (const doc of app.documents) {
+        if (doc.reviewStatus !== 'approved' && doc.fineractDocumentId) {
+          doc.reviewStatus = 'approved';
+          docAutoApproved++;
+        }
+      }
+      if (docAutoApproved > 0) {
+        app.markModified('documents');
+        await app.save();
+        this.logger.log(`[approveLoan] Auto-approved ${docAutoApproved} pending documents`);
+      }
+    }
+
+    // Now check if all required doc types are satisfied
     const { canApprove, missingRequired } = await this.canApproveLoan(fineractLoanId);
     if (!canApprove) {
-      throw new BadRequestException(`Chưa duyệt đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
+      throw new BadRequestException(`Chưa upload đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
     }
 
     // Fineract requires: approvedOnDate <= expectedDisbursementDate
     // Use the loan's disbursementDate so approval works even for past-dated loans
-    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
     const disbursementDate = app?.disbursementDate; // format: yyyy-MM-dd
     const today = new Date().toISOString().split('T')[0];
     // Use disbursementDate if it exists and is earlier than today (i.e. past-dated)
@@ -652,13 +676,44 @@ export class AdminService {
    */
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
-    const loan = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
+    const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
     if (!loan)
       throw new BadRequestException(
         `Kho\u1ea3n vay Fineract #${fineractLoanId} kh\u00f4ng t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng`,
       );
+
+    // 1. Disburse on Fineract
     await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
-    await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'disbursed' } });
+
+    // 2. Update loan status in MongoDB
+    loan.status = 'disbursed' as any;
+    loan.disbursementDate = new Date().toString();
+    await loan.save();
+
+    // 3. Update contract status to 'active'
+    try {
+      await this.loanContractModel.updateOne({ loanId: loan._id, status: 'signed' }, { $set: { status: 'active' } });
+    } catch (err) {
+      this.logger.warn(`[disburseLoan] Failed to update contract status: ${err?.message}`);
+    }
+
+    // 4. Create disbursement notification
+    try {
+      await this.notificationModel.create({
+        userId: loan.userId,
+        title: 'Gi\u1ea3i ng\u00e2n th\u00e0nh c\u00f4ng',
+        message: `Kho\u1ea3n vay ${loan.capital?.toLocaleString('vi-VN')} \u0111 \u0111\u00e3 \u0111\u01b0\u1ee3c gi\u1ea3i ng\u00e2n v\u00e0o t\u00e0i kho\u1ea3n c\u1ee7a b\u1ea1n. Vui l\u00f2ng ki\u1ec3m tra s\u1ed1 d\u01b0.`,
+        type: 'loan_disbursed',
+        data: {
+          loanId: loan._id?.toString(),
+          fineractLoanId,
+          amount: loan.capital,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`[disburseLoan] Failed to create notification: ${err?.message}`);
+    }
+
     return { fineractLoanId, status: 'disbursed' };
   }
 

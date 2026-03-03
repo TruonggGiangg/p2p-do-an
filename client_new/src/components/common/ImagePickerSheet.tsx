@@ -434,64 +434,39 @@ export default function ImagePickerSheet({
                         </View>
                     )}
 
-                    {/* Loading permission state — only show if not yet checked */}
-                    {hasPermission === null && !permissionChecked && (
-                        <View style={imgStyles.emptyContainer}>
-                            <ActivityIndicator size="large" color={c.primary} />
-                            <Text style={[imgStyles.loadingText, { color: c.textDim }]}>Đang tải...</Text>
-                        </View>
-                    )}
-
-                    {/* Actions shown immediately when permission is being requested */}
-                    {hasPermission === null && permissionChecked && (
+                    {/* Always show action buttons immediately — no loading spinner */}
+                    {!hasPermission && (
                         <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 10 }}>
-                            {renderHeader()}
-                        </View>
-                    )}
-
-                    {/* Permission denied */}
-                    {hasPermission === false && (
-                        <View style={imgStyles.emptyContainer}>
-                            <MaterialCommunityIcons name="image-off-outline" size={48} color={c.textDim} />
-                            <Text style={[imgStyles.emptyText, { color: c.textSecondary }]}>
-                                Cần quyền truy cập thư viện ảnh
-                            </Text>
-                            <Text style={[imgStyles.emptySubText, { color: c.textDim }]}>
-                                Vui lòng cấp quyền trong Cài đặt hoặc dùng các tùy chọn bên dưới
-                            </Text>
-                            {/* Fallback buttons khi không có quyền MediaLibrary */}
-                            <View style={{ width: '100%', paddingHorizontal: 16, marginTop: 20, gap: 10 }}>
-                                {allowCamera && (
-                                    <TouchableOpacity
-                                        style={[imgStyles.cameraBtn, { backgroundColor: c.primary + '12', borderColor: c.primary + '30' }]}
-                                        onPress={handleCamera}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
-                                            <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
-                                        </View>
-                                        <View>
-                                            <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Chụp ảnh</Text>
-                                            <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
-                                        </View>
-                                        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
-                                    </TouchableOpacity>
-                                )}
+                            {allowCamera && (
                                 <TouchableOpacity
-                                    style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
-                                    onPress={handlePickFromLibrary}
+                                    style={[imgStyles.cameraBtn, { backgroundColor: c.primary + '12', borderColor: c.primary + '30' }]}
+                                    onPress={handleCamera}
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                                        <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                                    <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
+                                        <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
                                     </View>
                                     <View>
-                                        <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
-                                        <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
+                                        <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Tự chụp ảnh</Text>
+                                        <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
                                     </View>
                                     <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
                                 </TouchableOpacity>
-                            </View>
+                            )}
+                            <TouchableOpacity
+                                style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                                onPress={handlePickFromLibrary}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
+                                    <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                                </View>
+                                <View>
+                                    <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Tải ảnh từ thư viện</Text>
+                                    <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Chọn ảnh có sẵn trên máy</Text>
+                                </View>
+                                <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                            </TouchableOpacity>
                         </View>
                     )}
 
