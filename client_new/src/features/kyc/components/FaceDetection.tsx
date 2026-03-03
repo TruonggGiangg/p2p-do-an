@@ -81,17 +81,28 @@ const FaceDetection: React.FC = () => {
         return () => animation.stop();
     }, []);
 
-    // Check permissions
+    // Check permissions — tự động hỏi quyền nếu chưa có
     useEffect(() => {
         (async () => {
             const { status } = await Camera.getCameraPermissionsAsync();
-            setHasPermission(status === PermissionStatus.GRANTED);
+            if (status === PermissionStatus.GRANTED) {
+                setHasPermission(true);
+            } else {
+                // Chưa có quyền → tự động yêu cầu
+                const req = await Camera.requestCameraPermissionsAsync();
+                setHasPermission(req.status === PermissionStatus.GRANTED);
+            }
         })();
     }, []);
 
     const requestPermission = async () => {
-        const { status } = await Camera.requestCameraPermissionsAsync();
-        setHasPermission(status === PermissionStatus.GRANTED);
+        const { status, canAskAgain } = await Camera.requestCameraPermissionsAsync();
+        if (status === PermissionStatus.GRANTED) {
+            setHasPermission(true);
+        } else if (!canAskAgain) {
+            // Đã bị từ chối vĩnh viễn → mở Settings
+            Linking.openSettings();
+        }
     };
 
     const startCountdown = () => {
@@ -217,23 +228,29 @@ const FaceDetection: React.FC = () => {
                 <ScrollView contentContainerStyle={styles.permissionScroll} showsVerticalScrollIndicator={false}>
                     <View style={styles.permissionContainer}>
                         <View style={[styles.iconCircle, { backgroundColor: c.errorGlass }]}>
-                            <Ionicons name="alert-circle" size={48} color={c.error} />
+                            <Ionicons name="camera-outline" size={48} color={c.primary} />
                         </View>
-                        <Text style={[styles.permissionTitle, { color: c.textPrimary }]}>Quyền bị từ chối</Text>
+                        <Text style={[styles.permissionTitle, { color: c.textPrimary }]}>Cần quyền Camera</Text>
                         <Text style={[styles.permissionDesc, { color: c.textSecondary }]}>
-                            Ứng dụng cần quyền sử dụng camera để thực hiện xác thực khuôn mặt bảm bảo an toàn cho tài khoản của bạn.
+                            Ứng dụng cần quyền sử dụng camera để thực hiện xác thực khuôn mặt, bảo đảm an toàn cho tài khoản của bạn.
                         </Text>
                         <TouchableOpacity
                             style={[styles.primaryButton, { backgroundColor: c.primary }]}
-                            onPress={() => Linking.openSettings()}
+                            onPress={requestPermission}
                         >
-                            <Text style={[styles.buttonText, { color: '#000' }]}>Mở cài đặt</Text>
+                            <Text style={[styles.buttonText, { color: '#000' }]}>Cấp quyền Camera</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.secondaryButton, { borderColor: c.border }]}
+                            onPress={() => Linking.openSettings()}
+                        >
+                            <Text style={[styles.secondaryButtonText, { color: c.textPrimary }]}>Mở cài đặt</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.secondaryButton, { borderColor: c.border, marginTop: 8 }]}
                             onPress={() => navigation.goBack()}
                         >
-                            <Text style={[styles.secondaryButtonText, { color: c.textPrimary }]}>Quay lại</Text>
+                            <Text style={[styles.secondaryButtonText, { color: c.textSecondary }]}>Quay lại</Text>
                         </TouchableOpacity>
                     </View>
                 </ScrollView>

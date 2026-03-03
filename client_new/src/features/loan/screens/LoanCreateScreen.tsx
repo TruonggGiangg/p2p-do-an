@@ -13,6 +13,7 @@ import {
     Modal,
     FlatList,
     Animated,
+    Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -24,12 +25,14 @@ import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult } from 
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const DEFAULT_PERIOD_OPTIONS = [3, 6, 9, 12, 18, 24];
 const QUICK_AMOUNTS = [
-    { label: '5 tr', value: 5000000 },
-    { label: '10 tr', value: 10000000 },
-    { label: '20 tr', value: 20000000 },
-    { label: '50 tr', value: 50000000 },
+    { label: '5 triệu', value: 5000000, icon: 'cash' as const },
+    { label: '10 triệu', value: 10000000, icon: 'cash-multiple' as const },
+    { label: '20 triệu', value: 20000000, icon: 'wallet' as const },
+    { label: '50 triệu', value: 50000000, icon: 'diamond-stone' as const },
 ];
 
 type RouteParams = { product: LoanProduct; willing?: string };
@@ -40,10 +43,33 @@ function StepIndicator({ current, theme }: { current: number; theme: any }) {
     const c = theme.colors;
     return (
         <View style={[stepStyles.container, { backgroundColor: c.surfaceLight }]}>
-            <View style={[stepStyles.pill, { backgroundColor: c.primary }]}>
-                <Text style={stepStyles.pillText}>Bước {current + 1}/2</Text>
+            <View style={stepStyles.stepsRow}>
+                {[0, 1].map((i) => (
+                    <React.Fragment key={i}>
+                        <View style={[
+                            stepStyles.dot,
+                            i <= current
+                                ? { backgroundColor: c.primary }
+                                : { backgroundColor: c.border },
+                        ]}>
+                            {i < current ? (
+                                <MaterialCommunityIcons name="check" size={12} color="#000" />
+                            ) : (
+                                <Text style={[stepStyles.dotText, i <= current && { color: '#000' }]}>{i + 1}</Text>
+                            )}
+                        </View>
+                        {i < 1 && (
+                            <View style={[
+                                stepStyles.connector,
+                                i < current
+                                    ? { backgroundColor: c.primary }
+                                    : { backgroundColor: c.border },
+                            ]} />
+                        )}
+                    </React.Fragment>
+                ))}
             </View>
-            <Text style={[stepStyles.sub, { color: c.textSecondary }]}>
+            <Text style={[stepStyles.label, { color: c.textPrimary }]}>
                 {current === 0 ? 'Nhập thông tin vay' : 'Xác nhận & gửi đơn'}
             </Text>
         </View>
@@ -51,10 +77,15 @@ function StepIndicator({ current, theme }: { current: number; theme: any }) {
 }
 
 const stepStyles = StyleSheet.create({
-    container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
-    pill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-    pillText: { fontSize: 13, fontWeight: '700', color: '#000' },
-    sub: { fontSize: 13 },
+    container: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+    stepsRow: { flexDirection: 'row', alignItems: 'center' },
+    dot: {
+        width: 26, height: 26, borderRadius: 13,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    dotText: { fontSize: 12, fontWeight: '700', color: '#888' },
+    connector: { height: 2, flex: 1, marginHorizontal: 6, borderRadius: 1 },
+    label: { fontSize: 14, fontWeight: '600' },
 });
 
 // ── Rate Stepper ─────────────────────────────────────────────────────────────
@@ -530,6 +561,8 @@ export default function LoanCreateScreen() {
 
     const canProceed = !!schedule && capitalNum >= 100000 && effectivePeriod >= 1;
 
+    const formatCurrency = (n: number) => n.toLocaleString('vi-VN');
+
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <BinanceHeader showBack title={`Vay ${product.shortName || product.name}`} />
@@ -546,19 +579,35 @@ export default function LoanCreateScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* ── Một card gộp: Số tiền + Kỳ hạn + Lãi suất ── */}
-                    <CommonCard style={[styles.mainCard, { backgroundColor: theme.colors.surface }]}>
-                        {/* Số tiền */}
-                        <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>1. Số tiền vay</Text>
-                        <TextInput
-                            style={[styles.amountInput, { color: theme.colors.textPrimary, borderColor: theme.colors.border }]}
-                            placeholder="Nhập số tiền (VD: 10.000.000)"
-                            placeholderTextColor={theme.colors.textDim}
-                            value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-                            onChangeText={(t) => setCapital(t.replace(/\D/g, ''))}
-                            keyboardType="number-pad"
-                        />
-                        <View style={styles.quickAmountRow}>
+                    {/* ── Section 1: Số tiền vay ── */}
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                        <View style={styles.sectionHeader}>
+                            <View style={[styles.sectionIcon, { backgroundColor: theme.colors.primary + '15' }]}>
+                                <MaterialCommunityIcons name="cash-fast" size={20} color={theme.colors.primary} />
+                            </View>
+                            <View style={styles.sectionHeaderText}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Số tiền vay</Text>
+                                {product?.minPrincipal != null && (
+                                    <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
+                                        {formatCurrency(product.minPrincipal)} – {formatCurrency(product.maxPrincipal!)} đ
+                                    </Text>
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={[styles.amountInputWrapper, { borderColor: theme.colors.primary + '40' }]}>
+                            <TextInput
+                                style={[styles.amountInput, { color: theme.colors.textPrimary }]}
+                                placeholder="0"
+                                placeholderTextColor={theme.colors.textDim + '60'}
+                                value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                                onChangeText={(t) => setCapital(t.replace(/\D/g, ''))}
+                                keyboardType="number-pad"
+                            />
+                            <Text style={[styles.amountCurrency, { color: theme.colors.textDim }]}>VND</Text>
+                        </View>
+
+                        <View style={styles.quickAmountGrid}>
                             {QUICK_AMOUNTS.map((qa) => {
                                 const isSelected = capitalNum === qa.value;
                                 return (
@@ -566,28 +615,43 @@ export default function LoanCreateScreen() {
                                         key={qa.value}
                                         style={[
                                             styles.quickChip,
-                                            { borderColor: isSelected ? theme.colors.primary : theme.colors.border },
-                                            isSelected && { backgroundColor: theme.colors.primary + '18' },
+                                            { borderColor: isSelected ? theme.colors.primary : theme.colors.border + '80' },
+                                            isSelected && { backgroundColor: theme.colors.primary + '12' },
                                         ]}
-                                        onPress={() => setCapital(String(qa.value))}
+                                        onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                        activeOpacity={0.7}
                                     >
-                                        <Text style={[styles.quickChipText, { color: isSelected ? theme.colors.primary : theme.colors.textSecondary }]}>
+                                        <MaterialCommunityIcons
+                                            name={qa.icon}
+                                            size={16}
+                                            color={isSelected ? theme.colors.primary : theme.colors.textDim}
+                                        />
+                                        <Text style={[
+                                            styles.quickChipText,
+                                            { color: isSelected ? theme.colors.primary : theme.colors.textSecondary },
+                                        ]}>
                                             {qa.label}
                                         </Text>
                                     </TouchableOpacity>
                                 );
                             })}
                         </View>
-                        {product?.minPrincipal != null && (
-                            <Text style={[styles.hintSmall, { color: theme.colors.textDim }]}>
-                                Hạn mức: {(product.minPrincipal / 1e6).toFixed(0)}tr – {(product.maxPrincipal! / 1e6).toFixed(0)}tr đ
-                            </Text>
-                        )}
+                    </View>
 
-                        <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+                    {/* ── Section 2: Kỳ hạn ── */}
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                        <View style={styles.sectionHeader}>
+                            <View style={[styles.sectionIcon, { backgroundColor: '#6C5CE7' + '15' }]}>
+                                <MaterialCommunityIcons name="calendar-clock" size={20} color="#6C5CE7" />
+                            </View>
+                            <View style={styles.sectionHeaderText}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Kỳ hạn vay</Text>
+                                <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
+                                    {minRep} – {maxRep} tháng
+                                </Text>
+                            </View>
+                        </View>
 
-                        {/* Kỳ hạn: chips + nhập tùy chọn theo min-max từ Fineract */}
-                        <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>2. Kỳ hạn (tháng)</Text>
                         {loadingConfig ? (
                             <ActivityIndicator color={theme.colors.primary} size="small" />
                         ) : (
@@ -602,39 +666,55 @@ export default function LoanCreateScreen() {
                                 dimColor={theme.colors.textDim}
                             />
                         )}
+                    </View>
 
-                        <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+                    {/* ── Section 3: Lãi suất ── */}
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                        <View style={styles.sectionHeader}>
+                            <View style={[styles.sectionIcon, { backgroundColor: '#00B894' + '15' }]}>
+                                <MaterialCommunityIcons name="percent-outline" size={20} color="#00B894" />
+                            </View>
+                            <View style={styles.sectionHeaderText}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
+                                <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
+                                    {rateMode === 'default' ? 'Lãi suất mặc định' : 'Tuỳ chỉnh'}
+                                </Text>
+                            </View>
+                        </View>
 
-                        {/* Lãi suất */}
-                        <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>3. Lãi suất</Text>
                         {loadingConfig ? (
                             <ActivityIndicator color={theme.colors.primary} size="small" />
                         ) : config && (
                             <>
                                 {rateMode === 'default' ? (
-                                    <View style={[styles.rateSimple, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.primary + '20' }]}>
-                                        <View style={styles.rateSimpleTop}>
-                                            <View style={[styles.rateIconCircle, { backgroundColor: theme.colors.primary + '18' }]}>
-                                                <MaterialCommunityIcons name="percent-outline" size={20} color={theme.colors.primary} />
-                                            </View>
-                                            <View style={styles.rateSimpleInfo}>
-                                                <Text style={[styles.rateSimpleMain, { color: theme.colors.primary }]}>
-                                                    {+config.monthlyRate.toFixed(2)}% / tháng
+                                    <View style={[styles.rateCard, { backgroundColor: theme.colors.primary + '06', borderColor: theme.colors.primary + '18' }]}>
+                                        <View style={styles.rateCardTop}>
+                                            <View>
+                                                <Text style={[styles.rateMainValue, { color: theme.colors.primary }]}>
+                                                    {+config.monthlyRate.toFixed(2)}%
                                                 </Text>
-                                                <Text style={[styles.rateSimpleSub, { color: theme.colors.textSecondary }]}>
-                                                    ≈ {+config.annualRate.toFixed(2)}% / năm
-                                                </Text>
+                                                <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi tháng</Text>
                                             </View>
-                                            <View style={[styles.rateDefaultBadge, { backgroundColor: theme.colors.success + '15' }]}>
-                                                <Text style={[styles.rateDefaultBadgeText, { color: theme.colors.success }]}>Khuyến nghị</Text>
+                                            <View style={[styles.rateDividerV, { backgroundColor: theme.colors.border }]} />
+                                            <View>
+                                                <Text style={[styles.rateSubValue, { color: theme.colors.textSecondary }]}>
+                                                    ≈ {+config.annualRate.toFixed(2)}%
+                                                </Text>
+                                                <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi năm</Text>
+                                            </View>
+                                            <View style={[styles.recommendBadge, { backgroundColor: '#00B894' + '15' }]}>
+                                                <MaterialCommunityIcons name="star" size={10} color="#00B894" />
+                                                <Text style={styles.recommendBadgeText}>Tốt nhất</Text>
                                             </View>
                                         </View>
                                         <TouchableOpacity
-                                            style={[styles.rateCustomLink, { borderColor: theme.colors.border }]}
+                                            style={[styles.customizeBtn, { borderColor: theme.colors.border }]}
                                             onPress={() => setRateMode('custom')}
+                                            activeOpacity={0.7}
                                         >
                                             <MaterialCommunityIcons name="tune-variant" size={14} color={theme.colors.textDim} />
-                                            <Text style={[styles.rateCustomLinkText, { color: theme.colors.textDim }]}>Tùy chỉnh</Text>
+                                            <Text style={[styles.customizeBtnText, { color: theme.colors.textDim }]}>Tuỳ chỉnh lãi suất</Text>
+                                            <MaterialCommunityIcons name="chevron-right" size={16} color={theme.colors.textDim} />
                                         </TouchableOpacity>
                                     </View>
                                 ) : (
@@ -652,31 +732,46 @@ export default function LoanCreateScreen() {
                                             isProductAnnual={config.isAnnual}
                                         />
                                         <TouchableOpacity onPress={() => setRateMode('default')} style={styles.rateResetLink}>
-                                            <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>← Dùng lãi mặc định</Text>
+                                            <MaterialCommunityIcons name="arrow-left" size={14} color={theme.colors.primary} />
+                                            <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>Dùng lãi mặc định</Text>
                                         </TouchableOpacity>
                                     </View>
                                 )}
                             </>
                         )}
+                    </View>
 
-                        {/* Kết quả ước tính */}
-                        {loadingPreview ? (
-                            <View style={[styles.resultBox, { backgroundColor: theme.colors.surfaceLight }]}>
-                                <ActivityIndicator size="small" color={theme.colors.primary} />
-                                <Text style={[styles.resultLabel, { color: theme.colors.textDim }]}>Đang tính...</Text>
+                    {/* ── Preview kết quả ── */}
+                    {loadingPreview ? (
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                            <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
+                        </View>
+                    ) : schedule && capitalNum >= 100000 ? (
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.primary + '20' }]}>
+                            <View style={styles.previewRow}>
+                                <View style={styles.previewItem}>
+                                    <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
+                                    <Text style={[styles.previewItemValue, { color: theme.colors.primary }]}>
+                                        {formatCurrency(schedule.monthlyPay)} đ
+                                    </Text>
+                                </View>
+                                <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
+                                <View style={styles.previewItem}>
+                                    <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
+                                    <Text style={[styles.previewTotalValue, { color: theme.colors.textPrimary }]}>
+                                        {formatCurrency(schedule.entirelyPay)} đ
+                                    </Text>
+                                </View>
                             </View>
-                        ) : schedule && capitalNum >= 100000 ? (
-                            <View style={[styles.resultBox, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '25' }]}>
-                                <Text style={[styles.resultLabel, { color: theme.colors.textSecondary }]}>Trả hàng tháng</Text>
-                                <Text style={[styles.resultAmount, { color: theme.colors.primary }]}>
-                                    {schedule.monthlyPay.toLocaleString('vi-VN')} đ
-                                </Text>
-                                <Text style={[styles.resultTotal, { color: theme.colors.textDim }]}>
-                                    Tổng trả: {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                            <View style={[styles.previewInterest, { backgroundColor: theme.colors.surfaceLight }]}>
+                                <MaterialCommunityIcons name="information-outline" size={14} color={theme.colors.textDim} />
+                                <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
+                                    Tổng lãi: {formatCurrency(schedule.entirelyPay - capitalNum)} đ
                                 </Text>
                             </View>
-                        ) : null}
-                    </CommonCard>
+                        </View>
+                    ) : null}
 
                     <View style={{ height: 100 }} />
                 </ScrollView>
@@ -689,15 +784,15 @@ export default function LoanCreateScreen() {
                 }]}>
                     {schedule && capitalNum >= 100000 ? (
                         <View style={styles.stickyBarInfo}>
-                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Tổng trả ước tính</Text>
-                            <Text style={[styles.stickyValue, { color: theme.colors.textPrimary }]}>
-                                {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
+                            <Text style={[styles.stickyValue, { color: theme.colors.primary }]}>
+                                {formatCurrency(schedule.monthlyPay)} đ
                             </Text>
                         </View>
                     ) : (
                         <View style={styles.stickyBarInfo}>
                             <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
-                                {capitalNum < 100000 ? 'Số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
+                                {capitalNum < 100000 ? 'Nhập số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
                             </Text>
                         </View>
                     )}
@@ -723,44 +818,147 @@ const styles = StyleSheet.create({
     scrollContainer: { flex: 1 },
     flex: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 24 },
+    scrollContent: { padding: 16, paddingBottom: 24, gap: 12 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    card: { padding: 16, marginBottom: 14, borderRadius: 16 },
-    mainCard: { padding: 20, marginBottom: 16, borderRadius: 18 },
-    loader: { marginVertical: 24 },
 
-    sectionLabel: { fontSize: 13, fontWeight: '600', marginBottom: 10 },
-    divider: { height: 1, marginVertical: 18 },
+    // Section cards
+    section: {
+        padding: 20,
+        borderRadius: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 16,
+    },
+    sectionIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    sectionHeaderText: { flex: 1 },
+    sectionTitle: { fontSize: 16, fontWeight: '700' },
+    sectionHint: { fontSize: 12, marginTop: 2 },
 
     // Amount
+    amountInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        marginBottom: 14,
+    },
     amountInput: {
-        borderWidth: 1.5, borderRadius: 12, padding: 14,
-        fontSize: 20, fontWeight: '700', marginBottom: 10,
+        flex: 1,
+        fontSize: 28,
+        fontWeight: '800',
+        paddingVertical: 14,
+        letterSpacing: 0.5,
     },
-    hintSmall: { fontSize: 11, marginTop: 4 },
-    quickAmountRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-    rateSimple: { padding: 16, borderRadius: 16, borderWidth: 1 },
-    rateSimpleTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    rateIconCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    rateSimpleInfo: { flex: 1 },
-    rateSimpleMain: { fontSize: 18, fontWeight: '800' },
-    rateSimpleSub: { fontSize: 12, marginTop: 2 },
-    rateDefaultBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-    rateDefaultBadgeText: { fontSize: 11, fontWeight: '700' },
-    rateCustomLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
-    rateCustomLinkText: { fontSize: 12, fontWeight: '600' },
-    rateResetLink: { marginTop: 8 },
-    rateResetLinkText: { fontSize: 12, fontWeight: '600' },
-    resultBox: { marginTop: 16, padding: 14, borderRadius: 12, borderWidth: 1 },
-    resultLabel: { fontSize: 12, marginBottom: 4 },
-    resultAmount: { fontSize: 20, fontWeight: '800' },
-    resultTotal: { fontSize: 12, marginTop: 4 },
+    amountCurrency: {
+        fontSize: 14,
+        fontWeight: '700',
+        opacity: 0.5,
+        marginLeft: 8,
+    },
+    quickAmountGrid: {
+        flexDirection: 'row',
+        gap: 8,
+        flexWrap: 'wrap',
+    },
     quickChip: {
-        flex: 1, paddingVertical: 8, borderRadius: 10,
-        borderWidth: 1, alignItems: 'center',
+        flex: 1,
+        minWidth: (SCREEN_WIDTH - 72) / 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1.5,
     },
-    quickChipText: { fontSize: 13, fontWeight: '600' },
+    quickChipText: { fontSize: 12, fontWeight: '600' },
 
+    // Rate
+    rateCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        padding: 16,
+    },
+    rateCardTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+    },
+    rateMainValue: { fontSize: 28, fontWeight: '800' },
+    rateMainLabel: { fontSize: 11, marginTop: 2 },
+    rateSubValue: { fontSize: 18, fontWeight: '700' },
+    rateDividerV: { width: 1, height: 36 },
+    recommendBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        marginLeft: 'auto',
+    },
+    recommendBadgeText: { fontSize: 10, fontWeight: '700', color: '#00B894' },
+    customizeBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 14,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    customizeBtnText: { fontSize: 12, fontWeight: '600', flex: 1 },
+    rateResetLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
+    rateResetLinkText: { fontSize: 13, fontWeight: '600' },
+
+    // Preview
+    previewCard: {
+        borderRadius: 20,
+        borderWidth: 1,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    previewLoading: { textAlign: 'center', marginTop: 8, fontSize: 13 },
+    previewRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    previewItem: { flex: 1, alignItems: 'center' },
+    previewItemLabel: { fontSize: 12, marginBottom: 4 },
+    previewItemValue: { fontSize: 22, fontWeight: '800' },
+    previewTotalValue: { fontSize: 18, fontWeight: '700' },
+    previewDivider: { width: 1, height: 40, marginHorizontal: 12 },
+    previewInterest: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 14,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+    },
+    previewInterestText: { fontSize: 12, fontWeight: '500' },
 
     // Sticky bottom bar
     stickyBar: {
@@ -772,10 +970,10 @@ const styles = StyleSheet.create({
     },
     stickyBarInfo: { flex: 1 },
     stickyLabel: { fontSize: 12, marginBottom: 2 },
-    stickyValue: { fontSize: 16, fontWeight: '700' },
+    stickyValue: { fontSize: 17, fontWeight: '800' },
     nextBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12,
+        paddingVertical: 14, paddingHorizontal: 28, borderRadius: 14,
     },
     nextBtnText: { fontSize: 15, fontWeight: '700' },
 

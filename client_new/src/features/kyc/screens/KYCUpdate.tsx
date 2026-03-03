@@ -26,6 +26,7 @@ import { kycService } from '../services/kyc.service';
 import { KYCStepIndicator, KYCInfoCard } from '../index';
 import { CommonButton } from '../../../components/common/CommonButton';
 import { CommonCard } from '../../../components/common/CommonCard';
+import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
 
 LogBox.ignoreLogs(['Non-serializable values were found in the navigation state']);
 
@@ -50,6 +51,27 @@ const KYCUpdate: React.FC = () => {
     const [ocrData, setOcrData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [isFaceVerified, setIsFaceVerified] = useState(false);
+
+    // ImagePickerSheet state
+    const [imagePickerVisible, setImagePickerVisible] = useState(false);
+    const [imagePickerType, setImagePickerType] = useState<'front' | 'back'>('front');
+
+    const openImagePicker = (type: 'front' | 'back') => {
+        setImagePickerType(type);
+        setImagePickerVisible(true);
+    };
+
+    const handleImagePicked = (result: { uri: string; type?: string; fileName?: string }) => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (imagePickerType === 'front') {
+            setFrontImage(result.uri);
+            handleOCRFront(result.uri);
+        } else {
+            setBackImage(result.uri);
+            handleOCRBack(result.uri);
+        }
+        setImagePickerVisible(false);
+    };
 
     const steps = [
         { label: 'Mặt trước', icon: 'card-outline' },
@@ -251,14 +273,7 @@ const KYCUpdate: React.FC = () => {
 
             <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => {
-                    Alert.alert('Chọn nguồn ảnh', '', [
-                        { text: 'Máy ảnh', onPress: () => pickImage(type, 'camera') },
-                        { text: 'Thư viện', onPress: () => pickImage(type, 'library') },
-                        { text: 'Tệp tin', onPress: () => pickImage(type, 'file') },
-                        { text: 'Hủy', style: 'cancel' }
-                    ]);
-                }}
+                onPress={() => openImagePicker(type)}
                 style={[styles.imageCard, { backgroundColor: c.surface, borderColor: c.border }]}
             >
                 {uri ? (
@@ -375,6 +390,16 @@ const KYCUpdate: React.FC = () => {
                     }
                 />
             </View>
+
+            <ImagePickerSheet
+                visible={imagePickerVisible}
+                onClose={() => setImagePickerVisible(false)}
+                onSelect={handleImagePicked}
+                title={imagePickerType === 'front' ? 'Ảnh CCCD mặt trước' : 'Ảnh CCCD mặt sau'}
+                allowCamera
+                aspect={[4, 3]}
+                quality={0.85}
+            />
         </SafeAreaView>
     );
 };

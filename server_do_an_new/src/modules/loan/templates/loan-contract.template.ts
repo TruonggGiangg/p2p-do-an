@@ -161,6 +161,12 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       border-bottom: 2px solid #333;
       padding-bottom: 20px;
     }
+    .header .vento-logo {
+      margin-bottom: 10px;
+    }
+    .header .vento-logo svg {
+      display: inline-block;
+    }
     .header .company-name {
       font-size: 16pt;
       font-weight: bold;
@@ -313,6 +319,24 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
 
   <!-- ═══════ HEADER ═══════ -->
   <div class="header">
+    <div class="vento-logo">
+      <svg viewBox="10 20 300 80" width="220" height="55" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ventoGold" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#F0B90B"/>
+            <stop offset="50%" style="stop-color:#FCD535"/>
+            <stop offset="100%" style="stop-color:#F0B90B"/>
+          </linearGradient>
+        </defs>
+        <g fill="none" stroke="url(#ventoGold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 30 L47 82 L72 30"/>
+          <path d="M82 30 L112 30 M82 30 L82 82 L112 82 M82 56 L108 56"/>
+          <path d="M127 82 L127 30 L167 82 L167 30"/>
+          <path d="M182 30 L232 30 M207 30 L207 82"/>
+          <path d="M252 30 L282 30 L297 56 L282 82 L252 82 L237 56 Z"/>
+        </g>
+      </svg>
+    </div>
     <div class="company-name">${companyName}</div>
     <div class="company-info">${companyAddress} | ĐT: ${companyPhone}</div>
   </div>

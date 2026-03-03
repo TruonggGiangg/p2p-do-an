@@ -23,6 +23,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction } from '../../../components';
+import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
@@ -142,7 +143,10 @@ export default function LoanConfirmScreen() {
                 disbursementWalletId: walletId,
                 documents: Object.entries(documents)
                     .filter(([, v]) => v?.name)
-                    .map(([documentTypeId, v]) => ({ documentTypeId, name: v!.name })),
+                    .map(([documentTypeId, v]) => {
+                        const docType = documentTypes.find((d) => d.id === documentTypeId);
+                        return { documentTypeId, name: v!.name, fieldType: docType?.fieldType ?? 'file' };
+                    }),
                 otpSessionId: payload?.otpSessionId,
             });
 
@@ -194,54 +198,21 @@ export default function LoanConfirmScreen() {
         setDocuments((prev) => ({ ...prev, [docTypeId]: { name: typeName, uri, type } }));
     };
 
-    const pickImage = async (docTypeId: string) => {
-        Alert.alert(
-            'Chọn ảnh',
-            'Bạn muốn lấy ảnh từ đâu?',
-            [
-                {
-                    text: 'Chụp ảnh mới',
-                    onPress: async () => {
-                        const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
-                        if (status !== 'granted') {
-                            if (!canAskAgain) {
-                                Alert.alert('Cần quyền Camera', 'Vui lòng vào Cài đặt để bật quyền camera.', [
-                                    { text: 'Hủy', style: 'cancel' },
-                                    { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-                                ]);
-                            } else {
-                                Alert.alert('Lỗi', 'Ứng dụng cần quyền truy cập máy ảnh');
-                            }
-                            return;
-                        }
-                        const result = await ImagePicker.launchCameraAsync({
-                            mediaTypes: ['images'],
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-                        if (!result.canceled) {
-                            const asset = result.assets[0];
-                            setDoc(docTypeId, asset.uri, asset.mimeType ?? 'image/jpeg');
-                        }
-                    }
-                },
-                {
-                    text: 'Thư viện ảnh',
-                    onPress: async () => {
-                        const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ['images'],
-                            allowsEditing: true,
-                            quality: 0.8,
-                        });
-                        if (!result.canceled) {
-                            const asset = result.assets[0];
-                            setDoc(docTypeId, asset.uri, asset.mimeType ?? 'image/jpeg');
-                        }
-                    }
-                },
-                { text: 'Hủy', style: 'cancel' }
-            ]
-        );
+    // ImagePickerSheet state
+    const [imagePickerVisible, setImagePickerVisible] = useState(false);
+    const [imagePickerDocId, setImagePickerDocId] = useState<string | null>(null);
+
+    const pickImage = (docTypeId: string) => {
+        setImagePickerDocId(docTypeId);
+        setImagePickerVisible(true);
+    };
+
+    const handleImagePicked = (result: { uri: string; type?: string; fileName?: string }) => {
+        if (imagePickerDocId) {
+            setDoc(imagePickerDocId, result.uri, result.type ?? 'image/jpeg');
+        }
+        setImagePickerVisible(false);
+        setImagePickerDocId(null);
     };
 
     const toggleSchedule = () => {
@@ -656,6 +627,15 @@ export default function LoanConfirmScreen() {
                 selectedWalletId={selectedWallet?.id ?? selectedWallet?._id}
                 onSelect={setSelectedWallet}
                 title="Chọn ví nhận giải ngân"
+            />
+
+            <ImagePickerSheet
+                visible={imagePickerVisible}
+                onClose={() => { setImagePickerVisible(false); setImagePickerDocId(null); }}
+                onSelect={handleImagePicked}
+                title={imagePickerDocId ? (documentTypes.find(d => d.id === imagePickerDocId)?.name ?? 'Chọn ảnh') : 'Chọn ảnh'}
+                allowCamera
+                quality={0.85}
             />
 
             {/* ── Success Modal ── */}

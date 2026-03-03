@@ -748,6 +748,9 @@ export class AdminService {
     for (const r of requiredDocTypes) {
       const typeId = (r.documentTypeId as any)?._id?.toString();
       const typeName = (r.documentTypeId as any)?.name || 'Tài liệu bắt buộc';
+      const fieldType = (r.documentTypeId as any)?.fieldType || 'file';
+      // Non-file types (text/select/button) are auto-approved - skip check
+      if (fieldType !== 'file') continue;
       if (!approvedDocTypeIds.has(typeId)) missingRequired.push(typeName);
     }
     return { canApprove: missingRequired.length === 0, missingRequired };
