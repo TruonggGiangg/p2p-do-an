@@ -86,8 +86,12 @@ export default function ImagePickerSheet({
     useEffect(() => {
         if (!visible) return;
         (async () => {
-            const { status } = await MediaLibrary.requestPermissionsAsync();
-            setHasPermission(status === 'granted');
+            const permResponse = await MediaLibrary.requestPermissionsAsync();
+            // Android 13+: accessPrivileges can be 'limited' even when status is 'granted'
+            const granted = permResponse.status === 'granted'
+                || (permResponse as any).accessPrivileges === 'limited'
+                || (permResponse as any).accessPrivileges === 'all';
+            setHasPermission(granted);
         })();
     }, [visible]);
 
@@ -237,6 +241,27 @@ export default function ImagePickerSheet({
         }
     }, [allowsEditing, aspect, quality, onSelect, handleClose]);
 
+    // Fallback: dùng expo-image-picker thay vì expo-media-library
+    // Luôn hoạt động ngay cả khi MediaLibrary bị từ chối quyền
+    const handlePickFromLibrary = useCallback(async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: 'images',
+            allowsEditing: allowsEditing,
+            aspect,
+            quality,
+        });
+        if (!result.canceled) {
+            onSelect({
+                uri: result.assets[0].uri,
+                width: result.assets[0].width,
+                height: result.assets[0].height,
+                type: result.assets[0].mimeType || 'image/jpeg',
+                fileName: result.assets[0].fileName || 'photo.jpg',
+            });
+            handleClose();
+        }
+    }, [allowsEditing, aspect, quality, onSelect, handleClose]);
+
     const loadMore = useCallback(() => {
         if (hasMore && !loading) {
             loadPhotos(false);
@@ -283,6 +308,21 @@ export default function ImagePickerSheet({
                     <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
                 </TouchableOpacity>
             )}
+            {/* Fallback picker - luôn hiện, dùng ImagePicker thay vì MediaLibrary */}
+            <TouchableOpacity
+                style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                onPress={handlePickFromLibrary}
+                activeOpacity={0.7}
+            >
+                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
+                    <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                </View>
+                <View>
+                    <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
+                    <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
         </View>
     );
 
@@ -381,6 +421,47 @@ export default function ImagePickerSheet({
                         </View>
                     )}
 
+                    {/* Loading permission state */}
+                    {hasPermission === null && (
+                        <View style={imgStyles.emptyContainer}>
+                            <ActivityIndicator size="large" color={c.primary} />
+                            <Text style={[imgStyles.loadingText, { color: c.textDim }]}>Đang yêu cầu quyền truy cập...</Text>
+                            {/* Fallback buttons hiện ngay để user không thấy blank */}
+                            <View style={{ width: '100%', paddingHorizontal: 16, marginTop: 24, gap: 10 }}>
+                                {allowCamera && (
+                                    <TouchableOpacity
+                                        style={[imgStyles.cameraBtn, { backgroundColor: c.primary + '12', borderColor: c.primary + '30' }]}
+                                        onPress={handleCamera}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
+                                            <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
+                                        </View>
+                                        <View>
+                                            <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Chụp ảnh</Text>
+                                            <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
+                                        </View>
+                                        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                    style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                                    onPress={handlePickFromLibrary}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
+                                        <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                                    </View>
+                                    <View>
+                                        <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
+                                        <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
                     {/* Permission denied */}
                     {hasPermission === false && (
                         <View style={imgStyles.emptyContainer}>
@@ -389,8 +470,41 @@ export default function ImagePickerSheet({
                                 Cần quyền truy cập thư viện ảnh
                             </Text>
                             <Text style={[imgStyles.emptySubText, { color: c.textDim }]}>
-                                Vui lòng cấp quyền trong Cài đặt
+                                Vui lòng cấp quyền trong Cài đặt hoặc dùng các tùy chọn bên dưới
                             </Text>
+                            {/* Fallback buttons khi không có quyền MediaLibrary */}
+                            <View style={{ width: '100%', paddingHorizontal: 16, marginTop: 20, gap: 10 }}>
+                                {allowCamera && (
+                                    <TouchableOpacity
+                                        style={[imgStyles.cameraBtn, { backgroundColor: c.primary + '12', borderColor: c.primary + '30' }]}
+                                        onPress={handleCamera}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
+                                            <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
+                                        </View>
+                                        <View>
+                                            <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Chụp ảnh</Text>
+                                            <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
+                                        </View>
+                                        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                    style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                                    onPress={handlePickFromLibrary}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
+                                        <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                                    </View>
+                                    <View>
+                                        <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
+                                        <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
+                                    </View>
+                                    <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     )}
 

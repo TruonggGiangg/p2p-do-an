@@ -12,6 +12,7 @@ import { AdminModule } from '../admin/admin.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { UsersModule } from '../users/users.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
+import { DigitalSignatureModule } from '../digital-signature/digital-signature.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SmartOtpModule } from '../smart-otp/smart-otp.module';
     WalletsModule,
     UsersModule,
     SmartOtpModule,
+    DigitalSignatureModule,
   ],
   controllers: [LoanController],
   providers: [LoanService, RepaymentService, ContractService],

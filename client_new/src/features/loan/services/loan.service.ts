@@ -231,6 +231,75 @@ export interface NotificationListResponse {
   unreadCount: number;
 }
 
+// =============================================
+// DIGITAL SIGNATURE — VNPT SmartCA Interfaces
+// =============================================
+
+export interface SmartCaSigningSession {
+  signatureId: string;
+  transactionId: string;
+  signingSessionId: string;
+  credentialId: string;
+  expiresAt: string;
+}
+
+export interface SmartCaSignResult {
+  status: "SUCCESS" | "FAILED" | "REJECTED" | "TIMEOUT";
+  signatureValue?: string;
+  signerCertificate?: string;
+  signerInfo?: {
+    commonName?: string;
+    serialNumber?: string;
+    organization?: string;
+    validFrom?: string;
+    validTo?: string;
+  };
+  signedFileUrl?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface SmartCaConfirmResult {
+  status: string;
+  completedAt?: string;
+  signedFileUrl?: string;
+}
+
+export interface SmartCaStatusResult {
+  status: string;
+  transactionId?: string;
+  completedAt?: string;
+  signedFileUrl?: string;
+}
+
+export interface DigitalSignatureInfo {
+  _id: string;
+  contractId: string;
+  contractCode: string;
+  provider: string;
+  transactionId?: string;
+  status: string;
+  documentHash: string;
+  signedFileUrl?: string;
+  signatureValue?: string;
+  signerInfo?: {
+    commonName?: string;
+    serialNumber?: string;
+    organization?: string;
+    validFrom?: string;
+    validTo?: string;
+  };
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface SignatureVerifyResult {
+  valid: boolean;
+  documentHash: string;
+  currentHash: string;
+  message: string;
+}
+
 class LoanService {
   /**
    * Fetch all loan products available for borrowing
@@ -498,9 +567,9 @@ class LoanService {
   async getContractById(contractId: string): Promise<LoanContract> {
     const response = await api.get<{
       statusCode: number;
-      data: { contract: LoanContract };
+      data: LoanContract;
     }>(`/api/loan/contracts/${contractId}`);
-    return response.data.data.contract;
+    return response.data.data;
   }
 
   /**
@@ -510,9 +579,9 @@ class LoanService {
     try {
       const response = await api.get<{
         statusCode: number;
-        data: { contract: LoanContract };
+        data: LoanContract;
       }>(`/api/loan/contracts/by-loan/${loanId}`);
-      return response.data.data.contract;
+      return response.data.data;
     } catch {
       return null;
     }
@@ -538,9 +607,95 @@ class LoanService {
   ): Promise<LoanContract> {
     const response = await api.post<{
       statusCode: number;
-      data: { contract: LoanContract };
+      data: LoanContract;
     }>(`/api/loan/contracts/${contractId}/sign`, { signatureData });
-    return response.data.data.contract;
+    return response.data.data;
+  }
+
+  // =============================================
+  // DIGITAL SIGNATURE — VNPT SmartCA
+  // =============================================
+
+  /**
+   * Khởi tạo phiên ký số SmartCA cho hợp đồng
+   * Trả về thông tin để client mở SDK SmartCA embedded
+   */
+  async initiateSmartCaSigning(
+    contractId: string,
+  ): Promise<SmartCaSigningSession> {
+    const response = await api.post<{
+      success: boolean;
+      data: SmartCaSigningSession;
+    }>("/api/digital-signature/initiate", { contractId });
+    return response.data.data;
+  }
+
+  /**
+   * Xác nhận kết quả ký từ SDK SmartCA
+   */
+  async confirmSmartCaSigning(
+    signatureId: string,
+    result: SmartCaSignResult,
+  ): Promise<SmartCaConfirmResult> {
+    const response = await api.post<{
+      success: boolean;
+      data: SmartCaConfirmResult;
+    }>("/api/digital-signature/confirm", { signatureId, result });
+    return response.data.data;
+  }
+
+  /**
+   * Polling trạng thái ký
+   */
+  async checkSigningStatus(signatureId: string): Promise<SmartCaStatusResult> {
+    const response = await api.get<{
+      success: boolean;
+      data: SmartCaStatusResult;
+    }>(`/api/digital-signature/${signatureId}/status`);
+    return response.data.data;
+  }
+
+  /**
+   * Retry ký khi bị fail hoặc expired
+   */
+  async retrySmartCaSigning(
+    signatureId: string,
+  ): Promise<SmartCaSigningSession> {
+    const response = await api.post<{
+      success: boolean;
+      data: SmartCaSigningSession;
+    }>(`/api/digital-signature/retry/${signatureId}`);
+    return response.data.data;
+  }
+
+  /**
+   * Lấy chữ ký số đã hoàn thành của hợp đồng
+   */
+  async getContractSignature(
+    contractCode: string,
+  ): Promise<DigitalSignatureInfo | null> {
+    try {
+      const response = await api.get<{
+        success: boolean;
+        data: DigitalSignatureInfo | null;
+      }>(`/api/digital-signature/contract/${contractCode}`);
+      return response.data.data;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Verify tính toàn vẹn chữ ký
+   */
+  async verifySignatureIntegrity(
+    signatureId: string,
+  ): Promise<SignatureVerifyResult> {
+    const response = await api.get<{
+      success: boolean;
+      data: SignatureVerifyResult;
+    }>(`/api/digital-signature/${signatureId}/verify`);
+    return response.data.data;
   }
 
   // =============================================

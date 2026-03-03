@@ -701,13 +701,13 @@ export class LoanService {
 
     // Cập nhật metadata trong MongoDB
     const docIndex = app.documents.findIndex(d => d.documentTypeId === documentTypeId);
-    const docMetadata = {
+    const docMetadata: LoanApplication['documents'][number] = {
       documentTypeId,
       name: file.originalname,
       uri: `/api/loan/${loanId}/documents/${result.resourceId}`,
       fineractDocumentId: result.resourceId,
       uploadedAt: new Date(),
-      reviewStatus: 'pending', // Explicitly set pending for admin review
+      reviewStatus: 'pending' as const, // Explicitly set pending for admin review
     };
 
     if (docIndex > -1) {

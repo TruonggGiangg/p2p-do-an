@@ -312,6 +312,24 @@ export class LoanController {
     };
   }
 
+  // ⚠️ PHẢI đặt `by-loan/:loanId` TRƯỚC `/:contractId` để NestJS
+  //    không nhầm "by-loan" thành contractId param
+  @Get('contracts/by-loan/:loanId')
+  @ApiOperation({ summary: 'Lấy hợp đồng theo loanId (MongoDB ObjectId)' })
+  @ApiResponse({ status: 200, description: 'Hợp đồng' })
+  async getContractByLoan(@Req() req: any, @Param('loanId') loanId: string) {
+    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+    if (!userId) {
+      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+    }
+    const contract = await this.contractService.getContractByLoanId(loanId, userId);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'OK',
+      data: contract,
+    };
+  }
+
   @Get('contracts/:contractId')
   @ApiOperation({ summary: 'Chi tiết hợp đồng vay' })
   @ApiResponse({ status: 200, description: 'Chi tiết hợp đồng' })
@@ -341,22 +359,6 @@ export class LoanController {
       statusCode: HttpStatus.OK,
       message: 'OK',
       data: { html },
-    };
-  }
-
-  @Get('contracts/by-loan/:loanId')
-  @ApiOperation({ summary: 'Lấy hợp đồng theo loanId (MongoDB ObjectId)' })
-  @ApiResponse({ status: 200, description: 'Hợp đồng' })
-  async getContractByLoan(@Req() req: any, @Param('loanId') loanId: string) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) {
-      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-    }
-    const contract = await this.contractService.getContractByLoanId(loanId, userId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'OK',
-      data: contract,
     };
   }
 

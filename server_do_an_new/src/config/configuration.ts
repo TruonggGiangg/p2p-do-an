@@ -57,6 +57,16 @@ export default () => ({
     bypassFaceMatch: process.env.EKYC_BYPASS_FACE_MATCH === 'true',
   },
 
+  // VNPT SmartCA Digital Signature
+  smartca: {
+    apiUrl: process.env.SMARTCA_API_URL || 'https://gwsca.vnpt.vn',
+    clientId: process.env.SMARTCA_CLIENT_ID || '',
+    clientSecret: process.env.SMARTCA_CLIENT_SECRET || '',
+    callbackUrl: process.env.SMARTCA_CALLBACK_URL || '',
+    signingTimeoutMs: parseInt(process.env.SMARTCA_SIGNING_TIMEOUT_MS || '900000', 10), // 15 minutes
+    maxRetries: parseInt(process.env.SMARTCA_MAX_RETRIES || '3', 10),
+  },
+
   security: {
     corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['*'],
     cookieSecure: process.env.COOKIE_SECURE === 'true',

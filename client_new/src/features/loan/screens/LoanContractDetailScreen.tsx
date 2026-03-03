@@ -28,6 +28,7 @@ import {
     LoanContract,
     LoanContractStatus,
 } from '../services/loan.service';
+import SmartCASigningModal from '../components/SmartCASigningModal';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 const { width, height } = Dimensions.get('window');
@@ -80,6 +81,7 @@ export default function LoanContractDetailScreen() {
     const [signing, setSigning] = useState(false);
     const [showContract, setShowContract] = useState(false);
     const [showSignConfirm, setShowSignConfirm] = useState(false);
+    const [showSmartCA, setShowSmartCA] = useState(false);
 
     // Success animation
     const successAnim = useRef(new Animated.Value(0)).current;
@@ -116,8 +118,15 @@ export default function LoanContractDetailScreen() {
         fetchContract();
     }, [fetchContract]);
 
-    // Sign handler
-    const handleSign = async () => {
+    // Sign handler — mở SmartCA Signing Modal
+    const handleSign = () => {
+        if (!contract) return;
+        setShowSignConfirm(false);
+        setShowSmartCA(true);
+    };
+
+    // Legacy sign handler (fallback khi SmartCA không dùng được)
+    const handleSignLegacy = async () => {
         if (!contract) return;
         setShowSignConfirm(false);
         setSigning(true);
@@ -125,7 +134,6 @@ export default function LoanContractDetailScreen() {
             const updated = await loanService.signContract(contract.contractId || contract._id);
             setContract(updated);
 
-            // Animate success
             Animated.spring(successAnim, {
                 toValue: 1,
                 useNativeDriver: true,
@@ -142,6 +150,22 @@ export default function LoanContractDetailScreen() {
         } finally {
             setSigning(false);
         }
+    };
+
+    // SmartCA signing complete callback
+    const handleSmartCAComplete = (status: 'signed' | 'failed' | 'rejected') => {
+        setShowSmartCA(false);
+        if (status === 'signed') {
+            fetchContract(); // Reload contract to get updated status
+            Alert.alert(
+                'Ký số thành công',
+                'Hợp đồng đã được ký số bằng chứng thư VNPT SmartCA. Khoản vay sẽ được giải ngân sớm.',
+                [{ text: 'OK' }],
+            );
+        } else if (status === 'rejected') {
+            Alert.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng. Bạn có thể ký lại bất kỳ lúc nào.');
+        }
+        // 'failed' — Error already shown in modal
     };
 
     if (loading) {
@@ -365,9 +389,9 @@ export default function LoanContractDetailScreen() {
                     {isPending && (
                         <View style={[styles.signatureArea, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
                             <View style={[styles.signaturePlaceholder, { borderColor: colors.border }]}>
-                                <MaterialCommunityIcons name="draw-pen" size={32} color={colors.textDim} />
+                                <MaterialCommunityIcons name="shield-check" size={32} color={colors.textDim} />
                                 <Text style={[styles.signaturePlaceholderText, { color: colors.textDim }]}>
-                                    Khu vực chữ ký số{'\n'}(Sẽ được tích hợp sau)
+                                    Chữ ký số VNPT SmartCA{'\n'}Nhấn nút bên dưới để ký
                                 </Text>
                             </View>
                             <TouchableOpacity
@@ -414,13 +438,21 @@ export default function LoanContractDetailScreen() {
                                 style={styles.confirmSignBtn}
                                 onPress={handleSign}
                             >
-                                <MaterialCommunityIcons name="draw-pen" size={18} color="#181A20" />
-                                <Text style={styles.confirmSignText}>Ký xác nhận</Text>
+                                <MaterialCommunityIcons name="shield-check" size={18} color="#181A20" />
+                                <Text style={styles.confirmSignText}>Ký số SmartCA</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
+
+            {/* SmartCA Digital Signing Modal */}
+            <SmartCASigningModal
+                visible={showSmartCA}
+                contractId={contract.contractId || contract._id}
+                onClose={() => setShowSmartCA(false)}
+                onSigningComplete={handleSmartCAComplete}
+            />
         </View>
     );
 }
