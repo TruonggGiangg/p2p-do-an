@@ -16,7 +16,7 @@ import BNPLEarlyRepayScreen from '../features/bnpl/screens/BNPLEarlyRepayScreen'
 import type { LoanProduct } from '../features/loan/services/loan.service';
 import type { LoanProductConfig, LoanScheduleResult } from '../features/loan/services/loan.service';
 import type { BnplLoan } from '../features/bnpl/api/bnpl.api';
-import { KYCUpdate, FaceDetection } from '../features/kyc';
+import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
 
 export type RootStackParamList = {
     Auth: undefined;
@@ -41,6 +41,7 @@ export type RootStackParamList = {
     BNPLLoanDetail: { loan: BnplLoan };
     BNPLEarlyRepay: { loan: BnplLoan };
     KYCUpdate: undefined;
+    KYCIntro: undefined;
     FaceDetection: {
         onVerify?: (result: { images: { uri: string }[] }) => Promise<any>;
         onComplete?: (result: any) => void;
@@ -72,6 +73,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="BNPLLoanDetail" component={BNPLLoanDetailScreen} />
                     <Stack.Screen name="BNPLEarlyRepay" component={BNPLEarlyRepayScreen} />
                     <Stack.Screen name="KYCUpdate" component={KYCUpdate} />
+                    <Stack.Screen name="KYCIntro" component={KYCIntro} />
                     <Stack.Screen name="FaceDetection" component={FaceDetection} />
                 </>
             )}

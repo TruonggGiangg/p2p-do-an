@@ -173,19 +173,19 @@ export default function ProfileScreen() {
                             (user as any)?.kycStatus === 'VERIFIED'
                                 ? 'Đã xác minh (eKYC)'
                                 : (user as any)?.kycStatus === 'PENDING'
-                                ? 'Đang chờ phê duyệt'
-                                : 'Chưa xác minh'
+                                    ? 'Đang chờ phê duyệt'
+                                    : 'Chưa xác minh'
                         }
                         onPress={() => {
                             console.log('eKYC SettingItem pressed');
-                            (navigation as any).getParent()?.navigate('KYCUpdate');
+                            (navigation as any).getParent()?.navigate('KYCIntro');
                         }}
                         color={
                             (user as any)?.kycStatus === 'VERIFIED'
                                 ? theme.colors.success
                                 : (user as any)?.kycStatus === 'PENDING'
-                                ? theme.colors.primary
-                                : theme.colors.warning
+                                    ? theme.colors.primary
+                                    : theme.colors.warning
                         }
                     />
                     <View style={{ height: 12 }} />

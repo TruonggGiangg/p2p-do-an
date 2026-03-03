@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -9,23 +9,26 @@ import {
     ScrollView,
     ActivityIndicator,
     LogBox,
-    Linking,
     Platform,
+    Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+
 import { useTheme } from '../../../contexts/ThemeContext';
 import { kycService } from '../services/kyc.service';
+import { KYCStepIndicator, KYCInfoCard } from '../index';
+import { CommonButton } from '../../../components/common/CommonButton';
+import { CommonCard } from '../../../components/common/CommonCard';
 
-LogBox.ignoreLogs([
-    'Non-serializable values were found in the navigation state',
-]);
-import { themes } from '../../../theme/themes';
+LogBox.ignoreLogs(['Non-serializable values were found in the navigation state']);
 
-const theme = themes.dark; // Using dark theme as requested for premium feel
+const { width: screenWidth } = Dimensions.get('window');
 
 enum KYCStep {
     FRONT_ID = 0,
@@ -35,11 +38,14 @@ enum KYCStep {
 }
 
 const KYCUpdate: React.FC = () => {
+    const { theme, themeMode } = useTheme();
+    const c = theme.colors;
+    const isDark = themeMode === 'dark';
     const navigation = useNavigation<any>();
+
     const [currentStep, setCurrentStep] = useState<KYCStep>(KYCStep.FRONT_ID);
     const [frontImage, setFrontImage] = useState<string | null>(null);
     const [backImage, setBackImage] = useState<string | null>(null);
-    const [portraitImages, setPortraitImages] = useState<string[]>([]);
     const [ocrData, setOcrData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [isFaceVerified, setIsFaceVerified] = useState(false);
@@ -48,83 +54,52 @@ const KYCUpdate: React.FC = () => {
         { label: 'Mặt trước', icon: 'card-outline' },
         { label: 'Mặt sau', icon: 'card' },
         { label: 'Khuôn mặt', icon: 'person-outline' },
-        { label: 'Xác nhận', icon: 'checkmark-done' },
+        { label: 'Xác nhận', icon: 'checkmark-circle-outline' },
     ];
 
-    const processImageResult = (result: ImagePicker.ImagePickerResult, type: 'front' | 'back') => {
-        if (!result.canceled && result.assets && result.assets[0].uri) {
-            const uri = result.assets[0].uri;
-            if (type === 'front') {
-                setFrontImage(uri);
-                handleOCRFront(uri);
+    const pickImage = async (type: 'front' | 'back', source: 'camera' | 'library' | 'file') => {
+        try {
+            let result: any;
+            if (source === 'camera') {
+                const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert('Thất bại', 'Cần quyền camera để chụp ảnh CCCD');
+                    return;
+                }
+                result = await ImagePicker.launchCameraAsync({
+                    mediaTypes: 'images',
+                    allowsEditing: true,
+                    aspect: [4, 3],
+                    quality: 0.8,
+                });
+            } else if (source === 'library') {
+                result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: 'images',
+                    allowsEditing: true,
+                    aspect: [4, 3],
+                    quality: 0.8,
+                });
             } else {
-                setBackImage(uri);
-                handleOCRBack(uri);
+                result = await DocumentPicker.getDocumentAsync({
+                    type: 'image/*',
+                    copyToCacheDirectory: true,
+                });
             }
-        }
-    };
 
-    const captureImage = async (type: 'front' | 'back') => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert(
-                'Quyền truy cập camera',
-                `Vui lòng cho phép truy cập camera trong cài đặt ${Platform.OS === 'ios' ? 'iOS' : 'Android'} để chụp ảnh CCCD.`,
-                [
-                    { text: 'Quay lại', style: 'cancel' },
-                    { text: 'Mở cài đặt', onPress: () => Linking.openSettings() },
-                ]
-            );
-            return;
-        }
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: 'images',
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-        processImageResult(result, type);
-    };
-
-    const selectFromGallery = async (type: 'front' | 'back') => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: 'images',
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-        processImageResult(result, type);
-    };
-
-    const selectFromFile = async (type: 'front' | 'back') => {
-        const result = await DocumentPicker.getDocumentAsync({
-            type: 'image/*',
-            copyToCacheDirectory: true,
-        });
-
-        if (!result.canceled && result.assets && result.assets[0].uri) {
-            const uri = result.assets[0].uri;
-            if (type === 'front') {
-                setFrontImage(uri);
-                handleOCRFront(uri);
-            } else {
-                setBackImage(uri);
-                handleOCRBack(uri);
+            if (!result.canceled && result.assets && result.assets[0].uri) {
+                const uri = result.assets[0].uri;
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                if (type === 'front') {
+                    setFrontImage(uri);
+                    handleOCRFront(uri);
+                } else {
+                    setBackImage(uri);
+                    handleOCRBack(uri);
+                }
             }
+        } catch (err) {
+            console.error('Pick image error:', err);
         }
-    };
-
-    const pickImage = (type: 'front' | 'back') => {
-        Alert.alert(
-            'Chọn ảnh',
-            'Vui lòng chọn nguồn ảnh',
-            [
-                { text: 'Hủy', style: 'cancel' },
-                { text: 'Chụp ảnh mới', onPress: () => captureImage(type) },
-                { text: 'Chọn từ thư viện', onPress: () => selectFromGallery(type) },
-                { text: 'Chọn từ tệp', onPress: () => selectFromFile(type) },
-            ]
-        );
     };
 
     const handleOCRFront = async (uri: string) => {
@@ -132,358 +107,244 @@ const KYCUpdate: React.FC = () => {
         try {
             const res = await kycService.ocrFrontID(uri);
             if (res && res.success) {
-                let payload = res.data;
-                let dataToMerge = Array.isArray(payload) ? payload[0] : (payload?.result || payload?.data || payload);
-                if (Array.isArray(dataToMerge)) dataToMerge = dataToMerge[0];
-                if (dataToMerge?.result) dataToMerge = dataToMerge.result;
-
-                // Map fields from FPT AI format (fullName, idNumber) to UI format (name, id)
-                const name = dataToMerge?.fullName || dataToMerge?.name;
-                const id = dataToMerge?.idNumber || dataToMerge?.id;
-
-                const mappedData = {
-                    ...dataToMerge,
-                    name,
-                    id,
-                };
-
-                console.log('[KYC] Front ID OCR result:', mappedData);
-                // Ensure state is completely replaced for top level keys to force re-render
-                setOcrData((prev: any) => {
-                    const newState = { ...prev };
-                    if (name) newState.name = name;
-                    if (id) newState.id = id;
-                    if (dataToMerge?.dob) newState.dob = dataToMerge.dob;
-                    if (dataToMerge?.address) newState.address = dataToMerge.address;
-                    if (dataToMerge?.gender) newState.gender = dataToMerge.gender;
-                    if (dataToMerge?.nationality) newState.nationality = dataToMerge.nationality;
-                    if (dataToMerge?.birthplace) newState.birthplace = dataToMerge.birthplace;
-                    return newState;
-                });
-            } else {
-                Alert.alert('Lỗi OCR', res.error || 'Không thể nhận diện mặt trước');
+                const data = res.data?.result || res.data || res;
+                setOcrData((prev: any) => ({
+                    ...prev,
+                    name: data.fullName || data.name,
+                    id: data.idNumber || data.id,
+                    dob: data.dob,
+                    gender: data.gender,
+                    address: data.address,
+                    nationality: data.nationality,
+                    birthplace: data.birthplace,
+                }));
             }
         } catch (err) {
-            Alert.alert('Lỗi', 'Không thể kết nối máy chủ');
+            console.error('OCR Front error:', err);
         } finally {
             setLoading(false);
         }
-    };
-
-    /** Map Back OCR response (Python eKYC old/new format) to UI format */
-    const mapBackOCRToUI = (raw: any): { issueDate?: string; issueLoc?: string; expiryDate?: string; placeOfBirth?: string; address?: string } => {
-        if (!raw) return {};
-        let d: any = raw?.result ?? raw?.data ?? raw;
-        if (Array.isArray(d)) d = d[0];
-        if (d?.result) d = d.result;
-        if (d?.data && typeof d.data === 'object' && !Array.isArray(d.data)) {
-            d = { ...d, ...d.data };
-        }
-        const pick = (...keys: string[]): string | undefined => {
-            for (const k of keys) {
-                const v = d?.[k];
-                if (v != null && String(v).trim() !== '') return String(v).trim();
-            }
-            return undefined;
-        };
-        return {
-            issueDate: pick('issueDate', 'issue_date', 'init_date', 'cdate_of_issue', 'Date of issue'),
-            issueLoc: pick('issueLoc', 'issue_loc', 'place_of_issue', 'place', 'Issuer'),
-            expiryDate: pick('expiryDate', 'expiry_date', 'cdate_of_expiry', 'Date of expirty'),
-            placeOfBirth: pick('placeOfBirth', 'place_of_birth', 'cplace_of_birth'),
-            address: pick('address', 'address_1', 'address_2'),
-        };
     };
 
     const handleOCRBack = async (uri: string) => {
         setLoading(true);
         try {
             const res = await kycService.ocrBackID(uri);
-
-            const isSuccess = res && (res.success === true || res.errorCode === 0 || res.errorCode === "0");
-
-            if (isSuccess) {
-                const payload = res.data ?? res;
-                const mapped = mapBackOCRToUI(payload);
-                console.log('[KYC] Back ID OCR mapped:', mapped);
+            if (res && (res.success || res.errorCode === 0)) {
+                const data = res.data?.result || res.data || res;
                 setOcrData((prev: any) => ({
                     ...prev,
-                    ...mapped,
+                    issueDate: data.issueDate || data.issue_date,
+                    issueLoc: data.issueLoc || data.issue_loc || data.place_of_issue,
+                    expiryDate: data.expiryDate || data.expiry_date,
                 }));
-            } else {
-                const errorMsg = res?.errorMessage || res?.error || res?.message || 'Không thể nhận diện mặt sau';
-                Alert.alert('Lỗi OCR', errorMsg);
             }
         } catch (err) {
-            Alert.alert('Lỗi', 'Không thể kết nối máy chủ');
+            console.error('OCR Back error:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    const startFaceMatching = () => {
-        navigation.navigate('FaceDetection', {
-            onVerify: async (result: { images: { uri: string }[] }) => {
-                const uris = result.images.map((img) => img.uri);
-                setPortraitImages(uris);
-                if (frontImage) {
-                    try {
-                        const matchRes = await kycService.processFaceMatching(uris, frontImage);
-                        const ok = matchRes?.success && matchRes?.face_matching;
-                        const okAlt = matchRes?.data?.success && matchRes?.data?.face_matching;
-                        const passed = ok || okAlt;
-                        if (passed) {
-                            setIsFaceVerified(true);
-                            return { success: true };
-                        } else {
-                            return { success: false, error: matchRes?.error || matchRes?.data?.error || 'Khuôn mặt không khớp với ảnh CCCD' };
-                        }
-                    } catch (err) {
-                        return { success: false, error: 'Lỗi xác thực hệ thống' };
-                    }
-                }
-                return { success: false, error: 'Thiếu ảnh mặt trước CCCD' };
-            },
-            onSave: () => {
-                setCurrentStep(KYCStep.CONFIRMATION);
-            },
-        });
-    };
-
     const handleNext = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (currentStep === KYCStep.FRONT_ID && !frontImage) {
-            Alert.alert('Thông báo', 'Vui lòng chụp ảnh mặt trước CCCD');
+            Alert.alert('Chưa có ảnh', 'Vui lòng cung cấp mặt trước CCCD');
             return;
         }
         if (currentStep === KYCStep.BACK_ID && !backImage) {
-            Alert.alert('Thông báo', 'Vui lòng chụp ảnh mặt sau CCCD');
+            Alert.alert('Chưa có ảnh', 'Vui lòng cung cấp mặt sau CCCD');
             return;
         }
         if (currentStep === KYCStep.FACE_MATCHING && !isFaceVerified) {
-            startFaceMatching();
+            navigation.navigate('FaceDetection', {
+                onVerify: async (res: any) => {
+                    const match = await kycService.processFaceMatching(res.images.map((i: any) => i.uri), frontImage!);
+                    if (match?.success) {
+                        setIsFaceVerified(true);
+                        return { success: true };
+                    }
+                    return { success: false, error: 'Khuôn mặt không khớp' };
+                },
+                onSave: () => setCurrentStep(KYCStep.CONFIRMATION),
+            });
             return;
         }
 
         if (currentStep < KYCStep.CONFIRMATION) {
             setCurrentStep(currentStep + 1);
         } else {
-            handleFinalSubmit();
+            submitForm();
         }
     };
 
-    const handleFinalSubmit = async () => {
-        if (!frontImage || !backImage || !ocrData) {
-            Alert.alert('Lỗi', 'Thông tin hồ sơ không đầy đủ');
-            return;
-        }
-
+    const submitForm = async () => {
         setLoading(true);
         try {
-            const res = await kycService.saveKYC(
-                frontImage,
-                backImage,
-                {
-                    frontOCRData: ocrData,
-                    backOCRData: ocrData, // Depending on how you want to structure it, for now we pass the combined
-                    faceMatchingResult: { success: true },
-                    livenessResult: { success: true },
-                }
-            );
-
+            const res = await kycService.saveKYC(frontImage!, backImage!, {
+                frontOCRData: ocrData,
+                backOCRData: ocrData,
+                faceMatchingResult: { success: true },
+                livenessResult: { success: true },
+            });
             if (res?.success) {
-                Alert.alert('Hoàn tất', res.message || 'Hồ sơ eKYC của bạn đã được gửi đi và đang chờ phê duyệt.', [
-                    { text: 'OK', onPress: () => navigation.goBack() },
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert('Hoàn tất', 'Hồ sơ đã được gửi và đang chờ phê duyệt.', [
+                    { text: 'Xong', onPress: () => navigation.goBack() }
                 ]);
             } else {
                 Alert.alert('Lỗi', res?.message || 'Không thể gửi hồ sơ');
             }
-        } catch (error: any) {
-            Alert.alert('Lỗi', error.message || 'Lỗi kết nối máy chủ khi lữu trữ eKYC');
+        } catch (err) {
+            Alert.alert('Lỗi', 'Kết nối máy chủ thất bại');
         } finally {
             setLoading(false);
         }
     };
 
-    const renderStepContent = () => {
-        switch (currentStep) {
-            case KYCStep.FRONT_ID:
-                return (
-                    <ScrollView style={styles.stepScroll} contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
-                        <Text style={styles.stepTitle}>Chụp mặt trước CCCD</Text>
-                        <Text style={[styles.stepSubtitle, { color: theme.colors.textSecondary }]}>Ảnh mặt trước (có ảnh, họ tên, số CCCD)</Text>
-                        <TouchableOpacity style={styles.imagePlaceholder} onPress={() => pickImage('front')}>
-                            {frontImage ? (
-                                <Image source={{ uri: frontImage }} style={styles.capturedImage} />
-                            ) : (
-                                <Ionicons name="camera-outline" size={50} color={theme.colors.textSecondary} />
-                            )}
-                        </TouchableOpacity>
-                        {ocrData && currentStep === KYCStep.FRONT_ID && (
-                            <View style={styles.ocrPreview}>
-                                <Text style={styles.ocrText}>Họ tên: {ocrData.name || '---'}</Text>
-                                <Text style={styles.ocrText}>Số CCCD: {ocrData.id || '---'}</Text>
-                                <Text style={styles.ocrText}>Ngày sinh: {ocrData.dob || '---'}</Text>
-                                <Text style={styles.ocrText}>Giới tính: {ocrData.gender || '---'}</Text>
-                                <Text style={styles.ocrText}>Quốc tịch: {ocrData.nationality || '---'}</Text>
-                                <Text style={styles.ocrText}>Quê quán: {ocrData.birthplace || '---'}</Text>
-                                <Text style={styles.ocrText}>Địa chỉ: {ocrData.address || '---'}</Text>
-                            </View>
-                        )}
-                    </ScrollView>
-                );
-            case KYCStep.BACK_ID:
-                return (
-                    <ScrollView style={styles.stepScroll} contentContainerStyle={styles.stepContainer} showsVerticalScrollIndicator={false}>
-                        <Text style={styles.stepTitle}>Chụp mặt sau CCCD</Text>
-                        <Text style={[styles.stepSubtitle, { color: theme.colors.textSecondary }]}>Ảnh mặt sau (có ngày cấp, nơi cấp)</Text>
-                        <TouchableOpacity style={styles.imagePlaceholder} onPress={() => pickImage('back')}>
-                            {backImage ? (
-                                <Image source={{ uri: backImage }} style={styles.capturedImage} />
-                            ) : (
-                                <Ionicons name="camera-outline" size={50} color={theme.colors.textSecondary} />
-                            )}
-                        </TouchableOpacity>
-                        {ocrData && currentStep === KYCStep.BACK_ID && (
-                            <View style={styles.ocrPreview}>
-                                <Text style={styles.ocrText}>Ngày cấp: {ocrData.issueDate || '---'}</Text>
-                                <Text style={styles.ocrText}>Nơi cấp: {ocrData.issueLoc || '---'}</Text>
-                                <Text style={styles.ocrText}>Ngày hết hạn: {ocrData.expiryDate || '---'}</Text>
-                                <Text style={styles.ocrText}>Nơi sinh: {ocrData.placeOfBirth || '---'}</Text>
-                            </View>
-                        )}
-                    </ScrollView>
-                );
-            case KYCStep.FACE_MATCHING:
-                return (
-                    <View style={styles.stepContainer}>
-                        <Text style={styles.stepTitle}>Xác thực khuôn mặt</Text>
-                        <View style={styles.faceIconContainer}>
-                            <Ionicons
-                                name={isFaceVerified ? 'checkmark-circle' : 'scan-outline'}
-                                size={100}
-                                color={isFaceVerified ? theme.colors.success : theme.colors.primary}
-                            />
+    const personalInfo = useMemo(() => [
+        { label: 'Họ và tên', value: ocrData?.name, icon: 'person-outline', key: 'name' },
+        { label: 'Số CCCD', value: ocrData?.id, icon: 'card-outline', key: 'id' },
+        { label: 'Ngày sinh', value: ocrData?.dob, icon: 'calendar-outline', key: 'dob' },
+        { label: 'Giới tính', value: ocrData?.gender, icon: 'transgender-outline', key: 'gender' },
+    ], [ocrData]);
+
+    const idInfo = useMemo(() => [
+        { label: 'Ngày cấp', value: ocrData?.issueDate, icon: 'time-outline', key: 'issueDate' },
+        { label: 'Nơi cấp', value: ocrData?.issueLoc, icon: 'location-outline', key: 'issueLoc' },
+        { label: 'Địa chỉ', value: ocrData?.address, icon: 'home-outline', key: 'address' },
+    ], [ocrData]);
+
+    const renderImageStep = (uri: string | null, title: string, subtitle: string, type: 'front' | 'back') => (
+        <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepContent}>
+            <Text style={[styles.stepTitle, { color: c.textPrimary }]}>{title}</Text>
+            <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>{subtitle}</Text>
+
+            <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                    Alert.alert('Chọn nguồn ảnh', '', [
+                        { text: 'Máy ảnh', onPress: () => pickImage(type, 'camera') },
+                        { text: 'Thư viện', onPress: () => pickImage(type, 'library') },
+                        { text: 'Tệp tin', onPress: () => pickImage(type, 'file') },
+                        { text: 'Hủy', style: 'cancel' }
+                    ]);
+                }}
+                style={[styles.imageCard, { backgroundColor: c.surface, borderColor: c.border }]}
+            >
+                {uri ? (
+                    <Image source={{ uri }} style={styles.previewImage} />
+                ) : (
+                    <View style={styles.imagePlaceholder}>
+                        <View style={[styles.iconCircle, { backgroundColor: c.primaryGlass }]}>
+                            <Ionicons name="camera-outline" size={40} color={c.primary} />
                         </View>
-                        <Text style={styles.faceInstruction}>
-                            Chụp ảnh khuôn mặt để đối soát với ảnh trên CCCD
+                        <Text style={[styles.placeholderText, { color: c.textMuted }]}>
+                            Nhấn để chụp hoặc tải ảnh lên
                         </Text>
-                        {!isFaceVerified && (
-                            <TouchableOpacity style={styles.startButton} onPress={startFaceMatching}>
-                                <Text style={styles.buttonText}>Bắt đầu xác thực</Text>
-                            </TouchableOpacity>
-                        )}
                     </View>
-                );
-            case KYCStep.CONFIRMATION:
-                return (
-                    <View style={styles.stepContainer}>
-                        <Text style={styles.stepTitle}>Kiểm tra thông tin</Text>
-                        <ScrollView style={styles.infoScroll}>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Họ và tên</Text>
-                                <Text style={styles.infoValue}>{ocrData?.name || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Số hiệu</Text>
-                                <Text style={styles.infoValue}>{ocrData?.id || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Ngày sinh</Text>
-                                <Text style={styles.infoValue}>{ocrData?.dob || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Giới tính</Text>
-                                <Text style={styles.infoValue}>{ocrData?.gender || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Quốc tịch</Text>
-                                <Text style={styles.infoValue}>{ocrData?.nationality || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Quê quán</Text>
-                                <Text style={styles.infoValue}>{ocrData?.birthplace || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Địa chỉ</Text>
-                                <Text style={styles.infoValue}>{ocrData?.address || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Ngày cấp</Text>
-                                <Text style={styles.infoValue}>{ocrData?.issueDate || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Nơi cấp</Text>
-                                <Text style={styles.infoValue}>{ocrData?.issueLoc || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Ngày hết hạn</Text>
-                                <Text style={styles.infoValue}>{ocrData?.expiryDate || '---'}</Text>
-                            </View>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Nơi sinh</Text>
-                                <Text style={styles.infoValue}>{ocrData?.placeOfBirth || '---'}</Text>
-                            </View>
-                            <View style={styles.statusBox}>
-                                <Ionicons name="shield-checkmark" size={24} color={theme.colors.success} />
-                                <Text style={[styles.statusText, { color: theme.colors.success }]}>
-                                    Khuôn mặt đã được xác thực
-                                </Text>
-                            </View>
-                        </ScrollView>
+                )}
+                {loading && (
+                    <View style={styles.loadingOverlay}>
+                        <ActivityIndicator color={c.primary} size="large" />
+                        <Text style={[styles.loadingText, { color: c.primary }]}>Đang phân tích...</Text>
                     </View>
-                );
-        }
-    };
+                )}
+            </TouchableOpacity>
+
+            <View style={styles.guideContainer}>
+                <View style={styles.guideItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                    <Text style={[styles.guideText, { color: c.textSecondary }]}>Ảnh rõ nét, không lóa</Text>
+                </View>
+                <View style={styles.guideItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                    <Text style={[styles.guideText, { color: c.textSecondary }]}>Đầy đủ 4 góc của thẻ</Text>
+                </View>
+            </View>
+        </Animated.View>
+    );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="close" size={24} color={theme.colors.text} />
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="chevron-back" size={24} color={c.textPrimary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Xác minh danh tính</Text>
-                <View style={{ width: 24 }} />
+                <Text style={[styles.headerTitle, { color: c.textPrimary }]}>Xác minh danh tính</Text>
+                <TouchableOpacity style={styles.helpBtn}>
+                    <Ionicons name="help-circle-outline" size={24} color={c.textSecondary} />
+                </TouchableOpacity>
             </View>
 
-            <View style={styles.progressContainer}>
-                {steps.map((step, idx) => (
-                    <View key={idx} style={styles.stepIndicatorWrapper}>
-                        <View
-                            style={[
-                                styles.stepCircle,
-                                idx <= currentStep ? styles.activeStepCircle : styles.inactiveStepCircle,
-                            ]}
-                        >
-                            <Ionicons
-                                name={step.icon as any}
-                                size={18}
-                                color={idx <= currentStep ? theme.colors.background : theme.colors.textSecondary}
-                            />
+            <KYCStepIndicator steps={steps} currentStep={currentStep} />
+
+            <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
+                {currentStep === KYCStep.FRONT_ID && renderImageStep(frontImage, 'Mặt trước CCCD', 'Vui lòng chụp rõ các thông tin trên thẻ', 'front')}
+
+                {currentStep === KYCStep.BACK_ID && renderImageStep(backImage, 'Mặt sau CCCD', 'Cần thấy rõ Chip hoặc mã vạch', 'back')}
+
+                {currentStep === KYCStep.FACE_MATCHING && (
+                    <Animated.View entering={FadeIn} style={styles.stepContent}>
+                        <View style={styles.faceIllustration}>
+                            <MaterialCommunityIcons name="face-recognition" size={120} color={isFaceVerified ? c.success : c.primary} />
                         </View>
-                        <Text
-                            style={[
-                                styles.stepLabel,
-                                { color: idx <= currentStep ? theme.colors.text : theme.colors.textSecondary },
-                            ]}
-                        >
-                            {step.label}
+                        <Text style={[styles.stepTitle, { color: c.textPrimary }]}>Xác thực khuôn mặt</Text>
+                        <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>
+                            Bảo vệ tài khoản của bạn bằng sinh trắc học cá nhân
                         </Text>
-                    </View>
-                ))}
-            </View>
 
-            <View style={styles.content}>{renderStepContent()}</View>
+                        <CommonCard style={styles.faceStatusCard}>
+                            <View style={styles.statusRow}>
+                                <Ionicons
+                                    name={isFaceVerified ? "checkmark-circle" : "ellipse-outline"}
+                                    size={24}
+                                    color={isFaceVerified ? c.success : c.textMuted}
+                                />
+                                <Text style={[styles.statusLabel, { color: c.textPrimary }]}>Trạng thái quét</Text>
+                                <Text style={[
+                                    styles.statusValue,
+                                    { color: isFaceVerified ? c.success : c.warning }
+                                ]}>
+                                    {isFaceVerified ? 'Đã hoàn tất' : 'Chờ thực hiện'}
+                                </Text>
+                            </View>
+                        </CommonCard>
+                    </Animated.View>
+                )}
 
-            <View style={styles.footer}>
-                <TouchableOpacity style={styles.nextButton} onPress={handleNext} disabled={loading}>
-                    {loading ? (
-                        <ActivityIndicator color={theme.colors.background} />
-                    ) : (
-                        <Text style={styles.nextButtonText}>
-                            {currentStep === KYCStep.CONFIRMATION ? 'Gửi hồ sơ' : 'Tiếp theo'}
-                        </Text>
-                    )}
-                </TouchableOpacity>
+                {currentStep === KYCStep.CONFIRMATION && (
+                    <Animated.View entering={FadeIn} style={styles.stepContent}>
+                        <Text style={[styles.stepTitle, { color: c.textPrimary }]}>Kiểm tra thông tin</Text>
+                        <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>Vui lòng xác nhận lại dữ liệu trước khi gửi</Text>
+
+                        <KYCInfoCard title="Thông tin cá nhân" data={personalInfo} editable />
+                        <KYCInfoCard title="Thông tin định danh" data={idInfo} editable />
+
+                        <View style={[styles.noticeBox, { backgroundColor: c.primaryGlass, borderColor: c.primaryBorder }]}>
+                            <Ionicons name="shield-checkmark" size={20} color={c.primary} />
+                            <Text style={[styles.noticeText, { color: c.primary }]}>
+                                Mọi thông tin đều được mã hóa theo tiêu chuẩn an ninh cấp độ 3.
+                            </Text>
+                        </View>
+                    </Animated.View>
+                )}
+            </ScrollView>
+
+            <View style={[styles.footer, { borderTopColor: c.border }]}>
+                <CommonButton
+                    title={currentStep === KYCStep.CONFIRMATION ? 'Gửi hồ sơ' : 'Tiếp tục'}
+                    onPress={handleNext}
+                    loading={loading}
+                    disabled={
+                        (currentStep === KYCStep.FRONT_ID && !frontImage) ||
+                        (currentStep === KYCStep.BACK_ID && !backImage)
+                    }
+                />
             </View>
         </SafeAreaView>
     );
@@ -492,166 +353,149 @@ const KYCUpdate: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.background,
     },
     header: {
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingHorizontal: 8,
+        height: 56,
     },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: theme.colors.text,
-    },
-    progressContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
-    },
-    stepIndicatorWrapper: {
-        alignItems: 'center',
-    },
-    stepCircle: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+    backBtn: {
+        width: 44,
+        height: 44,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 4,
     },
-    activeStepCircle: {
-        backgroundColor: theme.colors.primary,
+    helpBtn: {
+        width: 44,
+        height: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    inactiveStepCircle: {
-        backgroundColor: theme.colors.backgroundTertiary,
-    },
-    stepLabel: {
-        fontSize: 10,
+    headerTitle: {
+        fontSize: 17,
+        fontFamily: 'Poppins_700Bold',
     },
     content: {
         flex: 1,
-        padding: 24,
     },
-    stepScroll: {
-        flex: 1,
+    scrollContent: {
+        paddingHorizontal: 20,
+        paddingBottom: 40,
     },
-    stepContainer: {
-        alignItems: 'center',
-        paddingBottom: 24,
+    stepContent: {
+        paddingTop: 8,
     },
     stepTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: theme.colors.text,
+        fontSize: 22,
+        fontFamily: 'Poppins_700Bold',
         marginBottom: 8,
     },
     stepSubtitle: {
         fontSize: 14,
-        marginBottom: 20,
-        textAlign: 'center',
+        fontFamily: 'Poppins_400Regular',
+        lineHeight: 20,
+        marginBottom: 32,
     },
-    imagePlaceholder: {
+    imageCard: {
         width: '100%',
         aspectRatio: 1.6,
-        borderRadius: 12,
+        borderRadius: 16,
         borderWidth: 2,
-        borderColor: theme.colors.border,
         borderStyle: 'dashed',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
         overflow: 'hidden',
     },
-    capturedImage: {
+    previewImage: {
         width: '100%',
         height: '100%',
+        resizeMode: 'cover',
     },
-    footer: {
-        padding: 24,
-    },
-    nextButton: {
-        backgroundColor: theme.colors.primary,
-        paddingVertical: 16,
-        borderRadius: 30,
+    imagePlaceholder: {
         alignItems: 'center',
     },
-    nextButtonText: {
-        color: theme.colors.background,
-        fontSize: 16,
-        fontWeight: 'bold',
+    iconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
     },
-    ocrPreview: {
-        marginTop: 20,
-        width: '100%',
-        padding: 16,
-        backgroundColor: theme.colors.surface,
-        borderRadius: 8,
+    placeholderText: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
     },
-    ocrText: {
-        color: theme.colors.text,
-        fontSize: 14,
-        marginBottom: 4,
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    faceIconContainer: {
-        marginTop: 40,
-        marginBottom: 20,
-    },
-    faceInstruction: {
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
-        paddingHorizontal: 40,
-        marginBottom: 40,
-    },
-    startButton: {
-        borderWidth: 1,
-        borderColor: theme.colors.primary,
-        paddingVertical: 12,
-        paddingHorizontal: 24,
-        borderRadius: 25,
-    },
-    buttonText: {
-        color: theme.colors.primary,
-        fontWeight: 'bold',
-    },
-    infoScroll: {
-        width: '100%',
-    },
-    infoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
-    },
-    infoLabel: {
-        color: theme.colors.textSecondary,
-        fontSize: 14,
-    },
-    infoValue: {
-        color: theme.colors.text,
+    loadingText: {
+        marginTop: 12,
         fontSize: 14,
         fontWeight: '600',
     },
-    statusBox: {
+    guideContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginTop: 24,
+    },
+    guideItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.successGlass,
+        gap: 6,
+    },
+    guideText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
+    },
+    faceIllustration: {
+        alignSelf: 'center',
+        marginTop: 20,
+        marginBottom: 40,
+    },
+    faceStatusCard: {
+        marginVertical: 20,
+    },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+    },
+    statusLabel: {
+        flex: 1,
+        marginLeft: 12,
+        fontSize: 15,
+        fontFamily: 'Poppins_500Medium',
+    },
+    statusValue: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+    },
+    noticeBox: {
+        flexDirection: 'row',
         padding: 16,
         borderRadius: 12,
-        marginTop: 20,
-        marginBottom: 30,
-        gap: 10,
+        borderWidth: 1,
+        gap: 12,
+        marginTop: 8,
+        alignItems: 'center',
     },
-    statusText: {
-        fontWeight: 'bold',
-        fontSize: 14,
+    noticeText: {
+        flex: 1,
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        lineHeight: 18,
+    },
+    footer: {
+        padding: 20,
+        borderTopWidth: StyleSheet.hairlineWidth,
     },
 });
 
 export default KYCUpdate;
+

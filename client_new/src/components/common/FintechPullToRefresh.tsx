@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { StyleSheet, View, ViewStyle, StyleProp, Platform, Vibration } from 'react-native';
+import { StyleSheet, View, ViewStyle, StyleProp, Platform, Vibration, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     Gesture,
     GestureDetector,
     GestureHandlerRootView,
     ScrollView as GHScrollView,
+    State,
 } from 'react-native-gesture-handler';
 import Animated, {
     useSharedValue,
@@ -38,7 +39,7 @@ const EASING_OUT = Easing.bezier(0.33, 1, 0.68, 1);
 const DRAWSTRING_NOTCHES = 12;
 const DRAWSTRING_STEPS = Array.from({ length: DRAWSTRING_NOTCHES }, (_, i) => (i + 1) / DRAWSTRING_NOTCHES);
 
-// DEBUG: Bật true để xem log khi lướt xuống pull-to-refresh
+// DEBUG: Bật true để trace scroll + gesture
 const DEBUG_PULL_TO_REFRESH = false;
 const debugLog = (...args: unknown[]) => {
     if (DEBUG_PULL_TO_REFRESH) {
@@ -46,7 +47,9 @@ const debugLog = (...args: unknown[]) => {
     }
 };
 
-// iOS: Dùng ScrollView từ gesture-handler để gesture Pan + Native scroll hoạt động đồng thời
+// Android: GHScrollView (RNGH) - tích hợp gesture system, touch được pass khi Pan fail
+// iOS: ScrollView RN - reference p2p dùng cách này
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedGHScrollView = Animated.createAnimatedComponent(GHScrollView);
 
 // ... (FloatingParticle is fine as is)
@@ -147,7 +150,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 
     useEffect(() => {
         if (DEBUG_PULL_TO_REFRESH) {
-            debugLog('Mount', { Platform: Platform.OS });
+            debugLog('Mount Android - DEBUG ON. Vuốt màn hình, xem log: onScroll, Pan onBegin/onStart/onFinalize');
         }
     }, []);
 
@@ -237,26 +240,32 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         }
     }, []);
 
+    const lastScrollLogY = useSharedValue(-999);
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => {
             const y = event.contentOffset.y;
             scrollY.value = y;
-            // Log khi ở gần đầu list (vùng có thể pull)
-            if (DEBUG_PULL_TO_REFRESH && y <= 15 && y >= -5) {
-                runOnJS(debugLog)('onScroll (gần top)', { scrollY: y });
+            // DEBUG: log scroll. Nếu không thấy onScroll khi vuốt = ScrollView không nhận touch
+            if (DEBUG_PULL_TO_REFRESH && (Math.abs(y - lastScrollLogY.value) > 15 || y <= 20)) {
+                lastScrollLogY.value = y;
+                runOnJS(debugLog)('onScroll', { contentOffsetY: y });
             }
         },
     });
 
     const panGesture = Gesture.Pan()
+        .onBegin(() => {
+            runOnJS(debugLog)('Pan onBegin', { scrollY: scrollY.value });
+        })
         .onStart(() => {
-            runOnJS(debugLog)('Pan onStart', { scrollY: scrollY.value, isRefreshing: isRefreshingValue.value });
+            runOnJS(debugLog)('Pan onStart ACTIVATED', { scrollY: scrollY.value });
         })
         .onUpdate((event) => {
             if (isRefreshingValue.value) return;
 
-            // Chỉ hiện loading khi ở gần đầu list (scrollY <= PULL_ZONE_THRESHOLD)
-            if (scrollY.value <= PULL_ZONE_THRESHOLD && event.translationY > 0) {
+            // Android: scrollY <= 10 (reference p2p); iOS: PULL_ZONE_THRESHOLD để lần kéo thứ 2+ vẫn hoạt động
+            const pullZone = Platform.OS === 'android' ? 10 : PULL_ZONE_THRESHOLD;
+            if (scrollY.value <= pullZone && event.translationY > 0) {
                 const input = event.translationY;
                 // Đàn hồi dây rút: kháng lực tăng dần, cảm giác kéo có "nấc"
                 const resistance = 0.55;
@@ -322,10 +331,20 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
                 pullProgress.value = withTiming(0, { duration: 200, easing: EASING_OUT });
             }
         })
-        .activeOffsetY(2)
-        .failOffsetY(-15)
+        .onFinalize((e) => {
+            const s = e.state;
+            const stateStr = s === State.END ? 'END' : s === State.FAILED ? 'FAILED' : s === State.CANCELLED ? 'CANCELLED' : String(s);
+            runOnJS(debugLog)('Pan onFinalize', { state: stateStr, scrollY: scrollY.value });
+        })
+        // activeOffsetX/failOffsetX: vuốt ngang (ScrollView horizontal) → Pan fail ngay → horizontal scroll nhận touch
+        .activeOffsetX([-999, 999])
+        .failOffsetX([-15, 15])
+        // Android: activeOffsetY cao = phải kéo xuống rõ ràng mới pull; failOffsetY âm = vuốt lên (scroll) thì fail ngay
+        // iOS: giữ nhạy như reference
+        .activeOffsetY(Platform.OS === 'android' ? 25 : 5)
+        .failOffsetY(Platform.OS === 'android' ? -8 : -10)
         .minDistance(0)
-        .shouldCancelWhenOutside(false);
+        .shouldCancelWhenOutside(Platform.OS === 'android' ? false : true);
 
     const nativeGesture = Gesture.Native();
     const composedGesture = Gesture.Simultaneous(panGesture, nativeGesture);
@@ -376,29 +395,41 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     return (
         <GestureHandlerRootView style={styles.container} collapsable={false}>
             <GestureDetector gesture={composedGesture}>
-                <Animated.View style={[styles.content, animatedContentStyle, customStyle]}>
-                    {renderScrollComponent ? (
-                        renderScrollComponent({
+                {renderScrollComponent ? (
+                    <Animated.View style={[styles.content, animatedContentStyle, customStyle]}>
+                        {renderScrollComponent({
                             onScroll: scrollHandler,
                             scrollEventThrottle: 1,
                             style: { flex: 1 },
                             bounces: true,
                             ...scrollProps
-                        })
-                    ) : (
-                        <AnimatedGHScrollView
-                            onScroll={scrollHandler}
-                            scrollEventThrottle={1}
-                            style={{ flex: 1 }}
-                            bounces={true}
-                            contentContainerStyle={contentContainerStyle}
-                            showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-                            {...scrollProps}
-                        >
-                            {children}
-                        </AnimatedGHScrollView>
-                    )}
-                </Animated.View>
+                        })}
+                    </Animated.View>
+                ) : Platform.OS === 'android' ? (
+                    <AnimatedGHScrollView
+                        onScroll={scrollHandler}
+                        scrollEventThrottle={1}
+                        style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
+                        bounces={true}
+                        contentContainerStyle={contentContainerStyle}
+                        showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+                        {...scrollProps}
+                    >
+                        {children}
+                    </AnimatedGHScrollView>
+                ) : (
+                    <AnimatedScrollView
+                        onScroll={scrollHandler}
+                        scrollEventThrottle={1}
+                        style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
+                        bounces={true}
+                        contentContainerStyle={contentContainerStyle}
+                        showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+                        {...scrollProps}
+                    >
+                        {children}
+                    </AnimatedScrollView>
+                )}
             </GestureDetector>
 
             <Animated.View
