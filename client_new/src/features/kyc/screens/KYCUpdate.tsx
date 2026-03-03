@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
     View,
     Text,
@@ -55,6 +55,36 @@ const KYCUpdate: React.FC = () => {
     // ImagePickerSheet state
     const [imagePickerVisible, setImagePickerVisible] = useState(false);
     const [imagePickerType, setImagePickerType] = useState<'front' | 'back'>('front');
+
+    // Pre-request camera + media library permissions on mount
+    useEffect(() => {
+        (async () => {
+            const [cam, lib] = await Promise.all([
+                ImagePicker.requestCameraPermissionsAsync(),
+                ImagePicker.requestMediaLibraryPermissionsAsync(),
+            ]);
+            if (cam.status !== 'granted' && !cam.canAskAgain) {
+                Alert.alert(
+                    'Cần quyền Camera',
+                    'Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
+                    [
+                        { text: 'Để sau', style: 'cancel' },
+                        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
+                    ],
+                );
+            }
+            if (lib.status !== 'granted' && !lib.canAskAgain) {
+                Alert.alert(
+                    'Cần quyền Thư viện ảnh',
+                    'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
+                    [
+                        { text: 'Để sau', style: 'cancel' },
+                        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
+                    ],
+                );
+            }
+        })();
+    }, []);
 
     const openImagePicker = (type: 'front' | 'back') => {
         setImagePickerType(type);

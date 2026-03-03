@@ -148,12 +148,13 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Times New Roman', Times, serif;
-      font-size: 13pt;
-      line-height: 1.6;
+      font-size: 12pt;
+      line-height: 1.5;
       color: #1a1a1a;
-      padding: 40px 60px;
-      max-width: 800px;
+      padding: 16px 14px;
+      max-width: 100%;
       margin: 0 auto;
+      -webkit-text-size-adjust: 100%;
     }
     .header {
       text-align: center;
@@ -222,30 +223,37 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       margin: 10px 0;
     }
     .info-table td {
-      padding: 5px 10px;
+      padding: 4px 6px;
       vertical-align: top;
+      word-break: break-word;
     }
     .info-table .label {
-      width: 200px;
+      width: 110px;
+      min-width: 110px;
       font-weight: bold;
       color: #333;
+      font-size: 11pt;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 12px 0;
-      font-size: 11pt;
+      margin: 10px 0;
+      font-size: 9pt;
+      table-layout: auto;
     }
     table thead th {
       background-color: #1a5276;
       color: #fff;
-      padding: 8px 6px;
+      padding: 6px 3px;
       text-align: center;
       font-weight: bold;
+      font-size: 9pt;
+      white-space: nowrap;
     }
     table tbody td {
       border: 1px solid #ddd;
-      padding: 6px;
+      padding: 4px 3px;
+      font-size: 9pt;
     }
     table tbody tr:nth-child(even) {
       background-color: #f8f9fa;
@@ -264,12 +272,14 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
     .article-title { font-weight: bold; }
     .signature-section {
       display: flex;
+      flex-direction: row;
       justify-content: space-between;
-      margin-top: 60px;
+      margin-top: 40px;
       page-break-inside: avoid;
+      gap: 12px;
     }
     .signature-box {
-      width: 45%;
+      width: 48%;
       text-align: center;
     }
     .signature-box .title {
@@ -308,6 +318,18 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       color: #888;
       border-top: 1px solid #ddd;
       padding-top: 10px;
+    }
+    @media screen and (max-width: 480px) {
+      body { padding: 12px 10px; font-size: 11pt; }
+      .header .company-name { font-size: 13pt; }
+      .contract-title h1 { font-size: 16pt; }
+      h2 { font-size: 12pt; }
+      .info-table .label { width: 100px; min-width: 100px; font-size: 10pt; }
+      .info-table td { font-size: 10pt; padding: 3px 4px; }
+      table { font-size: 8pt; }
+      table thead th { font-size: 8pt; padding: 4px 2px; }
+      table tbody td { font-size: 8pt; padding: 3px 2px; }
+      .signature-box .note { margin-bottom: 40px; }
     }
     @media print {
       body { padding: 20px 40px; }

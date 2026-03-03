@@ -297,10 +297,12 @@ export default function LoanContractDetailScreen() {
                         <View style={[styles.scheduleRow, styles.scheduleHeader, { backgroundColor: colors.primary + '10' }]}>
                             <Text style={[styles.scheduleCell, styles.scheduleCellSm, { color: colors.textPrimary, fontWeight: '700' }]}>Kỳ</Text>
                             <Text style={[styles.scheduleCell, { color: colors.textPrimary, fontWeight: '700' }]}>Ngày</Text>
+                            <Text style={[styles.scheduleCell, { color: colors.textPrimary, fontWeight: '700', textAlign: 'right' }]}>Gốc</Text>
+                            <Text style={[styles.scheduleCell, { color: colors.textPrimary, fontWeight: '700', textAlign: 'right' }]}>Lãi</Text>
                             <Text style={[styles.scheduleCell, { color: colors.textPrimary, fontWeight: '700', textAlign: 'right' }]}>Tổng trả</Text>
                         </View>
 
-                        {contract.repaymentSchedule.slice(0, 6).map((item, i) => (
+                        {contract.repaymentSchedule.map((item, i) => (
                             <View
                                 key={i}
                                 style={[
@@ -312,20 +314,20 @@ export default function LoanContractDetailScreen() {
                                 <Text style={[styles.scheduleCell, styles.scheduleCellSm, { color: colors.textPrimary }]}>
                                     {item.period}
                                 </Text>
-                                <Text style={[styles.scheduleCell, { color: colors.textSecondary }]}>
+                                <Text style={[styles.scheduleCell, { color: colors.textSecondary, fontSize: 11 }]}>
                                     {formatDate(item.dueDate)}
                                 </Text>
-                                <Text style={[styles.scheduleCell, { color: colors.textPrimary, textAlign: 'right', fontWeight: '600' }]}>
-                                    {formatMoney(item.totalAmount)} đ
+                                <Text style={[styles.scheduleCell, { color: colors.textSecondary, textAlign: 'right', fontSize: 11 }]}>
+                                    {formatMoney(item.principal)}
+                                </Text>
+                                <Text style={[styles.scheduleCell, { color: colors.textSecondary, textAlign: 'right', fontSize: 11 }]}>
+                                    {formatMoney(item.interest)}
+                                </Text>
+                                <Text style={[styles.scheduleCell, { color: colors.textPrimary, textAlign: 'right', fontWeight: '600', fontSize: 11 }]}>
+                                    {formatMoney(item.total)} đ
                                 </Text>
                             </View>
                         ))}
-
-                        {contract.repaymentSchedule.length > 6 && (
-                            <Text style={[styles.moreText, { color: colors.textDim }]}>
-                                ... và {contract.repaymentSchedule.length - 6} kỳ khác
-                            </Text>
-                        )}
                     </View>
                 )}
 

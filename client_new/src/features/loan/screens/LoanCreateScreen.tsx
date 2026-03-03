@@ -12,6 +12,9 @@ import {
     Platform,
     Animated,
     Dimensions,
+    PanResponder,
+    GestureResponderEvent,
+    PanResponderGestureState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -27,11 +30,143 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const DEFAULT_PERIOD_OPTIONS = [3, 6, 9, 12, 18, 24];
 const QUICK_AMOUNTS = [
-    { label: '5 triệu', value: 5000000, icon: 'cash' as const },
-    { label: '10 triệu', value: 10000000, icon: 'cash-multiple' as const },
-    { label: '20 triệu', value: 20000000, icon: 'wallet' as const },
-    { label: '50 triệu', value: 50000000, icon: 'diamond-stone' as const },
+    { label: '5 triệu', value: 5000000 },
+    { label: '10 triệu', value: 10000000 },
+    { label: '20 triệu', value: 20000000 },
+    { label: '30 triệu', value: 30000000 },
+    { label: '50 triệu', value: 50000000 },
+    { label: '70 triệu', value: 70000000 },
+    { label: '100 triệu', value: 100000000 },
 ];
+const SLIDER_MIN = 5000000;
+const SLIDER_MAX = 100000000;
+const SLIDER_STEP = 1000000;
+
+// ── Custom Amount Slider ─────────────────────────────────────────────────────
+function AmountSlider({
+    value,
+    onChange,
+    min = SLIDER_MIN,
+    max = SLIDER_MAX,
+    step = SLIDER_STEP,
+    primaryColor,
+    trackColor,
+}: {
+    value: number;
+    onChange: (v: number) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+    primaryColor: string;
+    trackColor: string;
+}) {
+    const trackWidth = useRef(0);
+    const panX = useRef(new Animated.Value(0)).current;
+    const currentVal = useRef(value);
+
+    const clamp = (v: number) => {
+        const stepped = Math.round(v / step) * step;
+        return Math.max(min, Math.min(max, stepped));
+    };
+
+    const valToX = (v: number, w: number) => ((v - min) / (max - min)) * w;
+    const xToVal = (x: number, w: number) => min + (x / w) * (max - min);
+
+    useEffect(() => {
+        if (trackWidth.current > 0) {
+            const x = valToX(value, trackWidth.current);
+            panX.setValue(x);
+            currentVal.current = value;
+        }
+    }, [value]);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: () => true,
+            onPanResponderGrant: (evt: GestureResponderEvent) => {
+                const x = evt.nativeEvent.locationX;
+                const w = trackWidth.current;
+                if (w <= 0) return;
+                const newVal = clamp(xToVal(x, w));
+                panX.setValue(valToX(newVal, w));
+                currentVal.current = newVal;
+                onChange(newVal);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            },
+            onPanResponderMove: (_, gesture: PanResponderGestureState) => {
+                const w = trackWidth.current;
+                if (w <= 0) return;
+                const curX = valToX(currentVal.current, w) + gesture.dx;
+                const boundedX = Math.max(0, Math.min(w, curX));
+                const newVal = clamp(xToVal(boundedX, w));
+                panX.setValue(valToX(newVal, w));
+                if (newVal !== currentVal.current) {
+                    currentVal.current = newVal;
+                    onChange(newVal);
+                }
+            },
+        })
+    ).current;
+
+    const fraction = Animated.divide(panX, trackWidth.current || 1);
+
+    return (
+        <View
+            style={sliderStyles.container}
+            onLayout={(e) => {
+                trackWidth.current = e.nativeEvent.layout.width;
+                panX.setValue(valToX(value, e.nativeEvent.layout.width));
+            }}
+            {...panResponder.panHandlers}
+        >
+            <View style={[sliderStyles.track, { backgroundColor: trackColor }]}>
+                <Animated.View
+                    style={[
+                        sliderStyles.trackFill,
+                        { backgroundColor: primaryColor, width: panX },
+                    ]}
+                />
+            </View>
+            <Animated.View
+                style={[
+                    sliderStyles.thumb,
+                    {
+                        backgroundColor: primaryColor,
+                        transform: [{ translateX: Animated.subtract(panX, 14) }],
+                    },
+                ]}
+            >
+                <View style={sliderStyles.thumbInner} />
+            </Animated.View>
+        </View>
+    );
+}
+
+const sliderStyles = StyleSheet.create({
+    container: { height: 40, justifyContent: 'center', marginTop: 4 },
+    track: { height: 6, borderRadius: 3, overflow: 'hidden' },
+    trackFill: { height: '100%', borderRadius: 3 },
+    thumb: {
+        position: 'absolute',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.18,
+        shadowRadius: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    thumbInner: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#fff',
+    },
+});
 
 type RouteParams = { product: LoanProduct; willing?: string };
 type LoanCreateNav = NativeStackNavigationProp<RootStackParamList, 'LoanCreate'>;
@@ -148,9 +283,14 @@ function PeriodStepper({
 
     return (
         <Animated.View style={{ transform: [{ scale: pressAnim }] }}>
-            {/* Quick chips */}
+            {/* Quick chips — horizontal scroll */}
             {quickChips.length > 0 && (
-                <View style={periodStepperStyles.chipRow}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={periodStepperStyles.chipRow}
+                    style={{ marginBottom: 14 }}
+                >
                     {quickChips.map((p) => (
                         <TouchableOpacity
                             key={p}
@@ -159,29 +299,34 @@ function PeriodStepper({
                                 { borderColor: value === p ? primaryColor : borderColor },
                                 value === p && { backgroundColor: primaryColor + '18' },
                             ]}
-                            onPress={() => onChange(p)}
+                            onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                         >
                             <Text style={[periodStepperStyles.chipText, { color: value === p ? primaryColor : dimColor }]}>
                                 {p} tháng
                             </Text>
                         </TouchableOpacity>
                     ))}
-                </View>
+                </ScrollView>
             )}
 
             {/* Stepper: nhập số tháng tùy chọn trong khoảng min-max */}
-            <View style={[periodStepperStyles.row, { borderColor }]}>
+            <View style={[periodStepperStyles.row, { borderColor: primaryColor + '30', backgroundColor: primaryColor + '06' }]}>
                 <TouchableOpacity
                     style={[
                         periodStepperStyles.btn,
-                        { backgroundColor: value <= min ? dimColor + '30' : primaryColor + '25', borderColor },
+                        { backgroundColor: value <= min ? dimColor + '15' : primaryColor + '15' },
                         value <= min && periodStepperStyles.btnDisabled,
                     ]}
                     onPress={decrement}
                     disabled={value <= min}
                     activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="minus" size={22} color={value <= min ? dimColor : primaryColor} />
+                    <View style={[
+                        periodStepperStyles.btnCircle,
+                        { backgroundColor: value <= min ? dimColor + '20' : primaryColor + '25' },
+                    ]}>
+                        <MaterialCommunityIcons name="minus" size={20} color={value <= min ? dimColor : primaryColor} />
+                    </View>
                 </TouchableOpacity>
 
                 <View style={periodStepperStyles.center}>
@@ -193,39 +338,45 @@ function PeriodStepper({
                         selectTextOnFocus
                     />
                     <Text style={[periodStepperStyles.unit, { color: dimColor }]}>tháng</Text>
-                    <Text style={[periodStepperStyles.rangeHint, { color: dimColor }]}>
-                        Khoảng: {min} – {max} tháng
-                    </Text>
                 </View>
 
                 <TouchableOpacity
                     style={[
                         periodStepperStyles.btn,
-                        { backgroundColor: value >= max ? dimColor + '30' : primaryColor + '25', borderColor },
+                        { backgroundColor: value >= max ? dimColor + '15' : primaryColor + '15' },
                         value >= max && periodStepperStyles.btnDisabled,
                     ]}
                     onPress={increment}
                     disabled={value >= max}
                     activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="plus" size={22} color={value >= max ? dimColor : primaryColor} />
+                    <View style={[
+                        periodStepperStyles.btnCircle,
+                        { backgroundColor: value >= max ? dimColor + '20' : primaryColor + '25' },
+                    ]}>
+                        <MaterialCommunityIcons name="plus" size={20} color={value >= max ? dimColor : primaryColor} />
+                    </View>
                 </TouchableOpacity>
             </View>
+            <Text style={[periodStepperStyles.rangeHint, { color: dimColor }]}>
+                Khoảng: {min} – {max} tháng
+            </Text>
         </Animated.View>
     );
 }
 
 const periodStepperStyles = StyleSheet.create({
-    chipRow: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
-    chip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
-    chipText: { fontSize: 14, fontWeight: '600' },
-    row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 14, overflow: 'hidden' },
-    btn: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderLeftWidth: 1 },
-    btnDisabled: { opacity: 0.6 },
-    center: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-    input: { fontSize: 24, fontWeight: '800', textAlign: 'center', minWidth: 50 },
+    chipRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 2 },
+    chip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5 },
+    chipText: { fontSize: 13, fontWeight: '700' },
+    row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 18, overflow: 'hidden' },
+    btn: { width: 60, height: 60, justifyContent: 'center', alignItems: 'center' },
+    btnCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+    btnDisabled: { opacity: 0.5 },
+    center: { flex: 1, alignItems: 'center', paddingVertical: 10 },
+    input: { fontSize: 28, fontWeight: '800', textAlign: 'center', minWidth: 50 },
     unit: { fontSize: 13, fontWeight: '500', marginTop: 2 },
-    rangeHint: { fontSize: 11, marginTop: 4 },
+    rangeHint: { fontSize: 11, marginTop: 6, textAlign: 'center' },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
@@ -373,7 +524,31 @@ export default function LoanCreateScreen() {
                             <Text style={[styles.amountCurrency, { color: theme.colors.textDim }]}>VND</Text>
                         </View>
 
-                        <View style={styles.quickAmountGrid}>
+                        {/* Amount Slider */}
+                        <AmountSlider
+                            value={capitalNum || SLIDER_MIN}
+                            onChange={(v) => setCapital(String(v))}
+                            min={product?.minPrincipal ?? SLIDER_MIN}
+                            max={product?.maxPrincipal ?? SLIDER_MAX}
+                            primaryColor={theme.colors.primary}
+                            trackColor={theme.colors.border + '60'}
+                        />
+                        <View style={styles.sliderLabels}>
+                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
+                                {formatCurrency(product?.minPrincipal ?? SLIDER_MIN)}
+                            </Text>
+                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
+                                {formatCurrency(product?.maxPrincipal ?? SLIDER_MAX)}
+                            </Text>
+                        </View>
+
+                        {/* Quick amount chips — horizontal scroll */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.quickAmountScroll}
+                            style={{ marginTop: 8 }}
+                        >
                             {QUICK_AMOUNTS.map((qa) => {
                                 const isSelected = capitalNum === qa.value;
                                 return (
@@ -387,11 +562,6 @@ export default function LoanCreateScreen() {
                                         onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialCommunityIcons
-                                            name={qa.icon}
-                                            size={16}
-                                            color={isSelected ? theme.colors.primary : theme.colors.textDim}
-                                        />
                                         <Text style={[
                                             styles.quickChipText,
                                             { color: isSelected ? theme.colors.primary : theme.colors.textSecondary },
@@ -401,7 +571,7 @@ export default function LoanCreateScreen() {
                                     </TouchableOpacity>
                                 );
                             })}
-                        </View>
+                        </ScrollView>
                     </View>
 
                     {/* ── Section 2: Kỳ hạn ── */}
@@ -442,9 +612,6 @@ export default function LoanCreateScreen() {
                             </View>
                             <View style={styles.sectionHeaderText}>
                                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
-                                <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
-                                    Theo sản phẩm vay mặc định
-                                </Text>
                             </View>
                         </View>
 
@@ -466,12 +633,6 @@ export default function LoanCreateScreen() {
                                         </Text>
                                         <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi năm</Text>
                                     </View>
-                                </View>
-                                <View style={[styles.rateInfoBadge, { backgroundColor: '#00B894' + '12' }]}>
-                                    <MaterialCommunityIcons name="shield-check" size={14} color="#00B894" />
-                                    <Text style={[styles.rateInfoText, { color: '#00B894' }]}>
-                                        Lãi suất cố định theo sản phẩm vay
-                                    </Text>
                                 </View>
                             </View>
                         )}
@@ -606,23 +767,26 @@ const styles = StyleSheet.create({
         opacity: 0.5,
         marginLeft: 8,
     },
-    quickAmountGrid: {
+    sliderLabels: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 2,
+    },
+    sliderLabelText: { fontSize: 11, fontWeight: '500' },
+    quickAmountScroll: {
         flexDirection: 'row',
         gap: 8,
-        flexWrap: 'wrap',
+        paddingHorizontal: 2,
     },
     quickChip: {
-        flex: 1,
-        minWidth: (SCREEN_WIDTH - 72) / 4,
-        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
+        paddingHorizontal: 16,
         paddingVertical: 10,
-        borderRadius: 12,
+        borderRadius: 20,
         borderWidth: 1.5,
     },
-    quickChipText: { fontSize: 12, fontWeight: '600' },
+    quickChipText: { fontSize: 12, fontWeight: '700' },
 
     // Rate
     rateCard: {
@@ -641,17 +805,6 @@ const styles = StyleSheet.create({
     rateMainLabel: { fontSize: 11, marginTop: 2 },
     rateSubValue: { fontSize: 18, fontWeight: '700' },
     rateDividerV: { width: 1, height: 36 },
-    rateInfoBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginTop: 14,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 10,
-        alignSelf: 'center',
-    },
-    rateInfoText: { fontSize: 12, fontWeight: '600' },
 
     // Preview
     previewCard: {

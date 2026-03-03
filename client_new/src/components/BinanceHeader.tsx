@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useLayoutEffect } from 'react';
 import {
     View,
     Text,
@@ -38,12 +38,20 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     const { theme, themeMode, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const insets = useSafeAreaInsets();
 
-    // Cache the initial top inset to avoid header jumping after keyboard dismiss
-    const cachedTopInset = useRef<number | null>(null);
-    if (cachedTopInset.current === null && insets.top > 0) {
-        cachedTopInset.current = insets.top;
-    }
-    const stableTop = cachedTopInset.current ?? insets.top;
+    // Use a stable fallback for first render to prevent header jumping
+    const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24) + 12;
+    const cachedTopInset = useRef<number>(FALLBACK_TOP);
+    const [ready, setReady] = useState(false);
+
+    // Once insets arrive with a real value, lock it in
+    useLayoutEffect(() => {
+        if (insets.top > 0 && !ready) {
+            cachedTopInset.current = insets.top;
+            setReady(true);
+        }
+    }, [insets.top, ready]);
+
+    const stableTop = cachedTopInset.current;
 
     const handleThemePress = (e: any) => {
         if (Platform.OS === 'web' && e?.nativeEvent) {

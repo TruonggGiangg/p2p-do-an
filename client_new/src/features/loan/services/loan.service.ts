@@ -159,10 +159,10 @@ export interface BorrowerInfo {
 export interface RepaymentScheduleContractItem {
   period: number;
   dueDate: string;
-  principalAmount: number;
-  interestAmount: number;
-  totalAmount: number;
-  remainingBalance: number;
+  principal: number;
+  interest: number;
+  total: number;
+  remainingAfter: number;
 }
 
 export interface FeeStructureItem {
