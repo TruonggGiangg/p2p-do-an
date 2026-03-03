@@ -11,6 +11,7 @@ import {
     LogBox,
     Platform,
     Dimensions,
+    Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -61,9 +62,21 @@ const KYCUpdate: React.FC = () => {
         try {
             let result: any;
             if (source === 'camera') {
-                const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
                 if (status !== 'granted') {
-                    Alert.alert('Thất bại', 'Cần quyền camera để chụp ảnh CCCD');
+                    if (!canAskAgain) {
+                        // Quyền bị từ chối vĩnh viễn → hướng dẫn mở cài đặt
+                        Alert.alert(
+                            'Cần quyền Camera',
+                            'Bạn đã từ chối quyền camera. Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
+                            [
+                                { text: 'Hủy', style: 'cancel' },
+                                { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
+                            ]
+                        );
+                    } else {
+                        Alert.alert('Thất bại', 'Cần quyền camera để chụp ảnh CCCD');
+                    }
                     return;
                 }
                 result = await ImagePicker.launchCameraAsync({
@@ -73,6 +86,22 @@ const KYCUpdate: React.FC = () => {
                     quality: 0.8,
                 });
             } else if (source === 'library') {
+                const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') {
+                    if (!canAskAgain) {
+                        Alert.alert(
+                            'Cần quyền Thư viện ảnh',
+                            'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
+                            [
+                                { text: 'Hủy', style: 'cancel' },
+                                { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
+                            ]
+                        );
+                    } else {
+                        Alert.alert('Thất bại', 'Cần quyền truy cập thư viện ảnh');
+                    }
+                    return;
+                }
                 result = await ImagePicker.launchImageLibraryAsync({
                     mediaTypes: 'images',
                     allowsEditing: true,

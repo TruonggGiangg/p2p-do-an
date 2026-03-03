@@ -13,10 +13,14 @@ import {
     Platform,
     UIManager,
     Image,
+    Modal,
+    Dimensions,
+    Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction } from '../../../components';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
@@ -82,6 +86,10 @@ export default function LoanConfirmScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [scheduleExpanded, setScheduleExpanded] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [successData, setSuccessData] = useState<{ entirelyPay: number } | null>(null);
+    const successScaleAnim = useRef(new Animated.Value(0)).current;
+    const successOpacityAnim = useRef(new Animated.Value(0)).current;
 
     const fetchData = useCallback(async () => {
         try {
@@ -157,11 +165,23 @@ export default function LoanConfirmScreen() {
                 await Promise.all(uploadPromises);
             }
 
-            Alert.alert(
-                '✅ Đăng ký thành công!',
-                `Đơn vay đã được gửi.\nTổng trả: ${formatCurrency(result.entirelyPay)}`,
-                [{ text: 'Về trang chủ', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Main' }] }) }]
-            );
+            // Show success modal instead of Alert
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setSuccessData({ entirelyPay: result.entirelyPay });
+            setShowSuccess(true);
+            Animated.parallel([
+                Animated.spring(successScaleAnim, {
+                    toValue: 1,
+                    friction: 5,
+                    tension: 40,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(successOpacityAnim, {
+                    toValue: 1,
+                    duration: 300,
+                    useNativeDriver: true,
+                }),
+            ]).start();
         } catch (e: any) {
             Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể tạo đơn vay');
         } finally {
@@ -175,12 +195,6 @@ export default function LoanConfirmScreen() {
     };
 
     const pickImage = async (docTypeId: string) => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Lỗi', 'Ứng dụng cần quyền truy cập thư viện ảnh');
-            return;
-        }
-
         Alert.alert(
             'Chọn ảnh',
             'Bạn muốn lấy ảnh từ đâu?',
@@ -188,9 +202,16 @@ export default function LoanConfirmScreen() {
                 {
                     text: 'Chụp ảnh mới',
                     onPress: async () => {
-                        const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
-                        if (cameraStatus.status !== 'granted') {
-                            Alert.alert('Lỗi', 'Ứng dụng cần quyền truy cập máy ảnh');
+                        const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+                        if (status !== 'granted') {
+                            if (!canAskAgain) {
+                                Alert.alert('Cần quyền Camera', 'Vui lòng vào Cài đặt để bật quyền camera.', [
+                                    { text: 'Hủy', style: 'cancel' },
+                                    { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
+                                ]);
+                            } else {
+                                Alert.alert('Lỗi', 'Ứng dụng cần quyền truy cập máy ảnh');
+                            }
                             return;
                         }
                         const result = await ImagePicker.launchCameraAsync({
@@ -416,41 +437,165 @@ export default function LoanConfirmScreen() {
                 {/* ── Tài liệu ── */}
                 {documentTypes.length > 0 && (
                     <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Tài liệu đính kèm</Text>
-                        {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => (
-                            <View key={doc.id} style={[styles.docRow, { borderTopColor: theme.colors.border }]}>
-                                <View style={styles.docHeader}>
-                                    <View style={[styles.docIconWrap, { backgroundColor: theme.colors.primary + '15' }]}>
-                                        <MaterialCommunityIcons name="file-document-outline" size={18} color={theme.colors.primary} />
-                                    </View>
-                                    <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
-                                    {doc.required ? (
-                                        <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
-                                            <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
+                        <View style={styles.docSectionHeader}>
+                            <MaterialCommunityIcons name="file-document-multiple-outline" size={20} color={theme.colors.primary} />
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>Tài liệu đính kèm</Text>
+                        </View>
+                        <Text style={[styles.docSectionHint, { color: theme.colors.textDim }]}>
+                            Vui lòng cung cấp đầy đủ tài liệu yêu cầu
+                        </Text>
+                        {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
+                            const fieldType = doc.fieldType || 'file';
+                            const hasValue = !!documents[doc.id]?.name;
+                            const fieldTypeIcon = fieldType === 'file' ? 'file-image-outline'
+                                : fieldType === 'text' ? 'text-box-outline'
+                                    : fieldType === 'select' ? 'format-list-bulleted'
+                                        : 'radiobox-marked';
+
+                            return (
+                                <View key={doc.id} style={[styles.docRow, { borderTopColor: theme.colors.border }]}>
+                                    <View style={styles.docHeader}>
+                                        <View style={[styles.docIconWrap, {
+                                            backgroundColor: hasValue ? theme.colors.success + '15' : theme.colors.primary + '15',
+                                        }]}>
+                                            <MaterialCommunityIcons
+                                                name={hasValue ? "check-circle" : fieldTypeIcon}
+                                                size={18}
+                                                color={hasValue ? theme.colors.success : theme.colors.primary}
+                                            />
                                         </View>
-                                    ) : (
-                                        <View style={[styles.badgeOptional, { backgroundColor: theme.colors.surfaceLight }]}>
-                                            <Text style={[styles.badgeOptionalText, { color: theme.colors.textSecondary }]}>Tuỳ chọn</Text>
+                                        <View style={styles.docNameBlock}>
+                                            <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
+                                            {doc.description ? (
+                                                <Text style={[styles.docDesc, { color: theme.colors.textDim }]} numberOfLines={1}>{doc.description}</Text>
+                                            ) : null}
                                         </View>
-                                    )}
-                                </View>
-                                <View style={styles.docUploadContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.bigCameraBtn, { backgroundColor: theme.colors.primary + '08', borderColor: documents[doc.id]?.uri ? theme.colors.primary : theme.colors.border }]}
-                                        onPress={() => pickImage(doc.id)}
-                                    >
-                                        {documents[doc.id]?.uri ? (
-                                            <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
+                                        {doc.required ? (
+                                            <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
+                                                <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
+                                            </View>
                                         ) : (
-                                            <View style={styles.emptyDocState}>
-                                                <MaterialCommunityIcons name="camera-plus" size={32} color={theme.colors.primary} />
-                                                <Text style={[styles.uploadHint, { color: theme.colors.textDim }]}>Nhấn để chụp ảnh hoặc chọn ảnh</Text>
+                                            <View style={[styles.badgeOptional, { backgroundColor: theme.colors.surfaceLight }]}>
+                                                <Text style={[styles.badgeOptionalText, { color: theme.colors.textSecondary }]}>Tuỳ chọn</Text>
                                             </View>
                                         )}
-                                    </TouchableOpacity>
+                                    </View>
+
+                                    {/* Render dựa theo fieldType */}
+                                    <View style={styles.docUploadContainer}>
+                                        {fieldType === 'file' && (
+                                            <TouchableOpacity
+                                                style={[styles.bigCameraBtn, {
+                                                    backgroundColor: theme.colors.primary + '06',
+                                                    borderColor: documents[doc.id]?.uri ? theme.colors.success : theme.colors.border,
+                                                }]}
+                                                onPress={() => pickImage(doc.id)}
+                                            >
+                                                {documents[doc.id]?.uri ? (
+                                                    <View style={styles.docThumbnailWrap}>
+                                                        <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
+                                                        <View style={[styles.docThumbnailOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
+                                                            <MaterialCommunityIcons name="pencil-circle" size={28} color="#fff" />
+                                                            <Text style={styles.docThumbnailText}>Nhấn để thay đổi</Text>
+                                                        </View>
+                                                    </View>
+                                                ) : (
+                                                    <View style={styles.emptyDocState}>
+                                                        <View style={[styles.docUploadIconCircle, { backgroundColor: theme.colors.primary + '15' }]}>
+                                                            <MaterialCommunityIcons name="camera-plus-outline" size={28} color={theme.colors.primary} />
+                                                        </View>
+                                                        <Text style={[styles.uploadHint, { color: theme.colors.textDim }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                                                    </View>
+                                                )}
+                                            </TouchableOpacity>
+                                        )}
+
+                                        {fieldType === 'text' && (
+                                            <TextInput
+                                                style={[styles.docTextInput, {
+                                                    borderColor: documents[doc.id]?.name ? theme.colors.primary : theme.colors.border,
+                                                    color: theme.colors.textPrimary,
+                                                    backgroundColor: theme.colors.background,
+                                                }]}
+                                                placeholder={`Nhập ${doc.name.toLowerCase()}...`}
+                                                placeholderTextColor={theme.colors.textDim}
+                                                value={documents[doc.id]?.name === doc.name ? '' : (documents[doc.id]?.name || '')}
+                                                onChangeText={(text) => {
+                                                    setDocuments(prev => ({
+                                                        ...prev,
+                                                        [doc.id]: { name: text || doc.name, uri: undefined, type: 'text' },
+                                                    }));
+                                                }}
+                                                multiline
+                                                numberOfLines={2}
+                                            />
+                                        )}
+
+                                        {fieldType === 'select' && doc.options && doc.options.length > 0 && (
+                                            <View style={styles.docSelectContainer}>
+                                                {doc.options.map((opt, idx) => {
+                                                    const isSelected = documents[doc.id]?.name === opt;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={idx}
+                                                            style={[styles.docSelectOption, {
+                                                                borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                                                                backgroundColor: isSelected ? theme.colors.primary + '12' : theme.colors.background,
+                                                            }]}
+                                                            onPress={() => {
+                                                                setDocuments(prev => ({
+                                                                    ...prev,
+                                                                    [doc.id]: { name: opt, uri: undefined, type: 'select' },
+                                                                }));
+                                                            }}
+                                                        >
+                                                            <MaterialCommunityIcons
+                                                                name={isSelected ? "radiobox-marked" : "radiobox-blank"}
+                                                                size={20}
+                                                                color={isSelected ? theme.colors.primary : theme.colors.textDim}
+                                                            />
+                                                            <Text style={[styles.docSelectText, {
+                                                                color: isSelected ? theme.colors.primary : theme.colors.textPrimary,
+                                                                fontWeight: isSelected ? '600' : '400',
+                                                            }]}>{opt}</Text>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
+                                            </View>
+                                        )}
+
+                                        {fieldType === 'button' && doc.options && doc.options.length > 0 && (
+                                            <View style={styles.docButtonContainer}>
+                                                {doc.options.map((opt, idx) => {
+                                                    const isSelected = documents[doc.id]?.name === opt;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={idx}
+                                                            style={[styles.docButton, {
+                                                                borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                                                                backgroundColor: isSelected ? theme.colors.primary : theme.colors.background,
+                                                            }]}
+                                                            onPress={() => {
+                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                setDocuments(prev => ({
+                                                                    ...prev,
+                                                                    [doc.id]: { name: opt, uri: undefined, type: 'button' },
+                                                                }));
+                                                            }}
+                                                        >
+                                                            <Text style={[styles.docButtonText, {
+                                                                color: isSelected ? '#000' : theme.colors.textPrimary,
+                                                                fontWeight: isSelected ? '700' : '500',
+                                                            }]}>{opt}</Text>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
+                                            </View>
+                                        )}
+                                    </View>
                                 </View>
-                            </View>
-                        ))}
+                            );
+                        })}
                     </CommonCard>
                 )}
 
@@ -512,6 +657,73 @@ export default function LoanConfirmScreen() {
                 onSelect={setSelectedWallet}
                 title="Chọn ví nhận giải ngân"
             />
+
+            {/* ── Success Modal ── */}
+            <Modal visible={showSuccess} transparent animationType="fade" statusBarTranslucent>
+                <View style={styles.successOverlay}>
+                    <Animated.View style={[
+                        styles.successCard,
+                        { backgroundColor: theme.colors.surface },
+                        {
+                            opacity: successOpacityAnim,
+                            transform: [{ scale: successScaleAnim }],
+                        },
+                    ]}>
+                        {/* Animated check circle */}
+                        <View style={[styles.successIconCircle, { backgroundColor: theme.colors.success + '18' }]}>
+                            <View style={[styles.successIconInner, { backgroundColor: theme.colors.success + '30' }]}>
+                                <Ionicons name="checkmark-circle" size={72} color={theme.colors.success} />
+                            </View>
+                        </View>
+
+                        <Text style={[styles.successTitle, { color: theme.colors.textPrimary }]}>
+                            Đăng ký thành công!
+                        </Text>
+                        <Text style={[styles.successSubtitle, { color: theme.colors.textSecondary }]}>
+                            Đơn vay của bạn đã được gửi thành công và đang chờ xét duyệt.
+                        </Text>
+
+                        {successData && (
+                            <View style={[styles.successAmountBox, { backgroundColor: theme.colors.primary + '10', borderColor: theme.colors.primary + '25' }]}>
+                                <Text style={[styles.successAmountLabel, { color: theme.colors.textSecondary }]}>Tổng trả</Text>
+                                <Text style={[styles.successAmountValue, { color: theme.colors.primary }]}>
+                                    {formatCurrency(successData.entirelyPay)}
+                                </Text>
+                            </View>
+                        )}
+
+                        <View style={[styles.successInfoRow, { backgroundColor: theme.colors.surfaceLight || theme.colors.background }]}>
+                            <Ionicons name="time-outline" size={18} color={theme.colors.textSecondary} />
+                            <Text style={[styles.successInfoText, { color: theme.colors.textSecondary }]}>
+                                Thời gian xét duyệt: 1-3 ngày làm việc
+                            </Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.successPrimaryBtn, { backgroundColor: theme.colors.primary }]}
+                            onPress={() => {
+                                setShowSuccess(false);
+                                navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+                            }}
+                            activeOpacity={0.85}
+                        >
+                            <Ionicons name="home-outline" size={20} color="#000" />
+                            <Text style={styles.successPrimaryBtnText}>Về trang chủ</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.successSecondaryBtn, { borderColor: theme.colors.border }]}
+                            onPress={() => {
+                                setShowSuccess(false);
+                                navigation.goBack();
+                            }}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={[styles.successSecondaryBtnText, { color: theme.colors.textSecondary }]}>Quay lại</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
+            </Modal>
         </View >
     );
 }
@@ -582,18 +794,22 @@ const styles = StyleSheet.create({
     defaultBadgeText: { fontSize: 11, fontWeight: '700' },
 
     // Docs
-    docRow: { paddingVertical: 12, borderTopWidth: 0.5 },
-    docHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-    docIconWrap: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-    docName: { flex: 1, fontSize: 14, fontWeight: '500' },
+    docSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+    docSectionHint: { fontSize: 12, marginBottom: 12 },
+    docRow: { paddingVertical: 14, borderTopWidth: 0.5 },
+    docHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+    docIconWrap: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    docNameBlock: { flex: 1 },
+    docName: { fontSize: 14, fontWeight: '600' },
+    docDesc: { fontSize: 11, marginTop: 2 },
     badgeRequired: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeRequiredText: { color: '#fff', fontSize: 11, fontWeight: '700' },
     badgeOptional: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeOptionalText: { fontSize: 11, fontWeight: '600' },
-    docUploadContainer: { marginTop: 10 },
+    docUploadContainer: { marginTop: 4 },
     bigCameraBtn: {
         width: '100%',
-        height: 120,
+        height: 130,
         borderRadius: 14,
         borderWidth: 1.5,
         borderStyle: 'dashed',
@@ -601,9 +817,48 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         overflow: 'hidden'
     },
-    emptyDocState: { alignItems: 'center', gap: 6 },
+    docUploadIconCircle: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+    emptyDocState: { alignItems: 'center', gap: 4 },
     uploadHint: { fontSize: 12, fontWeight: '500' },
+    docThumbnailWrap: { width: '100%', height: '100%', position: 'relative' },
     docThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
+    docThumbnailOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    docThumbnailText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 4 },
+    // Text input field
+    docTextInput: {
+        borderWidth: 1.5,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        fontSize: 14,
+        minHeight: 48,
+        textAlignVertical: 'top',
+    },
+    // Select field (radio list)
+    docSelectContainer: { gap: 8 },
+    docSelectOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderRadius: 12,
+        borderWidth: 1.5,
+    },
+    docSelectText: { fontSize: 14 },
+    // Button group field
+    docButtonContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    docButton: {
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 10,
+        borderWidth: 1.5,
+    },
+    docButtonText: { fontSize: 13 },
 
     // Submit
     submitBtn: {
@@ -622,4 +877,92 @@ const styles = StyleSheet.create({
     feeValueBlock: { alignItems: 'flex-end', minWidth: 110 },
     feeRate: { fontSize: 13, fontWeight: '600' },
     feeAmountText: { fontSize: 12, marginTop: 2 },
+
+    // Success Modal
+    successOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    successCard: {
+        width: '100%',
+        maxWidth: 380,
+        borderRadius: 24,
+        padding: 32,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 12,
+    },
+    successIconCircle: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    successIconInner: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    successTitle: {
+        fontSize: 22,
+        fontWeight: '800',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    successSubtitle: {
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 20,
+    },
+    successAmountBox: {
+        width: '100%',
+        padding: 16,
+        borderRadius: 14,
+        borderWidth: 1,
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    successAmountLabel: { fontSize: 12, marginBottom: 4 },
+    successAmountValue: { fontSize: 24, fontWeight: '800' },
+    successInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        marginBottom: 24,
+        width: '100%',
+    },
+    successInfoText: { fontSize: 13, flex: 1 },
+    successPrimaryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 14,
+        marginBottom: 10,
+    },
+    successPrimaryBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
+    successSecondaryBtn: {
+        width: '100%',
+        paddingVertical: 14,
+        borderRadius: 14,
+        alignItems: 'center',
+        borderWidth: 1,
+    },
+    successSecondaryBtnText: { fontSize: 14, fontWeight: '600' },
 });

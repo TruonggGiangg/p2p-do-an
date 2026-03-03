@@ -289,11 +289,19 @@ export default function DocumentTypesPage() {
           name="fieldType"
           label="Loại trường nhập liệu"
           tooltip="Xác định cách người dùng cung cấp thông tin: upload file, nhập text, hoặc chọn từ danh sách"
+          fieldProps={{
+            optionRender: (option) => (
+              <Space>
+                {FIELD_TYPE_ICONS[option.value as DocumentFieldType]}
+                {option.label}
+              </Space>
+            ),
+          }}
           options={[
-            { label: '📁 File đính kèm (upload)', value: 'file' },
-            { label: '✏️ Nhập text tự do', value: 'text' },
-            { label: '📋 Danh sách chọn (dropdown)', value: 'select' },
-            { label: '🔘 Nhóm nút chọn (buttons)', value: 'button' },
+            { label: 'File đính kèm (upload)', value: 'file' },
+            { label: 'Nhập text tự do', value: 'text' },
+            { label: 'Danh sách chọn (dropdown)', value: 'select' },
+            { label: 'Nhóm nút chọn (buttons)', value: 'button' },
           ]}
           rules={[{ required: true, message: 'Vui lòng chọn loại trường' }]}
         />

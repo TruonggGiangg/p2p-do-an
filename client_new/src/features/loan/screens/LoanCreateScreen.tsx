@@ -14,6 +14,7 @@ import {
     FlatList,
     Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -124,24 +125,14 @@ function RateStepper({
 
     const secondaryRate = (value * 12).toFixed(2).replace(/(\.\d*?[1-9])0+$|\.0*$/, '$1');
     const isAboveDefault = value >= max - 0.001; // warn if at max or high
+    // Progress bar percentage for visual indicator
+    const progressPct = max > min ? ((value - min) / (max - min)) * 100 : 50;
 
     return (
         <Animated.View style={{ transform: [{ scale: pressAnim }] }}>
-            <View style={[stepperStyles.row, { borderColor }]}>
-                <TouchableOpacity
-                    style={[
-                        stepperStyles.btn,
-                        { backgroundColor: value <= min ? dimColor + '25' : primaryColor + '25', borderColor },
-                        value <= min && stepperStyles.btnDisabled,
-                    ]}
-                    onPress={decrement}
-                    disabled={value <= min}
-                    activeOpacity={0.7}
-                >
-                    <MaterialCommunityIcons name="minus" size={24} color={value <= min ? dimColor : primaryColor} />
-                </TouchableOpacity>
-
-                <View style={stepperStyles.center}>
+            {/* Main rate display card */}
+            <View style={[stepperStyles.rateCard, { backgroundColor: primaryColor + '08', borderColor: primaryColor + '20' }]}>
+                <View style={stepperStyles.rateDisplay}>
                     <View style={stepperStyles.inputRow}>
                         <TextInput
                             ref={inputRef}
@@ -151,33 +142,65 @@ function RateStepper({
                             keyboardType="decimal-pad"
                             selectTextOnFocus
                         />
-                        <Text style={[stepperStyles.unit, { color: dimColor }]}>%/tháng</Text>
+                        <Text style={[stepperStyles.unit, { color: primaryColor + '99' }]}>%/tháng</Text>
                     </View>
-                    <Text style={[stepperStyles.annual, { color: dimColor }]}>= {secondaryRate}%/năm</Text>
+                    <View style={[stepperStyles.annualBadge, { backgroundColor: primaryColor + '15' }]}>
+                        <MaterialCommunityIcons name="calendar-month" size={12} color={primaryColor} />
+                        <Text style={[stepperStyles.annualText, { color: primaryColor }]}>≈ {secondaryRate}%/năm</Text>
+                    </View>
                 </View>
+
+                {/* Visual progress bar */}
+                <View style={stepperStyles.progressContainer}>
+                    <View style={[stepperStyles.progressBg, { backgroundColor: dimColor + '20' }]}>
+                        <View style={[
+                            stepperStyles.progressFill,
+                            {
+                                backgroundColor: isAboveDefault ? '#FF6B00' : primaryColor,
+                                width: `${Math.min(100, Math.max(0, progressPct))}%`,
+                            },
+                        ]} />
+                    </View>
+                    <View style={stepperStyles.progressLabels}>
+                        <Text style={[stepperStyles.progressLabel, { color: dimColor }]}>{+min.toFixed(1)}%</Text>
+                        <Text style={[stepperStyles.progressLabel, { color: dimColor }]}>{+(Math.floor(max * 100 + 0.0001) / 100).toFixed(1)}%</Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* +/- buttons row */}
+            <View style={stepperStyles.btnRow}>
+                <TouchableOpacity
+                    style={[
+                        stepperStyles.btn,
+                        { backgroundColor: value <= min ? dimColor + '15' : primaryColor + '15', borderColor: value <= min ? dimColor + '30' : primaryColor + '30' },
+                    ]}
+                    onPress={decrement}
+                    disabled={value <= min}
+                    activeOpacity={0.7}
+                >
+                    <MaterialCommunityIcons name="minus" size={22} color={value <= min ? dimColor : primaryColor} />
+                    <Text style={[stepperStyles.btnLabel, { color: value <= min ? dimColor : primaryColor }]}>Giảm</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
                     style={[
                         stepperStyles.btn,
-                        { backgroundColor: value >= max ? dimColor + '25' : primaryColor + '25', borderColor },
-                        value >= max && stepperStyles.btnDisabled,
+                        { backgroundColor: value >= max ? dimColor + '15' : primaryColor + '15', borderColor: value >= max ? dimColor + '30' : primaryColor + '30' },
                     ]}
                     onPress={increment}
                     disabled={value >= max}
                     activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="plus" size={24} color={value >= max ? dimColor : primaryColor} />
+                    <MaterialCommunityIcons name="plus" size={22} color={value >= max ? dimColor : primaryColor} />
+                    <Text style={[stepperStyles.btnLabel, { color: value >= max ? dimColor : primaryColor }]}>Tăng</Text>
                 </TouchableOpacity>
             </View>
 
-            <Text style={[stepperStyles.rangeHint, { color: dimColor }]}>
-                Khoảng: {+min.toFixed(1)}% – {+(Math.floor(max * 100 + 0.0001) / 100).toFixed(1)}% / tháng
-            </Text>
-
             {isAboveDefault && (
-                <View style={[stepperStyles.warning, { backgroundColor: primaryColor + '25' }]}>
-                    <MaterialCommunityIcons name="alert-circle-outline" size={14} color={primaryColor} />
-                    <Text style={[stepperStyles.warningText, { color: primaryColor }]}>Lãi suất cao hơn mức khuyến nghị</Text>
+                <View style={[stepperStyles.warning, { backgroundColor: '#FF6B00' + '15' }]}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#FF6B00" />
+                    <Text style={[stepperStyles.warningText, { color: '#FF6B00' }]}>Lãi suất ở mức cao nhất cho phép</Text>
                 </View>
             )}
         </Animated.View>
@@ -185,25 +208,49 @@ function RateStepper({
 }
 
 const stepperStyles = StyleSheet.create({
-    row: {
+    rateCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        padding: 16,
+    },
+    rateDisplay: {
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    inputRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+    input: { fontSize: 36, fontWeight: '800', textAlign: 'center', minWidth: 70 },
+    unit: { fontSize: 14, fontWeight: '600' },
+    annualBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderWidth: 1.5,
-        borderRadius: 14,
-        overflow: 'hidden',
+        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginTop: 6,
+    },
+    annualText: { fontSize: 12, fontWeight: '600' },
+    progressContainer: { paddingHorizontal: 4 },
+    progressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
+    progressFill: { height: '100%', borderRadius: 3 },
+    progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+    progressLabel: { fontSize: 11, fontWeight: '500' },
+    btnRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 12,
     },
     btn: {
-        width: 56, height: 56,
-        justifyContent: 'center', alignItems: 'center',
-        borderRightWidth: 1, borderLeftWidth: 1,
+        flex: 1,
+        flexDirection: 'row',
+        height: 48,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 6,
+        borderRadius: 12,
+        borderWidth: 1,
     },
-    btnDisabled: { opacity: 0.6 },
-    center: { flex: 1, alignItems: 'center', paddingVertical: 8 },
-    inputRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-    input: { fontSize: 22, fontWeight: '800', textAlign: 'center', minWidth: 60 },
-    unit: { fontSize: 13, fontWeight: '500' },
-    annual: { fontSize: 12, marginTop: 2 },
-    rangeHint: { fontSize: 11, marginTop: 8 },
+    btnLabel: { fontSize: 13, fontWeight: '600' },
     warning: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         padding: 8, borderRadius: 8, marginTop: 8,
@@ -358,6 +405,7 @@ export default function LoanCreateScreen() {
     const { theme } = useTheme();
     const route = useRoute();
     const navigation = useNavigation<LoanCreateNav>();
+    const insets = useSafeAreaInsets();
     const { product, willing: initialWilling } = (route.params || {}) as RouteParams;
     const [step, setStep] = useState(0); // 0 = input, 1 = confirm
 
@@ -564,12 +612,23 @@ export default function LoanCreateScreen() {
                         ) : config && (
                             <>
                                 {rateMode === 'default' ? (
-                                    <View style={[styles.rateSimple, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}>
-                                        <Text style={[styles.rateSimpleMain, { color: theme.colors.primary }]}>
-                                            {+config.monthlyRate.toFixed(2)}% / tháng
-                                        </Text>
-                                        <Text style={[styles.rateSimpleSub, { color: theme.colors.textSecondary }]}>
-                                            ≈ {+config.annualRate.toFixed(2)}% / năm
+                                    <View style={[styles.rateSimple, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.primary + '20' }]}>
+                                        <View style={styles.rateSimpleTop}>
+                                            <View style={[styles.rateIconCircle, { backgroundColor: theme.colors.primary + '18' }]}>
+                                                <MaterialCommunityIcons name="percent-outline" size={20} color={theme.colors.primary} />
+                                            </View>
+                                            <View style={styles.rateSimpleInfo}>
+                                                <Text style={[styles.rateSimpleMain, { color: theme.colors.primary }]}>
+                                                    {+config.monthlyRate.toFixed(2)}% / tháng
+                                                </Text>
+                                                <Text style={[styles.rateSimpleSub, { color: theme.colors.textSecondary }]}>
+                                                    ≈ {+config.annualRate.toFixed(2)}% / năm
+                                                </Text>
+                                            </View>
+                                            <View style={[styles.rateDefaultBadge, { backgroundColor: theme.colors.success + '15' }]}>
+                                                <Text style={[styles.rateDefaultBadgeText, { color: theme.colors.success }]}>Khuyến nghị</Text>
+                                            </View>
+                                        </View>
                                         </Text>
                                         <TouchableOpacity
                                             style={[styles.rateCustomLink, { borderColor: theme.colors.border }]}
@@ -579,79 +638,83 @@ export default function LoanCreateScreen() {
                                             <Text style={[styles.rateCustomLinkText, { color: theme.colors.textDim }]}>Tùy chỉnh</Text>
                                         </TouchableOpacity>
                                     </View>
-                                ) : (
-                                    <View>
-                                        <RateStepper
-                                            value={customRate}
-                                            onChange={setCustomRate}
-                                            min={rateMin}
-                                            max={rateMax}
-                                            step={0.1}
-                                            primaryColor={theme.colors.primary}
-                                            textColor={theme.colors.textPrimary}
-                                            borderColor={theme.colors.border}
-                                            dimColor={theme.colors.textDim}
-                                            isProductAnnual={config.isAnnual}
-                                        />
-                                        <TouchableOpacity onPress={() => setRateMode('default')} style={styles.rateResetLink}>
-                                            <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>← Dùng lãi mặc định</Text>
-                                        </TouchableOpacity>
-                                    </View>
+                        ) : (
+                        <View>
+                            <RateStepper
+                                value={customRate}
+                                onChange={setCustomRate}
+                                min={rateMin}
+                                max={rateMax}
+                                step={0.1}
+                                primaryColor={theme.colors.primary}
+                                textColor={theme.colors.textPrimary}
+                                borderColor={theme.colors.border}
+                                dimColor={theme.colors.textDim}
+                                isProductAnnual={config.isAnnual}
+                            />
+                            <TouchableOpacity onPress={() => setRateMode('default')} style={styles.rateResetLink}>
+                                <Text style={[styles.rateResetLinkText, { color: theme.colors.primary }]}>← Dùng lãi mặc định</Text>
+                            </TouchableOpacity>
+                        </View>
                                 )}
-                            </>
+                    </>
                         )}
 
-                        {/* Kết quả ước tính */}
-                        {loadingPreview ? (
-                            <View style={[styles.resultBox, { backgroundColor: theme.colors.surfaceLight }]}>
-                                <ActivityIndicator size="small" color={theme.colors.primary} />
-                                <Text style={[styles.resultLabel, { color: theme.colors.textDim }]}>Đang tính...</Text>
-                            </View>
-                        ) : schedule && capitalNum >= 100000 ? (
-                            <View style={[styles.resultBox, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '25' }]}>
-                                <Text style={[styles.resultLabel, { color: theme.colors.textSecondary }]}>Trả hàng tháng</Text>
-                                <Text style={[styles.resultAmount, { color: theme.colors.primary }]}>
-                                    {schedule.monthlyPay.toLocaleString('vi-VN')} đ
-                                </Text>
-                                <Text style={[styles.resultTotal, { color: theme.colors.textDim }]}>
-                                    Tổng trả: {schedule.entirelyPay.toLocaleString('vi-VN')} đ
-                                </Text>
-                            </View>
-                        ) : null}
-                    </CommonCard>
-
-                    <View style={{ height: 100 }} />
-                </ScrollView>
-
-                {/* ── Sticky Bottom Bar ── */}
-                <View style={[styles.stickyBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-                    {schedule && capitalNum >= 100000 ? (
-                        <View style={styles.stickyBarInfo}>
-                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Tổng trả ước tính</Text>
-                            <Text style={[styles.stickyValue, { color: theme.colors.textPrimary }]}>
-                                {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                    {/* Kết quả ước tính */}
+                    {loadingPreview ? (
+                        <View style={[styles.resultBox, { backgroundColor: theme.colors.surfaceLight }]}>
+                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                            <Text style={[styles.resultLabel, { color: theme.colors.textDim }]}>Đang tính...</Text>
+                        </View>
+                    ) : schedule && capitalNum >= 100000 ? (
+                        <View style={[styles.resultBox, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '25' }]}>
+                            <Text style={[styles.resultLabel, { color: theme.colors.textSecondary }]}>Trả hàng tháng</Text>
+                            <Text style={[styles.resultAmount, { color: theme.colors.primary }]}>
+                                {schedule.monthlyPay.toLocaleString('vi-VN')} đ
+                            </Text>
+                            <Text style={[styles.resultTotal, { color: theme.colors.textDim }]}>
+                                Tổng trả: {schedule.entirelyPay.toLocaleString('vi-VN')} đ
                             </Text>
                         </View>
-                    ) : (
-                        <View style={styles.stickyBarInfo}>
-                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
-                                {capitalNum < 100000 ? 'Số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
-                            </Text>
-                        </View>
-                    )}
-                    <TouchableOpacity
-                        style={[styles.nextBtn, { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border }]}
-                        onPress={handleNext}
-                        disabled={!canProceed}
-                        activeOpacity={0.85}
-                    >
-                        <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
-                        <MaterialCommunityIcons name="arrow-right" size={18} color={canProceed ? '#000' : theme.colors.textDim} />
-                    </TouchableOpacity>
-                </View>
-            </KeyboardAvoidingView>
+                    ) : null}
+                </CommonCard>
 
-        </View>
+                <View style={{ height: 100 }} />
+            </ScrollView>
+
+            {/* ── Sticky Bottom Bar ── */}
+            <View style={[styles.stickyBar, {
+                backgroundColor: theme.colors.surface,
+                borderTopColor: theme.colors.border,
+                paddingBottom: Math.max(insets.bottom, 12),
+            }]}>
+                {schedule && capitalNum >= 100000 ? (
+                    <View style={styles.stickyBarInfo}>
+                        <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Tổng trả ước tính</Text>
+                        <Text style={[styles.stickyValue, { color: theme.colors.textPrimary }]}>
+                            {schedule.entirelyPay.toLocaleString('vi-VN')} đ
+                        </Text>
+                    </View>
+                ) : (
+                    <View style={styles.stickyBarInfo}>
+                        <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
+                            {capitalNum < 100000 ? 'Số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
+                        </Text>
+                    </View>
+                )}
+                <TouchableOpacity
+                    style={[styles.nextBtn, { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border }]}
+                    onPress={handleNext}
+                    disabled={!canProceed}
+                    activeOpacity={0.85}
+                >
+                    <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
+                    <MaterialCommunityIcons name="arrow-right" size={18} color={canProceed ? '#000' : theme.colors.textDim} />
+                </TouchableOpacity>
+            </View>
+        </KeyboardAvoidingView>
+
+        </View >
     );
 }
 
@@ -677,9 +740,14 @@ const styles = StyleSheet.create({
     },
     hintSmall: { fontSize: 11, marginTop: 4 },
     quickAmountRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-    rateSimple: { padding: 14, borderRadius: 12, borderWidth: 1 },
-    rateSimpleMain: { fontSize: 20, fontWeight: '800' },
-    rateSimpleSub: { fontSize: 12, marginTop: 4 },
+    rateSimple: { padding: 16, borderRadius: 16, borderWidth: 1 },
+    rateSimpleTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    rateIconCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    rateSimpleInfo: { flex: 1 },
+    rateSimpleMain: { fontSize: 18, fontWeight: '800' },
+    rateSimpleSub: { fontSize: 12, marginTop: 2 },
+    rateDefaultBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    rateDefaultBadgeText: { fontSize: 11, fontWeight: '700' },
     rateCustomLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
     rateCustomLinkText: { fontSize: 12, fontWeight: '600' },
     rateResetLink: { marginTop: 8 },
