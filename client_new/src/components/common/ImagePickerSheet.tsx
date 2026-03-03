@@ -71,6 +71,7 @@ export default function ImagePickerSheet({
     const c = theme.colors;
 
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+    const [permissionChecked, setPermissionChecked] = useState(false);
     const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
     const [endCursor, setEndCursor] = useState<string | undefined>(undefined);
     const [hasMore, setHasMore] = useState(true);
@@ -82,12 +83,24 @@ export default function ImagePickerSheet({
 
     const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-    // Request permission
+    // Request permission — check existing status first (instant), then request if needed
     useEffect(() => {
         if (!visible) return;
         (async () => {
+            // First try a non-blocking check
+            const existing = await MediaLibrary.getPermissionsAsync();
+            const alreadyGranted = existing.status === 'granted'
+                || (existing as any).accessPrivileges === 'limited'
+                || (existing as any).accessPrivileges === 'all';
+            if (alreadyGranted) {
+                setHasPermission(true);
+                setPermissionChecked(true);
+                return;
+            }
+            // Mark as checked so we show action buttons immediately
+            setPermissionChecked(true);
+            // Request in background
             const permResponse = await MediaLibrary.requestPermissionsAsync();
-            // Android 13+: accessPrivileges can be 'limited' even when status is 'granted'
             const granted = permResponse.status === 'granted'
                 || (permResponse as any).accessPrivileges === 'limited'
                 || (permResponse as any).accessPrivileges === 'all';
@@ -421,44 +434,18 @@ export default function ImagePickerSheet({
                         </View>
                     )}
 
-                    {/* Loading permission state */}
-                    {hasPermission === null && (
+                    {/* Loading permission state — only show if not yet checked */}
+                    {hasPermission === null && !permissionChecked && (
                         <View style={imgStyles.emptyContainer}>
                             <ActivityIndicator size="large" color={c.primary} />
-                            <Text style={[imgStyles.loadingText, { color: c.textDim }]}>Đang yêu cầu quyền truy cập...</Text>
-                            {/* Fallback buttons hiện ngay để user không thấy blank */}
-                            <View style={{ width: '100%', paddingHorizontal: 16, marginTop: 24, gap: 10 }}>
-                                {allowCamera && (
-                                    <TouchableOpacity
-                                        style={[imgStyles.cameraBtn, { backgroundColor: c.primary + '12', borderColor: c.primary + '30' }]}
-                                        onPress={handleCamera}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
-                                            <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
-                                        </View>
-                                        <View>
-                                            <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Chụp ảnh</Text>
-                                            <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
-                                        </View>
-                                        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
-                                    </TouchableOpacity>
-                                )}
-                                <TouchableOpacity
-                                    style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
-                                    onPress={handlePickFromLibrary}
-                                    activeOpacity={0.7}
-                                >
-                                    <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                                        <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
-                                    </View>
-                                    <View>
-                                        <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
-                                        <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
-                                    </View>
-                                    <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
-                                </TouchableOpacity>
-                            </View>
+                            <Text style={[imgStyles.loadingText, { color: c.textDim }]}>Đang tải...</Text>
+                        </View>
+                    )}
+
+                    {/* Actions shown immediately when permission is being requested */}
+                    {hasPermission === null && permissionChecked && (
+                        <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 10 }}>
+                            {renderHeader()}
                         </View>
                     )}
 

@@ -12,7 +12,6 @@ import {
     Platform,
     RefreshControl,
     ScrollView,
-    StatusBar,
     StyleSheet,
     Text,
     TextInput,
@@ -40,11 +39,19 @@ interface ScheduleData {
         dueDate?: any;
         totalDue?: number;
         principalDue?: number;
+        principalPaid?: number;
         interestDue?: number;
+        interestPaid?: number;
+        totalPaid?: number;
         complete?: boolean;
     }>;
     totalRepaymentExpected?: number;
     totalRepayment?: number;
+    totalPrincipalExpected?: number;
+    totalPrincipalPaid?: number;
+    totalInterestCharged?: number;
+    totalInterestPaid?: number;
+    totalOutstanding?: number;
 }
 
 interface TransactionItem {
@@ -166,21 +173,42 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             const scheduleData = (scheduleRes as any)?.data || scheduleRes;
             if (scheduleData?.periods) {
                 setSchedule(scheduleData);
-                const periods = scheduleData.periods || [];
-                const totalOut = scheduleData.totalOutstanding ?? 0;
-                const principalOut = (scheduleData.totalPrincipalExpected || 0) - (scheduleData.totalPrincipalPaid || 0);
+                const periods: any[] = scheduleData.periods || [];
+
+                // Tính dư nợ từ các kỳ chưa hoàn thành
+                const incompletePeriods = periods.filter((p: any) => p.period > 0 && !p.complete);
+                const principalFromPeriods = incompletePeriods.reduce((s: number, p: any) => s + ((p.principalDue || 0) - (p.principalPaid || 0)), 0);
+                const interestFromPeriods = incompletePeriods.reduce((s: number, p: any) => s + ((p.interestDue || 0) - (p.interestPaid || 0)), 0);
+
+                // Ưu tiên dùng totalOutstanding từ Fineract schedule, fallback tính từ periods
+                const totalOut = scheduleData.totalOutstanding || (principalFromPeriods + interestFromPeriods);
+                const principalOut = (scheduleData.totalPrincipalExpected || 0) - (scheduleData.totalPrincipalPaid || 0) || principalFromPeriods;
+                const interestOut = ((scheduleData.totalInterestCharged || 0) - (scheduleData.totalInterestPaid || 0)) || interestFromPeriods;
+
                 setOutstanding({
                     totalOutstanding: totalOut,
                     principalOutstanding: principalOut,
-                    interestOutstanding: scheduleData.totalInterestCharged || 0,
+                    interestOutstanding: interestOut,
                 });
-                setTotalPaid(scheduleData.totalRepayment || 0);
+
+                // Tổng đã trả
+                const paid = periods.filter((p: any) => p.period > 0).reduce((s: number, p: any) => s + (p.totalPaid || 0), 0);
+                setTotalPaid(paid || scheduleData.totalRepayment || 0);
             }
 
-            const outRes = await loanService.getOutstanding(loan.id);
-            const outData = (outRes as any)?.data || outRes;
-            if (outData?.totalOutstanding != null) {
-                setOutstanding(outData);
+            // Lấy outstanding từ API riêng (Fineract summary)
+            try {
+                const outRes = await loanService.getOutstanding(loan.id);
+                const outData = (outRes as any)?.data || outRes;
+                if (outData?.totalOutstanding != null && outData.totalOutstanding > 0) {
+                    setOutstanding({
+                        totalOutstanding: outData.totalOutstanding,
+                        principalOutstanding: outData.principalOutstanding || 0,
+                        interestOutstanding: outData.interestOutstanding || 0,
+                    });
+                }
+            } catch (outErr) {
+                console.warn('[LoanDetail] getOutstanding failed, using schedule data', outErr);
             }
 
             if (isActive) {
@@ -419,7 +447,6 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
 
             {/* Shared Header */}
             <BinanceHeader

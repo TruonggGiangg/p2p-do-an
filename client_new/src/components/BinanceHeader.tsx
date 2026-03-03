@@ -39,7 +39,7 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     const insets = useSafeAreaInsets();
 
     // Use a stable fallback for first render to prevent header jumping
-    const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24) + 12;
+    const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
     const cachedTopInset = useRef<number>(FALLBACK_TOP);
     const [ready, setReady] = useState(false);
 
@@ -81,7 +81,7 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
         </TouchableOpacity>
     );
 
-    const topPadding = Platform.OS === 'ios' ? stableTop : Math.max(stableTop, (StatusBar.currentHeight || 0)) + 12;
+    const topPadding = Platform.OS === 'ios' ? stableTop : Math.max(stableTop, (StatusBar.currentHeight || 24));
 
     if (mode === 'dashboard') {
         return (

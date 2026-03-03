@@ -528,17 +528,17 @@ export default function LoanCreateScreen() {
                         <AmountSlider
                             value={capitalNum || SLIDER_MIN}
                             onChange={(v) => setCapital(String(v))}
-                            min={product?.minPrincipal ?? SLIDER_MIN}
-                            max={product?.maxPrincipal ?? SLIDER_MAX}
+                            min={SLIDER_MIN}
+                            max={SLIDER_MAX}
                             primaryColor={theme.colors.primary}
                             trackColor={theme.colors.border + '60'}
                         />
                         <View style={styles.sliderLabels}>
                             <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
-                                {formatCurrency(product?.minPrincipal ?? SLIDER_MIN)}
+                                5 triệu
                             </Text>
                             <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
-                                {formatCurrency(product?.maxPrincipal ?? SLIDER_MAX)}
+                                100 triệu
                             </Text>
                         </View>
 
@@ -640,23 +640,23 @@ export default function LoanCreateScreen() {
 
                     {/* ── Preview kết quả ── */}
                     {loadingPreview ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.border }]}>
                             <ActivityIndicator size="small" color={theme.colors.primary} />
                             <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
                         </View>
                     ) : schedule && capitalNum >= 100000 ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08', borderColor: theme.colors.primary + '20' }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08' }]}>
                             <View style={styles.previewRow}>
                                 <View style={styles.previewItem}>
                                     <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
-                                    <Text style={[styles.previewItemValue, { color: theme.colors.primary }]}>
+                                    <Text style={[styles.previewItemValue, { color: theme.colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>
                                         {formatCurrency(schedule.monthlyPay)} đ
                                     </Text>
                                 </View>
                                 <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
                                 <View style={styles.previewItem}>
                                     <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
-                                    <Text style={[styles.previewTotalValue, { color: theme.colors.textPrimary }]}>
+                                    <Text style={[styles.previewTotalValue, { color: theme.colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
                                         {formatCurrency(schedule.entirelyPay)} đ
                                     </Text>
                                 </View>
@@ -809,13 +809,12 @@ const styles = StyleSheet.create({
     // Preview
     previewCard: {
         borderRadius: 20,
-        borderWidth: 1,
         padding: 20,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        elevation: 2,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        elevation: 3,
     },
     previewLoading: { textAlign: 'center', marginTop: 8, fontSize: 13 },
     previewRow: {
@@ -824,8 +823,8 @@ const styles = StyleSheet.create({
     },
     previewItem: { flex: 1, alignItems: 'center' },
     previewItemLabel: { fontSize: 12, marginBottom: 4 },
-    previewItemValue: { fontSize: 22, fontWeight: '800' },
-    previewTotalValue: { fontSize: 18, fontWeight: '700' },
+    previewItemValue: { fontSize: 20, fontWeight: '800', minWidth: 60 },
+    previewTotalValue: { fontSize: 16, fontWeight: '700', minWidth: 60 },
     previewDivider: { width: 1, height: 40, marginHorizontal: 12 },
     previewInterest: {
         flexDirection: 'row',

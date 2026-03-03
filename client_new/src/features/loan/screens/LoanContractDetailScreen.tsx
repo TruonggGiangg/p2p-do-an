@@ -118,11 +118,9 @@ export default function LoanContractDetailScreen() {
         fetchContract();
     }, [fetchContract]);
 
-    // Sign handler — mở SmartCA Signing Modal
+    // Sign handler — dùng legacy (SmartCA tạm comment)
     const handleSign = () => {
-        if (!contract) return;
-        setShowSignConfirm(false);
-        setShowSmartCA(true);
+        handleSignLegacy();
     };
 
     // Legacy sign handler (fallback khi SmartCA không dùng được)
@@ -391,9 +389,9 @@ export default function LoanContractDetailScreen() {
                     {isPending && (
                         <View style={[styles.signatureArea, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
                             <View style={[styles.signaturePlaceholder, { borderColor: colors.border }]}>
-                                <MaterialCommunityIcons name="shield-check" size={32} color={colors.textDim} />
+                                <MaterialCommunityIcons name="draw-pen" size={32} color={colors.textDim} />
                                 <Text style={[styles.signaturePlaceholderText, { color: colors.textDim }]}>
-                                    Chữ ký số VNPT SmartCA{'\n'}Nhấn nút bên dưới để ký
+                                    Chữ ký điện tử{'\n'}Nhấn nút bên dưới để ký xác nhận
                                 </Text>
                             </View>
                             <TouchableOpacity
@@ -440,21 +438,21 @@ export default function LoanContractDetailScreen() {
                                 style={styles.confirmSignBtn}
                                 onPress={handleSign}
                             >
-                                <MaterialCommunityIcons name="shield-check" size={18} color="#181A20" />
-                                <Text style={styles.confirmSignText}>Ký số SmartCA</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={18} color="#181A20" />
+                                <Text style={styles.confirmSignText}>Ký xác nhận</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
 
-            {/* SmartCA Digital Signing Modal */}
-            <SmartCASigningModal
+            {/* SmartCA Digital Signing Modal — tạm comment, chưa đăng ký */}
+            {/* <SmartCASigningModal
                 visible={showSmartCA}
                 contractId={contract.contractId || contract._id}
                 onClose={() => setShowSmartCA(false)}
                 onSigningComplete={handleSmartCAComplete}
-            />
+            /> */}
         </View>
     );
 }
