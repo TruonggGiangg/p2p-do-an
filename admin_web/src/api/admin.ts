@@ -1,10 +1,14 @@
-import { api } from './client';
+import { api } from "./client";
+
+export type DocumentFieldType = "file" | "text" | "select" | "button";
 
 export interface DocumentTypeDto {
   _id: string;
   name: string;
   required: boolean;
   description?: string;
+  fieldType: DocumentFieldType;
+  options: string[];
 }
 
 export interface LoanProductDto {
@@ -43,7 +47,7 @@ export interface CustomerDto {
   profile?: { firstName?: string; lastName?: string; avatar?: string };
   fineractClientId?: string;
   status: string;
-  kycStatus?: 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+  kycStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED";
   createdAt: string;
   // Fineract enrichment
   fineractStatus?: FineractStatus | null;
@@ -59,18 +63,60 @@ export interface CustomerDto {
 }
 
 export interface KycDetailDto {
-  user: { _id: string; username: string; email?: string; profile?: any; fineractClientId?: string; kycStatus: string };
-  ocr: { fullName?: string; ssn?: string; dateOfBirth?: string; address?: string; sex?: string };
-  metadata: { kycCompletedAt?: string; fineractClientDocs?: { front?: number; back?: number } };
-  documents: { id: number; name: string; entityType: string; entityId: number; label: string }[];
+  user: {
+    _id: string;
+    username: string;
+    email?: string;
+    profile?: any;
+    fineractClientId?: string;
+    kycStatus: string;
+  };
+  ocr: {
+    fullName?: string;
+    ssn?: string;
+    dateOfBirth?: string;
+    address?: string;
+    sex?: string;
+  };
+  metadata: {
+    kycCompletedAt?: string;
+    fineractClientDocs?: { front?: number; back?: number };
+  };
+  documents: {
+    id: number;
+    name: string;
+    entityType: string;
+    entityId: number;
+    label: string;
+  }[];
 }
 
 export interface CustomerDetailDto {
   customer: CustomerDto;
   loans: LoanDto[];
-  summary: { loanCycles: number; activeLoans: number; lastLoanAmount: number; activeSavings: number; totalSavings: number };
-  savingsAccounts: { id: number; accountNo?: string; productName?: string; accountBalance?: number; status?: any }[];
-  charges: { id: number; name?: string; amount?: number; amountPaid?: number; amountWaived?: number; amountOutstanding?: number; dueDate?: number[] }[];
+  summary: {
+    loanCycles: number;
+    activeLoans: number;
+    lastLoanAmount: number;
+    activeSavings: number;
+    totalSavings: number;
+  };
+  savingsAccounts: {
+    id: number;
+    accountNo?: string;
+    productName?: string;
+    accountBalance?: number;
+    status?: any;
+  }[];
+  charges: {
+    id: number;
+    name?: string;
+    amount?: number;
+    amountPaid?: number;
+    amountWaived?: number;
+    amountOutstanding?: number;
+    dueDate?: number[];
+  }[];
   kyc?: KycDetailDto;
 }
 
@@ -86,10 +132,32 @@ export interface KycPendingUserDto {
 }
 
 export interface KycDetailDto {
-  user: { _id: string; username: string; email?: string; profile?: any; fineractClientId?: string; kycStatus: string };
-  ocr: { fullName?: string; ssn?: string; dateOfBirth?: string; address?: string; sex?: string };
-  metadata: { kycCompletedAt?: string; fineractClientDocs?: { front?: number; back?: number } };
-  documents: { id: number; name: string; entityType: string; entityId: number; label: string }[];
+  user: {
+    _id: string;
+    username: string;
+    email?: string;
+    profile?: any;
+    fineractClientId?: string;
+    kycStatus: string;
+  };
+  ocr: {
+    fullName?: string;
+    ssn?: string;
+    dateOfBirth?: string;
+    address?: string;
+    sex?: string;
+  };
+  metadata: {
+    kycCompletedAt?: string;
+    fineractClientDocs?: { front?: number; back?: number };
+  };
+  documents: {
+    id: number;
+    name: string;
+    entityType: string;
+    entityId: number;
+    label: string;
+  }[];
 }
 
 export interface LoanDto {
@@ -114,139 +182,254 @@ export interface LoanDto {
 
 export const adminApi = {
   login: (username: string, password: string) =>
-    api.post<{ message: string; data: { roles?: string[] }; accessToken: string; refreshToken: string }>(
-      '/api/auth/login',
-      { username, password }
-    ),
+    api.post<{
+      message: string;
+      data: { roles?: string[] };
+      accessToken: string;
+      refreshToken: string;
+    }>("/api/auth/login", { username, password }),
 
   getLoanProducts: () =>
-    api.get<{ data: { products: LoanProductDto[] } }>('/api/admin/loan-products').then((r) => r.data.data.products),
+    api
+      .get<{ data: { products: LoanProductDto[] } }>("/api/admin/loan-products")
+      .then((r) => r.data.data.products),
 
   getLoanProductDetails: (productId: number) =>
-    api.get<{ data: any }>(`/api/admin/loan-products/${productId}/details`).then((r) => r.data.data),
+    api
+      .get<{ data: any }>(`/api/admin/loan-products/${productId}/details`)
+      .then((r) => r.data.data),
 
   getDocumentTypes: () =>
-    api.get<{ data: DocumentTypeDto[] }>('/api/admin/document-types').then((r) => r.data.data),
+    api
+      .get<{ data: DocumentTypeDto[] }>("/api/admin/document-types")
+      .then((r) => r.data.data),
 
-  createDocumentType: (body: { name: string; required?: boolean; description?: string }) =>
-    api.post<{ data: DocumentTypeDto }>('/api/admin/document-types', body).then((r) => r.data.data),
+  createDocumentType: (body: {
+    name: string;
+    required?: boolean;
+    description?: string;
+    fieldType?: DocumentFieldType;
+    options?: string[];
+  }) =>
+    api
+      .post<{ data: DocumentTypeDto }>("/api/admin/document-types", body)
+      .then((r) => r.data.data),
 
   updateDocumentType: (id: string, body: Partial<DocumentTypeDto>) =>
-    api.put<{ data: DocumentTypeDto }>(`/api/admin/document-types/${id}`, body).then((r) => r.data.data),
+    api
+      .put<{ data: DocumentTypeDto }>(`/api/admin/document-types/${id}`, body)
+      .then((r) => r.data.data),
 
-  deleteDocumentType: (id: string) => api.delete(`/api/admin/document-types/${id}`),
+  deleteDocumentType: (id: string) =>
+    api.delete(`/api/admin/document-types/${id}`),
 
   getProductDocumentTypes: (fineractProductId: number) =>
     api
-      .get<{ data: { documentTypeId: string; documentType: DocumentTypeDto; required: boolean }[] }>(
-        `/api/admin/loan-products/${fineractProductId}/document-types`
-      )
+      .get<{
+        data: {
+          documentTypeId: string;
+          documentType: DocumentTypeDto;
+          required: boolean;
+        }[];
+      }>(`/api/admin/loan-products/${fineractProductId}/document-types`)
       .then((r) => r.data.data),
 
-  setProductDocumentTypes: (fineractProductId: number, items: { documentTypeId: string; required?: boolean }[]) =>
-    api.put(`/api/admin/loan-products/${fineractProductId}/document-types`, { items }),
+  setProductDocumentTypes: (
+    fineractProductId: number,
+    items: { documentTypeId: string; required?: boolean }[],
+  ) =>
+    api.put(`/api/admin/loan-products/${fineractProductId}/document-types`, {
+      items,
+    }),
 
   getSyncDriftLogs: (limit = 20) =>
-    api.get<{ data: SyncDriftLogDto[] }>(`/api/admin/sync-drift?limit=${limit}`).then((r) => r.data.data),
+    api
+      .get<{ data: SyncDriftLogDto[] }>(`/api/admin/sync-drift?limit=${limit}`)
+      .then((r) => r.data.data),
 
   syncCompare: () =>
-    api.post<{ data: { added: unknown[]; removed: unknown[]; modified: unknown[] } }>('/api/admin/sync-compare').then((r) => r.data.data),
+    api
+      .post<{
+        data: { added: unknown[]; removed: unknown[]; modified: unknown[] };
+      }>("/api/admin/sync-compare")
+      .then((r) => r.data.data),
 
   // ── Customers (Head Office) ────────────────────────────────────────────────
   getCustomers: (page = 1, limit = 20, keyword?: string) => {
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (keyword?.trim()) params.set('keyword', keyword.trim());
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    if (keyword?.trim()) params.set("keyword", keyword.trim());
     return api
-      .get<{ data: { users: CustomerDto[]; total: number; page: number; limit: number } }>(
-        `/api/admin/customers?${params.toString()}`
-      )
+      .get<{
+        data: {
+          users: CustomerDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/customers?${params.toString()}`)
       .then((r) => r.data.data);
   },
 
   getPendingApprovalCustomers: (page = 1, limit = 20, keyword?: string) => {
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (keyword?.trim()) params.set('keyword', keyword.trim());
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    if (keyword?.trim()) params.set("keyword", keyword.trim());
     return api
-      .get<{ data: { users: CustomerDto[]; total: number; page: number; limit: number } }>(
-        `/api/admin/customers/pending-approval?${params.toString()}`
-      )
+      .get<{
+        data: {
+          users: CustomerDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/customers/pending-approval?${params.toString()}`)
       .then((r) => r.data.data);
   },
 
   getCustomer: (id: string) =>
-    api.get<{ data: CustomerDto }>(`/api/admin/customers/${id}`).then((r) => r.data.data),
+    api
+      .get<{ data: CustomerDto }>(`/api/admin/customers/${id}`)
+      .then((r) => r.data.data),
 
   getCustomerDetail: (id: string) =>
-    api.get<{ data: CustomerDetailDto }>(`/api/admin/customers/${id}/detail`).then((r) => r.data.data),
+    api
+      .get<{ data: CustomerDetailDto }>(`/api/admin/customers/${id}/detail`)
+      .then((r) => r.data.data),
 
   getCustomerLoans: (userId: string) =>
-    api.get<{ data: { loans: LoanDto[] } }>(`/api/admin/customers/${userId}/loans`).then((r) => r.data.data.loans),
+    api
+      .get<{
+        data: { loans: LoanDto[] };
+      }>(`/api/admin/customers/${userId}/loans`)
+      .then((r) => r.data.data.loans),
 
   // ── Loan Approvals ──────────────────────────────────────────────────────────
   getPendingLoans: () =>
-    api.get<{ data: { loans: LoanDto[] } }>('/api/admin/loans/pending').then((r) => r.data.data.loans),
+    api
+      .get<{ data: { loans: LoanDto[] } }>("/api/admin/loans/pending")
+      .then((r) => r.data.data.loans),
 
   approveLoan: (fineractLoanId: number) =>
-    api.post<{ data: { fineractLoanId: number; status: string } }>(`/api/admin/loans/${fineractLoanId}/approve`).then((r) => r.data.data),
+    api
+      .post<{
+        data: { fineractLoanId: number; status: string };
+      }>(`/api/admin/loans/${fineractLoanId}/approve`)
+      .then((r) => r.data.data),
 
   disburseLoan: (fineractLoanId: number) =>
-    api.post<{ data: { fineractLoanId: number; status: string } }>(`/api/admin/loans/${fineractLoanId}/disburse`).then((r) => r.data.data),
+    api
+      .post<{
+        data: { fineractLoanId: number; status: string };
+      }>(`/api/admin/loans/${fineractLoanId}/disburse`)
+      .then((r) => r.data.data),
 
   getLoanDetails: (fineractLoanId: number | { id?: number }) => {
-    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
-      ? fineractLoanId.id
-      : fineractLoanId;
+    const id =
+      typeof fineractLoanId === "object" &&
+      fineractLoanId != null &&
+      "id" in fineractLoanId
+        ? fineractLoanId.id
+        : fineractLoanId;
     const num = Number(id);
-    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
-    return api.get<{ data: any }>(`/api/admin/loans/${num}/details`).then((r) => r.data.data);
+    if (!Number.isFinite(num))
+      throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api
+      .get<{ data: any }>(`/api/admin/loans/${num}/details`)
+      .then((r) => r.data.data);
   },
 
   getLoanDocuments: (fineractLoanId: number | { id?: number }) => {
-    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
-      ? fineractLoanId.id
-      : fineractLoanId;
+    const id =
+      typeof fineractLoanId === "object" &&
+      fineractLoanId != null &&
+      "id" in fineractLoanId
+        ? fineractLoanId.id
+        : fineractLoanId;
     const num = Number(id);
-    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
-    return api.get<{ data: any[] }>(`/api/admin/loans/${num}/documents`).then((r) => r.data.data);
+    if (!Number.isFinite(num))
+      throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api
+      .get<{ data: any[] }>(`/api/admin/loans/${num}/documents`)
+      .then((r) => r.data.data);
   },
 
-  downloadLoanDocument: (fineractLoanId: number | { id?: number }, documentId: number) => {
-    const id = typeof fineractLoanId === 'object' && fineractLoanId != null && 'id' in fineractLoanId
-      ? fineractLoanId.id
-      : fineractLoanId;
+  downloadLoanDocument: (
+    fineractLoanId: number | { id?: number },
+    documentId: number,
+  ) => {
+    const id =
+      typeof fineractLoanId === "object" &&
+      fineractLoanId != null &&
+      "id" in fineractLoanId
+        ? fineractLoanId.id
+        : fineractLoanId;
     const num = Number(id);
-    if (!Number.isFinite(num)) throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
-    return api.get(`/api/admin/loans/${num}/documents/${documentId}`, { responseType: 'blob' });
+    if (!Number.isFinite(num))
+      throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
+    return api.get(`/api/admin/loans/${num}/documents/${documentId}`, {
+      responseType: "blob",
+    });
   },
 
   approveDocument: (fineractLoanId: number, documentId: number) =>
-    api.post<{ data: { documentId: number; reviewStatus: string } }>(
-      `/api/admin/loans/${fineractLoanId}/documents/${documentId}/approve`
-    ).then((r) => r.data.data),
+    api
+      .post<{
+        data: { documentId: number; reviewStatus: string };
+      }>(`/api/admin/loans/${fineractLoanId}/documents/${documentId}/approve`)
+      .then((r) => r.data.data),
 
   rejectDocument: (fineractLoanId: number, documentId: number) =>
-    api.post<{ data: { documentId: number; reviewStatus: string } }>(
-      `/api/admin/loans/${fineractLoanId}/documents/${documentId}/reject`
-    ).then((r) => r.data.data),
+    api
+      .post<{
+        data: { documentId: number; reviewStatus: string };
+      }>(`/api/admin/loans/${fineractLoanId}/documents/${documentId}/reject`)
+      .then((r) => r.data.data),
 
   canApproveLoan: (fineractLoanId: number) =>
-    api.get<{ data: { canApprove: boolean; missingRequired: string[] } }>(
-      `/api/admin/loans/${fineractLoanId}/can-approve`
-    ).then((r) => r.data.data),
+    api
+      .get<{
+        data: { canApprove: boolean; missingRequired: string[] };
+      }>(`/api/admin/loans/${fineractLoanId}/can-approve`)
+      .then((r) => r.data.data),
 
   // ── KYC Approvals ──────────────────────────────────────────────────────────
   getPendingKyc: () =>
-    api.get<{ data: { users: KycPendingUserDto[] } }>('/api/admin/kyc/pending').then((r) => r.data.data.users),
+    api
+      .get<{ data: { users: KycPendingUserDto[] } }>("/api/admin/kyc/pending")
+      .then((r) => r.data.data.users),
 
   getKycDetail: (userId: string) =>
-    api.get<{ data: KycDetailDto }>(`/api/admin/kyc/${userId}`).then((r) => r.data.data),
+    api
+      .get<{ data: KycDetailDto }>(`/api/admin/kyc/${userId}`)
+      .then((r) => r.data.data),
 
   approveKyc: (userId: string) =>
-    api.post<{ data: { kycStatus: string; userId: string } }>(`/api/admin/kyc/${userId}/approve`).then((r) => r.data.data),
+    api
+      .post<{
+        data: { kycStatus: string; userId: string };
+      }>(`/api/admin/kyc/${userId}/approve`)
+      .then((r) => r.data.data),
 
   rejectKyc: (userId: string) =>
-    api.post<{ data: { kycStatus: string; userId: string } }>(`/api/admin/kyc/${userId}/reject`).then((r) => r.data.data),
+    api
+      .post<{
+        data: { kycStatus: string; userId: string };
+      }>(`/api/admin/kyc/${userId}/reject`)
+      .then((r) => r.data.data),
 
-  downloadKycDocument: (userId: string, entityType: string, entityId: number, documentId: number) =>
-    api.get(`/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`, { responseType: 'blob' }),
+  downloadKycDocument: (
+    userId: string,
+    entityType: string,
+    entityId: number,
+    documentId: number,
+  ) =>
+    api.get(
+      `/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`,
+      { responseType: "blob" },
+    ),
 };

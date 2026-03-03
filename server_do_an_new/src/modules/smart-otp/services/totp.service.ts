@@ -8,7 +8,7 @@ import { generateSecret, generateSync, verifySync } from 'otplib';
 const TOTP_CONFIG = {
   digits: 6,
   step: 30, // 30 seconds
-  window: 1, // Allow ±1 step for clock drift
+  window: 2, // Allow ±2 steps for clock drift (±60s)
 };
 
 /**
@@ -73,9 +73,7 @@ export class TotpService {
       hmac.update(timeBuffer);
       const hash = hmac.digest();
       const offset = hash[hash.length - 1] & 0xf;
-      const code =
-        (hash.readUInt32BE(offset) & 0x7fffffff) %
-        Math.pow(10, TOTP_CONFIG.digits);
+      const code = (hash.readUInt32BE(offset) & 0x7fffffff) % Math.pow(10, TOTP_CONFIG.digits);
       return code.toString().padStart(TOTP_CONFIG.digits, '0');
     } catch (error) {
       this.logger.error('TOTP fallback generation failed', error);
@@ -85,29 +83,60 @@ export class TotpService {
   }
 
   /**
-   * Verify TOTP code
+   * Verify TOTP code với window tolerance
+   * otplib v13 verifySync KHÔNG hỗ trợ epochTolerance,
+   * nên ta phải tự kiểm tra ±window steps thủ công.
+   *
    * @param secret Base32 encoded secret
    * @param token 6-digit OTP code từ user
    * @returns true nếu valid
    */
   verify(secret: string, token: string): boolean {
     try {
-      const result = verifySync({
-        token,
-        secret,
-        epochTolerance: TOTP_CONFIG.window,
-      });
-      return result.valid;
+      // Kiểm tra trực tiếp step hiện tại trước
+      const directResult = verifySync({ token, secret });
+      if (directResult.valid) {
+        this.logger.debug(`TOTP valid at current step (delta=${directResult.delta})`);
+        return true;
+      }
+
+      // verifySync trong otplib v13 KHÔNG hỗ trợ epochTolerance / window
+      // → phải kiểm tra thủ công ±TOTP_CONFIG.window steps
+      const nowSec = Math.floor(Date.now() / 1000);
+      const currentStep = Math.floor(nowSec / TOTP_CONFIG.step);
+
+      for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
+        if (delta === 0) continue; // đã check ở trên
+        const testEpoch = (currentStep + delta) * TOTP_CONFIG.step;
+        const expectedToken = generateSync({ secret, epoch: testEpoch });
+        if (token === expectedToken) {
+          this.logger.debug(`TOTP valid at delta=${delta} (step=${currentStep + delta})`);
+          return true;
+        }
+      }
+
+      // Log chi tiết để debug
+      const expectedCurrent = generateSync({ secret });
+      this.logger.warn(`TOTP mismatch: received=${token}, expected=${expectedCurrent}, step=${currentStep}`);
+      return false;
     } catch (error) {
       this.logger.warn('otplib verify failed, using fallback', error);
-      // Fallback: simple comparison with current OTP
+      // Fallback: tự generate rồi so sánh thủ công (±window)
       try {
-        const currentOtp = this.generateFallback(secret);
-        const isValid = token === currentOtp;
-        this.logger.debug(
-          `verifyTOTP (fallback): token=${token}, expected=${currentOtp}, result=${isValid}`,
-        );
-        return isValid;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const currentStep = Math.floor(nowSec / TOTP_CONFIG.step);
+
+        for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
+          const testEpoch = (currentStep + delta) * TOTP_CONFIG.step;
+          const expected = this.generateFallback(secret);
+          if (token === expected) {
+            this.logger.debug(`verifyTOTP (fallback): valid at delta=${delta}`);
+            return true;
+          }
+        }
+
+        this.logger.debug(`verifyTOTP (fallback): token=${token}, no match in window`);
+        return false;
       } catch (e) {
         this.logger.error('TOTP verification error', e);
         return false;

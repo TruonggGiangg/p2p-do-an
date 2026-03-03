@@ -52,7 +52,7 @@ export class AdminService {
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
     private readonly keycloakService: KeycloakService,
-  ) { }
+  ) {}
 
   // ---------- Loan products (from Fineract) ----------
   async getLoanProductsForAdmin() {
@@ -77,6 +77,8 @@ export class AdminService {
       name: dto.name,
       required: dto.required ?? false,
       description: dto.description,
+      fieldType: dto.fieldType ?? 'file',
+      options: dto.options ?? [],
     });
     return doc.toObject();
   }
@@ -122,13 +124,13 @@ export class AdminService {
   async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) {
     await this.loanProductDocModel.deleteMany({ fineractProductId });
     if (items.length === 0) return { fineractProductId, count: 0 };
-    const operations = items.map((item) => ({
+    const operations = items.map(item => ({
       updateOne: {
         filter: { fineractProductId, documentTypeId: new Types.ObjectId(item.documentTypeId) },
         update: {
           $set: {
             required: item.required ?? false,
-          }
+          },
         },
         upsert: true,
       },
@@ -194,7 +196,11 @@ export class AdminService {
     for (const [id, curr] of currMap) {
       const prev = prevMap.get(id);
       if (!prev) added.push(curr);
-      else if (prev.name !== curr.name || prev.shortName !== curr.shortName || prev.interestRatePerPeriod !== curr.interestRatePerPeriod) {
+      else if (
+        prev.name !== curr.name ||
+        prev.shortName !== curr.shortName ||
+        prev.interestRatePerPeriod !== curr.interestRatePerPeriod
+      ) {
         modified.push(curr);
       }
     }
@@ -221,7 +227,7 @@ export class AdminService {
 
     // Filter unique clients and only inactive ones (active === false)
     let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
-      (c, index, self) => self.findIndex(t => t.id === c.id) === index
+      (c, index, self) => self.findIndex(t => t.id === c.id) === index,
     );
 
     // Filter only inactive clients (pending approval)
@@ -277,7 +283,10 @@ export class AdminService {
         fineractStatus: fc?.status ?? null,
         officeName: fc?.officeName ?? 'Head Office',
         activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-        displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
+        displayName:
+          ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
+          (fc as any)?.externalId ||
+          String((fc as any)?.id),
         // KYC data if available
         kycCompletedAt: u?.kycData?.metadata?.kycCompletedAt ?? null,
         hasKycData: !!u?.kycData,
@@ -297,7 +306,7 @@ export class AdminService {
 
     // Filter unique clients (Map contains both externalId and id keys)
     let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
-      (c, index, self) => self.findIndex(t => t.id === c.id) === index
+      (c, index, self) => self.findIndex(t => t.id === c.id) === index,
     );
 
     // Filter by keyword (displayName, username, email, firstname, lastname, externalId)
@@ -349,7 +358,10 @@ export class AdminService {
         fineractStatus: fc?.status ?? null,
         officeName: fc?.officeName ?? 'Head Office',
         activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-        displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || (fc as any)?.externalId || String((fc as any)?.id),
+        displayName:
+          ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
+          (fc as any)?.externalId ||
+          String((fc as any)?.id),
         kycStatus: u?.kycStatus ?? 'NONE',
         mobileNo: fc?.mobileNo ?? null,
         staffName: fc?.staffName ?? fc?.staffDisplayName ?? null,
@@ -363,14 +375,16 @@ export class AdminService {
   async getCustomerById(userId: string) {
     let user: any = null;
     if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId)
+      user = await this.userModel
+        .findById(userId)
         .select('username email profile fineractClientId status kycStatus createdAt metadata')
         .lean();
     }
 
     // If not found by Mongo ID, maybe userId is actually a fineractClientId
     if (!user) {
-      user = await this.userModel.findOne({ fineractClientId: userId })
+      user = await this.userModel
+        .findOne({ fineractClientId: userId })
         .select('username email profile fineractClientId status kycStatus createdAt metadata')
         .lean();
     }
@@ -395,9 +409,12 @@ export class AdminService {
       fineractStatus: fc?.status ?? null,
       officeName: fc?.officeName ?? 'Head Office',
       activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-      displayName: ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) || user?.username || `FC_${fineractClientId}`,
+      displayName:
+        ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
+        user?.username ||
+        `FC_${fineractClientId}`,
       mobileNo: fc?.mobileNo ?? fc?.phoneNumber ?? null,
-      staffName: fc?.staffName ?? (fc?.staffDisplayName ?? 'Chưa phân công'),
+      staffName: fc?.staffName ?? fc?.staffDisplayName ?? 'Chưa phân công',
       externalId: fc?.externalId ?? null,
     };
   }
@@ -424,10 +441,14 @@ export class AdminService {
       try {
         const accountsRes = await this.fineractSavingsService.getSavingsAccounts(clientId);
         savingsAccounts = Array.isArray(accountsRes) ? accountsRes : [];
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       try {
         charges = await this.fineractClientService.getClientCharges(clientId, true);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     const activeLoans = loans.filter((l: any) => {
@@ -437,9 +458,7 @@ export class AdminService {
     const totalSavings = savingsAccounts
       .filter((s: any) => s.status?.active)
       .reduce((sum: number, s: any) => sum + (Number(s.accountBalance) || 0), 0);
-    const lastLoanAmount = loans.length > 0
-      ? Math.max(...loans.map((l: any) => l.capital || 0))
-      : 0;
+    const lastLoanAmount = loans.length > 0 ? Math.max(...loans.map((l: any) => l.capital || 0)) : 0;
 
     const summary = {
       loanCycles: loans.length,
@@ -486,40 +505,39 @@ export class AdminService {
     const productMap = new Map(products.map((p: any) => [p.id, p]));
 
     // 4. Fetch local loan applications to map internal IDs and static data
-    const localLoans = user
-      ? await this.loanApplicationModel.find({ userId: user._id }).lean()
-      : [];
+    const localLoans = user ? await this.loanApplicationModel.find({ userId: user._id }).lean() : [];
     const localLoanMap = new Map<number, any>();
     for (const ll of localLoans) {
       if (ll.fineractLoanId) localLoanMap.set(ll.fineractLoanId, ll);
     }
 
     // 5. Transform
-    this.logger.log(`[getCustomerLoans] fineractClientId=${fineractClientId} | Found ${fineractLoans.length} total loans in Fineract`);
+    this.logger.log(
+      `[getCustomerLoans] fineractClientId=${fineractClientId} | Found ${fineractLoans.length} total loans in Fineract`,
+    );
 
-    return fineractLoans
-      .map(fl => {
-        const productId = fl.productId || fl.loanProductId;
-        const p: any = productMap.get(productId);
-        const ll: any = localLoanMap.get(fl.id);
-        const annualRate = fl.annualInterestRate ?? 0;
-        return {
-          _id: ll?._id?.toString() ?? `FL_${fl.id}`,
-          productId: productId,
-          productName: p?.name ?? String(productId),
-          productShortName: p?.shortName ?? '',
-          capital: fl.principal ?? ll?.capital ?? 0,
-          periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
-          monthlyPay: ll?.monthlyPay ?? 0,
-          entirelyPay: ll?.entirelyPay ?? 0,
-          monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
-          status: fl.status ?? { value: ll?.status ?? 'active', code: ll?.status ?? 'active' },
-          fineractLoanId: fl.id,
-          disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
-          createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
-          willing: ll?.willing ?? '',
-        };
-      });
+    return fineractLoans.map(fl => {
+      const productId = fl.productId || fl.loanProductId;
+      const p: any = productMap.get(productId);
+      const ll: any = localLoanMap.get(fl.id);
+      const annualRate = fl.annualInterestRate ?? 0;
+      return {
+        _id: ll?._id?.toString() ?? `FL_${fl.id}`,
+        productId: productId,
+        productName: p?.name ?? String(productId),
+        productShortName: p?.shortName ?? '',
+        capital: fl.principal ?? ll?.capital ?? 0,
+        periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
+        monthlyPay: ll?.monthlyPay ?? 0,
+        entirelyPay: ll?.entirelyPay ?? 0,
+        monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
+        status: fl.status ?? { value: ll?.status ?? 'active', code: ll?.status ?? 'active' },
+        fineractLoanId: fl.id,
+        disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
+        createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
+        willing: ll?.willing ?? '',
+      };
+    });
   }
 
   /**
@@ -534,11 +552,15 @@ export class AdminService {
     const products = await this.fineractLoanService.getLoanProducts();
     const productMap = new Map(products.map((p: any) => [p.id, p]));
 
-    this.logger.log(`[getAllPendingLoans] Found ${pendingFineractLoans.length} total pending loans (status 100) in Fineract`);
+    this.logger.log(
+      `[getAllPendingLoans] Found ${pendingFineractLoans.length} total pending loans (status 100) in Fineract`,
+    );
     pendingFineractLoans.forEach(fl => {
       const productId = fl.productId || fl.loanProductId;
       const p: any = productMap.get(productId);
-      this.logger.log(`  - Pending ID ${fl.id} | Client ${fl.clientId} | Product ${productId} (${p?.shortName || 'N/A'})`);
+      this.logger.log(
+        `  - Pending ID ${fl.id} | Client ${fl.clientId} | Product ${productId} (${p?.shortName || 'N/A'})`,
+      );
     });
 
     this.logger.log(`[getAllPendingLoans] Returning ${pendingFineractLoans.length} pending loans`);
@@ -595,9 +617,7 @@ export class AdminService {
     this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
     const { canApprove, missingRequired } = await this.canApproveLoan(fineractLoanId);
     if (!canApprove) {
-      throw new BadRequestException(
-        `Chưa duyệt đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`,
-      );
+      throw new BadRequestException(`Chưa duyệt đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
     }
 
     // Fineract requires: approvedOnDate <= expectedDisbursementDate
@@ -612,10 +632,7 @@ export class AdminService {
     }
 
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
-    await this.loanApplicationModel.updateOne(
-      { fineractLoanId },
-      { $set: { status: 'approved' } },
-    );
+    await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'approved' } });
     return { fineractLoanId, status: 'approved' };
   }
 
@@ -625,12 +642,12 @@ export class AdminService {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
-    if (!loan) throw new BadRequestException(`Kho\u1ea3n vay Fineract #${fineractLoanId} kh\u00f4ng t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng`);
+    if (!loan)
+      throw new BadRequestException(
+        `Kho\u1ea3n vay Fineract #${fineractLoanId} kh\u00f4ng t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng`,
+      );
     await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
-    await this.loanApplicationModel.updateOne(
-      { fineractLoanId },
-      { $set: { status: 'disbursed' } },
-    );
+    await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'disbursed' } });
     return { fineractLoanId, status: 'disbursed' };
   }
 
@@ -651,7 +668,10 @@ export class AdminService {
 
     // Map documentType names
     const docTypeIds = app.documents.map(d => d.documentTypeId).filter(Boolean);
-    const docTypes = await this.documentTypeModel.find({ _id: { $in: docTypeIds } }).lean().exec();
+    const docTypes = await this.documentTypeModel
+      .find({ _id: { $in: docTypeIds } })
+      .lean()
+      .exec();
     const typeMap = new Map(docTypes.map(t => [t._id.toString(), t.name]));
 
     // Enrich Fineract docs with Mongo data (including reviewStatus)
@@ -675,7 +695,9 @@ export class AdminService {
   async approveDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
-    this.logger.log(`[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId} documents=${JSON.stringify(app.documents?.map(d => ({ id: d.fineractDocumentId, type: typeof d.fineractDocumentId })))}`);
+    this.logger.log(
+      `[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId} documents=${JSON.stringify(app.documents?.map(d => ({ id: d.fineractDocumentId, type: typeof d.fineractDocumentId })))}`,
+    );
     const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
     if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
     doc.reviewStatus = 'approved';
@@ -709,9 +731,7 @@ export class AdminService {
       .lean();
     if (requiredDocTypes.length === 0) return { canApprove: true, missingRequired: [] };
     const approvedDocTypeIds = new Set(
-      (app.documents || [])
-        .filter(d => d.reviewStatus === 'approved')
-        .map(d => d.documentTypeId?.toString())
+      (app.documents || []).filter(d => d.reviewStatus === 'approved').map(d => d.documentTypeId?.toString()),
     );
     const missingRequired: string[] = [];
     for (const r of requiredDocTypes) {
@@ -867,7 +887,7 @@ export class AdminService {
       try {
         await this.keycloakService.updateUser(user.keycloakId, {
           kycStatus: 'verified',
-          clientStatus: 'active'
+          clientStatus: 'active',
         });
         this.logger.log(`[approveKyc] Updated Keycloak kycStatus and clientStatus for ${user.keycloakId}`);
       } catch (err: any) {
@@ -915,7 +935,8 @@ export class AdminService {
   async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) {
     const detail = await this.getKycDetail(userId);
     const doc = detail.documents.find(
-      (d: any) => d.entityType === entityType && Number(d.entityId) === Number(entityId) && Number(d.id) === Number(documentId),
+      (d: any) =>
+        d.entityType === entityType && Number(d.entityId) === Number(entityId) && Number(d.id) === Number(documentId),
     );
     if (!doc) throw new NotFoundException('Tài liệu không tồn tại');
     return this.fineractClientService.downloadDocument(entityType, entityId, documentId);

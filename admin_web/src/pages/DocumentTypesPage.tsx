@@ -4,13 +4,89 @@ import {
   DrawerForm,
   ProFormText,
   ProFormCheckbox,
+  ProFormSelect,
+  ProFormTextArea,
 } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Button, Popconfirm, message, Space, Typography } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { adminApi, type DocumentTypeDto } from '../api/admin';
+import { Button, Popconfirm, message, Space, Typography, Tag, Input, Form, Divider } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, FileOutlined, FontSizeOutlined, UnorderedListOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { adminApi, type DocumentTypeDto, type DocumentFieldType } from '../api/admin';
 
 const { Text } = Typography;
+
+const FIELD_TYPE_LABELS: Record<DocumentFieldType, string> = {
+  file: 'File đính kèm',
+  text: 'Nhập text',
+  select: 'Danh sách chọn',
+  button: 'Nhóm nút chọn',
+};
+
+const FIELD_TYPE_COLORS: Record<DocumentFieldType, string> = {
+  file: 'blue',
+  text: 'green',
+  select: 'orange',
+  button: 'purple',
+};
+
+const FIELD_TYPE_ICONS: Record<DocumentFieldType, React.ReactNode> = {
+  file: <FileOutlined />,
+  text: <FontSizeOutlined />,
+  select: <UnorderedListOutlined />,
+  button: <AppstoreOutlined />,
+};
+
+/** Options dynamic list cho select/button */
+function OptionsFormList() {
+  return (
+    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.fieldType !== cur.fieldType}>
+      {({ getFieldValue }) => {
+        const fieldType = getFieldValue('fieldType') as DocumentFieldType;
+        if (fieldType !== 'select' && fieldType !== 'button') return null;
+        return (
+          <>
+            <Divider plain style={{ margin: '8px 0 16px' }}>
+              Danh sách giá trị lựa chọn
+            </Divider>
+            <Form.List name="options" initialValue={['']}>
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...restField }) => (
+                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                      <Form.Item
+                        {...restField}
+                        name={name}
+                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập giá trị' }]}
+                        style={{ marginBottom: 0, flex: 1 }}
+                      >
+                        <Input placeholder={`Giá trị ${name + 1}`} />
+                      </Form.Item>
+                      {fields.length > 1 && (
+                        <MinusCircleOutlined
+                          onClick={() => remove(name)}
+                          style={{ color: '#ff4d4f', cursor: 'pointer' }}
+                        />
+                      )}
+                    </Space>
+                  ))}
+                  <Form.Item>
+                    <Button
+                      type="dashed"
+                      onClick={() => add('')}
+                      block
+                      icon={<PlusOutlined />}
+                    >
+                      Thêm giá trị
+                    </Button>
+                  </Form.Item>
+                </>
+              )}
+            </Form.List>
+          </>
+        );
+      }}
+    </Form.Item>
+  );
+}
 
 export default function DocumentTypesPage() {
   const actionRef = useRef<ActionType>();
@@ -23,11 +99,21 @@ export default function DocumentTypesPage() {
 
   const handleSave = async (values: any) => {
     try {
+      // Lọc bỏ giá trị rỗng trong options
+      const payload = {
+        ...values,
+        options: (values.options || []).filter((v: string) => v?.trim()),
+      };
+      // Nếu fieldType không phải select/button → xóa options
+      if (payload.fieldType !== 'select' && payload.fieldType !== 'button') {
+        payload.options = [];
+      }
+
       if (currentRow) {
-        await adminApi.updateDocumentType(currentRow._id, values);
+        await adminApi.updateDocumentType(currentRow._id, payload);
         message.success('Cập nhật thành công');
       } else {
-        await adminApi.createDocumentType(values);
+        await adminApi.createDocumentType(payload);
         message.success('Thêm mới thành công');
       }
       setModalVisible(false);
@@ -60,9 +146,54 @@ export default function DocumentTypesPage() {
       render: (text) => <Text strong>{text}</Text>,
     },
     {
+      title: 'Loại trường',
+      dataIndex: 'fieldType',
+      width: 170,
+      align: 'center',
+      valueType: 'select',
+      valueEnum: {
+        file: { text: 'File đính kèm' },
+        text: { text: 'Nhập text' },
+        select: { text: 'Danh sách chọn' },
+        button: { text: 'Nhóm nút chọn' },
+      },
+      search: {
+        transform: (v) => (v === '' || v === undefined ? undefined : v),
+      },
+      fieldProps: {
+        placeholder: 'Tất cả',
+        allowClear: true,
+      },
+      render: (_, record) => {
+        const ft = record.fieldType || 'file';
+        return (
+          <Tag icon={FIELD_TYPE_ICONS[ft]} color={FIELD_TYPE_COLORS[ft]}>
+            {FIELD_TYPE_LABELS[ft]}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Giá trị lựa chọn',
+      dataIndex: 'options',
+      search: false,
+      width: 250,
+      ellipsis: true,
+      render: (_, record) => {
+        if (!record.options?.length) return <Text type="secondary">—</Text>;
+        return (
+          <Space size={[0, 4]} wrap>
+            {record.options.map((opt, idx) => (
+              <Tag key={idx}>{opt}</Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       title: 'Bắt buộc',
       dataIndex: 'required',
-      width: 150,
+      width: 120,
       align: 'center',
       valueType: 'select',
       valueEnum: {
@@ -116,16 +247,26 @@ export default function DocumentTypesPage() {
     },
   ];
 
+  const initialValues = currentRow
+    ? {
+      ...currentRow,
+      options: currentRow.options?.length ? currentRow.options : [''],
+    }
+    : { required: false, fieldType: 'file' as DocumentFieldType, options: [''] };
+
   return (
     <>
       <DrawerForm
         title={currentRow ? 'Sửa loại tài liệu' : 'Thêm loại tài liệu'}
         open={modalVisible}
-        onOpenChange={setModalVisible}
+        onOpenChange={(open) => {
+          setModalVisible(open);
+          if (!open) setCurrentRow(null);
+        }}
         layout="vertical"
-        initialValues={currentRow || { required: false }}
+        initialValues={initialValues}
         onFinish={handleSave}
-        width={Math.min(480, window.innerWidth * 0.92)}
+        width={Math.min(520, window.innerWidth * 0.92)}
         drawerProps={{
           destroyOnClose: true,
         }}
@@ -136,6 +277,29 @@ export default function DocumentTypesPage() {
           placeholder="Ví dụ: CCCD mặt trước"
           rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
         />
+
+        <ProFormTextArea
+          name="description"
+          label="Mô tả"
+          placeholder="Mô tả ngắn gọn về loại tài liệu này (không bắt buộc)"
+          fieldProps={{ autoSize: { minRows: 2, maxRows: 4 } }}
+        />
+
+        <ProFormSelect
+          name="fieldType"
+          label="Loại trường nhập liệu"
+          tooltip="Xác định cách người dùng cung cấp thông tin: upload file, nhập text, hoặc chọn từ danh sách"
+          options={[
+            { label: '📁 File đính kèm (upload)', value: 'file' },
+            { label: '✏️ Nhập text tự do', value: 'text' },
+            { label: '📋 Danh sách chọn (dropdown)', value: 'select' },
+            { label: '🔘 Nhóm nút chọn (buttons)', value: 'button' },
+          ]}
+          rules={[{ required: true, message: 'Vui lòng chọn loại trường' }]}
+        />
+
+        <OptionsFormList />
+
         <ProFormCheckbox name="required">Đánh dấu là bắt buộc nộp</ProFormCheckbox>
       </DrawerForm>
 
@@ -156,6 +320,9 @@ export default function DocumentTypesPage() {
             if (params.required !== undefined && params.required !== '') {
               const isReq = params.required === 'true';
               filtered = filtered.filter((i) => i.required === isReq);
+            }
+            if (params.fieldType) {
+              filtered = filtered.filter((i) => (i.fieldType || 'file') === params.fieldType);
             }
             const page = params.current ?? 1;
             const size = params.pageSize ?? 10;
