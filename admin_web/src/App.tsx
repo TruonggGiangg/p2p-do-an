@@ -10,7 +10,6 @@ import SyncDriftPage from './pages/SyncDriftPage';
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
-import KYCApprovalsPage from './pages/KYCApprovalsPage';
 
 // Modern fintech color palette - Teal/Cyan
 const LIGHT_PALETTE = {
@@ -105,26 +104,25 @@ export default function App() {
         }}
       >
         <AntApp>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <AppLayout />
-              </RequireAuth>
-            }
-          >
-            <Route index element={<DocumentTypesPage />} />
-            <Route path="loan-products" element={<LoanProductsPage />} />
-            <Route path="loan-approvals" element={<LoanApprovalsPage />} />
-            <Route path="kyc-approvals" element={<KYCApprovalsPage />} />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="customers/:id" element={<CustomerDetailPage />} />
-            <Route path="sync-drift" element={<SyncDriftPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <AppLayout />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<DocumentTypesPage />} />
+              <Route path="loan-products" element={<LoanProductsPage />} />
+              <Route path="loan-approvals" element={<LoanApprovalsPage />} />
+              <Route path="customers" element={<CustomersPage />} />
+              <Route path="customers/:id" element={<CustomerDetailPage />} />
+              <Route path="sync-drift" element={<SyncDriftPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </AntApp>
       </ConfigProvider>
     </ThemeContext.Provider>

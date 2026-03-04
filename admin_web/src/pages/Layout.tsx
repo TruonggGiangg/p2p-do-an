@@ -21,7 +21,6 @@ const menuItems = [
   { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
-  { key: '/kyc-approvals', icon: <IdcardOutlined />, label: 'Phê duyệt KYC' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
 ];
@@ -59,7 +58,13 @@ export default function AppLayout() {
         width={240}
         style={{
           background: isDarkMode ? '#020617' : '#0F172A',
-          borderRight: `1px solid ${token.colorBorder}`
+          borderRight: `1px solid ${token.colorBorder}`,
+          height: '100vh',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 100,
         }}
       >
         {/* Logo */}
@@ -82,24 +87,26 @@ export default function AppLayout() {
           )}
         </div>
 
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems.map((item) => ({
-            key: item.key,
-            icon: item.icon,
-            label: item.label,
-            onClick: () => navigate(item.key),
-          }))}
-          style={{ background: 'transparent', border: 'none' }}
-        />
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems.map((item) => ({
+              key: item.key,
+              icon: item.icon,
+              label: item.label,
+              onClick: () => navigate(item.key),
+            }))}
+            style={{ background: 'transparent', border: 'none' }}
+          />
+        </div>
 
         {/* User + Logout */}
         <div style={{
-          position: 'absolute', bottom: 56, width: '100%',
           padding: collapsed ? '12px 0' : '12px 16px',
           borderTop: `1px solid ${token.colorBorder}`,
+          background: isDarkMode ? '#020617' : '#0F172A',
           display: 'flex', alignItems: 'center', gap: 8,
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}>
@@ -112,13 +119,19 @@ export default function AppLayout() {
         </div>
       </Sider>
 
-      <Layout>
+      <Layout style={{ marginLeft: collapsed ? 80 : 240, transition: 'all 0.2s' }}>
         <Header style={{
           background: token.colorBgContainer,
           borderBottom: `1px solid ${token.colorBorder}`,
           padding: '0 24px',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          height: 56,
+          height: 64,
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          left: collapsed ? 80 : 240,
+          zIndex: 99,
+          transition: 'all 0.2s',
         }}>
           <Space size="middle">
             <Tooltip title={isDarkMode ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
@@ -164,11 +177,11 @@ export default function AppLayout() {
           </Space>
         </Header>
         <Content style={{
-          margin: 24,
+          margin: '88px 24px 24px 24px',
           padding: 24,
           background: token.colorBgContainer,
           borderRadius: token.borderRadius,
-          minHeight: 360,
+          minHeight: 'calc(100vh - 112px)',
           overflow: 'auto',
           transition: 'all 0.3s ease'
         }}>

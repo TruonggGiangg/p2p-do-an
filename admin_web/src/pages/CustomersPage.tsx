@@ -49,11 +49,28 @@ export default function CustomersPage() {
         verifiedKyc: 0,
     });
 
-    // Load pending count for badge
+    // Load counts and stats
+    const fetchGlobalStats = async () => {
+        try {
+            // Fetch a larger page size to calculate true stats, 
+            // since the backend logic already fetches everything into memory anyway.
+            const res = await adminApi.getCustomers(1, 1000);
+            const pendingRes = await adminApi.getPendingApprovalCustomers(1, 1000);
+
+            setPendingCount(pendingRes.total);
+            setStats({
+                total: res.total,
+                active: res.users.filter(u => u.status === 'active').length,
+                pendingKyc: res.users.filter(u => u.kycStatus === 'PENDING').length,
+                verifiedKyc: res.users.filter(u => u.kycStatus === 'VERIFIED').length,
+            });
+        } catch (error) {
+            console.error('Failed to fetch stats:', error);
+        }
+    };
+
     useEffect(() => {
-        adminApi.getPendingApprovalCustomers(1, 1).then(res => {
-            setPendingCount(res.total);
-        }).catch(() => {});
+        fetchGlobalStats();
     }, []);
 
     const columns: ProColumns<CustomerDto>[] = [
@@ -257,15 +274,15 @@ export default function CustomersPage() {
     };
 
     const fetchData = async (params: any) => {
-        const page = params.current ?? 1;
-        const limit = params.pageSize ?? 20;
         const keyword = params.keyword as string | undefined;
 
+        // Fetch ALL records for the given keyword to support correct clientside filtering/pagination
+        // Since backend fetches all from Fineract anyway, this is efficient for this scale.
         let res;
         if (viewMode === 'pending') {
-            res = await adminApi.getPendingApprovalCustomers(page, limit, keyword);
+            res = await adminApi.getPendingApprovalCustomers(1, 1000, keyword);
         } else {
-            res = await adminApi.getCustomers(page, limit, keyword);
+            res = await adminApi.getCustomers(1, 1000, keyword);
 
             // Apply view mode filter
             if (viewMode === 'active') {
@@ -275,18 +292,14 @@ export default function CustomersPage() {
             }
         }
 
-        // Apply advanced filters
+        // Apply advanced filters to the FULL list
         const filteredUsers = applyFilters(res.users);
 
-        // Update stats based on current data
-        setStats({
-            total: res.total,
-            active: res.users.filter(u => u.status === 'active').length,
-            pendingKyc: res.users.filter(u => u.kycStatus === 'PENDING').length,
-            verifiedKyc: res.users.filter(u => u.kycStatus === 'VERIFIED').length,
-        });
-
-        return { data: filteredUsers, success: true, total: filteredUsers.length };
+        return {
+            data: filteredUsers,
+            success: true,
+            total: filteredUsers.length
+        };
     };
 
     const getHeaderTitle = () => {
@@ -335,6 +348,7 @@ export default function CustomersPage() {
                 <Space>
                     <BankOutlined />
                     Chưa kích hoạt
+                    <Badge count={stats.total - stats.active} style={{ backgroundColor: token.colorTextTertiary }} />
                 </Space>
             ),
         },
@@ -523,7 +537,10 @@ export default function CustomersPage() {
                     <Button
                         key="refresh"
                         icon={<ReloadOutlined />}
-                        onClick={() => actionRef.current?.reload()}
+                        onClick={() => {
+                            fetchGlobalStats();
+                            actionRef.current?.reload();
+                        }}
                     >
                         Làm mới
                     </Button>,
