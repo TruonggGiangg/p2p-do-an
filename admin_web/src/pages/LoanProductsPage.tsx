@@ -19,6 +19,8 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { adminApi, type LoanProductDto, type DocumentTypeDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import { ProductDetailTable } from '../utils/productDetailTable';
+import { translateValue } from '../utils/vi';
 
 const { Text } = Typography;
 
@@ -266,16 +268,16 @@ export default function LoanProductsPage() {
           setViewModalVisible(false);
           setViewProductDetails(null);
         }}
-        width={Math.min(960, window.innerWidth * 0.92)}
+        width={Math.min(1100, window.innerWidth * 0.95)}
         destroyOnClose
-        styles={{ body: { padding: '24px' } }}
+        styles={{ body: { padding: '24px', overflowX: 'auto' } }}
         extra={
           <Button icon={<CloseOutlined />} onClick={() => { setViewModalVisible(false); setViewProductDetails(null); }}>
             Đóng
           </Button>
         }
       >
-        <div style={{ maxHeight: '72vh', overflowY: 'auto', paddingRight: '12px' }}>
+        <div style={{ maxHeight: '72vh', overflowY: 'auto', overflowX: 'auto', paddingRight: '12px', minWidth: 0 }}>
           {loadingDetails ? (
             <div style={{ padding: '60px 0', textAlign: 'center' }}>Đang tải cấu hình chi tiết...</div>
           ) : !viewProductDetails ? (
@@ -296,14 +298,15 @@ export default function LoanProductsPage() {
                   <div style={{ color: token.colorTextSecondary, fontSize: '12px', textTransform: 'uppercase' }}>Mã sản phẩm</div>
                   <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{viewProductDetails.name} <Text type="secondary" style={{ fontSize: '14px', fontWeight: 'normal' }}>({viewProductDetails.shortName})</Text></div>
                 </div>
-                <Tag color={viewProductDetails.status?.includes('active') ? 'success' : 'warning'} style={{ padding: '4px 12px', borderRadius: '4px', fontWeight: 'bold' }}>
-                  {viewProductDetails.status?.toUpperCase()}
+                <Tag color={viewProductDetails.status?.includes?.('active') || (typeof viewProductDetails.status === 'object' && viewProductDetails.status?.value?.toLowerCase?.().includes?.('active')) ? 'success' : 'warning'} style={{ padding: '4px 12px', borderRadius: '4px', fontWeight: 'bold' }}>
+                  {translateValue(typeof viewProductDetails.status === 'object' ? viewProductDetails.status?.value ?? viewProductDetails.status?.code : viewProductDetails.status)}
                 </Tag>
               </div>
 
               <Tabs
                 defaultActiveKey="general"
                 type="card"
+                tabBarStyle={{ marginBottom: 16 }}
                 items={[
                   {
                     key: 'general',
@@ -311,9 +314,9 @@ export default function LoanProductsPage() {
                     children: (
                       <Descriptions bordered size="small" column={2}>
                         <Descriptions.Item label="ID">{viewProductDetails.id}</Descriptions.Item>
-                        <Descriptions.Item label="Tiền tệ">{viewProductDetails.currency?.displayLabel}</Descriptions.Item>
+                        <Descriptions.Item label="Tiền tệ">{viewProductDetails.currency?.displayLabel || viewProductDetails.currency?.code || 'Không có'}</Descriptions.Item>
                         <Descriptions.Item label="Bội số tiền">{viewProductDetails.currency?.inMultiplesOf}</Descriptions.Item>
-                        <Descriptions.Item label="Mô tả" span={2}>{viewProductDetails.description || 'N/A'}</Descriptions.Item>
+                        <Descriptions.Item label="Mô tả" span={2}>{viewProductDetails.description || 'Không có'}</Descriptions.Item>
 
                         <Descriptions.Item label="Gốc mặc định">{viewProductDetails.principal?.toLocaleString()} {viewProductDetails.currency?.code}</Descriptions.Item>
                         <Descriptions.Item label="Gốc tối thiểu">{viewProductDetails.minPrincipal?.toLocaleString()} {viewProductDetails.currency?.code}</Descriptions.Item>
@@ -327,11 +330,11 @@ export default function LoanProductsPage() {
                     children: (
                       <Descriptions bordered size="small" column={2}>
                         <Descriptions.Item label="Số kỳ trả nợ mặc định">{viewProductDetails.numberOfRepayments}</Descriptions.Item>
-                        <Descriptions.Item label="Tần suất hoàn trả">{viewProductDetails.repaymentEvery} {viewProductDetails.repaymentFrequencyType?.value}</Descriptions.Item>
+                        <Descriptions.Item label="Tần suất hoàn trả">{viewProductDetails.repaymentEvery} {translateValue(viewProductDetails.repaymentFrequencyType?.value)}</Descriptions.Item>
                         <Descriptions.Item label="Số kỳ tối thiểu">{viewProductDetails.minNumberOfRepayments}</Descriptions.Item>
                         <Descriptions.Item label="Số kỳ tối đa">{viewProductDetails.maxNumberOfRepayments}</Descriptions.Item>
-                        <Descriptions.Item label="Loại Amortization" span={2}>{viewProductDetails.amortizationType?.value}</Descriptions.Item>
-                        <Descriptions.Item label="Hình thức trả gốc/lãi" span={2}>{viewProductDetails.transactionProcessingStrategyName}</Descriptions.Item>
+                        <Descriptions.Item label="Hình thức trả nợ gốc" span={2}>{translateValue(viewProductDetails.amortizationType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Hình thức trả gốc/lãi" span={2}>{translateValue(viewProductDetails.transactionProcessingStrategyName)}</Descriptions.Item>
                       </Descriptions>
                     )
                   },
@@ -340,9 +343,9 @@ export default function LoanProductsPage() {
                     label: 'Lãi suất',
                     children: (
                       <Descriptions bordered size="small" column={2}>
-                        <Descriptions.Item label="Kiểu lãi suất" span={2}>{viewProductDetails.interestType?.value}</Descriptions.Item>
-                        <Descriptions.Item label="Chu kỳ tính lãi">{viewProductDetails.interestCalculationPeriodType?.value}</Descriptions.Item>
-                        <Descriptions.Item label="Lãi suất mặc định">{viewProductDetails.interestRatePerPeriod}% / {viewProductDetails.interestRateFrequencyType?.value}</Descriptions.Item>
+                        <Descriptions.Item label="Kiểu lãi suất" span={2}>{translateValue(viewProductDetails.interestType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Chu kỳ tính lãi">{translateValue(viewProductDetails.interestCalculationPeriodType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Lãi suất mặc định">{viewProductDetails.interestRatePerPeriod}% / {translateValue(viewProductDetails.interestRateFrequencyType?.value)}</Descriptions.Item>
                         <Descriptions.Item label="Lãi suất tối thiểu">{viewProductDetails.minInterestRatePerPeriod}%</Descriptions.Item>
                         <Descriptions.Item label="Lãi suất tối đa">{viewProductDetails.maxInterestRatePerPeriod}%</Descriptions.Item>
                         <Descriptions.Item label="Lãi suất năm">{viewProductDetails.annualInterestRate}%</Descriptions.Item>
@@ -354,12 +357,12 @@ export default function LoanProductsPage() {
                     label: 'Cài đặt hệ thống',
                     children: (
                       <Descriptions bordered size="small" column={2}>
-                        <Descriptions.Item label="Ngày trong tháng (type)">{viewProductDetails.daysInMonthType?.value}</Descriptions.Item>
-                        <Descriptions.Item label="Ngày trong năm (type)">{viewProductDetails.daysInYearType?.value}</Descriptions.Item>
+                        <Descriptions.Item label="Ngày trong tháng">{translateValue(viewProductDetails.daysInMonthType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Ngày trong năm">{translateValue(viewProductDetails.daysInYearType?.value)}</Descriptions.Item>
                         <Descriptions.Item label="Đa đợt giải ngân">{viewProductDetails.multiDisburseLoan ? 'Có' : 'Không'}</Descriptions.Item>
                         <Descriptions.Item label="Hạn mức dư nợ tối đa">{viewProductDetails.outstandingLoanBalance?.toLocaleString()}</Descriptions.Item>
-                        <Descriptions.Item label="Kế hoạch lịch trả nợ">{viewProductDetails.loanScheduleType?.value}</Descriptions.Item>
-                        <Descriptions.Item label="Kiểu xử lý lịch">{viewProductDetails.loanScheduleProcessingType?.value}</Descriptions.Item>
+                        <Descriptions.Item label="Kế hoạch lịch trả nợ">{translateValue(viewProductDetails.loanScheduleType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Kiểu xử lý lịch">{translateValue(viewProductDetails.loanScheduleProcessingType?.value)}</Descriptions.Item>
                       </Descriptions>
                     )
                   },
@@ -369,14 +372,21 @@ export default function LoanProductsPage() {
                     children: (
                       viewProductDetails.isInterestRecalculationEnabled ? (
                         <Descriptions bordered size="small" column={1}>
-                          <Descriptions.Item label="Kiểu compounding">{viewProductDetails.interestRecalculationData?.interestRecalculationCompoundingType?.value}</Descriptions.Item>
-                          <Descriptions.Item label="Chiến lược tái cơ cấu">{viewProductDetails.interestRecalculationData?.rescheduleStrategyType?.value}</Descriptions.Item>
-                          <Descriptions.Item label="Tần suất tái tính toán">{viewProductDetails.interestRecalculationData?.recalculationRestFrequencyType?.value}</Descriptions.Item>
-                          <Descriptions.Item label="Phí trả trước">{viewProductDetails.interestRecalculationData?.preClosureInterestCalculationStrategy?.value}</Descriptions.Item>
+                          <Descriptions.Item label="Kiểu ghép lãi">{translateValue(viewProductDetails.interestRecalculationData?.interestRecalculationCompoundingType?.value)}</Descriptions.Item>
+                          <Descriptions.Item label="Chiến lược tái cơ cấu">{translateValue(viewProductDetails.interestRecalculationData?.rescheduleStrategyType?.value)}</Descriptions.Item>
+                          <Descriptions.Item label="Tần suất tái tính toán">{translateValue(viewProductDetails.interestRecalculationData?.recalculationRestFrequencyType?.value)}</Descriptions.Item>
+                          <Descriptions.Item label="Phí trả trước">{translateValue(viewProductDetails.interestRecalculationData?.preClosureInterestCalculationStrategy?.value)}</Descriptions.Item>
                         </Descriptions>
                       ) : (
                         <Empty description="Tính năng tái tính toán lãi không được bật" />
                       )
+                    )
+                  },
+                  {
+                    key: 'report',
+                    label: 'Bảng báo cáo chi tiết',
+                    children: (
+                      <ProductDetailTable product={viewProductDetails} />
                     )
                   },
                   {

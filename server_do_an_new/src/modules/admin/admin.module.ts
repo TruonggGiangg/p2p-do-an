@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { DocumentType, DocumentTypeSchema } from './schemas/document-type.schema';
 import { LoanProductDocumentType, LoanProductDocumentTypeSchema } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, LoanProductSnapshotSchema } from './schemas/loan-product-snapshot.schema';
+import { SavingsProductSnapshot, SavingsProductSnapshotSchema } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
@@ -24,6 +25,7 @@ import { EkycModule } from '../ekyc/ekyc.module';
       { name: DocumentType.name, schema: DocumentTypeSchema },
       { name: LoanProductDocumentType.name, schema: LoanProductDocumentTypeSchema },
       { name: LoanProductSnapshot.name, schema: LoanProductSnapshotSchema },
+      { name: SavingsProductSnapshot.name, schema: SavingsProductSnapshotSchema },
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },

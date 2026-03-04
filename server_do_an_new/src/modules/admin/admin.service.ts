@@ -8,7 +8,15 @@ import { KeycloakService } from '../auth/services/keycloak.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
-import { SyncDriftLog } from './schemas/sync-drift-log.schema';
+import { SavingsProductSnapshot, SnapshotSavingsProductItem, SAVINGS_SNAPSHOT_SCOPE } from './schemas/savings-product-snapshot.schema';
+import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
+import {
+  flattenLoanProduct,
+  flattenSavingsProduct,
+  diffProducts,
+  LOAN_PRODUCT_FIELDS,
+  SAVINGS_PRODUCT_FIELDS,
+} from './utils/product-sync-fields';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
@@ -48,6 +56,7 @@ export class AdminService {
     @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
     @InjectModel(LoanProductDocumentType.name) private loanProductDocModel: Model<LoanProductDocumentType>,
     @InjectModel(LoanProductSnapshot.name) private snapshotModel: Model<LoanProductSnapshot>,
+    @InjectModel(SavingsProductSnapshot.name) private savingsSnapshotModel: Model<SavingsProductSnapshot>,
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
@@ -160,9 +169,10 @@ export class AdminService {
     );
   }
 
-  async logSyncDrift(added: SnapshotProductItem[], removed: SnapshotProductItem[], modified: SnapshotProductItem[]) {
+  async logSyncDrift(added: ProductDiffItem[], removed: ProductDiffItem[], modified: ProductDiffItem[], scope: 'loan' | 'savings' = 'loan') {
     const hasDrift = added.length > 0 || removed.length > 0 || modified.length > 0;
     await this.syncDriftLogModel.create({
+      scope,
       syncedAt: new Date(),
       added,
       removed,
@@ -171,53 +181,134 @@ export class AdminService {
     });
   }
 
-  async getSyncDriftLogs(limit = 20) {
-    const logs = await this.syncDriftLogModel.find().sort({ syncedAt: -1 }).limit(limit).lean();
+  async getSyncDriftLogs(limit = 20, scope?: 'loan' | 'savings') {
+    const filter: any = {};
+    if (scope === 'savings') filter.scope = 'savings';
+    else if (scope === 'loan') filter.$or = [{ scope: 'loan' }, { scope: { $exists: false } }, { scope: null }];
+    const logs = await this.syncDriftLogModel.find(filter).sort({ syncedAt: -1 }).limit(limit).lean();
     return logs;
   }
 
   /**
    * Compare given products with snapshot and return diff. Optionally persist snapshot and log.
-   * Pass currentProducts when already fetched (e.g. from LoanService) to avoid double fetch.
+   * So sánh từng trường thông tin, ghi chi tiết fieldChanges cho modified.
    */
   async compareAndSync(
     persist = true,
     currentProducts?: any[],
-  ): Promise<{ added: SnapshotProductItem[]; removed: SnapshotProductItem[]; modified: SnapshotProductItem[] }> {
+  ): Promise<{ added: ProductDiffItem[]; removed: ProductDiffItem[]; modified: ProductDiffItem[] }> {
     const raw = currentProducts ?? (await this.fineractLoanService.getLoanProducts());
-    const currentNormalized: SnapshotProductItem[] = raw.map((p: any) => ({
-      id: p.id,
-      name: p.name || '',
-      shortName: p.shortName || '',
-      interestRatePerPeriod: p.interestRatePerPeriod,
-    }));
+    const currentNormalized: SnapshotProductItem[] = raw.map((p: any) => flattenLoanProduct(p));
 
     const previous = await this.getSnapshot();
     const prevMap = new Map(previous.map(p => [p.id, p]));
     const currMap = new Map(currentNormalized.map(p => [p.id, p]));
 
-    const added: SnapshotProductItem[] = [];
-    const removed: SnapshotProductItem[] = [];
-    const modified: SnapshotProductItem[] = [];
+    const added: ProductDiffItem[] = [];
+    const removed: ProductDiffItem[] = [];
+    const modified: ProductDiffItem[] = [];
 
     for (const [id, curr] of currMap) {
       const prev = prevMap.get(id);
-      if (!prev) added.push(curr);
-      else if (
-        prev.name !== curr.name ||
-        prev.shortName !== curr.shortName ||
-        prev.interestRatePerPeriod !== curr.interestRatePerPeriod
-      ) {
-        modified.push(curr);
+      if (!prev) {
+        added.push({ id: curr.id, name: curr.name, shortName: curr.shortName });
+      } else {
+        const fieldChanges = diffProducts(prev, curr, LOAN_PRODUCT_FIELDS);
+        if (fieldChanges.length > 0) {
+          modified.push({
+            id: curr.id,
+            name: curr.name,
+            shortName: curr.shortName,
+            fieldChanges,
+          });
+        }
       }
     }
     for (const [id] of prevMap) {
-      if (!currMap.has(id)) removed.push(previous.find(p => p.id === id)!);
+      if (!currMap.has(id)) {
+        const p = previous.find(x => x.id === id)!;
+        removed.push({ id: p.id, name: p.name, shortName: p.shortName });
+      }
     }
 
     if (persist) {
       await this.saveSnapshot(currentNormalized);
-      await this.logSyncDrift(added, removed, modified);
+      await this.logSyncDrift(added, removed, modified, 'loan');
+    }
+    return { added, removed, modified };
+  }
+
+  // ---------- Savings products (from Fineract) ----------
+  async getSavingsProductsForAdmin() {
+    const products = await this.fineractSavingsService.getSavingsProducts();
+    return products.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      shortName: p.shortName,
+      nominalAnnualInterestRate: p.nominalAnnualInterestRate,
+      description: p.description,
+      currency: p.currency,
+    }));
+  }
+
+  async getSavingsProductDetails(productId: number) {
+    return this.fineractSavingsService.getSavingsProductDetails(productId);
+  }
+
+  async getSavingsSnapshot(): Promise<SnapshotSavingsProductItem[]> {
+    const snap = await this.savingsSnapshotModel.findOne({ scope: SAVINGS_SNAPSHOT_SCOPE }).lean();
+    return snap?.products ?? [];
+  }
+
+  async saveSavingsSnapshot(products: SnapshotSavingsProductItem[]) {
+    await this.savingsSnapshotModel.findOneAndUpdate(
+      { scope: SAVINGS_SNAPSHOT_SCOPE },
+      { products, updatedAtSnapshot: new Date() },
+      { upsert: true },
+    );
+  }
+
+  async compareAndSyncSavings(
+    persist = true,
+    currentProducts?: any[],
+  ): Promise<{ added: ProductDiffItem[]; removed: ProductDiffItem[]; modified: ProductDiffItem[] }> {
+    const raw = currentProducts ?? (await this.fineractSavingsService.getSavingsProducts());
+    const currentNormalized: SnapshotSavingsProductItem[] = raw.map((p: any) => flattenSavingsProduct(p));
+
+    const previous = await this.getSavingsSnapshot();
+    const prevMap = new Map(previous.map(p => [p.id, p]));
+    const currMap = new Map(currentNormalized.map(p => [p.id, p]));
+
+    const added: ProductDiffItem[] = [];
+    const removed: ProductDiffItem[] = [];
+    const modified: ProductDiffItem[] = [];
+
+    for (const [id, curr] of currMap) {
+      const prev = prevMap.get(id);
+      if (!prev) {
+        added.push({ id: curr.id, name: curr.name, shortName: curr.shortName });
+      } else {
+        const fieldChanges = diffProducts(prev, curr, SAVINGS_PRODUCT_FIELDS);
+        if (fieldChanges.length > 0) {
+          modified.push({
+            id: curr.id,
+            name: curr.name,
+            shortName: curr.shortName,
+            fieldChanges,
+          });
+        }
+      }
+    }
+    for (const [id] of prevMap) {
+      if (!currMap.has(id)) {
+        const p = previous.find(x => x.id === id)!;
+        removed.push({ id: p.id, name: p.name, shortName: p.shortName });
+      }
+    }
+
+    if (persist) {
+      await this.saveSavingsSnapshot(currentNormalized);
+      await this.logSyncDrift(added, removed, modified, 'savings');
     }
     return { added, removed, modified };
   }

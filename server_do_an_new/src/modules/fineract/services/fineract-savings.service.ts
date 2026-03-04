@@ -18,6 +18,45 @@ export class FineractSavingsService extends FineractBaseService {
     }
 
     /**
+     * Get all savings products from Fineract (form data API - same as Mifos web app)
+     */
+    async getSavingsProducts(): Promise<any[]> {
+        try {
+            const response = await this.client.get('/savingsproducts');
+            const items = response.data?.pageItems ?? response.data ?? [];
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.handleError(error, 'Failed to get savings products list');
+        }
+    }
+
+    /**
+     * Tìm ID sản phẩm tiết kiệm theo shortName (ví dụ: VP2P)
+     */
+    async getProductIdByShortName(shortName: string): Promise<number | null> {
+        try {
+            const products = await this.getSavingsProducts();
+            const found = products.find((p: any) => (p.shortName || '').toUpperCase() === shortName.toUpperCase());
+            return found ? found.id : null;
+        } catch (error: any) {
+            this.logger.warn(`[getProductIdByShortName] Failed: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Get savings product details by ID
+     */
+    async getSavingsProductDetails(productId: number): Promise<any> {
+        try {
+            const response = await this.client.get(`/savingsproducts/${productId}`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, `Failed to get savings product ${productId}`);
+        }
+    }
+
+    /**
      * Get all savings accounts for a client
      */
     async getSavingsAccounts(clientId: number): Promise<any[]> {
@@ -50,10 +89,18 @@ export class FineractSavingsService extends FineractBaseService {
     }
 
     /**
-     * Create a new savings account (e-wallet) for a client
+     * Create a new savings account (e-wallet) for a client.
+     * Nếu productId không truyền: tìm sản phẩm shortName VP2P, fallback ewalletProductId từ config.
      */
     async createSavingsAccount(clientId: number, productId?: number): Promise<number> {
-        const ewalletProductId = productId || this.getDefaultConfig<number>('ewalletProductId');
+        let ewalletProductId = productId;
+        if (ewalletProductId == null) {
+            const vp2pId = await this.getProductIdByShortName('VP2P');
+            ewalletProductId = vp2pId ?? this.getDefaultConfig<number>('ewalletProductId');
+            if (vp2pId) {
+                this.logger.log(`[createSavingsAccount] Using VP2P product id=${vp2pId}`);
+            }
+        }
 
         try {
             // Use strict date format (yyyy-MM-dd) for savings accounts to avoid locale issues

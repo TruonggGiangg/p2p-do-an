@@ -5,6 +5,7 @@ import React from 'react';
 import {
   FileTextOutlined,
   BankOutlined,
+  WalletOutlined,
   SyncOutlined,
   UserOutlined,
   CheckCircleOutlined,
@@ -20,6 +21,7 @@ const { Text, Title } = Typography;
 const menuItems = [
   { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
+  { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },

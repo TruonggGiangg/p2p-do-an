@@ -81,7 +81,8 @@ export default function CustomersPage() {
             dataIndex: 'displayName',
             key: 'name',
             fixed: 'left',
-            width: 220,
+            width: 260,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             render: (_, r) => (
                 <Space>
                     <Avatar
@@ -112,14 +113,16 @@ export default function CustomersPage() {
             title: 'Email',
             dataIndex: 'email',
             key: 'email',
-            width: 200,
+            width: 220,
             ellipsis: true,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             render: v => v || <Text type="secondary">–</Text>,
         },
         {
             title: 'Văn phòng / Nhân viên',
             key: 'officeStaff',
-            width: 180,
+            width: 200,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             render: (_, r) => (
                 <Space direction="vertical" size={2}>
                     <Badge color="gold" text={r.officeName || 'Head Office'} />
@@ -133,8 +136,9 @@ export default function CustomersPage() {
             title: 'Ngày kích hoạt',
             dataIndex: 'activationDate',
             key: 'activationDate',
-            width: 130,
+            width: 140,
             align: 'center',
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             sorter: (a, b) => {
                 const da = a.activationDate ? new Date(a.activationDate).getTime() : 0;
                 const db = b.activationDate ? new Date(b.activationDate).getTime() : 0;
@@ -145,10 +149,7 @@ export default function CustomersPage() {
                 if (!v) return <Tag color="default">Chưa kích hoạt</Tag>;
                 const d = new Date(v);
                 return !isNaN(d.getTime()) ? (
-                    <Space direction="vertical" size={0} style={{ textAlign: 'center' }}>
-                        <Text>{d.toLocaleDateString('vi-VN')}</Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(d).format('DD/MM/YYYY')}</Text>
-                    </Space>
+                    <Text>{dayjs(d).format('DD/MM/YYYY')}</Text>
                 ) : '–';
             },
         },
@@ -157,7 +158,8 @@ export default function CustomersPage() {
             dataIndex: 'kycStatus',
             key: 'kycStatus',
             align: 'center',
-            width: 140,
+            width: 200,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             filters: [
                 { text: 'Chưa KYC', value: 'NONE' },
                 { text: 'Có thông tin KYC, chờ duyệt', value: 'PENDING' },
@@ -196,7 +198,8 @@ export default function CustomersPage() {
             dataIndex: 'fineractStatus',
             key: 'fineractStatus',
             align: 'center',
-            width: 140,
+            width: 160,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16 } }),
             render: (_, r) => <FineractStatusBadge status={r.fineractStatus} />,
         },
         {
@@ -204,8 +207,8 @@ export default function CustomersPage() {
             key: 'actions',
             align: 'center',
             fixed: 'right',
-            width: 140,
-            onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
+            width: 160,
+            onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16, whiteSpace: 'nowrap' } }),
             render: (_, r) => (
                 <Tooltip title="Xem chi tiết">
                     <Button
@@ -689,7 +692,7 @@ export default function CustomersPage() {
                 }
                 options={{ reload: false, density: true, fullScreen: true, setting: true }}
                 columnsState={{ persistenceKey: `customers-table-${viewMode}`, persistenceType: 'localStorage' }}
-                scroll={{ x: 1200 }}
+                scroll={{ x: 1400 }}
             />
         </div>
     );

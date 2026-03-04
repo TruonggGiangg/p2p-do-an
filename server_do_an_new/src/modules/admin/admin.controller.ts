@@ -94,9 +94,9 @@ export class AdminController {
   @Get('sync-drift')
   @ApiOperation({ summary: 'Lịch sử đồng bộ / cảnh báo lệch với Fineract' })
   @ApiResponse({ status: 200 })
-  async getSyncDriftLogs(@Query('limit') limit?: string) {
+  async getSyncDriftLogs(@Query('limit') limit?: string, @Query('scope') scope?: 'loan' | 'savings') {
     const limitNum = limit ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
-    const logs = await this.adminService.getSyncDriftLogs(limitNum);
+    const logs = await this.adminService.getSyncDriftLogs(limitNum, scope);
     return { statusCode: 200, message: 'OK', data: logs };
   }
 
@@ -105,6 +105,30 @@ export class AdminController {
   @ApiResponse({ status: 200 })
   async syncCompare() {
     const diff = await this.adminService.compareAndSync(true);
+    return { statusCode: 200, message: 'OK', data: diff };
+  }
+
+  @Get('savings-products')
+  @ApiOperation({ summary: 'Danh sách sản phẩm tiết kiệm từ Fineract (cho admin)' })
+  @ApiResponse({ status: 200, description: 'Danh sách sản phẩm tiết kiệm' })
+  async getSavingsProducts() {
+    const products = await this.adminService.getSavingsProductsForAdmin();
+    return { statusCode: 200, message: 'OK', data: { products } };
+  }
+
+  @Get('savings-products/:productId/details')
+  @ApiOperation({ summary: 'Chi tiết cấu hình sản phẩm tiết kiệm từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async getSavingsProductDetails(@Param('productId', ParseIntPipe) productId: number) {
+    const details = await this.adminService.getSavingsProductDetails(productId);
+    return { statusCode: 200, message: 'OK', data: details };
+  }
+
+  @Post('sync-compare-savings')
+  @ApiOperation({ summary: 'So sánh danh sách sản phẩm tiết kiệm với Fineract (và ghi log)' })
+  @ApiResponse({ status: 200 })
+  async syncCompareSavings() {
+    const diff = await this.adminService.compareAndSyncSavings(true);
     return { statusCode: 200, message: 'OK', data: diff };
   }
 

@@ -469,37 +469,37 @@ export default function CustomerDetailPage() {
         <>
             <PerformanceSection />
             
-            {/* Quick Stats */}
+            {/* Quick Stats - 3 thẻ bằng nhau */}
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorPrimaryBg, textAlign: 'center' }}>
+                <Col flex="1 1 0" style={{ minWidth: 200 }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorPrimaryBg, textAlign: 'center', height: '100%' }}>
                         <Statistic 
                             title="Khoản vay" 
                             value={loans.length} 
                             prefix={<DollarOutlined />} 
-                            valueStyle={{ color: token.colorPrimary, fontSize: 32 }} 
+                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }} 
                         />
                     </Card>
                 </Col>
-                <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorSuccessBg, textAlign: 'center' }}>
+                <Col flex="1 1 0" style={{ minWidth: 200 }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorSuccessBg, textAlign: 'center', height: '100%' }}>
                         <Statistic 
                             title="Tổng vốn" 
                             value={totalCapital} 
                             formatter={v => fmtVND(Number(v))} 
-                            valueStyle={{ color: token.colorSuccess, fontSize: 24 }} 
+                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }} 
                         />
                     </Card>
                 </Col>
-                <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorWarningBg, textAlign: 'center' }}>
+                <Col flex="1 1 0" style={{ minWidth: 200 }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorWarningBg, textAlign: 'center', height: '100%' }}>
                         <Statistic
                             title="Chờ duyệt"
                             value={loans.filter(l => {
                                 const code = l.status && typeof l.status === 'object' ? l.status.code : l.status;
                                 return String(code || '').includes('pending');
                             }).length}
-                            valueStyle={{ color: token.colorWarning, fontSize: 32 }}
+                            valueStyle={{ color: token.colorWarning, fontSize: 28 }}
                         />
                     </Card>
                 </Col>

@@ -7,6 +7,7 @@ import AppLayout from './pages/Layout';
 import LoginPage from './pages/LoginPage';
 import DocumentTypesPage from './pages/DocumentTypesPage';
 import LoanProductsPage from './pages/LoanProductsPage';
+import SavingsProductsPage from './pages/SavingsProductsPage';
 import SyncDriftPage from './pages/SyncDriftPage';
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
@@ -146,6 +147,7 @@ export default function App() {
             >
               <Route index element={<DocumentTypesPage />} />
               <Route path="loan-products" element={<LoanProductsPage />} />
+              <Route path="savings-products" element={<SavingsProductsPage />} />
               <Route path="loan-approvals" element={<LoanApprovalsPage />} />
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />

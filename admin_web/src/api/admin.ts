@@ -23,13 +23,36 @@ export interface LoanProductDto {
   annualInterestRate?: number;
 }
 
+export interface SavingsProductDto {
+  id: number;
+  name: string;
+  shortName: string;
+  nominalAnnualInterestRate?: number;
+  description?: string;
+  currency?: { code?: string };
+}
+
+export interface FieldChangeDto {
+  field: string;
+  label: string;
+  before: any;
+  after: any;
+}
+
+export interface ProductDiffItemDto {
+  id: number;
+  name?: string;
+  shortName?: string;
+  fieldChanges?: FieldChangeDto[];
+}
+
 export interface SyncDriftLogDto {
   _id: string;
   syncedAt: string;
   hasDrift: boolean;
-  added: { id: number; name?: string; shortName?: string }[];
-  removed: { id: number; name?: string; shortName?: string }[];
-  modified: { id: number; name?: string; shortName?: string }[];
+  added: ProductDiffItemDto[];
+  removed: ProductDiffItemDto[];
+  modified: ProductDiffItemDto[];
 }
 
 /** Fineract status object: { id, code, value } */
@@ -242,16 +265,36 @@ export const adminApi = {
       items,
     }),
 
-  getSyncDriftLogs: (limit = 20) =>
-    api
-      .get<{ data: SyncDriftLogDto[] }>(`/api/admin/sync-drift?limit=${limit}`)
-      .then((r) => r.data.data),
+  getSyncDriftLogs: (limit = 20, scope?: "loan" | "savings") => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (scope) params.set("scope", scope);
+    return api
+      .get<{ data: SyncDriftLogDto[] }>(`/api/admin/sync-drift?${params.toString()}`)
+      .then((r) => r.data.data);
+  },
 
   syncCompare: () =>
     api
       .post<{
         data: { added: unknown[]; removed: unknown[]; modified: unknown[] };
       }>("/api/admin/sync-compare")
+      .then((r) => r.data.data),
+
+  getSavingsProducts: () =>
+    api
+      .get<{ data: { products: SavingsProductDto[] } }>("/api/admin/savings-products")
+      .then((r) => r.data.data.products),
+
+  getSavingsProductDetails: (productId: number) =>
+    api
+      .get<{ data: any }>(`/api/admin/savings-products/${productId}/details`)
+      .then((r) => r.data.data),
+
+  syncCompareSavings: () =>
+    api
+      .post<{
+        data: { added: unknown[]; removed: unknown[]; modified: unknown[] };
+      }>("/api/admin/sync-compare-savings")
       .then((r) => r.data.data),
 
   // ── Customers (Head Office) ────────────────────────────────────────────────

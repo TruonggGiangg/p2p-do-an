@@ -1,11 +1,14 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+/** Flattened loan product for snapshot comparison */
 export interface SnapshotProductItem {
   id: number;
   name: string;
   shortName: string;
   interestRatePerPeriod?: number;
+  /** Full flattened fields for field-level diff */
+  [key: string]: any;
 }
 
 @Schema({ timestamps: true, collection: 'loan_product_snapshots' })
