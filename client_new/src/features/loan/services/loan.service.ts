@@ -68,15 +68,11 @@ export interface LoanProductsResponse {
 }
 
 /** Loại tài liệu cần nộp theo gói vay (cho form hồ sơ) */
-export type DocumentFieldType = "file" | "text" | "select" | "button";
-
 export interface LoanDocumentType {
   id: string;
   name: string;
   required: boolean;
   sortOrder: number;
-  fieldType?: DocumentFieldType;
-  options?: string[];
   description?: string;
 }
 

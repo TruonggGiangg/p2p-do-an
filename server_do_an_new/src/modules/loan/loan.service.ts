@@ -153,8 +153,6 @@ export class LoanService {
         name: l.documentType?.name ?? '',
         required: l.required ?? l.documentType?.required ?? false,
         sortOrder: l.sortOrder ?? l.documentType?.sortOrder ?? 0,
-        fieldType: l.documentType?.fieldType ?? 'file',
-        options: l.documentType?.options ?? [],
         description: l.documentType?.description ?? '',
       }));
   }
@@ -286,7 +284,7 @@ export class LoanService {
       willing?: string;
       disbursementDate: string;
       disbursementWalletId: string;
-      documents?: Array<{ documentTypeId: string; name: string; uri?: string; fieldType?: string }>;
+      documents?: Array<{ documentTypeId: string; name: string; uri?: string }>;
       otpSessionId?: string;
     },
   ) {
@@ -404,8 +402,6 @@ export class LoanService {
         name: d.name,
         uri: d.uri,
         uploadedAt: new Date(),
-        // Non-file types (text/select/button) are auto-approved since they don't need admin review
-        ...(d.fieldType && d.fieldType !== 'file' ? { reviewStatus: 'approved' } : {}),
       })),
     });
     this.logger.log(`[createApplication] MongoDB doc created id=${doc._id}`);

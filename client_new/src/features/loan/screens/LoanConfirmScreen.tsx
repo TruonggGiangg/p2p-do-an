@@ -144,8 +144,7 @@ export default function LoanConfirmScreen() {
                 documents: Object.entries(documents)
                     .filter(([, v]) => v?.name)
                     .map(([documentTypeId, v]) => {
-                        const docType = documentTypes.find((d) => d.id === documentTypeId);
-                        return { documentTypeId, name: v!.name, fieldType: docType?.fieldType ?? 'file' };
+                        return { documentTypeId, name: v!.name };
                     }),
                 otpSessionId: payload?.otpSessionId,
             });
@@ -416,12 +415,7 @@ export default function LoanConfirmScreen() {
                             Vui lòng cung cấp đầy đủ tài liệu yêu cầu
                         </Text>
                         {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
-                            const fieldType = doc.fieldType || 'file';
                             const hasValue = !!documents[doc.id]?.name;
-                            const fieldTypeIcon = fieldType === 'file' ? 'file-image-outline'
-                                : fieldType === 'text' ? 'text-box-outline'
-                                    : fieldType === 'select' ? 'format-list-bulleted'
-                                        : 'radiobox-marked';
 
                             return (
                                 <View key={doc.id} style={[styles.docRow, { borderTopColor: theme.colors.border }]}>
@@ -430,7 +424,7 @@ export default function LoanConfirmScreen() {
                                             backgroundColor: hasValue ? theme.colors.success + '15' : theme.colors.primary + '15',
                                         }]}>
                                             <MaterialCommunityIcons
-                                                name={hasValue ? "check-circle" : fieldTypeIcon}
+                                                name={hasValue ? "check-circle" : "file-image-outline"}
                                                 size={18}
                                                 color={hasValue ? theme.colors.success : theme.colors.primary}
                                             />
@@ -452,117 +446,31 @@ export default function LoanConfirmScreen() {
                                         )}
                                     </View>
 
-                                    {/* Render dựa theo fieldType */}
                                     <View style={styles.docUploadContainer}>
-                                        {fieldType === 'file' && (
-                                            <TouchableOpacity
-                                                style={[styles.bigCameraBtn, {
-                                                    backgroundColor: theme.colors.primary + '06',
-                                                    borderColor: documents[doc.id]?.uri ? theme.colors.success : theme.colors.border,
-                                                }]}
-                                                onPress={() => pickImage(doc.id)}
-                                            >
-                                                {documents[doc.id]?.uri ? (
-                                                    <View style={styles.docThumbnailWrap}>
-                                                        <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
-                                                        <View style={[styles.docThumbnailOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-                                                            <MaterialCommunityIcons name="pencil-circle" size={28} color="#fff" />
-                                                            <Text style={styles.docThumbnailText}>Nhấn để thay đổi</Text>
-                                                        </View>
+                                        <TouchableOpacity
+                                            style={[styles.bigCameraBtn, {
+                                                backgroundColor: theme.colors.primary + '06',
+                                                borderColor: documents[doc.id]?.uri ? theme.colors.success : theme.colors.border,
+                                            }]}
+                                            onPress={() => pickImage(doc.id)}
+                                        >
+                                            {documents[doc.id]?.uri ? (
+                                                <View style={styles.docThumbnailWrap}>
+                                                    <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
+                                                    <View style={[styles.docThumbnailOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
+                                                        <MaterialCommunityIcons name="pencil-circle" size={28} color="#fff" />
+                                                        <Text style={styles.docThumbnailText}>Nhấn để thay đổi</Text>
                                                     </View>
-                                                ) : (
-                                                    <View style={styles.emptyDocState}>
-                                                        <View style={[styles.docUploadIconCircle, { backgroundColor: theme.colors.primary + '15' }]}>
-                                                            <MaterialCommunityIcons name="camera-plus-outline" size={28} color={theme.colors.primary} />
-                                                        </View>
-                                                        <Text style={[styles.uploadHint, { color: theme.colors.textDim }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                                                </View>
+                                            ) : (
+                                                <View style={styles.emptyDocState}>
+                                                    <View style={[styles.docUploadIconCircle, { backgroundColor: theme.colors.primary + '15' }]}>
+                                                        <MaterialCommunityIcons name="camera-plus-outline" size={28} color={theme.colors.primary} />
                                                     </View>
-                                                )}
-                                            </TouchableOpacity>
-                                        )}
-
-                                        {fieldType === 'text' && (
-                                            <TextInput
-                                                style={[styles.docTextInput, {
-                                                    borderColor: documents[doc.id]?.name ? theme.colors.primary : theme.colors.border,
-                                                    color: theme.colors.textPrimary,
-                                                    backgroundColor: theme.colors.background,
-                                                }]}
-                                                placeholder={`Nhập ${doc.name.toLowerCase()}...`}
-                                                placeholderTextColor={theme.colors.textDim}
-                                                value={documents[doc.id]?.name === doc.name ? '' : (documents[doc.id]?.name || '')}
-                                                onChangeText={(text) => {
-                                                    setDocuments(prev => ({
-                                                        ...prev,
-                                                        [doc.id]: { name: text || doc.name, uri: undefined, type: 'text' },
-                                                    }));
-                                                }}
-                                                multiline
-                                                numberOfLines={2}
-                                            />
-                                        )}
-
-                                        {fieldType === 'select' && doc.options && doc.options.length > 0 && (
-                                            <View style={styles.docSelectContainer}>
-                                                {doc.options.map((opt, idx) => {
-                                                    const isSelected = documents[doc.id]?.name === opt;
-                                                    return (
-                                                        <TouchableOpacity
-                                                            key={idx}
-                                                            style={[styles.docSelectOption, {
-                                                                borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                                                                backgroundColor: isSelected ? theme.colors.primary + '12' : theme.colors.background,
-                                                            }]}
-                                                            onPress={() => {
-                                                                setDocuments(prev => ({
-                                                                    ...prev,
-                                                                    [doc.id]: { name: opt, uri: undefined, type: 'select' },
-                                                                }));
-                                                            }}
-                                                        >
-                                                            <MaterialCommunityIcons
-                                                                name={isSelected ? "radiobox-marked" : "radiobox-blank"}
-                                                                size={20}
-                                                                color={isSelected ? theme.colors.primary : theme.colors.textDim}
-                                                            />
-                                                            <Text style={[styles.docSelectText, {
-                                                                color: isSelected ? theme.colors.primary : theme.colors.textPrimary,
-                                                                fontWeight: isSelected ? '600' : '400',
-                                                            }]}>{opt}</Text>
-                                                        </TouchableOpacity>
-                                                    );
-                                                })}
-                                            </View>
-                                        )}
-
-                                        {fieldType === 'button' && doc.options && doc.options.length > 0 && (
-                                            <View style={styles.docButtonContainer}>
-                                                {doc.options.map((opt, idx) => {
-                                                    const isSelected = documents[doc.id]?.name === opt;
-                                                    return (
-                                                        <TouchableOpacity
-                                                            key={idx}
-                                                            style={[styles.docButton, {
-                                                                borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                                                                backgroundColor: isSelected ? theme.colors.primary : theme.colors.background,
-                                                            }]}
-                                                            onPress={() => {
-                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                setDocuments(prev => ({
-                                                                    ...prev,
-                                                                    [doc.id]: { name: opt, uri: undefined, type: 'button' },
-                                                                }));
-                                                            }}
-                                                        >
-                                                            <Text style={[styles.docButtonText, {
-                                                                color: isSelected ? '#000' : theme.colors.textPrimary,
-                                                                fontWeight: isSelected ? '700' : '500',
-                                                            }]}>{opt}</Text>
-                                                        </TouchableOpacity>
-                                                    );
-                                                })}
-                                            </View>
-                                        )}
+                                                    <Text style={[styles.uploadHint, { color: theme.colors.textDim }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
                                     </View>
                                 </View>
                             );

@@ -1,14 +1,10 @@
 import { api } from "./client";
 
-export type DocumentFieldType = "file" | "text" | "select" | "button";
-
 export interface DocumentTypeDto {
   _id: string;
   name: string;
   required: boolean;
   description?: string;
-  fieldType: DocumentFieldType;
-  options: string[];
 }
 
 export interface LoanProductDto {
@@ -208,8 +204,6 @@ export const adminApi = {
     name: string;
     required?: boolean;
     description?: string;
-    fieldType?: DocumentFieldType;
-    options?: string[];
   }) =>
     api
       .post<{ data: DocumentTypeDto }>("/api/admin/document-types", body)
