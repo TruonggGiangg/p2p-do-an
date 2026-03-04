@@ -11,6 +11,10 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_access_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // FormData: bỏ Content-Type để browser tự set multipart/form-data + boundary
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
 

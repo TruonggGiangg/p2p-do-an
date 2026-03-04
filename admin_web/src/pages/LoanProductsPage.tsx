@@ -186,7 +186,7 @@ export default function LoanProductsPage() {
         columnsState={{ persistenceKey: 'loan-products-table', persistenceType: 'localStorage' }}
         request={async (params) => {
           const data = await adminApi.getLoanProducts();
-          let filtered = data;
+          let filtered = (data || []).filter(Boolean);
           const name = (params.name as string)?.toLowerCase?.()?.trim?.();
           if (name) filtered = filtered.filter((i) => (i.name || '').toLowerCase().includes(name));
           const short = (params.shortName as string)?.toLowerCase?.()?.trim?.();

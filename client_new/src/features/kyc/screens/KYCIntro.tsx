@@ -4,14 +4,12 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Image,
     ScrollView,
     Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { CommonButton } from '../../../components/common/CommonButton';
 import { CommonCard } from '../../../components/common/CommonCard';
@@ -25,17 +23,17 @@ const KYCIntro: React.FC = () => {
 
     const benefits = [
         {
-            icon: 'shield-check-outline',
+            icon: 'shield-checkmark-outline' as const,
             title: 'Bảo mật tuyệt đối',
             desc: 'Tài khoản của bạn sẽ được bảo vệ bởi lớp định danh sinh trắc học.',
         },
         {
-            icon: 'lightning-bolt-outline',
+            icon: 'flash-outline' as const,
             title: 'Hạn mức giao dịch cao',
             desc: 'Nâng hạn mức rút tiền và giao dịch hàng ngày lên mức tối đa.',
         },
         {
-            icon: 'account-star-outline',
+            icon: 'star-outline' as const,
             title: 'Ưu tiên hỗ trợ',
             desc: 'Được ưu tiên xử lý các khiếu nại và phản hồi từ hệ thống.',
         },
@@ -52,32 +50,31 @@ const KYCIntro: React.FC = () => {
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <Animated.View entering={FadeInUp.delay(200)} style={styles.heroSection}>
+                <View style={styles.heroSection}>
                     <View style={[styles.illustrationContainer, { backgroundColor: c.primaryGlass }]}>
-                        <MaterialCommunityIcons name="shield-account" size={100} color={c.primary} />
+                        <Ionicons name="shield-checkmark" size={100} color={c.primary} />
                     </View>
                     <Text style={[styles.title, { color: c.textPrimary }]}>Xác minh eKYC</Text>
                     <Text style={[styles.subtitle, { color: c.textSecondary }]}>
                         Quy trình xác minh nhanh chóng trong vòng 2 phút để mở khóa mọi tính năng.
                     </Text>
-                </Animated.View>
+                </View>
 
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tại sao cần xác minh?</Text>
                     {benefits.map((item, index) => (
-                        <Animated.View
+                        <View
                             key={index}
-                            entering={FadeInDown.delay(400 + index * 100)}
                             style={[styles.benefitItem, { borderBottomColor: c.border }]}
                         >
                             <View style={[styles.iconBox, { backgroundColor: c.surfaceLight }]}>
-                                <MaterialCommunityIcons name={item.icon as any} size={24} color={c.primary} />
+                                <Ionicons name={item.icon} size={24} color={c.primary} />
                             </View>
                             <View style={styles.benefitText}>
                                 <Text style={[styles.benefitTitle, { color: c.textPrimary }]}>{item.title}</Text>
                                 <Text style={[styles.benefitDesc, { color: c.textSecondary }]}>{item.desc}</Text>
                             </View>
-                        </Animated.View>
+                        </View>
                     ))}
                 </View>
 

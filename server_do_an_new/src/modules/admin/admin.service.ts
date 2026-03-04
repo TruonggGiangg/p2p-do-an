@@ -18,6 +18,7 @@ import { Wallet } from '../wallets/schemas/wallet.schema';
 import { Notification } from '../loan/schemas/notification.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { ContractService } from '../loan/contract.service';
+import { EkycService } from '../ekyc/ekyc.service';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -58,6 +59,7 @@ export class AdminService {
     private readonly fineractSavingsService: FineractSavingsService,
     private readonly keycloakService: KeycloakService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
+    private readonly ekycService: EkycService,
   ) {}
 
   // ---------- Loan products (from Fineract) ----------
@@ -880,6 +882,7 @@ export class AdminService {
         dateOfBirth: kycData.dateOfBirth,
         address: kycData.address,
         sex: kycData.sex,
+        issueDate: kycData.issueDate,
       },
       metadata: {
         kycCompletedAt: metadata.kycCompletedAt,
@@ -899,7 +902,8 @@ export class AdminService {
       user = await this.userModel.findOne({ fineractClientId: userId });
     }
     if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    if (user.kycStatus !== 'PENDING') {
+    // Cho phép phê duyệt khi PENDING (eKYC) hoặc NONE (KYC trực tiếp tại chỗ)
+    if (!['PENDING', 'NONE'].includes(user.kycStatus || 'NONE')) {
       throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}, không thể phê duyệt`);
     }
 
@@ -978,7 +982,8 @@ export class AdminService {
       user = await this.userModel.findOne({ fineractClientId: userId });
     }
     if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    if (user.kycStatus !== 'PENDING') {
+    // Cho phép từ chối khi PENDING (eKYC) hoặc NONE (KYC trực tiếp)
+    if (!['PENDING', 'NONE'].includes(user.kycStatus || 'NONE')) {
       throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}`);
     }
 
@@ -1005,5 +1010,50 @@ export class AdminService {
     );
     if (!doc) throw new NotFoundException('Tài liệu không tồn tại');
     return this.fineractClientService.downloadDocument(entityType, entityId, documentId);
+  }
+
+  /** OCR mặt trước CCCD (nhân viên chụp/thêm giúp khách hàng) */
+  async ocrFrontForUser(userId: string, imageBuffer: Buffer, filename = 'front.jpg') {
+    await this.resolveUser(userId);
+    return this.ekycService.ocrFrontID(imageBuffer, filename);
+  }
+
+  /** OCR mặt sau CCCD */
+  async ocrBackForUser(userId: string, imageBuffer: Buffer, filename = 'back.jpg') {
+    await this.resolveUser(userId);
+    return this.ekycService.ocrBackID(imageBuffer, filename);
+  }
+
+  /** Lưu KYC cho user (nhân viên làm giúp - không cần face matching/liveness) */
+  async saveKycForUser(
+    userId: string,
+    frontOCRData: any,
+    backOCRData: any,
+    frontImageBuffer: Buffer | null,
+    backImageBuffer: Buffer | null,
+  ) {
+    const user = await this.resolveUser(userId);
+    const mongoId = user._id?.toString();
+    return this.ekycService.saveKycData(
+      mongoId,
+      frontOCRData,
+      backOCRData,
+      frontImageBuffer,
+      backImageBuffer,
+      null,
+      null,
+    );
+  }
+
+  private async resolveUser(userId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(userId)) {
+      user = await this.userModel.findById(userId);
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ fineractClientId: userId });
+    }
+    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
+    return user;
   }
 }

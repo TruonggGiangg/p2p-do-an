@@ -131,8 +131,8 @@ export class EkycService {
         userId: string,
         frontOCRData: any,
         backOCRData: any,
-        frontImageBuffer: Buffer,
-        backImageBuffer: Buffer,
+        frontImageBuffer: Buffer | null,
+        backImageBuffer: Buffer | null,
         faceMatchingResult: any,
         livenessResult: any,
     ): Promise<any> {
@@ -145,7 +145,8 @@ export class EkycService {
                 throw new Error('User not found');
             }
 
-            const ocrData = frontOCRData?.data || frontOCRData;
+            const ocrData = frontOCRData?.data || frontOCRData?.result || frontOCRData;
+            const backData = backOCRData?.data || backOCRData?.result || backOCRData;
 
             // Map dates (dob) from DD/MM/YYYY to YYYY-MM-DD for standardizing
             const parseDate = (dateStr?: string) => {
@@ -157,12 +158,15 @@ export class EkycService {
                 return dateStr;
             };
 
+            const issueDateRaw = backData?.init_date || backData?.issue_date || backData?.issueDate;
+
             const extractedData = {
                 fullName: ocrData.fullName || ocrData.name,
                 ssn: ocrData.idNumber || ocrData.id,
                 dateOfBirth: parseDate(ocrData.dob),
                 address: ocrData.address,
                 sex: ocrData.gender,
+                issueDate: issueDateRaw ? parseDate(issueDateRaw) || issueDateRaw : undefined,
             };
 
             const kycMetadata: Record<string, any> = {
@@ -236,6 +240,7 @@ export class EkycService {
                     if (extractedData.dateOfBirth) updateAttributes.dateOfBirth = extractedData.dateOfBirth;
                     if (extractedData.address) updateAttributes.address = extractedData.address;
                     if (extractedData.sex) updateAttributes.sex = extractedData.sex;
+                    if (extractedData.issueDate) updateAttributes.issueDate = extractedData.issueDate;
 
                     if (kycMetadata.fineractClientDocs?.front) updateAttributes.ssnFrontImg = String(kycMetadata.fineractClientDocs.front);
                     if (kycMetadata.fineractClientDocs?.back) updateAttributes.ssnBackImg = String(kycMetadata.fineractClientDocs.back);
@@ -262,6 +267,7 @@ export class EkycService {
                 dateOfBirth: extractedData.dateOfBirth,
                 address: extractedData.address,
                 sex: extractedData.sex,
+                issueDate: extractedData.issueDate,
                 metadata,
             };
 

@@ -263,7 +263,7 @@ export default function DocumentTypesPage() {
         request={async (params) => {
           try {
             const data = await adminApi.getDocumentTypes();
-            let filtered = data;
+            let filtered = (data || []).filter(Boolean);
             const name = (params.name as string)?.toLowerCase?.()?.trim?.();
             if (name) filtered = filtered.filter((i) => i.name.toLowerCase().includes(name));
             if (params.required !== undefined && params.required !== '') {

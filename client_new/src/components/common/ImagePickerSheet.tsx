@@ -11,7 +11,6 @@ import {
     Modal,
     TouchableOpacity,
     FlatList,
-    Image,
     Dimensions,
     ActivityIndicator,
     Animated,
@@ -19,9 +18,10 @@ import {
     Alert,
     StatusBar,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -132,7 +132,7 @@ export default function ImagePickerSheet({
                     ...albumList
                         .filter((a) => a.assetCount > 0)
                         .sort((a, b) => b.assetCount - a.assetCount)
-                        .map((a) => ({ id: a.id, title: a.title, count: a.assetCount })),
+                        .map((a) => ({ id: a.id, title: a.title || 'Album', count: a.assetCount })),
                 ];
                 setAlbums(albumOptions);
             } catch {
@@ -304,11 +304,11 @@ export default function ImagePickerSheet({
                 <Image
                     source={{ uri: item.uri }}
                     style={imgStyles.image}
-                    resizeMode="cover"
+                    contentFit="cover"
                 />
                 {item.duration && item.duration > 0 && (
                     <View style={imgStyles.videoBadge}>
-                        <MaterialCommunityIcons name="play-circle" size={14} color="#fff" />
+                        <Ionicons name="play-circle" size={14} color="#fff" />
                     </View>
                 )}
             </TouchableOpacity>
@@ -325,13 +325,13 @@ export default function ImagePickerSheet({
                     activeOpacity={0.7}
                 >
                     <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
-                        <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
+                        <Ionicons name="camera" size={24} color={c.primary} />
                     </View>
-                    <View>
+                    <View style={{ flex: 1 }}>
                         <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Chụp ảnh</Text>
                         <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                    <Ionicons name="chevron-forward" size={20} color={c.textDim} />
                 </TouchableOpacity>
             )}
             {/* Fallback picker - luôn hiện, dùng ImagePicker thay vì MediaLibrary */}
@@ -341,13 +341,13 @@ export default function ImagePickerSheet({
                 activeOpacity={0.7}
             >
                 <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                    <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                    <Ionicons name="images" size={24} color="#6C5CE7" />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                     <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
                     <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                <Ionicons name="chevron-forward" size={20} color={c.textDim} />
             </TouchableOpacity>
         </View>
     );
@@ -388,7 +388,7 @@ export default function ImagePickerSheet({
                     {/* Header */}
                     <View style={[imgStyles.header, { borderBottomColor: c.border }]}>
                         <TouchableOpacity onPress={handleClose} style={imgStyles.headerBtn}>
-                            <MaterialCommunityIcons name="close" size={22} color={c.textPrimary} />
+                            <Ionicons name="close" size={22} color={c.textPrimary} />
                         </TouchableOpacity>
                         <Text style={[imgStyles.headerTitle, { color: c.textPrimary }]}>{title}</Text>
                         <View style={imgStyles.headerBtn} />
@@ -401,9 +401,9 @@ export default function ImagePickerSheet({
                             onPress={() => setShowAlbumPicker(!showAlbumPicker)}
                             activeOpacity={0.7}
                         >
-                            <MaterialCommunityIcons name="folder-image" size={18} color={c.primary} />
+                            <Ionicons name="images" size={18} color={c.primary} />
                             <Text style={[imgStyles.albumName, { color: c.textPrimary }]}>{currentAlbumName}</Text>
-                            <MaterialCommunityIcons
+                            <Ionicons
                                 name={showAlbumPicker ? 'chevron-up' : 'chevron-down'}
                                 size={18}
                                 color={c.textDim}
@@ -433,13 +433,13 @@ export default function ImagePickerSheet({
                                             imgStyles.albumItemText,
                                             { color: (selectedAlbum ?? '__all__') === album.id ? c.primary : c.textPrimary },
                                         ]}>
-                                            {album.title}
+                                            {album.title || 'Album'}
                                         </Text>
                                         {album.count > 0 && (
                                             <Text style={[imgStyles.albumItemCount, { color: c.textDim }]}>{album.count}</Text>
                                         )}
                                         {(selectedAlbum ?? '__all__') === album.id && (
-                                            <MaterialCommunityIcons name="check" size={16} color={c.primary} />
+                                            <Ionicons name="checkmark" size={16} color={c.primary} />
                                         )}
                                     </TouchableOpacity>
                                 )}
@@ -457,13 +457,13 @@ export default function ImagePickerSheet({
                                     activeOpacity={0.7}
                                 >
                                     <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.primary + '20' }]}>
-                                        <MaterialCommunityIcons name="camera" size={24} color={c.primary} />
+                                        <Ionicons name="camera" size={24} color={c.primary} />
                                     </View>
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={[imgStyles.cameraBtnTitle, { color: c.primary }]}>Tự chụp ảnh</Text>
                                         <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở camera để chụp</Text>
                                     </View>
-                                    <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                    <Ionicons name="chevron-forward" size={20} color={c.textDim} />
                                 </TouchableOpacity>
                             )}
                             <TouchableOpacity
@@ -472,13 +472,13 @@ export default function ImagePickerSheet({
                                 activeOpacity={0.7}
                             >
                                 <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                                    <MaterialCommunityIcons name="image-multiple" size={24} color="#6C5CE7" />
+                                    <Ionicons name="images" size={24} color="#6C5CE7" />
                                 </View>
-                                <View>
+                                <View style={{ flex: 1 }}>
                                     <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Tải ảnh từ thư viện</Text>
                                     <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Chọn ảnh có sẵn trên máy</Text>
                                 </View>
-                                <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} style={{ marginLeft: 'auto' }} />
+                                <Ionicons name="chevron-forward" size={20} color={c.textDim} />
                             </TouchableOpacity>
                         </View>
                     )}
@@ -499,7 +499,7 @@ export default function ImagePickerSheet({
                                     </View>
                                 ) : (
                                     <View style={imgStyles.emptyContainer}>
-                                        <MaterialCommunityIcons name="image-outline" size={48} color={c.textDim} />
+                                        <Ionicons name="image-outline" size={48} color={c.textDim} />
                                         <Text style={[imgStyles.emptyText, { color: c.textSecondary }]}>Không có ảnh nào</Text>
                                     </View>
                                 )

@@ -454,7 +454,7 @@ export default function LoanApprovalsPage() {
                 columns={columns}
                 request={async (params) => {
                     const data = await adminApi.getPendingLoans();
-                    let filtered = data;
+                    let filtered = (data || []).filter(Boolean);
                     const q = (params.clientName as string)?.toLowerCase?.()?.trim?.();
                     if (q) filtered = filtered.filter(l => (l.clientName || '').toLowerCase().includes(q));
                     const p = (params.productShortName as string)?.toLowerCase?.()?.trim?.();

@@ -5,14 +5,14 @@ import type { ProColumns } from '@ant-design/pro-components';
 import {
     Card, Typography, Tag, Descriptions, Button, Space,
     Skeleton, Statistic, Row, Col, Avatar, Divider, message, theme,
-    Drawer, Tabs, Table, Badge, Alert, Empty, Image
+    Drawer, Tabs, Table, Badge, Alert, Empty, Image, Popconfirm, Upload
 } from 'antd';
-import { CloseOutlined, EyeOutlined } from '@ant-design/icons';
 import {
-    ArrowLeftOutlined, UserOutlined, BankOutlined,
+    CloseOutlined, EyeOutlined, ArrowLeftOutlined, UserOutlined, BankOutlined,
     DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined,
     IdcardOutlined, PhoneOutlined, MailOutlined, HomeOutlined, TeamOutlined,
-    CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined
+    CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined,
+    CheckOutlined, UploadOutlined
 } from '@ant-design/icons';
 import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
@@ -46,6 +46,18 @@ export default function CustomerDetailPage() {
     const savingsAccounts = detail?.savingsAccounts ?? [];
     const charges = detail?.charges ?? [];
     const kyc = detail?.kyc;
+
+    // KYC approval states
+    const [kycApproving, setKycApproving] = useState(false);
+    const [kycRejecting, setKycRejecting] = useState(false);
+
+    // Staff upload CCCD + OCR (nhân viên chụp/thêm giúp khách hàng)
+    const [staffFrontOcr, setStaffFrontOcr] = useState<any>(null);
+    const [staffBackOcr, setStaffBackOcr] = useState<any>(null);
+    const [staffFrontFile, setStaffFrontFile] = useState<File | null>(null);
+    const [staffBackFile, setStaffBackFile] = useState<File | null>(null);
+    const [ocrLoading, setOcrLoading] = useState<'front' | 'back' | null>(null);
+    const [saveKycLoading, setSaveKycLoading] = useState(false);
 
     // Modal states for loan details
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -109,6 +121,110 @@ export default function CustomerDetailPage() {
         } finally {
             setModalLoading(false);
             setLoadingDocuments(false);
+        }
+    };
+
+    const kycUserId = kyc?.user?._id || customer?._id || id;
+
+    const handleApproveKyc = async () => {
+        if (!kycUserId) return;
+        setKycApproving(true);
+        try {
+            await adminApi.approveKyc(kycUserId);
+            message.success('Đã kích hoạt tài khoản (đồng bộ Fineract)');
+            adminApi.getCustomerDetail(id!).then(setDetail);
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || 'Kích hoạt tài khoản thất bại');
+        } finally {
+            setKycApproving(false);
+        }
+    };
+
+    const handleRejectKyc = async () => {
+        if (!kycUserId) return;
+        setKycRejecting(true);
+        try {
+            await adminApi.rejectKyc(kycUserId);
+            message.success('Đã từ chối kích hoạt');
+            adminApi.getCustomerDetail(id!).then(setDetail);
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || 'Từ chối kích hoạt thất bại');
+        } finally {
+            setKycRejecting(false);
+        }
+    };
+
+    /** Trích OCR data từ response (Python API wrap trong `result`) */
+    const extractOcrFront = (raw: any) => raw?.result ?? raw?.data ?? raw;
+    /** Back: data nằm trong result.data (init_date) hoặc result.data (issue_date, expiry_date, place_of_birth) */
+    const extractOcrBack = (raw: any) => {
+        const r = raw?.result ?? raw?.data ?? raw;
+        const inner = r?.data ?? r;
+        // Đảm bảo init_date (old format) được map sang issue_date để hiển thị Ngày cấp
+        if (inner && typeof inner === 'object' && inner.init_date && !inner.issue_date) {
+            return { ...inner, issue_date: inner.init_date };
+        }
+        return inner;
+    };
+
+    const handleStaffOcrFront = async (file: File) => {
+        if (!id) return;
+        setOcrLoading('front');
+        try {
+            const data = await adminApi.ocrFront(id, file);
+            setStaffFrontOcr(data);
+            setStaffFrontFile(file);
+            message.success('Đã nhận dạng mặt trước CCCD');
+        } catch (e: any) {
+            message.error(e?.response?.data?.error || e?.message || 'OCR mặt trước thất bại');
+        } finally {
+            setOcrLoading(null);
+        }
+    };
+
+    const handleStaffOcrBack = async (file: File) => {
+        if (!id) return;
+        setOcrLoading('back');
+        try {
+            const data = await adminApi.ocrBack(id, file);
+            setStaffBackOcr(data);
+            setStaffBackFile(file);
+            message.success('Đã nhận dạng mặt sau CCCD');
+        } catch (e: any) {
+            message.error(e?.response?.data?.error || e?.message || 'OCR mặt sau thất bại');
+        } finally {
+            setOcrLoading(null);
+        }
+    };
+
+    const handleStaffSaveKyc = async () => {
+        const frontData = extractOcrFront(staffFrontOcr) || (kyc?.ocr ? { fullName: kyc.ocr.fullName, idNumber: kyc.ocr.ssn, dob: kyc.ocr.dateOfBirth, address: kyc.ocr.address, gender: kyc.ocr.sex } : null);
+        const backData = extractOcrBack(staffBackOcr);
+        if (!id || !frontData) {
+            message.warning('Vui lòng tải ảnh mặt trước CCCD và chạy OCR trước');
+            return;
+        }
+        if (!staffFrontFile && !staffBackFile) {
+            message.warning('Vui lòng tải ít nhất ảnh mặt trước CCCD để lưu');
+            return;
+        }
+        if (staffBackFile && !(backData?.init_date || backData?.issue_date || backData?.issueDate)) {
+            message.warning('Đã tải ảnh mặt sau CCCD, vui lòng chạy OCR để lấy Ngày cấp trước khi lưu');
+            return;
+        }
+        setSaveKycLoading(true);
+        try {
+            await adminApi.saveKycForUser(id, frontData, extractOcrBack(staffBackOcr) || frontData, staffFrontFile || undefined, staffBackFile || undefined);
+            message.success('Đã lưu hồ sơ KYC. Khách hàng đang chờ kích hoạt.');
+            setStaffFrontOcr(null);
+            setStaffBackOcr(null);
+            setStaffFrontFile(null);
+            setStaffBackFile(null);
+            adminApi.getCustomerDetail(id).then(setDetail);
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || e?.message || 'Lưu hồ sơ thất bại');
+        } finally {
+            setSaveKycLoading(false);
         }
     };
 
@@ -293,7 +409,7 @@ export default function CustomerDetailPage() {
                     )}
                     {customer.kycStatus === 'PENDING' && (
                         <Tag color="warning" icon={<ExclamationCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
-                            Chờ duyệt KYC
+                            Có thông tin KYC và đang chờ phê duyệt
                         </Tag>
                     )}
                     {customer.kycStatus === 'REJECTED' && (
@@ -415,35 +531,238 @@ export default function CustomerDetailPage() {
 
     // KYC Tab Content
     const KycTab = () => {
+        const kycStatus = customer?.kycStatus || 'NONE';
+        const canApproveKyc = !['VERIFIED', 'REJECTED'].includes(kycStatus);
+        const isDirectKyc = !kyc; // Chưa có dữ liệu KYC = trường hợp xác minh trực tiếp tại chỗ
+
+        const ApprovalCard = () => (
+            <Card 
+                bordered={false} 
+                style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${token.colorWarningBorder}` }}
+            >
+                <Alert
+                    message={isDirectKyc ? 'KYC trực tiếp - Đã xác minh khách hàng tại chỗ' : 'Có thông tin KYC và đang chờ phê duyệt'}
+                    description={isDirectKyc 
+                        ? 'Khách hàng chưa nộp hồ sơ eKYC. Nếu đã xác minh trực tiếp tại chỗ, có thể kích hoạt tài khoản để đồng bộ sang Fineract.' 
+                        : 'Hồ sơ định danh đã được gửi. Kích hoạt tài khoản sẽ đồng bộ trạng thái sang Fineract.'}
+                    type="warning"
+                    showIcon
+                    icon={<ExclamationCircleOutlined />}
+                    action={
+                        <Space>
+                            <Popconfirm
+                                title="Kích hoạt tài khoản"
+                                description={isDirectKyc ? 'Xác nhận đã xác minh trực tiếp và kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.' : 'Xác nhận kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.'}
+                                onConfirm={handleApproveKyc}
+                                okText="Kích hoạt"
+                                cancelText="Hủy"
+                            >
+                                <Button type="primary" icon={<CheckOutlined />} loading={kycApproving}>
+                                    Kích hoạt tài khoản
+                                </Button>
+                            </Popconfirm>
+                            <Popconfirm
+                                title="Từ chối kích hoạt"
+                                description={isDirectKyc ? 'Xác nhận từ chối? Khách hàng sẽ cần nộp hồ sơ eKYC để thử lại.' : 'Xác nhận từ chối hồ sơ định danh này?'}
+                                onConfirm={handleRejectKyc}
+                                okText="Từ chối"
+                                cancelText="Hủy"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button danger icon={<CloseOutlined />} loading={kycRejecting}>
+                                    Từ chối
+                                </Button>
+                            </Popconfirm>
+                        </Space>
+                    }
+                />
+            </Card>
+        );
+
         if (!kyc) {
+            const ocrData = extractOcrFront(staffFrontOcr);
+            const backData = extractOcrBack(staffBackOcr);
             return (
-                <Card bordered={false} style={{ borderRadius: 0 }}>
-                    <Empty description="Chưa có dữ liệu KYC" />
-                </Card>
+                <>
+                    {canApproveKyc && <ApprovalCard />}
+                    {/* Nhân viên tải CCCD lên và chạy OCR giúp khách hàng */}
+                    <Card
+                        bordered={false}
+                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        title={<Space><UploadOutlined /> Tải CCCD lên và nhận dạng OCR (nhân viên làm giúp khách hàng)</Space>}
+                    >
+                        <Row gutter={[24, 24]}>
+                            <Col xs={24} md={12}>
+                                <div style={{ marginBottom: 8 }}><Text strong>Mặt trước CCCD</Text></div>
+                                <Upload
+                                    accept="image/*"
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        handleStaffOcrFront(file);
+                                        return false;
+                                    }}
+                                    disabled={!!ocrLoading}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={ocrLoading === 'front'}>
+                                        Chọn ảnh mặt trước
+                                    </Button>
+                                </Upload>
+                                {ocrData && (
+                                    <Descriptions column={1} size="small" style={{ marginTop: 12 }} bordered>
+                                        <Descriptions.Item label="Họ tên">{ocrData.fullName || ocrData.name || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Số CCCD">{ocrData.idNumber || ocrData.id || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Ngày sinh">{ocrData.dob || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Giới tính">{ocrData.gender || ocrData.sex || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Địa chỉ">{ocrData.address || '–'}</Descriptions.Item>
+                                    </Descriptions>
+                                )}
+                            </Col>
+                            <Col xs={24} md={12}>
+                                <div style={{ marginBottom: 8 }}><Text strong>Mặt sau CCCD</Text></div>
+                                <Upload
+                                    accept="image/*"
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        handleStaffOcrBack(file);
+                                        return false;
+                                    }}
+                                    disabled={!!ocrLoading}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={ocrLoading === 'back'}>
+                                        Chọn ảnh mặt sau
+                                    </Button>
+                                </Upload>
+                                {backData && (
+                                    <Descriptions column={1} size="small" style={{ marginTop: 12 }} bordered>
+                                        <Descriptions.Item label="Ngày cấp">{backData.init_date || backData.issue_date || backData.issueDate || '–'}</Descriptions.Item>
+                                    </Descriptions>
+                                )}
+                            </Col>
+                        </Row>
+                        {ocrData && (
+                            <div style={{ marginTop: 16 }}>
+                                <Button
+                                    type="primary"
+                                    icon={<CheckOutlined />}
+                                    loading={saveKycLoading}
+                                    onClick={handleStaffSaveKyc}
+                                >
+                                    Lưu hồ sơ KYC
+                                </Button>
+                            </div>
+                        )}
+                    </Card>
+                    <Card bordered={false} style={{ borderRadius: 0 }}>
+                        <Empty description="Chưa có dữ liệu KYC" />
+                    </Card>
+                </>
             );
         }
 
         const { ocr, metadata, documents } = kyc;
+        const ocrData = extractOcrFront(staffFrontOcr);
+        const backData = extractOcrBack(staffBackOcr);
+        const showUploadCard = canApproveKyc;
 
         return (
             <>
-                {/* OCR Information */}
-                <Card 
-                    title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>} 
-                    bordered={false} 
-                    style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-                >
-                    <Descriptions column={2} bordered size="small">
-                        <Descriptions.Item label="Họ tên" span={1}>{ocr?.fullName || '–'}</Descriptions.Item>
-                        <Descriptions.Item label="Số CCCD" span={1}>{ocr?.ssn || '–'}</Descriptions.Item>
-                        <Descriptions.Item label="Ngày sinh" span={1}>{ocr?.dateOfBirth || '–'}</Descriptions.Item>
-                        <Descriptions.Item label="Giới tính" span={1}>{ocr?.sex || '–'}</Descriptions.Item>
-                        <Descriptions.Item label="Địa chỉ" span={2}>{ocr?.address || '–'}</Descriptions.Item>
-                        <Descriptions.Item label="Ngày hoàn thành KYC" span={2}>
-                            {metadata?.kycCompletedAt ? new Date(metadata.kycCompletedAt).toLocaleString('vi-VN') : '–'}
-                        </Descriptions.Item>
-                    </Descriptions>
-                </Card>
+                {canApproveKyc && <ApprovalCard />}
+
+                {/* Nhân viên tải CCCD lên khi chưa có OCR/ảnh (hoặc cần bổ sung) */}
+                {showUploadCard && (
+                    <Card
+                        bordered={false}
+                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        title={<Space><UploadOutlined /> Tải CCCD lên và nhận dạng OCR (nhân viên làm giúp khách hàng)</Space>}
+                    >
+                        <Row gutter={[24, 24]}>
+                            <Col xs={24} md={12}>
+                                <div style={{ marginBottom: 8 }}><Text strong>Mặt trước CCCD</Text></div>
+                                <Upload
+                                    accept="image/*"
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        handleStaffOcrFront(file);
+                                        return false;
+                                    }}
+                                    disabled={!!ocrLoading}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={ocrLoading === 'front'}>
+                                        Chọn ảnh mặt trước
+                                    </Button>
+                                </Upload>
+                                {(ocrData || ocr?.fullName || ocr?.ssn) && (
+                                    <Descriptions column={1} size="small" style={{ marginTop: 12 }} bordered>
+                                        <Descriptions.Item label="Họ tên">{(ocrData || ocr)?.fullName || (ocrData || ocr)?.name || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Số CCCD">{(ocrData || ocr)?.idNumber || (ocrData || ocr)?.id || (ocrData || ocr)?.ssn || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Ngày sinh">{(ocrData || ocr)?.dob || (ocrData || ocr)?.dateOfBirth || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Giới tính">{(ocrData || ocr)?.gender || (ocrData || ocr)?.sex || '–'}</Descriptions.Item>
+                                        <Descriptions.Item label="Địa chỉ">{(ocrData || ocr)?.address || '–'}</Descriptions.Item>
+                                    </Descriptions>
+                                )}
+                            </Col>
+                            <Col xs={24} md={12}>
+                                <div style={{ marginBottom: 8 }}><Text strong>Mặt sau CCCD</Text></div>
+                                <Upload
+                                    accept="image/*"
+                                    showUploadList={false}
+                                    beforeUpload={(file) => {
+                                        handleStaffOcrBack(file);
+                                        return false;
+                                    }}
+                                    disabled={!!ocrLoading}
+                                >
+                                    <Button icon={<UploadOutlined />} loading={ocrLoading === 'back'}>
+                                        Chọn ảnh mặt sau
+                                    </Button>
+                                </Upload>
+                                {(backData || ocr?.issueDate) && (
+                                    <Descriptions column={1} size="small" style={{ marginTop: 12 }} bordered>
+                                        <Descriptions.Item label="Ngày cấp">{(backData || {})?.init_date || (backData || {})?.issue_date || (backData || {})?.issueDate || ocr?.issueDate || '–'}</Descriptions.Item>
+                                    </Descriptions>
+                                )}
+                            </Col>
+                        </Row>
+                                {(ocrData || ocr?.fullName || ocr?.ssn) && (staffFrontFile || staffBackFile) && (
+                            <div style={{ marginTop: 16 }}>
+                                {metadata?.kycCompletedAt && (
+                                    <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                                        Ngày hoàn thành KYC: {new Date(metadata.kycCompletedAt).toLocaleString('vi-VN')}
+                                    </Text>
+                                )}
+                                <Button
+                                    type="primary"
+                                    icon={<CheckOutlined />}
+                                    loading={saveKycLoading}
+                                    onClick={handleStaffSaveKyc}
+                                >
+                                    Lưu hồ sơ KYC
+                                </Button>
+                            </div>
+                        )}
+                    </Card>
+                )}
+
+                {/* Thông tin OCR - chỉ hiện khi không có upload card (đã lưu, không cần chỉnh sửa) */}
+                {!showUploadCard && (
+                    <Card 
+                        title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>} 
+                        bordered={false} 
+                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    >
+                        <Descriptions column={2} bordered size="small">
+                            <Descriptions.Item label="Họ tên" span={1}>{ocr?.fullName || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Số CCCD" span={1}>{ocr?.ssn || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Ngày sinh" span={1}>{ocr?.dateOfBirth || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Ngày cấp" span={1}>{ocr?.issueDate || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Giới tính" span={1}>{ocr?.sex || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Địa chỉ" span={2}>{ocr?.address || '–'}</Descriptions.Item>
+                            <Descriptions.Item label="Ngày hoàn thành KYC" span={2}>
+                                {metadata?.kycCompletedAt ? new Date(metadata.kycCompletedAt).toLocaleString('vi-VN') : '–'}
+                            </Descriptions.Item>
+                        </Descriptions>
+                    </Card>
+                )}
 
                 {/* KYC Documents */}
                 <Card 

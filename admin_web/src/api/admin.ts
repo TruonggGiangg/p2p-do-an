@@ -76,6 +76,7 @@ export interface KycDetailDto {
     dateOfBirth?: string;
     address?: string;
     sex?: string;
+    issueDate?: string;
   };
   metadata: {
     kycCompletedAt?: string;
@@ -145,6 +146,7 @@ export interface KycDetailDto {
     dateOfBirth?: string;
     address?: string;
     sex?: string;
+    issueDate?: string;
   };
   metadata: {
     kycCompletedAt?: string;
@@ -430,4 +432,40 @@ export const adminApi = {
       `/api/admin/kyc/${userId}/documents/${entityType}/${entityId}/${documentId}`,
       { responseType: "blob" },
     ),
+
+  /** OCR mặt trước CCCD (nhân viên tải lên giúp khách hàng) */
+  ocrFront: (userId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("frontID", file);
+    return api
+      .post<{ data: any }>(`/api/admin/kyc/${userId}/ocr-front`, formData)
+      .then((r) => r.data.data);
+  },
+
+  /** OCR mặt sau CCCD */
+  ocrBack: (userId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("backID", file);
+    return api
+      .post<{ data: any }>(`/api/admin/kyc/${userId}/ocr-back`, formData)
+      .then((r) => r.data.data);
+  },
+
+  /** Lưu KYC cho user (nhân viên làm giúp) */
+  saveKycForUser: (
+    userId: string,
+    frontOCRData: any,
+    backOCRData: any,
+    frontImage?: File | null,
+    backImage?: File | null,
+  ) => {
+    const formData = new FormData();
+    formData.append("frontOCRData", JSON.stringify(frontOCRData));
+    formData.append("backOCRData", JSON.stringify(backOCRData || frontOCRData));
+    if (frontImage) formData.append("frontImage", frontImage);
+    if (backImage) formData.append("backImage", backImage);
+    return api
+      .post<{ data: any }>(`/api/admin/kyc/${userId}/save`, formData)
+      .then((r) => r.data.data);
+  },
 };

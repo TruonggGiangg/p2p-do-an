@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -258,6 +259,62 @@ export class AdminController {
   async getPendingKyc() {
     const list = await this.adminService.getPendingKycUsers();
     return { statusCode: 200, message: 'OK', data: { users: list } };
+  }
+
+  @Post('kyc/:userId/ocr-front')
+  @UseInterceptors(AnyFilesInterceptor())
+  @ApiOperation({ summary: 'OCR mặt trước CCCD (nhân viên tải lên giúp khách hàng)' })
+  async ocrFront(@Param('userId') userId: string, @UploadedFiles() files: any[]) {
+    const file = files?.find((f: any) => f.fieldname === 'frontID');
+    if (!file?.buffer) {
+      throw new BadRequestException('Thiếu ảnh mặt trước CCCD (frontID)');
+    }
+    const result = await this.adminService.ocrFrontForUser(userId, file.buffer, file.originalname || 'front.jpg');
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Post('kyc/:userId/ocr-back')
+  @UseInterceptors(AnyFilesInterceptor())
+  @ApiOperation({ summary: 'OCR mặt sau CCCD' })
+  async ocrBack(@Param('userId') userId: string, @UploadedFiles() files: any[]) {
+    const file = files?.find((f: any) => f.fieldname === 'backID');
+    if (!file?.buffer) {
+      throw new BadRequestException('Thiếu ảnh mặt sau CCCD (backID)');
+    }
+    const result = await this.adminService.ocrBackForUser(userId, file.buffer, file.originalname || 'back.jpg');
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Post('kyc/:userId/save')
+  @UseInterceptors(AnyFilesInterceptor())
+  @ApiOperation({ summary: 'Lưu KYC (nhân viên làm giúp khách hàng)' })
+  async saveKyc(@Param('userId') userId: string, @UploadedFiles() files: any[], @Req() req: any) {
+    const body = req.body;
+    let frontOCRData = body.frontOCRData;
+    let backOCRData = body.backOCRData;
+    if (typeof frontOCRData === 'string') {
+      try {
+        frontOCRData = JSON.parse(frontOCRData);
+      } catch {}
+    }
+    if (typeof backOCRData === 'string') {
+      try {
+        backOCRData = JSON.parse(backOCRData);
+      } catch {}
+    }
+    if (!frontOCRData) {
+      throw new BadRequestException('Thiếu thông tin OCR mặt trước CCCD');
+    }
+    const frontFile = files?.find((f: any) => f.fieldname === 'frontImage');
+    const backFile = files?.find((f: any) => f.fieldname === 'backImage');
+    const result = await this.adminService.saveKycForUser(
+      userId,
+      frontOCRData,
+      backOCRData || frontOCRData,
+      frontFile?.buffer || null,
+      backFile?.buffer || null,
+    );
+    return { statusCode: 200, message: 'Đã lưu hồ sơ KYC', data: result };
   }
 
   @Get('kyc/:userId')

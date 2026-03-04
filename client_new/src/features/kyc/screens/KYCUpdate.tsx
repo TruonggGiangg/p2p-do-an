@@ -23,7 +23,8 @@ import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '../../../contexts/ThemeContext';
 import { kycService } from '../services/kyc.service';
-import { KYCStepIndicator, KYCInfoCard } from '../index';
+import { KYCStepIndicator } from '../components/KYCStepIndicator';
+import { KYCInfoCard } from '../components/KYCInfoCard';
 import { CommonButton } from '../../../components/common/CommonButton';
 import { CommonCard } from '../../../components/common/CommonCard';
 import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
@@ -212,12 +213,13 @@ const KYCUpdate: React.FC = () => {
         try {
             const res = await kycService.ocrBackID(uri);
             if (res && (res.success || res.errorCode === 0)) {
-                const data = res.data?.result || res.data || res;
+                const result = res.data?.result || res.data || res;
+                const data = result?.data || result;
                 setOcrData((prev: any) => ({
                     ...prev,
-                    issueDate: data.issueDate || data.issue_date,
-                    issueLoc: data.issueLoc || data.issue_loc || data.place_of_issue,
-                    expiryDate: data.expiryDate || data.expiry_date,
+                    issueDate: data?.init_date || data?.issueDate || data?.issue_date || result?.issueDate,
+                    issueLoc: data?.issueLoc || data?.issue_loc || data?.place_of_issue || result?.issueLoc,
+                    expiryDate: data?.expiryDate || data?.expiry_date || result?.expiryDate,
                 }));
             }
         } catch (err) {
@@ -288,56 +290,94 @@ const KYCUpdate: React.FC = () => {
         { label: 'Số CCCD', value: ocrData?.id, icon: 'card-outline', key: 'id' },
         { label: 'Ngày sinh', value: ocrData?.dob, icon: 'calendar-outline', key: 'dob' },
         { label: 'Giới tính', value: ocrData?.gender, icon: 'transgender-outline', key: 'gender' },
+        { label: 'Quốc tịch', value: ocrData?.nationality, icon: 'flag-outline', key: 'nationality' },
+        { label: 'Quê quán', value: ocrData?.birthplace, icon: 'location-outline', key: 'birthplace' },
     ], [ocrData]);
 
     const idInfo = useMemo(() => [
         { label: 'Ngày cấp', value: ocrData?.issueDate, icon: 'time-outline', key: 'issueDate' },
         { label: 'Nơi cấp', value: ocrData?.issueLoc, icon: 'location-outline', key: 'issueLoc' },
+        { label: 'Hạn đến', value: ocrData?.expiryDate, icon: 'calendar-outline', key: 'expiryDate' },
         { label: 'Địa chỉ', value: ocrData?.address, icon: 'home-outline', key: 'address' },
     ], [ocrData]);
 
-    const renderImageStep = (uri: string | null, title: string, subtitle: string, type: 'front' | 'back') => (
-        <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepContent}>
-            <Text style={[styles.stepTitle, { color: c.textPrimary }]}>{title}</Text>
-            <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>{subtitle}</Text>
+    const renderImageStep = (uri: string | null, title: string, subtitle: string, type: 'front' | 'back') => {
+        const showFrontOcr = type === 'front' && uri && (ocrData?.name || ocrData?.id || ocrData?.dob);
+        const showBackOcr = type === 'back' && uri && (ocrData?.issueDate || ocrData?.issueLoc);
+        const frontOcrItems = [
+            { label: 'Họ và tên', value: ocrData?.name, icon: 'person-outline' as const },
+            { label: 'Số CCCD', value: ocrData?.id, icon: 'card-outline' as const },
+            { label: 'Ngày sinh', value: ocrData?.dob, icon: 'calendar-outline' as const },
+            { label: 'Giới tính', value: ocrData?.gender, icon: 'transgender-outline' as const },
+            { label: 'Quốc tịch', value: ocrData?.nationality, icon: 'flag-outline' as const },
+            { label: 'Quê quán', value: ocrData?.birthplace, icon: 'location-outline' as const },
+            { label: 'Địa chỉ', value: ocrData?.address, icon: 'home-outline' as const },
+        ];
+        const backOcrItems = [
+            { label: 'Ngày cấp', value: ocrData?.issueDate, icon: 'time-outline' as const },
+            { label: 'Nơi cấp', value: ocrData?.issueLoc, icon: 'location-outline' as const },
+            { label: 'Hạn đến', value: ocrData?.expiryDate, icon: 'calendar-outline' as const },
+        ];
+        return (
+            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepContent}>
+                <Text style={[styles.stepTitle, { color: c.textPrimary }]}>{title}</Text>
+                <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>{subtitle}</Text>
 
-            <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => openImagePicker(type)}
-                style={[styles.imageCard, { backgroundColor: c.surface, borderColor: c.border }]}
-            >
-                {uri ? (
-                    <Image source={{ uri }} style={styles.previewImage} />
-                ) : (
-                    <View style={styles.imagePlaceholder}>
-                        <View style={[styles.iconCircle, { backgroundColor: c.primaryGlass }]}>
-                            <Ionicons name="camera-outline" size={40} color={c.primary} />
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => openImagePicker(type)}
+                    style={[styles.imageCard, { backgroundColor: c.surface, borderColor: c.border }]}
+                >
+                    {uri ? (
+                        <Image source={{ uri }} style={styles.previewImage} />
+                    ) : (
+                        <View style={styles.imagePlaceholder}>
+                            <View style={[styles.iconCircle, { backgroundColor: c.primaryGlass }]}>
+                                <Ionicons name="camera-outline" size={40} color={c.primary} />
+                            </View>
+                            <Text style={[styles.placeholderText, { color: c.textMuted }]}>
+                                Nhấn để chụp hoặc tải ảnh lên
+                            </Text>
                         </View>
-                        <Text style={[styles.placeholderText, { color: c.textMuted }]}>
-                            Nhấn để chụp hoặc tải ảnh lên
-                        </Text>
-                    </View>
-                )}
-                {loading && (
-                    <View style={styles.loadingOverlay}>
-                        <ActivityIndicator color={c.primary} size="large" />
-                        <Text style={[styles.loadingText, { color: c.primary }]}>Đang phân tích...</Text>
-                    </View>
-                )}
-            </TouchableOpacity>
+                    )}
+                    {loading && (
+                        <View style={styles.loadingOverlay}>
+                            <ActivityIndicator color={c.primary} size="large" />
+                            <Text style={[styles.loadingText, { color: c.primary }]}>Đang phân tích...</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
 
-            <View style={styles.guideContainer}>
-                <View style={styles.guideItem}>
-                    <Ionicons name="checkmark-circle" size={16} color={c.success} />
-                    <Text style={[styles.guideText, { color: c.textSecondary }]}>Ảnh rõ nét, không lóa</Text>
+                <View style={styles.guideContainer}>
+                    <View style={styles.guideItem}>
+                        <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                        <Text style={[styles.guideText, { color: c.textSecondary }]}>Ảnh rõ nét, không lóa</Text>
+                    </View>
+                    <View style={styles.guideItem}>
+                        <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                        <Text style={[styles.guideText, { color: c.textSecondary }]}>Đầy đủ 4 góc của thẻ</Text>
+                    </View>
                 </View>
-                <View style={styles.guideItem}>
-                    <Ionicons name="checkmark-circle" size={16} color={c.success} />
-                    <Text style={[styles.guideText, { color: c.textSecondary }]}>Đầy đủ 4 góc của thẻ</Text>
-                </View>
-            </View>
-        </Animated.View>
-    );
+
+                {(showFrontOcr || showBackOcr) && (
+                    <Animated.View entering={FadeIn} style={[styles.ocrResultCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                        <View style={styles.ocrResultTitleRow}>
+                            <Ionicons name="document-text-outline" size={18} color={c.primary} />
+                            <Text style={[styles.ocrResultTitle, { color: c.primary }]}>Thông tin đã nhận dạng</Text>
+                        </View>
+                        {(type === 'front' ? frontOcrItems : backOcrItems).map((item, idx) => (
+                            item.value ? (
+                                <View key={idx} style={[styles.ocrRow, { borderBottomColor: c.border + '60' }]}>
+                                    <Text style={[styles.ocrLabel, { color: c.textSecondary }]}>{item.label}</Text>
+                                    <Text style={[styles.ocrValue, { color: c.textPrimary }]} numberOfLines={2}>{item.value}</Text>
+                                </View>
+                            ) : null
+                        ))}
+                    </Animated.View>
+                )}
+            </Animated.View>
+        );
+    };
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
@@ -536,6 +576,40 @@ const styles = StyleSheet.create({
     guideText: {
         fontSize: 12,
         fontFamily: 'Poppins_400Regular',
+    },
+    ocrResultCard: {
+        marginTop: 24,
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    ocrResultTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+    },
+    ocrResultTitle: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    ocrRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        paddingVertical: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    ocrLabel: {
+        fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
+        flex: 0.35,
+    },
+    ocrValue: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+        flex: 0.65,
+        textAlign: 'right',
     },
     faceIllustration: {
         alignSelf: 'center',

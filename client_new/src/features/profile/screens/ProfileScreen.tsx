@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, RefreshControl, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, RefreshControl, Platform, Dimensions, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -177,7 +177,19 @@ export default function ProfileScreen() {
                                     : 'Chưa xác minh'
                         }
                         onPress={() => {
-                            console.log('eKYC SettingItem pressed');
+                            const status = (user as any)?.kycStatus;
+                            if (status === 'PENDING') {
+                                Alert.alert(
+                                    'Đang chờ phê duyệt',
+                                    'Hồ sơ xác minh danh tính của bạn đang được xử lý. Vui lòng chờ kết quả từ hệ thống.',
+                                    [{ text: 'Đã hiểu' }]
+                                );
+                                return;
+                            }
+                            if (status === 'VERIFIED') {
+                                Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.');
+                                return;
+                            }
                             (navigation as any).getParent()?.navigate('KYCIntro');
                         }}
                         color={

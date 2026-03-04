@@ -160,7 +160,7 @@ export default function CustomersPage() {
             width: 140,
             filters: [
                 { text: 'Chưa KYC', value: 'NONE' },
-                { text: 'Chờ duyệt', value: 'PENDING' },
+                { text: 'Có thông tin KYC, chờ duyệt', value: 'PENDING' },
                 { text: 'Đã duyệt', value: 'VERIFIED' },
                 { text: 'Từ chối', value: 'REJECTED' },
             ],
@@ -169,7 +169,7 @@ export default function CustomersPage() {
                 const v = r.kycStatus || 'NONE';
                 const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string; bg: string }> = {
                     'NONE': { color: 'default', icon: null, text: 'Chưa KYC', bg: token.colorFillTertiary },
-                    'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Chờ duyệt', bg: token.colorWarningBg },
+                    'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Có thông tin KYC, chờ duyệt', bg: token.colorWarningBg },
                     'VERIFIED': { color: 'success', icon: <CheckCircleOutlined />, text: 'Đã duyệt', bg: token.colorSuccessBg },
                     'REJECTED': { color: 'error', icon: null, text: 'Từ chối', bg: token.colorErrorBg },
                 };
@@ -295,11 +295,17 @@ export default function CustomersPage() {
             }
         }
 
-        // Apply advanced filters to the FULL list
-        const filteredUsers = applyFilters(res.users);
+        // Apply advanced filters to the FULL list, remove null/undefined
+        const filteredUsers = applyFilters(res.users || []).filter(Boolean);
+
+        // Paginate client-side (ProTable expects paginated data to avoid extra empty row)
+        const page = params.current ?? 1;
+        const size = params.pageSize ?? 20;
+        const start = (page - 1) * size;
+        const paged = filteredUsers.slice(start, start + size);
 
         return {
-            data: filteredUsers,
+            data: paged,
             success: true,
             total: filteredUsers.length
         };
@@ -307,7 +313,7 @@ export default function CustomersPage() {
 
     const getHeaderTitle = () => {
         switch (viewMode) {
-            case 'pending': return 'Khách hàng chờ phê duyệt KYC';
+            case 'pending': return 'Khách hàng có thông tin KYC và đang chờ phê duyệt';
             case 'active': return 'Khách hàng đang hoạt động';
             case 'inactive': return 'Khách hàng chưa kích hoạt';
             default: return 'Tất cả khách hàng';
@@ -330,7 +336,7 @@ export default function CustomersPage() {
             label: (
                 <Space>
                     <ClockCircleOutlined />
-                    Chờ phê duyệt
+                    Có thông tin KYC, chờ duyệt
                     <Badge count={pendingCount} style={{ backgroundColor: '#faad14' }} />
                 </Space>
             ),
@@ -456,7 +462,7 @@ export default function CustomersPage() {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div>
                                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
-                                    Chờ duyệt KYC
+                                    Có thông tin KYC, chờ duyệt
                                 </Text>
                                 <Title level={2} style={{ 
                                     margin: 0, 
@@ -594,7 +600,7 @@ export default function CustomersPage() {
                                 options={[
                                     { value: 'all', label: 'Tất cả' },
                                     { value: 'NONE', label: 'Chưa KYC' },
-                                    { value: 'PENDING', label: 'Chờ duyệt' },
+                                    { value: 'PENDING', label: 'Có thông tin KYC, chờ duyệt' },
                                     { value: 'VERIFIED', label: 'Đã duyệt' },
                                     { value: 'REJECTED', label: 'Từ chối' },
                                 ]}

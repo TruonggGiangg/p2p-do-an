@@ -13,10 +13,12 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { FineractModule } from '../fineract/fineract.module';
 import { LoanModule } from '../loan/loan.module';
+import { EkycModule } from '../ekyc/ekyc.module';
 
 @Module({
   imports: [
     FineractModule,
+    EkycModule,
     forwardRef(() => LoanModule),
     MongooseModule.forFeature([
       { name: DocumentType.name, schema: DocumentTypeSchema },

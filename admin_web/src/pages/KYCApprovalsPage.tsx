@@ -57,12 +57,12 @@ export default function KYCApprovalsPage() {
     setApproving(s => new Set(s).add(userId));
     try {
       await adminApi.approveKyc(userId);
-      messageApi.success('Đã phê duyệt KYC');
+      messageApi.success('Đã kích hoạt tài khoản');
       setViewUserId(null);
       setDetail(null);
       loadPending();
     } catch (e: any) {
-      messageApi.error(e?.response?.data?.message || 'Phê duyệt thất bại');
+      messageApi.error(e?.response?.data?.message || 'Kích hoạt tài khoản thất bại');
     } finally {
       setApproving(s => { const n = new Set(s); n.delete(userId); return n; });
     }
@@ -72,12 +72,12 @@ export default function KYCApprovalsPage() {
     setRejecting(s => new Set(s).add(userId));
     try {
       await adminApi.rejectKyc(userId);
-      messageApi.success('Đã từ chối KYC');
+      messageApi.success('Đã từ chối kích hoạt');
       setViewUserId(null);
       setDetail(null);
       loadPending();
     } catch (e: any) {
-      messageApi.error(e?.response?.data?.message || 'Từ chối thất bại');
+      messageApi.error(e?.response?.data?.message || 'Từ chối kích hoạt thất bại');
     } finally {
       setRejecting(s => { const n = new Set(s); n.delete(userId); return n; });
     }
@@ -195,7 +195,7 @@ export default function KYCApprovalsPage() {
           <div>
             <Text strong style={{ fontSize: 18 }}>
               <IdcardOutlined style={{ marginRight: 8 }} />
-              Phê duyệt KYC (eKYC)
+              Kích hoạt tài khoản (eKYC)
             </Text>
             <br />
             <Text type="secondary">Danh sách người dùng chờ xác minh định danh</Text>
@@ -211,7 +211,7 @@ export default function KYCApprovalsPage() {
           dataSource={users}
           columns={columns}
           pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty description="Chưa có hồ sơ KYC chờ phê duyệt" /> }}
+          locale={{ emptyText: <Empty description="Chưa có hồ sơ KYC chờ kích hoạt" /> }}
         />
       </Card>
 
@@ -232,18 +232,18 @@ export default function KYCApprovalsPage() {
           viewUserId && detail && (
             <Space>
               <Popconfirm
-                title="Phê duyệt KYC"
-                description="Xác nhận phê duyệt hồ sơ định danh này?"
+                title="Kích hoạt tài khoản"
+                description="Xác nhận kích hoạt tài khoản cho hồ sơ định danh này?"
                 onConfirm={() => handleApprove(viewUserId)}
-                okText="Phê duyệt"
+                okText="Kích hoạt"
                 cancelText="Hủy"
               >
                 <Button type="primary" icon={<CheckOutlined />} loading={approving.has(viewUserId)}>
-                  Phê duyệt
+                  Kích hoạt tài khoản
                 </Button>
               </Popconfirm>
               <Popconfirm
-                title="Từ chối KYC"
+                title="Từ chối kích hoạt"
                 description="Xác nhận từ chối hồ sơ định danh này?"
                 onConfirm={() => handleReject(viewUserId)}
                 okText="Từ chối"
