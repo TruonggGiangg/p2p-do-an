@@ -13,7 +13,6 @@ import {
     Pressable,
     RefreshControl,
     ScrollView,
-    StatusBar,
     StyleSheet,
     Text,
     TextInput,
@@ -279,11 +278,9 @@ const LoanHistoryScreen = () => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
-
-            {/* Shared Header */}
+            {/* Shared Header — consistent with other screens */}
             <BinanceHeader
-                mode="standard"
+                showBack
                 title="Lịch Sử Khoản Vay"
                 showThemeToggle={false}
                 rightComponents={<View />}

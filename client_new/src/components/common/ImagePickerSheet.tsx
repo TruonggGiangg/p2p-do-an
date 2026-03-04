@@ -84,27 +84,40 @@ export default function ImagePickerSheet({
     const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
     // Request permission — check existing status first (instant), then request if needed
+    // Android 13+ (API 33) requires granular permissions: 'photo' instead of READ_EXTERNAL_STORAGE
     useEffect(() => {
         if (!visible) return;
         (async () => {
-            // First try a non-blocking check
-            const existing = await MediaLibrary.getPermissionsAsync();
-            const alreadyGranted = existing.status === 'granted'
-                || (existing as any).accessPrivileges === 'limited'
-                || (existing as any).accessPrivileges === 'all';
-            if (alreadyGranted) {
-                setHasPermission(true);
+            try {
+                // First try a non-blocking check — pass granularPermissions for Android 13+
+                const existing = await MediaLibrary.getPermissionsAsync(
+                    false,
+                    ['photo']
+                );
+                const alreadyGranted = existing.status === 'granted'
+                    || (existing as any).accessPrivileges === 'limited'
+                    || (existing as any).accessPrivileges === 'all';
+                if (alreadyGranted) {
+                    setHasPermission(true);
+                    setPermissionChecked(true);
+                    return;
+                }
+                // Mark as checked so we show action buttons immediately
                 setPermissionChecked(true);
-                return;
+                // Request in background — pass granularPermissions for Android 13+ (READ_MEDIA_IMAGES)
+                const permResponse = await MediaLibrary.requestPermissionsAsync(
+                    false,
+                    ['photo']
+                );
+                const granted = permResponse.status === 'granted'
+                    || (permResponse as any).accessPrivileges === 'limited'
+                    || (permResponse as any).accessPrivileges === 'all';
+                setHasPermission(granted);
+            } catch (err) {
+                console.warn('MediaLibrary permission error:', err);
+                setPermissionChecked(true);
+                setHasPermission(false);
             }
-            // Mark as checked so we show action buttons immediately
-            setPermissionChecked(true);
-            // Request in background
-            const permResponse = await MediaLibrary.requestPermissionsAsync();
-            const granted = permResponse.status === 'granted'
-                || (permResponse as any).accessPrivileges === 'limited'
-                || (permResponse as any).accessPrivileges === 'all';
-            setHasPermission(granted);
         })();
     }, [visible]);
 
