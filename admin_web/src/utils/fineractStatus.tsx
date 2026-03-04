@@ -49,7 +49,7 @@ export function FineractStatusBadge({ status }: {
     const color = mapped?.color ?? 'default';
     const label = mapped?.label ?? value;
 
-    return <Tag color={color}>{label}</Tag>;
+    return <Tag color={color} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{label}</Tag>;
 }
 
 export function fmtVND(n?: any) {

@@ -1,26 +1,103 @@
+/* ── CSS Variables for Spacing & Design System ── */
+:root {
+  /* Spacing System */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-3xl: 48px;
+  --spacing-4xl: 64px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+
+  /* Typography Scale */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 32px;
+
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  transition: background-color 0.3s ease;
+  font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+[data-theme="light"] body {
+  color: #0F172A;
+}
+
+[data-theme="dark"] body {
+  color: #F1F5F9;
 }
 
 #root {
   min-height: 100vh;
 }
 
+[data-theme="light"] a {
+  color: #1E40AF;
+}
+
+[data-theme="dark"] a {
+  color: #60A5FA;
+}
+
 a {
-  color: #0D9488;
   text-decoration: none;
   transition: opacity 0.2s, color 0.2s;
 }
 
 a:hover {
   opacity: 0.85;
-  color: #0F766E;
+}
+
+[data-theme="light"] a:hover {
+  color: #1E3A8A;
+}
+
+[data-theme="dark"] a:hover {
+  color: #93C5FD;
+}
+
+/* ── Typography Utilities ── */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: var(--font-size-2xl); }
+h2 { font-size: var(--font-size-xl); }
+h3 { font-size: var(--font-size-lg); }
+h4 { font-size: var(--font-size-base); }
+
+p {
+  margin: 0;
+  line-height: 1.6;
 }
 
 /* ── Global Theme Transitions ── */
@@ -34,47 +111,384 @@ a:hover {
 .ant-table-thead>tr>th,
 .ant-table-tbody>tr>td,
 .ant-input,
+.ant-input-affix-wrapper,
 .ant-select-selector,
-.ant-picker {
-  transition: background 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+.ant-picker,
+.ant-btn {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-/* ── Formatting Utilities ── */
+/* ── ProTable Enhancements ── */
 
 /* ProTable toolbar */
+.ant-pro-table-list-toolbar-container {
+  padding: var(--spacing-xl) 0 !important;
+}
+
 .ant-pro-table-list-toolbar-title {
-  font-size: 15px !important;
-  font-weight: 700 !important;
+  font-size: var(--font-size-lg) !important;
+  font-weight: var(--font-weight-bold) !important;
+  letter-spacing: -0.02em;
 }
 
-/* Tag cleanup */
+/* ProTable header */
+.ant-table-thead > tr > th {
+  font-weight: var(--font-weight-semibold) !important;
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 12px !important;
+  white-space: nowrap !important;
+}
+
+[data-theme="light"] .ant-table-thead > tr > th {
+  background: #F8FAFC !important;
+  color: #475569 !important;
+  border-bottom: 2px solid #E2E8F0 !important;
+}
+
+[data-theme="dark"] .ant-table-thead > tr > th {
+  background: #1E293B !important;
+  color: #94A3B8 !important;
+  border-bottom: 2px solid #334155 !important;
+}
+
+/* ProTable body - cỡ chữ hợp lý */
+.ant-table-tbody > tr > td {
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+}
+
+[data-theme="light"] .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #334155 !important;
+}
+
+[data-theme="light"] .ant-table-tbody > tr:hover > td {
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+  background: #334155 !important;
+}
+
+/* ProTable search form */
+.ant-pro-form-light-filter-item .ant-input,
+.ant-pro-form-light-filter-item .ant-select-selector {
+  min-width: 200px;
+  height: 40px;
+}
+
+/* ProTable search form container - ensure theme-aware */
+.ant-pro-table-search {
+  margin-bottom: 0;
+}
+
+/* Cột Thao tác/Hành động cố định - tránh bị che, ép sát */
+.ant-table-cell-fix-right-first,
+.ant-table-cell-fix-right-last {
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+}
+.ant-pro-table .ant-table-wrapper {
+  overflow-x: auto !important;
+}
+.ant-pro-table .ant-table-content {
+  overflow-x: auto !important;
+}
+
+[data-theme="dark"] .ant-pro-table .ant-form-item-label > label {
+  color: #94A3B8 !important;
+}
+
+/* Panel cài đặt cột ProTable - tránh text bị cắt (Hành động, Trạng thái...) */
+/* Antd 5: overlayClassName trên root ant-popover */
+.ant-popover.ant-pro-table-column-setting-overlay {
+  width: 340px !important;
+  min-width: 340px !important;
+}
+.ant-pro-table-column-setting-overlay .ant-popover-inner-content,
+.ant-pro-table-column-setting-overlay .ant-popover-container {
+  width: 340px !important;
+  min-width: 340px !important;
+}
+.ant-pro-table-column-setting-overlay .ant-popover-content {
+  width: 100% !important;
+}
+/* Ghi đè width: 80 inline từ ProTable - Typography.Text trong list item */
+.ant-pro-table-column-setting-overlay .ant-pro-table-column-setting-list-item-title,
+.ant-pro-table-column-setting-overlay .ant-pro-table-column-setting-list-item-title span,
+.ant-pro-table-column-setting-overlay .ant-pro-table-column-setting-list-item-title .ant-typography {
+  width: auto !important;
+  min-width: 80px !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+}
+/* Cột Thao tác/Hành động trong bảng - font nhỏ hơn để vừa chiều rộng */
+.ant-table-cell-fix-right-first .ant-btn,
+.ant-table-cell-fix-right-last .ant-btn {
+  font-size: 12px !important;
+}
+
+/* Pagination */
+[data-theme="dark"] .ant-pagination-item {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .ant-pagination-item a {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .ant-pagination-item-active {
+  background: #3B82F6 !important;
+  border-color: #3B82F6 !important;
+}
+
+[data-theme="dark"] .ant-pagination-item-active a {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .ant-pagination-prev .ant-pagination-item-link,
+[data-theme="dark"] .ant-pagination-next .ant-pagination-item-link {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .ant-pagination-options .ant-select-selector {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  color: #F1F5F9 !important;
+}
+
+/* ── No border-radius (square corners) ── */
+.ant-card,
+.ant-modal-content,
+.ant-modal-wrap .ant-modal,
+.ant-drawer-content,
+.ant-drawer-wrapper-body,
+.ant-btn,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-pagination-item,
+.ant-pagination-prev .ant-pagination-item-link,
+.ant-pagination-next .ant-pagination-item-link,
+.ant-tag,
+.ant-alert,
+.ant-tabs-tab {
+  border-radius: 0 !important;
+}
+
+/* ── Card Enhancements ── */
+.ant-card {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-theme="light"] .ant-card {
+  border: 1px solid #E2E8F0 !important;
+}
+
+[data-theme="dark"] .ant-card {
+  border: 1px solid #334155 !important;
+}
+
+.ant-card-head {
+  font-weight: var(--font-weight-semibold) !important;
+  font-size: var(--font-size-lg) !important;
+  padding: var(--spacing-xl) var(--spacing-2xl) !important;
+}
+
+[data-theme="light"] .ant-card-head {
+  border-bottom: 2px solid #F1F5F9 !important;
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-card-head {
+  border-bottom: 2px solid #334155 !important;
+  background: #1E293B !important;
+}
+
+.ant-card-body {
+  padding: var(--spacing-2xl) !important;
+}
+
+/* ── Button Enhancements ── */
+.ant-btn {
+  font-weight: var(--font-weight-medium) !important;
+  letter-spacing: 0.02em;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.ant-btn-primary {
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25) !important;
+}
+
+.ant-btn-primary:hover {
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.35) !important;
+}
+
+/* ── Tag Enhancements ── */
 .ant-tag {
-  border-radius: 4px !important;
-  font-size: 11px !important;
+  font-size: var(--font-size-xs) !important;
+  font-weight: var(--font-weight-medium) !important;
+  padding: 4px 12px !important;
+  border: none !important;
+  letter-spacing: 0.02em;
 }
 
-/* Scrollbar */
+/* ── Input & Select Enhancements ── */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker {
+  font-size: var(--font-size-base) !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-theme="light"] .ant-input,
+[data-theme="light"] .ant-input-affix-wrapper,
+[data-theme="light"] .ant-select-selector,
+[data-theme="light"] .ant-picker {
+  border: 1px solid #CBD5E1 !important;
+}
+
+[data-theme="dark"] .ant-input,
+[data-theme="dark"] .ant-input-affix-wrapper,
+[data-theme="dark"] .ant-select-selector,
+[data-theme="dark"] .ant-picker {
+  border: 1px solid #475569 !important;
+}
+
+/* Input.Password: bỏ border của input bên trong, chỉ giữ border của wrapper */
+.ant-input-affix-wrapper .ant-input {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .ant-input:hover,
+[data-theme="light"] .ant-input-affix-wrapper:hover,
+[data-theme="light"] .ant-select-selector:hover,
+[data-theme="light"] .ant-picker:hover {
+  border-color: #1E40AF !important;
+}
+
+[data-theme="dark"] .ant-input:hover,
+[data-theme="dark"] .ant-input-affix-wrapper:hover,
+[data-theme="dark"] .ant-select-selector:hover,
+[data-theme="dark"] .ant-picker:hover {
+  border-color: #3B82F6 !important;
+}
+
+[data-theme="light"] .ant-input:focus,
+[data-theme="light"] .ant-input-affix-wrapper:focus-within,
+[data-theme="light"] .ant-select-selector:focus,
+[data-theme="light"] .ant-picker:focus {
+  border-color: #1E40AF !important;
+  box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1) !important;
+}
+
+[data-theme="dark"] .ant-input:focus,
+[data-theme="dark"] .ant-input-affix-wrapper:focus-within,
+[data-theme="dark"] .ant-select-selector:focus,
+[data-theme="dark"] .ant-picker:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+.ant-input-affix-wrapper .ant-input:focus {
+  box-shadow: none !important;
+}
+
+/* ── Scrollbar Styling ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(139, 148, 158, 0.3);
-  border-radius: 3px;
+  border-radius: 0;
+  transition: background 0.2s ease;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #0D9488;
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
-/* ProTable search form */
-.ant-pro-form-light-filter-item .ant-input {
-  width: 200px;
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
+
+/* ── Drawer Enhancements ── */
+.ant-drawer-header {
+  padding: var(--spacing-xl) var(--spacing-2xl) !important;
+}
+
+[data-theme="light"] .ant-drawer-header {
+  border-bottom: 2px solid #F1F5F9 !important;
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-drawer-header {
+  border-bottom: 2px solid #334155 !important;
+  background: #1E293B !important;
+}
+
+.ant-drawer-title {
+  font-size: var(--font-size-lg) !important;
+  font-weight: var(--font-weight-bold) !important;
+}
+
+.ant-drawer-body {
+  padding: var(--spacing-2xl) !important;
+}
+
+/* ── Modal Enhancements ── */
+.ant-modal-header {
+  padding: var(--spacing-xl) var(--spacing-2xl) !important;
+}
+
+[data-theme="light"] .ant-modal-header {
+  border-bottom: 2px solid #F1F5F9 !important;
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-modal-header {
+  border-bottom: 2px solid #334155 !important;
+  background: #1E293B !important;
+}
+
+.ant-modal-title {
+  font-size: var(--font-size-lg) !important;
+  font-weight: var(--font-weight-bold) !important;
+}
+
+.ant-modal-body {
+  padding: var(--spacing-2xl) !important;
+}
+
+/* ── Badge Enhancements ── */
+.ant-badge-count {
+  font-weight: var(--font-weight-semibold) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
 }
 
 /* ── View Transition API (Circular Reveal) ── */

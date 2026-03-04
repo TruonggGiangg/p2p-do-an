@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
+import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 
 const { Title, Text } = Typography;
 
@@ -236,7 +237,7 @@ export default function CustomerDetailPage() {
                 marginBottom: 24, 
                 background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`, 
                 color: '#fff', 
-                borderRadius: 16,
+                borderRadius: 0,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
             }}
         >
@@ -315,7 +316,7 @@ export default function CustomerDetailPage() {
         <Card 
             title={<Space><InfoCircleOutlined /> Lịch sử hiệu suất</Space>} 
             bordered={false} 
-            style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+            style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
         >
             {summary ? (
                 <Row gutter={[48, 24]}>
@@ -355,7 +356,7 @@ export default function CustomerDetailPage() {
             {/* Quick Stats */}
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                 <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg, textAlign: 'center' }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorPrimaryBg, textAlign: 'center' }}>
                         <Statistic 
                             title="Khoản vay" 
                             value={loans.length} 
@@ -365,7 +366,7 @@ export default function CustomerDetailPage() {
                     </Card>
                 </Col>
                 <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorSuccessBg, textAlign: 'center' }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorSuccessBg, textAlign: 'center' }}>
                         <Statistic 
                             title="Tổng vốn" 
                             value={totalCapital} 
@@ -375,7 +376,7 @@ export default function CustomerDetailPage() {
                     </Card>
                 </Col>
                 <Col span={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorWarningBg, textAlign: 'center' }}>
+                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorWarningBg, textAlign: 'center' }}>
                         <Statistic
                             title="Chờ duyệt"
                             value={loans.filter(l => {
@@ -392,18 +393,19 @@ export default function CustomerDetailPage() {
             <Card 
                 title={<Space><BankOutlined /> Các tài khoản vay</Space>} 
                 bordered={false} 
-                style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 {loans.length === 0 ? (
                     <Empty description="Chưa có khoản vay" />
                 ) : (
                     <ProTable<LoanDto>
+                        {...PRO_TABLE_DEFAULTS}
                         rowKey={(r) => r._id || `FL_${r.fineractLoanId}`}
                         columns={loanColumns}
                         dataSource={loans}
                         search={false}
                         pagination={{ pageSize: 10 }}
-                        options={false}
+                        options={{ density: true, setting: true }}
                         scroll={{ x: 1300 }}
                     />
                 )}
@@ -415,7 +417,7 @@ export default function CustomerDetailPage() {
     const KycTab = () => {
         if (!kyc) {
             return (
-                <Card bordered={false} style={{ borderRadius: 12 }}>
+                <Card bordered={false} style={{ borderRadius: 0 }}>
                     <Empty description="Chưa có dữ liệu KYC" />
                 </Card>
             );
@@ -429,7 +431,7 @@ export default function CustomerDetailPage() {
                 <Card 
                     title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>} 
                     bordered={false} 
-                    style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     <Descriptions column={2} bordered size="small">
                         <Descriptions.Item label="Họ tên" span={1}>{ocr?.fullName || '–'}</Descriptions.Item>
@@ -447,7 +449,7 @@ export default function CustomerDetailPage() {
                 <Card 
                     title={<Space><FileTextOutlined /> Hình ảnh CCCD (từ Fineract)</Space>} 
                     bordered={false} 
-                    style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     {documents && documents.length > 0 ? (
                         <Row gutter={[24, 24]}>
@@ -517,7 +519,7 @@ export default function CustomerDetailPage() {
             <Card 
                 title={<Space><BankOutlined /> Tài khoản tiết kiệm</Space>} 
                 bordered={false} 
-                style={{ marginBottom: 24, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 {savingsAccounts.length > 0 ? (
                     <Table
@@ -546,7 +548,7 @@ export default function CustomerDetailPage() {
                 <Card 
                     title={<Space><DollarOutlined /> Các khoản phí sắp tới</Space>} 
                     bordered={false} 
-                    style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     <Table
                         dataSource={charges}
@@ -620,7 +622,7 @@ export default function CustomerDetailPage() {
             <HeaderCard />
 
             {/* Tabs */}
-            <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+            <Card bordered={false} style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                 <Tabs 
                     activeKey={activeTab} 
                     onChange={setActiveTab}

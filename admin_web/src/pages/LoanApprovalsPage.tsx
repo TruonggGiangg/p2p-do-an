@@ -4,10 +4,11 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
     Tag, Typography, Button, Space, Popconfirm, Statistic, Row, Col, Card, Badge, theme, Drawer, Table, Tabs, Empty, Descriptions, Skeleton, Flex, Tooltip, Avatar
 } from 'antd';
-import { CheckOutlined, SendOutlined, ReloadOutlined, ClockCircleOutlined, DollarOutlined, FileTextOutlined, EyeOutlined, CloseOutlined, CloseCircleOutlined, BankOutlined, UserOutlined } from '@ant-design/icons';
+import { CheckOutlined, CheckCircleOutlined, SendOutlined, ReloadOutlined, ClockCircleOutlined, DollarOutlined, FileTextOutlined, EyeOutlined, CloseOutlined, CloseCircleOutlined, BankOutlined, UserOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { adminApi, LoanDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
+import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import { useTheme } from '../App';
 
 const { Text } = Typography;
@@ -180,20 +181,20 @@ export default function LoanApprovalsPage() {
             ellipsis: true,
             search: { transform: (v) => v?.trim() || undefined },
             fieldProps: { placeholder: 'Tìm theo tên...' },
-            render: (_, r) => r.clientName ? <Text strong style={{ fontSize: 13 }}>{r.clientName}</Text> : <Text type="secondary">–</Text>,
+            render: (_, r) => r.clientName ? <Text strong style={{ fontSize: 12 }} ellipsis>{r.clientName}</Text> : <Text type="secondary">–</Text>,
         },
         {
             title: 'Sản phẩm',
             key: 'product',
-            width: 130,
+            width: 140,
             dataIndex: 'productShortName',
             search: { transform: (v) => v?.trim() || undefined },
             fieldProps: { placeholder: 'Mã sản phẩm...' },
             render: (_, r) => (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <Tag color="gold" style={{ width: 'fit-content', marginBottom: 2 }}>{r.productShortName}</Tag>
-                    <Text ellipsis style={{ fontSize: 11, maxWidth: 120 }}>{r.productName}</Text>
-                </div>
+                <Space size={4} style={{ whiteSpace: 'nowrap' }}>
+                    <Tag color="gold">{r.productShortName}</Tag>
+                    <Text ellipsis style={{ fontSize: 12, maxWidth: 90 }}>{r.productName}</Text>
+                </Space>
             ),
         },
         {
@@ -201,16 +202,15 @@ export default function LoanApprovalsPage() {
             dataIndex: 'willing',
             width: 100,
             search: false,
-            render: (_, r) => <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{r.willing || '–'}</Text>,
+            render: (_, r) => <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }} ellipsis>{r.willing || '–'}</Text>,
         },
         {
             title: 'Số tiền vay',
             dataIndex: 'capital',
-            width: 110,
-            valueType: 'money',
+            width: 120,
             sorter: (a, b) => (a.capital || 0) - (b.capital || 0),
             search: false,
-            render: (_, r) => <Text strong style={{ color: token.colorPrimary, fontSize: 13 }}>{fmtVND(r.capital)}</Text>,
+            render: (_, r) => <Text strong style={{ color: token.colorPrimary, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtVND(r.capital)}</Text>,
         },
         {
             title: 'Kỳ hạn',
@@ -219,21 +219,21 @@ export default function LoanApprovalsPage() {
             align: 'center',
             search: false,
             sorter: (a, b) => (a.periodMonth || 0) - (b.periodMonth || 0),
-            render: (_, r) => <Text style={{ fontSize: 13 }}>{r.periodMonth} tháng</Text>,
+            render: (_, r) => <Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.periodMonth} tháng</Text>,
         },
         {
             title: 'Trả/tháng',
             dataIndex: 'monthlyPay',
             width: 110,
             search: false,
-            render: (_, r) => <Text style={{ fontSize: 13 }}>{fmtVND(r.monthlyPay)}</Text>,
+            render: (_, r) => <Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtVND(r.monthlyPay)}</Text>,
         },
         {
             title: 'Tổng trả',
             dataIndex: 'entirelyPay',
             width: 110,
             search: false,
-            render: (_, r) => <Text style={{ fontSize: 13 }}>{fmtVND(r.entirelyPay)}</Text>,
+            render: (_, r) => <Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtVND(r.entirelyPay)}</Text>,
         },
         {
             title: 'Lãi suất',
@@ -241,7 +241,7 @@ export default function LoanApprovalsPage() {
             width: 80,
             align: 'center',
             search: false,
-            render: (_, r) => r.monthlyRatePercent != null ? <Text style={{ fontSize: 13 }}>{r.monthlyRatePercent}%/th</Text> : '–',
+            render: (_, r) => r.monthlyRatePercent != null ? <Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.monthlyRatePercent}%/th</Text> : '–',
         },
         {
             title: 'Trạng thái (Fineract)',
@@ -270,11 +270,12 @@ export default function LoanApprovalsPage() {
             key: 'actions',
             search: false,
             fixed: 'right',
-            width: 180,
+            width: 220,
+            onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
             render: (_, r) => {
                 if (!r.fineractLoanId) return <Tag color="red">Chưa có Fineract ID</Tag>;
                 return (
-                    <Space size={4}>
+                    <Space size={4} style={{ flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                         <Popconfirm
                             title={`Phê duyệt #${r.fineractLoanId} (${fmtVND(r.capital)})?`}
                             onConfirm={() => handleApprove(r)}
@@ -282,7 +283,7 @@ export default function LoanApprovalsPage() {
                             okButtonProps={{ type: 'primary', style: { background: token.colorSuccess, borderColor: token.colorSuccess } }}
                         >
                             <Button size="small" icon={<CheckOutlined />} loading={approving.has(r.fineractLoanId)}
-                                style={{ background: token.colorSuccess, borderColor: token.colorSuccess, color: '#fff' }}>
+                                style={{ background: token.colorSuccess, borderColor: token.colorSuccess, color: '#fff', fontSize: 12 }}>
                                 Duyệt
                             </Button>
                         </Popconfirm>
@@ -292,7 +293,8 @@ export default function LoanApprovalsPage() {
                             okText="Giải ngân" cancelText="Hủy"
                             okButtonProps={{ danger: true }}
                         >
-                            <Button size="small" icon={<SendOutlined />} loading={disbursing.has(r.fineractLoanId)} danger>
+                            <Button size="small" icon={<SendOutlined />} loading={disbursing.has(r.fineractLoanId)} danger
+                                style={{ fontSize: 12 }}>
                                 Giải ngân
                             </Button>
                         </Popconfirm>
@@ -308,42 +310,131 @@ export default function LoanApprovalsPage() {
         <>
             {contextHolder}
 
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            {/* Stats Cards - Enhanced with gradient backgrounds */}
+            <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
                 <Col xs={24} sm={12} lg={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg, border: `1px solid ${token.colorPrimaryBorder}` }}>
-                        <Flex align="center" gap={12}>
-                            <div style={{ width: 48, height: 48, borderRadius: 12, background: token.colorPrimary + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <ClockCircleOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
+                            boxShadow: '0 4px 12px rgba(30, 64, 175, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <Flex align="center" gap={16}>
+                            <div style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                            }}>
+                                <ClockCircleOutlined style={{ fontSize: 30, color: '#FFFFFF' }} />
                             </div>
-                            <div>
-                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Chờ duyệt</Typography.Text>
-                                <Statistic value={loans.length} valueStyle={{ fontSize: 22, fontWeight: 700, color: token.colorPrimary }} />
+                            <div style={{ flex: 1 }}>
+                                <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
+                                    Chờ duyệt
+                                </Typography.Text>
+                                <Statistic 
+                                    value={loans.length} 
+                                    valueStyle={{ 
+                                        fontSize: 32, 
+                                        fontWeight: 700, 
+                                        color: '#FFFFFF',
+                                        lineHeight: 1.2,
+                                    }} 
+                                />
                             </div>
                         </Flex>
                     </Card>
                 </Col>
+                
                 <Col xs={24} sm={12} lg={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, boxShadow: token.boxShadowSecondary }}>
-                        <Flex align="center" gap={12}>
-                            <div style={{ width: 48, height: 48, borderRadius: 12, background: token.colorSuccess + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <DollarOutlined style={{ fontSize: 24, color: token.colorSuccess }} />
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <Flex align="center" gap={16}>
+                            <div style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                            }}>
+                                <DollarOutlined style={{ fontSize: 30, color: '#FFFFFF' }} />
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Tổng vốn</Typography.Text>
-                                <Statistic value={totalCapital} formatter={v => fmtVND(Number(v))} valueStyle={{ fontSize: 18, fontWeight: 600, color: token.colorSuccess }} />
+                                <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
+                                    Tổng vốn cần duyệt
+                                </Typography.Text>
+                                <Statistic 
+                                    value={totalCapital} 
+                                    formatter={v => fmtVND(Number(v))} 
+                                    valueStyle={{ 
+                                        fontSize: 24, 
+                                        fontWeight: 700, 
+                                        color: '#FFFFFF',
+                                        lineHeight: 1.2,
+                                    }} 
+                                />
                             </div>
                         </Flex>
                     </Card>
                 </Col>
+                
                 <Col xs={24} sm={12} lg={8}>
-                    <Card bordered={false} style={{ borderRadius: 12, boxShadow: token.boxShadowSecondary }}>
-                        <Flex align="center" gap={12}>
-                            <div style={{ width: 48, height: 48, borderRadius: 12, background: token.colorWarning + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <FileTextOutlined style={{ fontSize: 24, color: token.colorWarning }} />
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                            boxShadow: '0 4px 12px rgba(217, 119, 6, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <Flex align="center" gap={16}>
+                            <div style={{ 
+                                width: 60, 
+                                height: 60, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                            }}>
+                                <FileTextOutlined style={{ fontSize: 30, color: '#FFFFFF' }} />
                             </div>
                             <div>
-                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>Sản phẩm</Typography.Text>
-                                <Statistic value={new Set(loans.map(l => l.productShortName)).size} suffix="loại" valueStyle={{ fontSize: 22, fontWeight: 600 }} />
+                                <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
+                                    Sản phẩm vay
+                                </Typography.Text>
+                                <Statistic 
+                                    value={new Set(loans.map(l => l.productShortName)).size} 
+                                    suffix=" loại" 
+                                    valueStyle={{ 
+                                        fontSize: 32, 
+                                        fontWeight: 700, 
+                                        color: '#FFFFFF',
+                                        lineHeight: 1.2,
+                                    }} 
+                                />
                             </div>
                         </Flex>
                     </Card>
@@ -351,13 +442,14 @@ export default function LoanApprovalsPage() {
             </Row>
 
             <ProTable<LoanDto>
+                {...PRO_TABLE_DEFAULTS}
                 actionRef={actionRef}
                 rowKey={(r) => r._id || `FL_${r.fineractLoanId}`}
                 headerTitle={
-                    <Space>
-                        Phê duyệt khoản vay
-                        <Badge count={loans.length} showZero color="#0D9488" />
-                    </Space>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <CheckCircleOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+                        <div style={{ fontSize: 18, fontWeight: 700, color: token.colorTextHeading }}>Phê duyệt khoản vay</div>
+                    </div>
                 }
                 columns={columns}
                 request={async (params) => {
@@ -378,15 +470,36 @@ export default function LoanApprovalsPage() {
                     labelWidth: 'auto',
                     defaultCollapsed: false,
                 }}
-                scroll={{ x: 1600 }}
-                pagination={{ pageSize: 15, showSizeChanger: true, showTotal: t => `${t} khoản vay chờ duyệt` }}
+                scroll={{ x: 1750 }}
+                pagination={{ 
+                    pageSize: 15, 
+                    showSizeChanger: true, 
+                    showTotal: t => `Tổng ${t} khoản vay chờ duyệt`,
+                    showQuickJumper: true,
+                }}
                 locale={{ emptyText: '🎉 Không có khoản vay nào chờ phê duyệt' }}
                 toolBarRender={() => [
-                    <Button key="reload" icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>
+                    <Button 
+                        key="reload" 
+                        icon={<ReloadOutlined />} 
+                        onClick={() => actionRef.current?.reload()}
+                        size="large"
+                        style={{ 
+                            height: 44,
+                            padding: '0 20px',
+                            fontWeight: 600,
+                        }}
+                    >
                         Làm mới
                     </Button>
                 ]}
-                options={{ reload: true, density: true, fullScreen: true, setting: true }}
+                options={{ 
+                    reload: true, 
+                    density: true, 
+                    fullScreen: true, 
+                    setting: true,
+                    search: true,
+                }}
                 columnsState={{
                     persistenceKey: 'loan-approvals-table',
                     persistenceType: 'localStorage',
@@ -428,7 +541,7 @@ export default function LoanApprovalsPage() {
                                             ? `linear-gradient(135deg, ${token.colorPrimary} 0%, #0F172A 100%)`
                                             : `linear-gradient(135deg, ${token.colorPrimary} 0%, #F0FDFA 100%)`,
                                         padding: '24px',
-                                        borderRadius: '16px',
+                                        borderRadius: 0,
                                         marginBottom: '28px',
                                         position: 'relative',
                                         overflow: 'hidden',
@@ -453,7 +566,7 @@ export default function LoanApprovalsPage() {
                                                 <div style={{
                                                     width: 64,
                                                     height: 64,
-                                                    borderRadius: 16,
+                                                    borderRadius: 0,
                                                     background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)',
                                                     display: 'flex',
                                                     alignItems: 'center',
@@ -479,7 +592,7 @@ export default function LoanApprovalsPage() {
                                             <Flex vertical align="flex-end" gap={12}>
                                                 <Tag color={loanDetails.status?.active ? 'success' : 'processing'} style={{
                                                     padding: '6px 16px',
-                                                    borderRadius: 10,
+                                                    borderRadius: 0,
                                                     fontWeight: 700,
                                                     fontSize: 13,
                                                     margin: 0,
@@ -499,13 +612,13 @@ export default function LoanApprovalsPage() {
                                                                 okText="Duyệt ngay" cancelText="Hủy"
                                                                 okButtonProps={{ type: 'primary', size: 'middle' }}
                                                             >
-                                                                <Button type="primary" size="middle" icon={<CheckOutlined />} loading={approving.has(viewLoanId)} style={{ borderRadius: 8, fontWeight: 600 }}>
+                                                                <Button type="primary" size="middle" icon={<CheckOutlined />} loading={approving.has(viewLoanId)} style={{ borderRadius: 0, fontWeight: 600 }}>
                                                                     Duyệt khoản vay
                                                                 </Button>
                                                             </Popconfirm>
                                                         ) : (
                                                             <Tooltip title={`Thiếu: ${missingRequired.join(', ')}`}>
-                                                                <Button size="middle" icon={<CheckOutlined />} disabled style={{ borderRadius: 8 }}>
+                                                                <Button size="middle" icon={<CheckOutlined />} disabled style={{ borderRadius: 0 }}>
                                                                     Duyệt khoản vay
                                                                 </Button>
                                                             </Tooltip>
@@ -517,7 +630,7 @@ export default function LoanApprovalsPage() {
                                                             okText="Giải ngân" cancelText="Hủy"
                                                             okButtonProps={{ danger: true }}
                                                         >
-                                                            <Button size="middle" danger icon={<SendOutlined />} loading={disbursing.has(viewLoanId)} style={{ borderRadius: 8, fontWeight: 600 }}>
+                                                            <Button size="middle" danger icon={<SendOutlined />} loading={disbursing.has(viewLoanId)} style={{ borderRadius: 0, fontWeight: 600 }}>
                                                                 Giải ngân
                                                             </Button>
                                                         </Popconfirm>
@@ -532,27 +645,27 @@ export default function LoanApprovalsPage() {
                                         {/* Section: Vốn & Giải ngân */}
                                         <Col span={24}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                                                <div style={{ width: 4, height: 16, background: token.colorPrimary, borderRadius: 2 }} />
+                                                <div style={{ width: 4, height: 16, background: token.colorPrimary, borderRadius: 0 }} />
                                                 <Text strong style={{ fontSize: 15, color: token.colorTextHeading }}>Vốn & Giải ngân</Text>
                                             </div>
                                             <Row gutter={16}>
                                                 <Col span={6}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 0 }}>
                                                         <Statistic title="Phê duyệt gốc" value={loanDetails.principal} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorPrimary, fontWeight: 700 }} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={6}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 0 }}>
                                                         <Statistic title="Đã giải ngân" value={loanDetails.summary?.principalDisbursed || 0} formatter={v => fmtVND(Number(v))} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={6}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 0 }}>
                                                         <Statistic title="Gốc chưa trả" value={loanDetails.summary?.principalOutstanding || 0} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorError }} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={6}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorPrimary + '08', border: `1px solid ${token.colorPrimary}20`, borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorPrimary + '08', border: `1px solid ${token.colorPrimary}20`, borderRadius: 0 }}>
                                                         <Statistic title="Tổng dư nợ" value={loanDetails.summary?.totalOutstanding || 0} formatter={v => fmtVND(Number(v))} valueStyle={{ fontWeight: 800, color: token.colorPrimary }} />
                                                     </Card>
                                                 </Col>
@@ -562,22 +675,22 @@ export default function LoanApprovalsPage() {
                                         {/* Section: Thanh toán đã thực hiện */}
                                         <Col span={24}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                                                <div style={{ width: 4, height: 16, background: token.colorSuccess, borderRadius: 2 }} />
+                                                <div style={{ width: 4, height: 16, background: token.colorSuccess, borderRadius: 0 }} />
                                                 <Text strong style={{ fontSize: 15, color: token.colorTextHeading }}>Thanh toán</Text>
                                             </div>
                                             <Row gutter={16}>
                                                 <Col span={8}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 0 }}>
                                                         <Statistic title="Đã trả (Gốc)" value={loanDetails.summary?.principalPaid || 0} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorSuccess }} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={8}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 0 }}>
                                                         <Statistic title="Đã trả (Lãi)" value={loanDetails.summary?.interestPaid || 0} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorSuccess }} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={8}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorSuccess + '08', borderRadius: 0 }}>
                                                         <Statistic title="Phí & Phạt đã thu" value={(loanDetails.summary?.feeChargesPaid || 0) + (loanDetails.summary?.penaltyChargesPaid || 0)} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorSuccess }} />
                                                     </Card>
                                                 </Col>
@@ -587,17 +700,17 @@ export default function LoanApprovalsPage() {
                                         {/* Section: Tình trạng quá hạn */}
                                         <Col span={24}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                                                <div style={{ width: 4, height: 16, background: token.colorError, borderRadius: 2 }} />
+                                                <div style={{ width: 4, height: 16, background: token.colorError, borderRadius: 0 }} />
                                                 <Text strong style={{ fontSize: 15, color: token.colorTextHeading }}>Tình trạng nợ</Text>
                                             </div>
                                             <Row gutter={16}>
                                                 <Col span={12}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorError + '08', borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorError + '08', borderRadius: 0 }}>
                                                         <Statistic title="Tổng số tiền quá hạn" value={loanDetails.summary?.totalOverdue || 0} formatter={v => fmtVND(Number(v))} valueStyle={{ color: token.colorError, fontWeight: 700 }} prefix={<CloseCircleOutlined />} />
                                                     </Card>
                                                 </Col>
                                                 <Col span={12}>
-                                                    <Card size="small" bordered={false} style={{ background: token.colorError + '08', borderRadius: 12 }}>
+                                                    <Card size="small" bordered={false} style={{ background: token.colorError + '08', borderRadius: 0 }}>
                                                         <Statistic title="Số ngày quá hạn" value={loanDetails.summary?.pastDueDays || 0} suffix="ngày" valueStyle={{ color: token.colorError, fontWeight: 700 }} />
                                                     </Card>
                                                 </Col>
@@ -726,7 +839,7 @@ export default function LoanApprovalsPage() {
                             children: (
                                 <>
                                     {!canApprove && missingRequired.length > 0 && (
-                                        <div style={{ marginBottom: 12, padding: '8px 12px', background: token.colorWarningBg, borderRadius: 8, border: `1px solid ${token.colorWarningBorder}` }}>
+                                        <div style={{ marginBottom: 12, padding: '8px 12px', background: token.colorWarningBg, borderRadius: 0, border: `1px solid ${token.colorWarningBorder}` }}>
                                             <Text type="warning">
                                                 <strong>Lưu ý:</strong> Cần duyệt đủ tài liệu bắt buộc trước khi duyệt khoản vay: {missingRequired.join(', ')}
                                             </Text>
@@ -852,7 +965,7 @@ export default function LoanApprovalsPage() {
                                 <pre style={{
                                     background: token.colorFillAlter,
                                     padding: 12,
-                                    borderRadius: 4,
+                                    borderRadius: 0,
                                     fontSize: '11px',
                                     maxHeight: '400px',
                                     overflow: 'auto',

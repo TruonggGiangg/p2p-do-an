@@ -18,6 +18,7 @@ import { SettingOutlined } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { adminApi, type LoanProductDto, type DocumentTypeDto } from '../api/admin';
+import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 
 const { Text } = Typography;
 
@@ -140,20 +141,26 @@ export default function LoanProductsPage() {
       title: 'Thao tác',
       key: 'action',
       valueType: 'option',
-      width: 300,
+      fixed: 'right',
+      width: 320,
       align: 'right',
+      onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
       render: (_, record) => (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
           <Button
+            size="small"
             icon={<SettingOutlined />}
             onClick={() => openConfig(record)}
+            style={{ fontSize: 12 }}
           >
             Cấu hình tài liệu
           </Button>
           <Button
+            size="small"
             type="primary"
             ghost
             onClick={() => onViewDetails(record.id)}
+            style={{ fontSize: 12 }}
           >
             Xem cấu hình
           </Button>
@@ -165,6 +172,7 @@ export default function LoanProductsPage() {
   return (
     <>
       <ProTable<LoanProductDto>
+        {...PRO_TABLE_DEFAULTS}
         headerTitle="Danh sách sản phẩm vay (Fineract)"
         actionRef={actionRef}
         rowKey="id"
@@ -172,6 +180,7 @@ export default function LoanProductsPage() {
           labelWidth: 'auto',
           defaultCollapsed: false,
         }}
+        scroll={{ x: 1000 }}
         pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `${t} sản phẩm` }}
         options={{ reload: true, density: true, fullScreen: true, setting: true }}
         columnsState={{ persistenceKey: 'loan-products-table', persistenceType: 'localStorage' }}

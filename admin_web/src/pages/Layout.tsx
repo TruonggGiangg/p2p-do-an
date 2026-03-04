@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Typography, Avatar, Space, theme, Tooltip } from 'antd';
+import React from 'react';
 import {
   FileTextOutlined,
   BankOutlined,
@@ -10,12 +11,11 @@ import {
   LogoutOutlined,
   SunOutlined,
   MoonOutlined,
-  IdcardOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 
 const { Sider, Header, Content } = Layout;
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 const menuItems = [
   { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
@@ -55,85 +55,127 @@ export default function AppLayout() {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         theme="dark"
-        width={240}
+        width={260}
         style={{
           background: isDarkMode ? '#020617' : '#0F172A',
-          borderRight: `1px solid ${token.colorBorder}`,
+          borderRight: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
           height: '100vh',
           position: 'fixed',
           left: 0,
           top: 0,
           bottom: 0,
           zIndex: 100,
+          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.06)',
         }}
       >
         {/* Logo */}
         <div style={{
-          padding: collapsed ? '20px 0' : '20px 16px',
+          padding: collapsed ? '24px 0' : '28px 20px',
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          borderBottom: `1px solid ${token.colorBorder}`,
+          gap: 12,
+          borderBottom: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
           marginBottom: 8,
         }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: token.colorPrimary,
+            width: 40, height: 40, borderRadius: 0,
+            background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, color: '#fff', fontSize: 14, flexShrink: 0,
+            fontWeight: 700, color: '#fff', fontSize: 16, flexShrink: 0,
+            boxShadow: '0 4px 12px rgba(30, 64, 175, 0.3)',
           }}>P2</div>
           {!collapsed && (
-            <Text strong style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15 }}>P2P Admin</Text>
+            <Text strong style={{ 
+              color: '#FFFFFF', 
+              fontSize: 18,
+              letterSpacing: '0.5px',
+              fontWeight: 700,
+            }}>P2P Admin</Text>
           )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
           <Menu
             theme="dark"
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems.map((item) => ({
               key: item.key,
-              icon: item.icon,
+              icon: React.cloneElement(item.icon as React.ReactElement, { 
+                style: { fontSize: 18, marginRight: 4 } 
+              }),
               label: item.label,
               onClick: () => navigate(item.key),
             }))}
-            style={{ background: 'transparent', border: 'none' }}
+            style={{ 
+              background: 'transparent', 
+              border: 'none',
+              fontSize: 15,
+            }}
           />
         </div>
 
         {/* User + Logout */}
         <div style={{
-          padding: collapsed ? '12px 0' : '12px 16px',
-          borderTop: `1px solid ${token.colorBorder}`,
+          padding: collapsed ? '16px 0' : '16px 20px',
+          borderTop: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
           background: isDarkMode ? '#020617' : '#0F172A',
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex', alignItems: 'center', gap: 12,
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}>
-          <Avatar size="small" icon={<UserOutlined />} style={{ background: token.colorPrimary, flexShrink: 0 }} />
+          <Avatar 
+            size={collapsed ? 32 : 36} 
+            icon={<UserOutlined />} 
+            style={{ 
+              background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`, 
+              flexShrink: 0,
+              fontWeight: 600,
+            }} 
+          />
           {!collapsed && (
-            <Text style={{ color: token.colorTextSecondary, fontSize: 12, flex: 1 }} ellipsis>
-              {user?.username || 'Admin'}
-            </Text>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text strong style={{ color: '#FFFFFF', fontSize: 14, display: 'block' }}>
+                {user?.username || 'Admin'}
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, display: 'block' }}>
+                Administrator
+              </Text>
+            </div>
           )}
         </div>
       </Sider>
 
-      <Layout style={{ marginLeft: collapsed ? 80 : 240, transition: 'all 0.2s' }}>
+      <Layout style={{ 
+        marginLeft: collapsed ? 80 : 260, 
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        background: isDarkMode ? '#0F172A' : '#F1F5F9',
+      }}>
         <Header style={{
           background: token.colorBgContainer,
-          borderBottom: `1px solid ${token.colorBorder}`,
-          padding: '0 24px',
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          borderBottom: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
+          padding: '0 32px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           height: 64,
           position: 'fixed',
           top: 0,
           right: 0,
-          left: collapsed ? 80 : 240,
+          left: collapsed ? 80 : 260,
           zIndex: 99,
-          transition: 'all 0.2s',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
         }}>
-          <Space size="middle">
+          <div>
+            <Title level={4} style={{ 
+              margin: 0, 
+              fontSize: 18, 
+              fontWeight: 600,
+              color: isDarkMode ? '#F1F5F9' : '#0F172A',
+            }}>
+              {menuItems.find(item => item.key === selectedKey)?.label || 'Dashboard'}
+            </Title>
+          </div>
+          
+          <Space size="large">
             <Tooltip title={isDarkMode ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
               <Button
                 type="text"
@@ -158,32 +200,40 @@ export default function AppLayout() {
                 }}
                 style={{
                   fontSize: '18px',
-                  color: isDarkMode ? '#2DD4BF' : '#0D9488',
+                  color: isDarkMode ? '#3B82F6' : '#1E40AF',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  width: 40,
+                  height: 40,
                 }}
               />
             </Tooltip>
 
             <Button
-              type="text"
+              type="primary"
+              danger
               icon={<LogoutOutlined />}
               onClick={logout}
-              style={{ color: token.colorTextSecondary }}
+              style={{ 
+                height: 40,
+                padding: '0 20px',
+                fontWeight: 500,
+              }}
             >
               Đăng xuất
             </Button>
           </Space>
         </Header>
         <Content style={{
-          margin: '88px 24px 24px 24px',
-          padding: 24,
+          margin: '88px 32px 32px 32px',
+          padding: 32,
           background: token.colorBgContainer,
-          borderRadius: token.borderRadius,
-          minHeight: 'calc(100vh - 112px)',
+          borderRadius: 0,
+          minHeight: 'calc(100vh - 152px)',
           overflow: 'auto',
-          transition: 'all 0.3s ease'
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
         }}>
           <Outlet />
         </Content>

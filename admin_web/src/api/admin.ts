@@ -1,10 +1,13 @@
 import { api } from "./client";
 
+export type FileFormat = "image" | "pdf" | "any";
+
 export interface DocumentTypeDto {
   _id: string;
   name: string;
   required: boolean;
   description?: string;
+  fileFormat?: FileFormat;
 }
 
 export interface LoanProductDto {
@@ -204,6 +207,7 @@ export const adminApi = {
     name: string;
     required?: boolean;
     description?: string;
+    fileFormat?: FileFormat;
   }) =>
     api
       .post<{ data: DocumentTypeDto }>("/api/admin/document-types", body)

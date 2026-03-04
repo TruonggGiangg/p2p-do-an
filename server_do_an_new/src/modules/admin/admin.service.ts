@@ -83,6 +83,7 @@ export class AdminService {
       name: dto.name,
       required: dto.required ?? false,
       description: dto.description,
+      fileFormat: dto.fileFormat ?? 'any',
     });
     return doc.toObject();
   }

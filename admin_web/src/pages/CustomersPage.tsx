@@ -4,15 +4,17 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
     Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
-    Card, Row, Col, Statistic, Select, DatePicker, Form, Input
+    Card, Row, Col, Statistic, Select, DatePicker, Form, Input, Divider
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
     ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
-    BankOutlined, FileSearchOutlined
+    BankOutlined, FileSearchOutlined, DashboardOutlined, UsergroupAddOutlined,
+    CheckCircleTwoTone, ClockCircleTwoTone
 } from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
+import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
@@ -92,7 +94,7 @@ export default function CustomersPage() {
                         }}
                     />
                     <div>
-                        <Text strong style={{ display: 'block', fontSize: 14 }}>{r.displayName || r.username}</Text>
+                        <Text strong style={{ display: 'block', fontSize: 13 }}>{r.displayName || r.username}</Text>
                         <Space size={4}>
                             <PhoneOutlined style={{ fontSize: 11, color: token.colorTextSecondary }} />
                             <Text type="secondary" style={{ fontSize: 12 }}>{r.username}</Text>
@@ -178,7 +180,7 @@ export default function CustomersPage() {
                         icon={s.icon}
                         style={{
                             padding: '4px 12px',
-                            borderRadius: 12,
+                            borderRadius: 0,
                             fontWeight: 500,
                             background: s.bg,
                             border: 'none'
@@ -202,14 +204,15 @@ export default function CustomersPage() {
             key: 'actions',
             align: 'center',
             fixed: 'right',
-            width: 120,
+            width: 140,
+            onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
             render: (_, r) => (
                 <Tooltip title="Xem chi tiết">
                     <Button
                         type="primary"
                         icon={<EyeOutlined />}
                         onClick={(e) => { e.stopPropagation(); navigate(`/customers/${r._id || r.fineractClientId}`); }}
-                        style={{ borderRadius: 8 }}
+                        style={{ borderRadius: 0, fontSize: 12 }}
                     >
                         Chi tiết
                     </Button>
@@ -355,67 +358,194 @@ export default function CustomersPage() {
     ];
 
     return (
-        <div style={{ padding: '24px' }}>
-            {/* Stats Cards */}
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col xs={24} sm={12} md={6}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorPrimaryBg }}>
-                        <Statistic
-                            title="Tổng khách hàng"
-                            value={stats.total}
-                            prefix={<TeamOutlined />}
-                            valueStyle={{ color: token.colorPrimary }}
-                        />
+        <div>
+            {/* Stats Cards - Enhanced with professional styling */}
+            <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
+                <Col xs={24} sm={12} lg={6}>
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
+                            boxShadow: '0 4px 12px rgba(30, 64, 175, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
+                                    Tổng khách hàng
+                                </Text>
+                                <Title level={2} style={{ 
+                                    margin: 0, 
+                                    color: '#FFFFFF', 
+                                    fontSize: 36, 
+                                    fontWeight: 700,
+                                    letterSpacing: '-0.02em',
+                                }}>
+                                    {stats.total}
+                                </Title>
+                            </div>
+                            <div style={{ 
+                                width: 56, 
+                                height: 56, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                            }}>
+                                <TeamOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
+                            </div>
+                        </div>
                     </Card>
                 </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorSuccessBg }}>
-                        <Statistic
-                            title="Đang hoạt động"
-                            value={stats.active}
-                            prefix={<CheckCircleOutlined />}
-                            valueStyle={{ color: token.colorSuccess }}
-                        />
+                
+                <Col xs={24} sm={12} lg={6}>
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
+                                    Đang hoạt động
+                                </Text>
+                                <Title level={2} style={{ 
+                                    margin: 0, 
+                                    color: '#FFFFFF', 
+                                    fontSize: 36, 
+                                    fontWeight: 700,
+                                }}>
+                                    {stats.active}
+                                </Title>
+                            </div>
+                            <div style={{ 
+                                width: 56, 
+                                height: 56, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                            }}>
+                                <CheckCircleTwoTone twoToneColor="#FFFFFF" style={{ fontSize: 28 }} />
+                            </div>
+                        </div>
                     </Card>
                 </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorWarningBg }}>
-                        <Statistic
-                            title="Chờ duyệt KYC"
-                            value={stats.pendingKyc}
-                            prefix={<ClockCircleOutlined />}
-                            valueStyle={{ color: token.colorWarning }}
-                        />
+                
+                <Col xs={24} sm={12} lg={6}>
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+                            boxShadow: '0 4px 12px rgba(217, 119, 6, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
+                                    Chờ duyệt KYC
+                                </Text>
+                                <Title level={2} style={{ 
+                                    margin: 0, 
+                                    color: '#FFFFFF', 
+                                    fontSize: 36, 
+                                    fontWeight: 700,
+                                }}>
+                                    {stats.pendingKyc}
+                                </Title>
+                            </div>
+                            <div style={{ 
+                                width: 56, 
+                                height: 56, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                            }}>
+                                <ClockCircleTwoTone twoToneColor="#FFFFFF" style={{ fontSize: 28 }} />
+                            </div>
+                        </div>
                     </Card>
                 </Col>
-                <Col xs={24} sm={12} md={6}>
-                    <Card bordered={false} style={{ borderRadius: 12, background: token.colorInfoBg }}>
-                        <Statistic
-                            title="Đã xác minh KYC"
-                            value={stats.verifiedKyc}
-                            prefix={<FileSearchOutlined />}
-                            valueStyle={{ color: token.colorInfo }}
-                        />
+                
+                <Col xs={24} sm={12} lg={6}>
+                    <Card 
+                        bordered={false} 
+                        style={{ 
+                            borderRadius: 0, 
+                            background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)',
+                            height: '100%',
+                        }}
+                        bodyStyle={{ padding: '24px' }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
+                                    Đã xác minh KYC
+                                </Text>
+                                <Title level={2} style={{ 
+                                    margin: 0, 
+                                    color: '#FFFFFF', 
+                                    fontSize: 36, 
+                                    fontWeight: 700,
+                                }}>
+                                    {stats.verifiedKyc}
+                                </Title>
+                            </div>
+                            <div style={{ 
+                                width: 56, 
+                                height: 56, 
+                                borderRadius: 0, 
+                                background: 'rgba(255,255,255,0.2)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                            }}>
+                                <FileSearchOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
+                            </div>
+                        </div>
                     </Card>
                 </Col>
             </Row>
 
-            {/* Tabs */}
+            {/* Tabs - Enhanced */}
             <Card
                 bordered={false}
                 style={{
-                    borderRadius: 12,
-                    marginBottom: 16,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                    borderRadius: 0,
+                    marginBottom: 24,
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+                    overflow: 'visible',
                 }}
-                bodyStyle={{ padding: '16px 24px' }}
+                bodyStyle={{ padding: 0, overflow: 'visible' }}
             >
                 <Tabs
                     activeKey={viewMode}
                     onChange={handleTabChange}
                     items={tabItems}
                     size="large"
-                    tabBarStyle={{ marginBottom: 0 }}
+                    tabBarStyle={{ 
+                        marginBottom: 0,
+                        padding: '16px 24px 12px 24px',
+                        borderBottom: `2px solid ${token.colorBorderSecondary}`,
+                        minHeight: 52,
+                    }}
+                    tabBarGutter={16}
                 />
             </Card>
 
@@ -423,7 +553,7 @@ export default function CustomersPage() {
             <Card
                 bordered={false}
                 style={{
-                    borderRadius: 12,
+                    borderRadius: 0,
                     marginBottom: 16,
                     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                     display: showFilters ? 'block' : 'none'
@@ -518,6 +648,7 @@ export default function CustomersPage() {
 
             {/* Table */}
             <ProTable<CustomerDto>
+                {...PRO_TABLE_DEFAULTS}
                 actionRef={actionRef}
                 rowKey={(r) => r._id || r.fineractClientId || 'unknown'}
                 columns={columns}
@@ -553,12 +684,6 @@ export default function CustomersPage() {
                 options={{ reload: false, density: true, fullScreen: true, setting: true }}
                 columnsState={{ persistenceKey: `customers-table-${viewMode}`, persistenceType: 'localStorage' }}
                 scroll={{ x: 1200 }}
-                cardProps={{
-                    style: {
-                        borderRadius: 12,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
-                    }
-                }}
             />
         </div>
     );
