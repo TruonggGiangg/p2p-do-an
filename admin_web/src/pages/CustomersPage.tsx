@@ -298,8 +298,10 @@ export default function CustomersPage() {
             }
         }
 
-        // Apply advanced filters to the FULL list, remove null/undefined
-        const filteredUsers = applyFilters(res.users || []).filter(Boolean);
+        // Apply advanced filters to the FULL list, remove null/undefined and invalid items
+        const filteredUsers = applyFilters(res.users || []).filter(
+            (u) => u && (u._id != null || u.username)
+        );
 
         // Paginate client-side (ProTable expects paginated data to avoid extra empty row)
         const page = params.current ?? 1;
@@ -313,6 +315,9 @@ export default function CustomersPage() {
             total: filteredUsers.length
         };
     };
+
+    const postData = (data: CustomerDto[]) =>
+        (data || []).filter((r) => r && (r._id != null || r.username));
 
     const getHeaderTitle = () => {
         switch (viewMode) {
@@ -662,6 +667,7 @@ export default function CustomersPage() {
                 rowKey={(r) => r._id || r.fineractClientId || 'unknown'}
                 columns={columns}
                 request={fetchData}
+                postData={postData}
                 onRow={(r) => ({ onClick: () => navigate(`/customers/${r._id || r.fineractClientId}`), style: { cursor: 'pointer' } })}
                 pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} khách hàng` }}
                 search={false}

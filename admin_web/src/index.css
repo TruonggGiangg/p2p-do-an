@@ -19,6 +19,7 @@
   /* Typography Scale */
   --font-size-xs: 11px;
   --font-size-sm: 12px;
+  --font-size-table: 13px;
   --font-size-base: 14px;
   --font-size-lg: 18px;
   --font-size-xl: 24px;
@@ -109,7 +110,7 @@ p {
 .ant-card,
 .ant-table,
 .ant-table-thead>tr>th,
-.ant-table-tbody>tr>td,
+.ant-table-tbody>tr:not(.ant-table-measure-row)>td,
 .ant-input,
 .ant-input-affix-wrapper,
 .ant-select-selector,
@@ -131,10 +132,10 @@ p {
   letter-spacing: -0.02em;
 }
 
-/* ProTable header */
+/* ProTable header - đồng bộ cỡ chữ */
 .ant-table-thead > tr > th {
   font-weight: var(--font-weight-semibold) !important;
-  font-size: 12px !important;
+  font-size: var(--font-size-sm) !important;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 10px 12px !important;
@@ -153,25 +154,45 @@ p {
   border-bottom: 2px solid #334155 !important;
 }
 
-/* ProTable body - cỡ chữ hợp lý */
-.ant-table-tbody > tr > td {
-  padding: 10px 12px !important;
-  font-size: 13px !important;
+/* Ẩn hàng measure của Ant Design Table (dùng để tính width cột, không hiển thị) */
+.ant-table-measure-row,
+.ant-table-measure-row td,
+.ant-table-measure-row td > div {
+  height: 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  line-height: 0 !important;
+  border: none !important;
 }
 
-[data-theme="light"] .ant-table-tbody > tr > td {
+/* ProTable body - đồng bộ cỡ chữ tất cả bảng */
+.ant-table-tbody > tr:not(.ant-table-measure-row) > td {
+  padding: 10px 12px !important;
+  font-size: var(--font-size-table) !important;
+}
+/* Áp dụng cỡ chữ cho Typography, Tag, nút trong ô bảng */
+.ant-table-tbody > tr:not(.ant-table-measure-row) > td .ant-typography,
+.ant-table-tbody > tr:not(.ant-table-measure-row) > td .ant-tag,
+.ant-table-tbody > tr:not(.ant-table-measure-row) > td .ant-btn {
+  font-size: var(--font-size-table) !important;
+}
+
+[data-theme="light"] .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
   border-bottom: 1px solid #E2E8F0 !important;
 }
 
-[data-theme="dark"] .ant-table-tbody > tr > td {
+[data-theme="dark"] .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
   border-bottom: 1px solid #334155 !important;
 }
 
-[data-theme="light"] .ant-table-tbody > tr:hover > td {
+[data-theme="light"] .ant-table-tbody > tr:not(.ant-table-measure-row):hover > td {
   background: #F8FAFC !important;
 }
 
-[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+[data-theme="dark"] .ant-table-tbody > tr:not(.ant-table-measure-row):hover > td {
   background: #334155 !important;
 }
 
@@ -228,10 +249,10 @@ p {
   overflow: visible !important;
   text-overflow: unset !important;
 }
-/* Cột Thao tác/Hành động trong bảng - font nhỏ hơn để vừa chiều rộng */
+/* Cột Thao tác/Hành động trong bảng - đồng bộ cỡ chữ */
 .ant-table-cell-fix-right-first .ant-btn,
 .ant-table-cell-fix-right-last .ant-btn {
-  font-size: 12px !important;
+  font-size: var(--font-size-table) !important;
 }
 
 /* Pagination */

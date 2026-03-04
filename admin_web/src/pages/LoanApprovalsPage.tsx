@@ -454,7 +454,9 @@ export default function LoanApprovalsPage() {
                 columns={columns}
                 request={async (params) => {
                     const data = await adminApi.getPendingLoans();
-                    let filtered = (data || []).filter(Boolean);
+                    let filtered = (data || []).filter(Boolean).filter(
+                        (l) => l && (l.fineractLoanId != null || (l as any)._id != null)
+                    );
                     const q = (params.clientName as string)?.toLowerCase?.()?.trim?.();
                     if (q) filtered = filtered.filter(l => (l.clientName || '').toLowerCase().includes(q));
                     const p = (params.productShortName as string)?.toLowerCase?.()?.trim?.();
@@ -466,6 +468,7 @@ export default function LoanApprovalsPage() {
                     const paged = filtered.slice(start, start + size);
                     return { data: paged, success: true, total: filtered.length };
                 }}
+                postData={(data: LoanDto[]) => (data || []).filter((r: LoanDto) => r && (r.fineractLoanId != null || (r as any)._id != null))}
                 search={{
                     labelWidth: 'auto',
                     defaultCollapsed: false,

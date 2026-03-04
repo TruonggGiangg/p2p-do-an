@@ -263,7 +263,7 @@ export default function DocumentTypesPage() {
         request={async (params) => {
           try {
             const data = await adminApi.getDocumentTypes();
-            let filtered = (data || []).filter(Boolean);
+            let filtered = (data || []).filter(Boolean).filter((i) => i && i._id != null);
             const name = (params.name as string)?.toLowerCase?.()?.trim?.();
             if (name) filtered = filtered.filter((i) => i.name.toLowerCase().includes(name));
             if (params.required !== undefined && params.required !== '') {
@@ -283,6 +283,7 @@ export default function DocumentTypesPage() {
             return { data: [], success: false, total: 0 };
           }
         }}
+        postData={(data: DocumentTypeDto[]) => (data || []).filter((r: DocumentTypeDto) => r && r._id != null)}
         toolBarRender={() => [
           <Button
             key="button"

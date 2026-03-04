@@ -114,7 +114,7 @@ export default function SavingsProductsPage() {
         columnsState={{ persistenceKey: 'savings-products-table', persistenceType: 'localStorage' }}
         request={async (params) => {
           const data = await adminApi.getSavingsProducts();
-          let filtered = (data || []).filter(Boolean);
+          let filtered = (data || []).filter(Boolean).filter((i) => i && i.id != null);
           const name = (params.name as string)?.toLowerCase?.()?.trim?.();
           if (name) filtered = filtered.filter((i) => (i.name || '').toLowerCase().includes(name));
           const short = (params.shortName as string)?.toLowerCase?.()?.trim?.();
@@ -125,6 +125,7 @@ export default function SavingsProductsPage() {
           const paged = filtered.slice(start, start + size);
           return { data: paged, success: true, total: filtered.length };
         }}
+        postData={(data: SavingsProductDto[]) => (data || []).filter((r: SavingsProductDto) => r && r.id != null)}
         columns={columns}
       />
 
