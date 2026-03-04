@@ -381,6 +381,79 @@ export class LoanService {
     }
     this.logger.log(`[createApplication] expectedDisbursementDate=${expectedDisbursementDate}`);
 
+    // ══════════════════════════════════════════════════════════════════════
+    // AIScore PD Integration (COMMENTED OUT - chưa test production)
+    // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+    //
+    // Khi bật: set AISCORE_ENABLED=true trong .env
+    // Service URL: AISCORE_SERVICE_URL=http://localhost:8001
+    // ══════════════════════════════════════════════════════════════════════
+    /*
+    let aiScoreResult: any = null;
+    try {
+      const aiscoreConfig = this.configService.get('aiscore');
+      if (aiscoreConfig?.enabled) {
+        const { default: axios } = await import('axios');
+        const scoreResponse = await axios.post(
+          `${aiscoreConfig.serviceUrl}/api/score`,
+          {
+            loan_amnt: dto.capital,
+            int_rate: monthlyRate * 12, // convert monthly → annual for Lending Club format
+            installment: schedule.monthlyPay,
+            annual_inc: 0, // TODO: lấy từ user profile hoặc eKYC data
+            dti: 0,        // TODO: tính từ tổng nợ / thu nhập
+            term: `${dto.periodMonth} months`,
+          },
+          { timeout: aiscoreConfig.timeout || 15000 },
+        );
+
+        if (scoreResponse.data?.success) {
+          aiScoreResult = {
+            pd: scoreResponse.data.data.pd,
+            creditScore: scoreResponse.data.data.credit_score,
+            grade: scoreResponse.data.data.grade,
+            subGrade: scoreResponse.data.data.sub_grade,
+            tier: scoreResponse.data.data.tier,
+            decision: scoreResponse.data.data.decision,
+            riskLevel: scoreResponse.data.data.risk_level,
+            riskFactors: scoreResponse.data.data.risk_factors || [],
+            scoredAt: new Date(),
+          };
+          this.logger.log(
+            `[createApplication] AIScore: PD=${aiScoreResult.pd} Score=${aiScoreResult.creditScore} ` +
+            `Grade=${aiScoreResult.subGrade} Tier=${aiScoreResult.tier} Decision=${aiScoreResult.decision}`,
+          );
+
+          // Reject nếu PD quá cao (decision = REJECT)
+          if (aiScoreResult.decision === 'REJECT') {
+            throw new BadRequestException(
+              `Khoản vay bị từ chối do rủi ro tín dụng quá cao (PD=${(aiScoreResult.pd * 100).toFixed(1)}%, ` +
+              `Grade=${aiScoreResult.subGrade}). Vui lòng liên hệ hỗ trợ.`,
+            );
+          }
+
+          // Update user credit profile
+          await this.userModel.findByIdAndUpdate(userId, {
+            $set: {
+              'creditProfile.pd': aiScoreResult.pd,
+              'creditProfile.creditScore': aiScoreResult.creditScore,
+              'creditProfile.grade': aiScoreResult.grade,
+              'creditProfile.subGrade': aiScoreResult.subGrade,
+              'creditProfile.tier': aiScoreResult.tier,
+              'creditProfile.riskLevel': aiScoreResult.riskLevel,
+              'creditProfile.lastScoredAt': new Date(),
+            },
+          });
+          this.logger.log(`[createApplication] User credit profile updated: tier=${aiScoreResult.tier}`);
+        }
+      }
+    } catch (aiError: any) {
+      // AIScore failure should NOT block loan creation (graceful degradation)
+      if (aiError instanceof BadRequestException) throw aiError; // Re-throw REJECT decision
+      this.logger.warn(`[createApplication] AIScore FAILED (non-blocking): ${aiError.message}`);
+    }
+    */
+
     // 5. Create MongoDB record first
     const doc = await this.loanApplicationModel.create({
       userId: new Types.ObjectId(userId),
@@ -403,6 +476,8 @@ export class LoanService {
         uri: d.uri,
         uploadedAt: new Date(),
       })),
+      // AIScore PD result (COMMENTED OUT - bật khi AISCORE_ENABLED=true)
+      // ...(aiScoreResult ? { aiScore: aiScoreResult } : {}),
     });
     this.logger.log(`[createApplication] MongoDB doc created id=${doc._id}`);
 
@@ -615,7 +690,7 @@ export class LoanService {
       let progress = 0;
       let paidInstallments = 0;
       let totalInstallments = 0;
-      let monthlyPay = loan.monthlyPay || 0;
+      const monthlyPay = loan.monthlyPay || 0;
       let willing = '';
 
       if (schedule?.periods) {

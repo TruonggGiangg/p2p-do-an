@@ -55,6 +55,32 @@ export class User extends Document {
   @Prop({ type: Object, default: {}, required: false })
   metadata?: Record<string, any>; // Optional metadata for extensibility
 
+  // ── AIScore Credit Profile ──
+  // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier
+  // Cập nhật mỗi khi user tạo khoản vay (nếu aiscore.enabled = true)
+  @Prop({
+    type: {
+      pd: { type: Number }, // Probability of Default (0.0 - 1.0)
+      creditScore: { type: Number }, // 300-850 (= 300 + (1-PD)*550)
+      grade: { type: String }, // A-G
+      subGrade: { type: String }, // A1-G5
+      tier: { type: String }, // Platinum | Gold | Silver | Basic
+      riskLevel: { type: String }, // LOW | MEDIUM | HIGH | VERY_HIGH
+      lastScoredAt: { type: Date }, // Lần cuối chấm điểm
+    },
+    _id: false,
+    required: false,
+  })
+  creditProfile?: {
+    pd: number;
+    creditScore: number;
+    grade: string;
+    subGrade: string;
+    tier: string;
+    riskLevel: string;
+    lastScoredAt: Date;
+  };
+
   // Smart OTP Configuration (optional)
   @Prop({
     type: {

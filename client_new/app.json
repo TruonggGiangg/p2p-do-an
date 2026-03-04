@@ -25,6 +25,23 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Cho phép ứng dụng truy cập thư viện ảnh của bạn.",
+          "savePhotosPermission": "Cho phép ứng dụng lưu ảnh vào thư viện.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép ứng dụng truy cập thư viện ảnh của bạn.",
+          "cameraPermission": "Cho phép ứng dụng sử dụng camera."
+        }
+      ]
+    ]
   }
 }
