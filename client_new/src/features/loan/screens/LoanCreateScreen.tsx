@@ -640,13 +640,13 @@ export default function LoanCreateScreen() {
 
                     {/* ── Preview kết quả ── */}
                     {loadingPreview ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08' }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
                             <ActivityIndicator size="small" color={theme.colors.primary} />
                             <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
                         </View>
                     ) : schedule && capitalNum >= 100000 ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.primary + '08' }]}>
-                            {/* <View style={styles.previewRow}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
+                            <View style={styles.previewRow}>
                                 <View style={styles.previewItem}>
                                     <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
                                     <Text style={[styles.previewItemValue, { color: theme.colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>
@@ -666,7 +666,7 @@ export default function LoanCreateScreen() {
                                 <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
                                     Tổng lãi: {formatCurrency(schedule.entirelyPay - capitalNum)} đ
                                 </Text>
-                            </View> */}
+                            </View>
                         </View>
                     ) : null}
 

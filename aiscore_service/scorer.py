@@ -1,6 +1,20 @@
 """
-AIScore Service - Credit Score Predictor
-Loads trained XGBoost model and provides scoring API.
+AIScore Service - PD (Probability of Default) Scorer
+=====================================================
+
+Luồng chuẩn fintech:
+  XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+
+Output format cho mỗi prediction:
+  {
+    "pd": 0.1234,           // Probability of Default (0.0 - 1.0)
+    "credit_score": 782,    // 300 + (1 - PD) × 550
+    "grade": "B",           // A-G dựa trên PD
+    "sub_grade": "B2",      // A1-G5
+    "tier": "Gold",         // Platinum/Gold/Silver/Basic
+    "decision": "APPROVE",  // APPROVE / REVIEW / REJECT
+    "risk_factors": [...]   // yếu tố rủi ro
+  }
 """
 
 import os
@@ -12,33 +26,113 @@ from typing import Optional
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
+# Cùng danh sách features với train_model.py
 FEATURE_NAMES = [
-    "age",
-    "monthly_income",
-    "employment_years",
-    "avg_account_balance",
-    "monthly_spending",
-    "loan_amount",
-    "loan_term",
-    "loan_to_income_ratio",
-    "previous_loans_count",
-    "late_payment_count",
-    "repayment_ratio",
-    "DTI",
-    "cashflow_stability",
+    "loan_amnt",
+    "term_months",
+    "int_rate",
+    "installment",
+    "annual_inc",
+    "dti",
+    "open_acc",
+    "pub_rec",
+    "revol_bal",
+    "revol_util",
+    "total_acc",
+    "mort_acc",
+    "pub_rec_bankruptcies",
+    "emp_length_years",
+    "home_ownership_enc",
+    "verification_status_enc",
+    "purpose_enc",
+    "application_type_enc",
+    "initial_list_status_enc",
+    "log_annual_inc",
+    "log_revol_bal",
+    "installment_to_income",
+    "revol_util_x_bal",
+    "credit_history_years",
 ]
 
-SCORE_THRESHOLDS = {
-    "excellent": 0.85,
-    "good": 0.70,
-    "fair": 0.50,
-    "poor": 0.30,
-    "very_poor": 0.0,
+# PD → Grade thresholds (cùng với train_model.py)
+GRADE_THRESHOLDS = [
+    ("A", 0.00, 0.10),
+    ("B", 0.10, 0.20),
+    ("C", 0.20, 0.30),
+    ("D", 0.30, 0.40),
+    ("E", 0.40, 0.55),
+    ("F", 0.55, 0.70),
+    ("G", 0.70, 1.01),
+]
+
+# Decision thresholds dựa trên PD
+PD_THRESHOLDS = {
+    "approve": 0.20,   # PD < 20% → auto approve
+    "review": 0.40,    # PD 20-40% → manual review
+    # PD >= 40% → reject
 }
+
+# Encoding maps (phải khớp với train_model.py)
+HOME_OWNERSHIP_MAP = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3, "NONE": 3, "ANY": 3}
+VERIFICATION_STATUS_MAP = {"Not Verified": 0, "Source Verified": 1, "Verified": 2}
+APPLICATION_TYPE_MAP = {"INDIVIDUAL": 0, "JOINT": 1, "Joint App": 1}
+INITIAL_LIST_STATUS_MAP = {"w": 0, "f": 1}
+
+# Purpose encoding - cần match với LabelEncoder fitted order
+# Will be loaded from metadata if available
+PURPOSE_CATEGORIES = [
+    "car", "credit_card", "debt_consolidation", "educational",
+    "home_improvement", "house", "major_purchase", "medical",
+    "moving", "other", "renewable_energy", "small_business",
+    "vacation", "wedding",
+]
+
+
+def pd_to_grade(pd_val: float) -> str:
+    """Convert PD → Grade + Sub-Grade (A1 .. G5)."""
+    for grade_letter, lo, hi in GRADE_THRESHOLDS:
+        if lo <= pd_val < hi:
+            span = hi - lo
+            offset = pd_val - lo
+            sub = min(int(offset / (span / 5)) + 1, 5)
+            return f"{grade_letter}{sub}"
+    return "G5"
+
+
+def pd_to_credit_score(pd_val: float) -> int:
+    """Convert PD → Credit Score (300 - 850)."""
+    return int(300 + (1.0 - min(max(pd_val, 0), 1)) * 550)
+
+
+def score_to_tier(score: int) -> str:
+    """Convert credit score → membership tier."""
+    if score >= 800:
+        return "Platinum"
+    elif score >= 700:
+        return "Gold"
+    elif score >= 600:
+        return "Silver"
+    else:
+        return "Basic"
+
+
+def tier_color(tier: str) -> str:
+    """Color cho UI hiển thị tier."""
+    return {
+        "Platinum": "#A78BFA",
+        "Gold": "#F59E0B",
+        "Silver": "#9CA3AF",
+        "Basic": "#78716C",
+    }.get(tier, "#78716C")
 
 
 class CreditScorer:
-    """XGBoost-based credit scoring engine."""
+    """
+    XGBoost PD-based credit scoring engine.
+
+    Flow: raw features → encode/engineer → scale → XGBoost → PD
+          → Credit Score → Grade/SubGrade → Tier → Decision
+    """
 
     def __init__(self, model_dir: str = MODEL_DIR):
         self.model: Optional[xgb.XGBClassifier] = None
@@ -48,13 +142,14 @@ class CreditScorer:
         self._load_model()
 
     def _load_model(self):
-        model_path = os.path.join(self.model_dir, "xgb_credit_model.json")
+        model_path = os.path.join(self.model_dir, "xgb_pd_model.json")
         scaler_path = os.path.join(self.model_dir, "scaler.joblib")
         metadata_path = os.path.join(self.model_dir, "metadata.json")
 
         if not os.path.exists(model_path):
             raise FileNotFoundError(
-                f"Model not found at {model_path}. Run train_model.py first."
+                f"Model not found at {model_path}.\n"
+                "Run: python train_model.py"
             )
 
         self.model = xgb.XGBClassifier()
@@ -69,229 +164,335 @@ class CreditScorer:
 
     def predict(self, features: dict) -> dict:
         """
-        Predict credit score for a single borrower.
+        Predict PD và derive tất cả metrics cho một borrower.
 
         Args:
-            features: dict with keys matching FEATURE_NAMES.
-                      Missing features are auto-computed where possible.
+            features: dict raw features từ API request.
+                Bắt buộc: loan_amnt, int_rate, installment, annual_inc, dti,
+                           open_acc, revol_bal, revol_util, total_acc
+                Tùy chọn: term (str hoặc int), emp_length (str hoặc int),
+                           home_ownership, verification_status, purpose,
+                           application_type, initial_list_status, ...
 
         Returns:
-            dict with score, rating, decision, and details.
+            dict: {pd, credit_score, grade, sub_grade, tier, decision, ...}
         """
-        # Auto-compute derived features if missing
-        features = self._auto_compute_features(features)
+        # 1. Encode & engineer features
+        processed = self._process_features(features)
 
-        # Validate all features present
-        missing = [f for f in FEATURE_NAMES if f not in features]
+        # 2. Validate
+        missing = [f for f in FEATURE_NAMES if f not in processed]
         if missing:
-            raise ValueError(f"Missing features: {missing}")
+            raise ValueError(f"Missing features after processing: {missing}")
 
-        # Build feature vector in correct order
-        X = np.array([[features[f] for f in FEATURE_NAMES]])
+        # 3. Build feature vector
+        X = np.array([[processed[f] for f in FEATURE_NAMES]])
 
-        # Scale
+        # 4. Scale
         if self.scaler is not None:
             X = self.scaler.transform(X)
 
-        # Predict probability of being a good borrower
-        prob = float(self.model.predict_proba(X)[0, 1])
+        # 5. Predict PD (probability of class 1 = default)
+        pd_val = float(self.model.predict_proba(X)[0, 1])
 
-        # Convert to credit score (300–850 range, like FICO)
-        credit_score = int(300 + prob * 550)
-
-        # Determine rating
-        rating = self._get_rating(prob)
-
-        # Decision
-        decision = self._get_decision(prob, features)
-
-        # Feature contribution (SHAP-like via gain importance)
-        risk_factors = self._get_risk_factors(features, prob)
+        # 6. Derive metrics from PD
+        credit_score = pd_to_credit_score(pd_val)
+        full_grade = pd_to_grade(pd_val)
+        grade = full_grade[0]
+        sub_grade = full_grade
+        tier = score_to_tier(credit_score)
+        decision = self._get_decision(pd_val, features)
+        risk_factors = self._get_risk_factors(features, pd_val)
 
         return {
+            # Core PD output
+            "pd": round(pd_val, 6),
             "credit_score": credit_score,
-            "probability_good": round(prob, 4),
-            "rating": rating["label"],
-            "rating_vi": rating["label_vi"],
-            "rating_color": rating["color"],
+            "grade": grade,
+            "sub_grade": sub_grade,
+
+            # Membership tier
+            "tier": tier,
+            "tier_color": tier_color(tier),
+
+            # Decision engine
             "decision": decision["action"],
             "decision_vi": decision["action_vi"],
-            "max_recommended_amount": decision["max_amount"],
+            "max_loan_grade_limit": decision["max_loan_limit"],
+
+            # Risk analysis
             "risk_factors": risk_factors,
+            "risk_level": self._risk_level(pd_val),
+
+            # Details
             "details": {
-                "input_features": {f: round(float(features[f]), 2) for f in FEATURE_NAMES},
-                "model_version": self.metadata.get("metrics", {}).get("auc_roc", "N/A"),
+                "pd_percent": f"{pd_val * 100:.2f}%",
+                "score_formula": f"300 + (1 - {pd_val:.4f}) × 550 = {credit_score}",
+                "input_features": {
+                    f: round(float(processed[f]), 4) for f in FEATURE_NAMES
+                },
+                "model_auc": self.metadata.get("metrics", {}).get("auc_roc", "N/A"),
+                "data_source": self.metadata.get("data_source", "Lending Club"),
             },
         }
 
-    def _auto_compute_features(self, features: dict) -> dict:
-        """Auto-compute derived features if not provided."""
-        f = dict(features)
+    def _process_features(self, raw: dict) -> dict:
+        """
+        Nhận raw features từ API, encode + engineer thành 24 features cho model.
+        """
+        f = {}
 
-        # loan_to_income_ratio
-        if "loan_to_income_ratio" not in f and "loan_amount" in f and "monthly_income" in f:
-            annual_income = f["monthly_income"] * 12
-            f["loan_to_income_ratio"] = f["loan_amount"] / max(annual_income, 1)
+        # ── Direct numeric features ──
+        f["loan_amnt"] = float(raw.get("loan_amnt", raw.get("loan_amount", 0)))
+        f["int_rate"] = float(raw.get("int_rate", raw.get("interest_rate", 12.0)))
+        f["installment"] = float(raw.get("installment", 0))
+        f["annual_inc"] = float(raw.get("annual_inc", raw.get("annual_income", 0)))
+        f["dti"] = float(raw.get("dti", 0))
+        f["open_acc"] = float(raw.get("open_acc", raw.get("open_accounts", 5)))
+        f["pub_rec"] = float(raw.get("pub_rec", raw.get("public_records", 0)))
+        f["revol_bal"] = float(raw.get("revol_bal", raw.get("revolving_balance", 0)))
+        f["revol_util"] = float(raw.get("revol_util", raw.get("revolving_utilization", 50)))
+        f["total_acc"] = float(raw.get("total_acc", raw.get("total_accounts", 10)))
+        f["mort_acc"] = float(raw.get("mort_acc", raw.get("mortgage_accounts", 0)))
+        f["pub_rec_bankruptcies"] = float(raw.get("pub_rec_bankruptcies", 0))
 
-        # DTI (Debt-to-Income)
-        if "DTI" not in f and all(k in f for k in ["monthly_spending", "loan_amount", "loan_term", "monthly_income"]):
-            monthly_payment = f["loan_amount"] / max(f["loan_term"], 1)
-            f["DTI"] = (f["monthly_spending"] + monthly_payment) / max(f["monthly_income"], 1)
+        # ── term: "36 months" → 36 hoặc int → float ──
+        term = raw.get("term", raw.get("term_months", 36))
+        if isinstance(term, str):
+            import re
+            m = re.search(r"(\d+)", term)
+            f["term_months"] = float(m.group(1)) if m else 36.0
+        else:
+            f["term_months"] = float(term)
 
-        # Defaults for optional fields
-        f.setdefault("previous_loans_count", 0)
-        f.setdefault("late_payment_count", 0)
-        f.setdefault("repayment_ratio", 1.0)
-        f.setdefault("cashflow_stability", 0.5)
-        f.setdefault("avg_account_balance", f.get("monthly_income", 0) * 2)
+        # ── emp_length: "10+ years" / "< 1 year" / int ──
+        emp = raw.get("emp_length", raw.get("emp_length_years", raw.get("employment_years", 5)))
+        if isinstance(emp, str):
+            emp_str = emp.strip()
+            if "10+" in emp_str:
+                f["emp_length_years"] = 10.0
+            elif "< 1" in emp_str:
+                f["emp_length_years"] = 0.5
+            else:
+                import re
+                m = re.search(r"(\d+)", emp_str)
+                f["emp_length_years"] = float(m.group(1)) if m else 5.0
+        else:
+            f["emp_length_years"] = float(emp)
+
+        # ── credit_history_years (default nếu không có) ──
+        f["credit_history_years"] = float(
+            raw.get("credit_history_years", raw.get("credit_history", 10))
+        )
+
+        # ── Categorical encoding ──
+        home = raw.get("home_ownership", "RENT")
+        f["home_ownership_enc"] = HOME_OWNERSHIP_MAP.get(str(home).upper(), 3)
+
+        verif = raw.get("verification_status", "Not Verified")
+        f["verification_status_enc"] = VERIFICATION_STATUS_MAP.get(verif, 0)
+
+        purpose = raw.get("purpose", "other")
+        if purpose in PURPOSE_CATEGORIES:
+            f["purpose_enc"] = PURPOSE_CATEGORIES.index(purpose)
+        else:
+            f["purpose_enc"] = PURPOSE_CATEGORIES.index("other")
+
+        app_type = raw.get("application_type", "INDIVIDUAL")
+        f["application_type_enc"] = APPLICATION_TYPE_MAP.get(app_type, 0)
+
+        list_status = raw.get("initial_list_status", "w")
+        f["initial_list_status_enc"] = INITIAL_LIST_STATUS_MAP.get(list_status, 0)
+
+        # ── Engineered features ──
+        f["log_annual_inc"] = float(np.log1p(max(f["annual_inc"], 0)))
+        f["log_revol_bal"] = float(np.log1p(max(f["revol_bal"], 0)))
+
+        monthly_inc = f["annual_inc"] / 12.0 + 1.0
+        f["installment_to_income"] = f["installment"] / monthly_inc
+
+        f["revol_util_x_bal"] = f["revol_util"] * f["revol_bal"] / 1e6
+
+        # ── Clip outliers (tương tự train) ──
+        f["annual_inc"] = min(max(f["annual_inc"], 0), 1_000_000)
+        f["dti"] = min(max(f["dti"], 0), 100)
+        f["open_acc"] = min(max(f["open_acc"], 0), 50)
+        f["revol_util"] = min(max(f["revol_util"], 0), 150)
 
         return f
 
-    def _get_rating(self, prob: float) -> dict:
-        if prob >= SCORE_THRESHOLDS["excellent"]:
-            return {"label": "Excellent", "label_vi": "Xuất sắc", "color": "#10B981"}
-        elif prob >= SCORE_THRESHOLDS["good"]:
-            return {"label": "Good", "label_vi": "Tốt", "color": "#3B82F6"}
-        elif prob >= SCORE_THRESHOLDS["fair"]:
-            return {"label": "Fair", "label_vi": "Trung bình", "color": "#F59E0B"}
-        elif prob >= SCORE_THRESHOLDS["poor"]:
-            return {"label": "Poor", "label_vi": "Yếu", "color": "#F97316"}
+    def _risk_level(self, pd_val: float) -> str:
+        """Human-readable risk level từ PD."""
+        if pd_val < 0.10:
+            return "LOW"
+        elif pd_val < 0.25:
+            return "MEDIUM"
+        elif pd_val < 0.40:
+            return "HIGH"
         else:
-            return {"label": "Very Poor", "label_vi": "Rất yếu", "color": "#EF4444"}
+            return "VERY_HIGH"
 
-    def _get_decision(self, prob: float, features: dict) -> dict:
-        loan_amount = features.get("loan_amount", 0)
-        monthly_income = features.get("monthly_income", 0)
-
-        if prob >= SCORE_THRESHOLDS["excellent"]:
+    def _get_decision(self, pd_val: float, raw_features: dict) -> dict:
+        """
+        Decision Engine dựa trên PD.
+        PD < 20% → APPROVE
+        PD 20-40% → REVIEW
+        PD >= 40% → REJECT
+        """
+        if pd_val < PD_THRESHOLDS["approve"]:
+            grade_letter = pd_to_grade(pd_val)[0]
+            # Max loan limit by grade
+            limits = {"A": 35000, "B": 25000, "C": 15000}
+            max_limit = limits.get(grade_letter, 10000)
             return {
                 "action": "APPROVE",
                 "action_vi": "Chấp thuận",
-                "max_amount": int(monthly_income * 36),
+                "max_loan_limit": max_limit,
             }
-        elif prob >= SCORE_THRESHOLDS["good"]:
-            return {
-                "action": "APPROVE",
-                "action_vi": "Chấp thuận",
-                "max_amount": int(monthly_income * 24),
-            }
-        elif prob >= SCORE_THRESHOLDS["fair"]:
-            recommended = min(loan_amount, monthly_income * 12)
+        elif pd_val < PD_THRESHOLDS["review"]:
             return {
                 "action": "REVIEW",
                 "action_vi": "Cần xem xét thêm",
-                "max_amount": int(recommended),
-            }
-        elif prob >= SCORE_THRESHOLDS["poor"]:
-            return {
-                "action": "REVIEW",
-                "action_vi": "Rủi ro cao - cần xem xét kỹ",
-                "max_amount": int(monthly_income * 6),
+                "max_loan_limit": 10000,
             }
         else:
             return {
                 "action": "REJECT",
-                "action_vi": "Từ chối",
-                "max_amount": 0,
+                "action_vi": "Từ chối - rủi ro quá cao",
+                "max_loan_limit": 0,
             }
 
-    def _get_risk_factors(self, features: dict, prob: float) -> list:
-        """Identify key risk/positive factors."""
+    def _get_risk_factors(self, raw_features: dict, pd_val: float) -> list:
+        """Phân tích các yếu tố rủi ro chính."""
         factors = []
 
-        # DTI check
-        dti = features.get("DTI", 0)
-        if dti > 0.6:
+        # DTI
+        dti = float(raw_features.get("dti", 0))
+        if dti > 30:
             factors.append({
-                "factor": "DTI",
+                "factor": "dti",
                 "impact": "negative",
-                "message": f"Tỷ lệ nợ/thu nhập cao ({dti:.1%})",
-                "message_en": f"High debt-to-income ratio ({dti:.1%})",
+                "value": dti,
+                "message": f"Tỷ lệ nợ/thu nhập cao ({dti:.1f}%)",
+                "message_en": f"High debt-to-income ratio ({dti:.1f}%)",
             })
-        elif dti < 0.35:
+        elif dti < 15:
             factors.append({
-                "factor": "DTI",
+                "factor": "dti",
                 "impact": "positive",
-                "message": f"Tỷ lệ nợ/thu nhập tốt ({dti:.1%})",
-                "message_en": f"Good debt-to-income ratio ({dti:.1%})",
+                "value": dti,
+                "message": f"Tỷ lệ nợ/thu nhập tốt ({dti:.1f}%)",
+                "message_en": f"Good debt-to-income ratio ({dti:.1f}%)",
             })
 
-        # Late payments
-        late = features.get("late_payment_count", 0)
-        if late > 3:
+        # Interest rate
+        int_rate = float(raw_features.get("int_rate", raw_features.get("interest_rate", 0)))
+        if int_rate > 18:
             factors.append({
-                "factor": "late_payment_count",
+                "factor": "int_rate",
                 "impact": "negative",
-                "message": f"Nhiều lần trả trễ ({int(late)} lần)",
-                "message_en": f"Multiple late payments ({int(late)} times)",
-            })
-        elif late == 0:
-            factors.append({
-                "factor": "late_payment_count",
-                "impact": "positive",
-                "message": "Không có lịch sử trả trễ",
-                "message_en": "No late payment history",
+                "value": int_rate,
+                "message": f"Lãi suất cao ({int_rate:.2f}%)",
+                "message_en": f"High interest rate ({int_rate:.2f}%)",
             })
 
-        # Repayment ratio
-        rr = features.get("repayment_ratio", 1)
-        if rr < 0.7:
+        # Public records
+        pub_rec = float(raw_features.get("pub_rec", 0))
+        if pub_rec > 0:
             factors.append({
-                "factor": "repayment_ratio",
+                "factor": "pub_rec",
                 "impact": "negative",
-                "message": f"Tỷ lệ trả đúng hạn thấp ({rr:.1%})",
-                "message_en": f"Low on-time repayment ratio ({rr:.1%})",
-            })
-        elif rr >= 0.95:
-            factors.append({
-                "factor": "repayment_ratio",
-                "impact": "positive",
-                "message": f"Tỷ lệ trả đúng hạn xuất sắc ({rr:.1%})",
-                "message_en": f"Excellent on-time repayment ratio ({rr:.1%})",
+                "value": pub_rec,
+                "message": f"Có {int(pub_rec)} hồ sơ công vi phạm",
+                "message_en": f"{int(pub_rec)} public derogatory record(s)",
             })
 
-        # Loan to income ratio
-        lti = features.get("loan_to_income_ratio", 0)
-        if lti > 3:
+        # Bankruptcies
+        bankrupt = float(raw_features.get("pub_rec_bankruptcies", 0))
+        if bankrupt > 0:
             factors.append({
-                "factor": "loan_to_income_ratio",
+                "factor": "pub_rec_bankruptcies",
                 "impact": "negative",
-                "message": f"Khoản vay lớn so với thu nhập ({lti:.1f}x)",
-                "message_en": f"Loan is large relative to income ({lti:.1f}x)",
+                "value": bankrupt,
+                "message": f"Có {int(bankrupt)} lần phá sản",
+                "message_en": f"{int(bankrupt)} bankruptcy record(s)",
             })
 
-        # Cashflow stability
-        cf = features.get("cashflow_stability", 0.5)
-        if cf < 0.3:
+        # Revolving utilization
+        revol_util = float(raw_features.get("revol_util", raw_features.get("revolving_utilization", 0)))
+        if revol_util > 80:
             factors.append({
-                "factor": "cashflow_stability",
+                "factor": "revol_util",
                 "impact": "negative",
-                "message": f"Dòng tiền không ổn định ({cf:.1%})",
-                "message_en": f"Unstable cashflow ({cf:.1%})",
+                "value": revol_util,
+                "message": f"Tỷ lệ sử dụng tín dụng quay vòng cao ({revol_util:.1f}%)",
+                "message_en": f"High revolving utilization ({revol_util:.1f}%)",
             })
-        elif cf >= 0.8:
+        elif revol_util < 30:
             factors.append({
-                "factor": "cashflow_stability",
+                "factor": "revol_util",
                 "impact": "positive",
-                "message": f"Dòng tiền rất ổn định ({cf:.1%})",
-                "message_en": f"Very stable cashflow ({cf:.1%})",
+                "value": revol_util,
+                "message": f"Tỷ lệ sử dụng tín dụng quay vòng tốt ({revol_util:.1f}%)",
+                "message_en": f"Good revolving utilization ({revol_util:.1f}%)",
             })
 
-        # Employment
-        emp = features.get("employment_years", 0)
-        if emp >= 5:
+        # Annual income
+        annual_inc = float(raw_features.get("annual_inc", raw_features.get("annual_income", 0)))
+        if annual_inc >= 80000:
             factors.append({
-                "factor": "employment_years",
+                "factor": "annual_inc",
                 "impact": "positive",
-                "message": f"Thâm niên làm việc tốt ({emp:.0f} năm)",
-                "message_en": f"Good employment tenure ({emp:.0f} years)",
+                "value": annual_inc,
+                "message": f"Thu nhập năm tốt (${annual_inc:,.0f})",
+                "message_en": f"Good annual income (${annual_inc:,.0f})",
             })
-        elif emp < 1:
+        elif annual_inc < 30000:
             factors.append({
-                "factor": "employment_years",
+                "factor": "annual_inc",
                 "impact": "negative",
+                "value": annual_inc,
+                "message": f"Thu nhập năm thấp (${annual_inc:,.0f})",
+                "message_en": f"Low annual income (${annual_inc:,.0f})",
+            })
+
+        # Employment length
+        emp = raw_features.get("emp_length", raw_features.get("emp_length_years", 5))
+        emp_val = emp
+        if isinstance(emp, str):
+            if "10+" in emp:
+                emp_val = 10
+            else:
+                import re
+                m = re.search(r"(\d+)", emp)
+                emp_val = int(m.group(1)) if m else 5
+        emp_val = float(emp_val)
+        if emp_val >= 5:
+            factors.append({
+                "factor": "emp_length",
+                "impact": "positive",
+                "value": emp_val,
+                "message": f"Thâm niên làm việc tốt ({emp_val:.0f} năm)",
+                "message_en": f"Good employment tenure ({emp_val:.0f} years)",
+            })
+        elif emp_val < 1:
+            factors.append({
+                "factor": "emp_length",
+                "impact": "negative",
+                "value": emp_val,
                 "message": "Thâm niên làm việc ngắn",
                 "message_en": "Short employment history",
+            })
+
+        # Home ownership
+        home = raw_features.get("home_ownership", "RENT")
+        if home == "OWN":
+            factors.append({
+                "factor": "home_ownership",
+                "impact": "positive",
+                "value": home,
+                "message": "Sở hữu nhà riêng",
+                "message_en": "Homeowner",
             })
 
         return factors

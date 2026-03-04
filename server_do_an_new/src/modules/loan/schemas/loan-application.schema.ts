@@ -71,6 +71,36 @@ export class LoanApplication extends Document {
   @Prop({ required: false })
   fineractLoanId?: number;
 
+  // ── AIScore PD Result ──
+  // Lưu kết quả chấm điểm tín dụng khi tạo khoản vay
+  // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+  @Prop({
+    type: {
+      pd: { type: Number }, // Probability of Default (0.0 - 1.0)
+      creditScore: { type: Number }, // 300-850
+      grade: { type: String }, // A-G
+      subGrade: { type: String }, // A1-G5
+      tier: { type: String }, // Platinum | Gold | Silver | Basic
+      decision: { type: String }, // APPROVE | REVIEW | REJECT
+      riskLevel: { type: String }, // LOW | MEDIUM | HIGH | VERY_HIGH
+      riskFactors: { type: [Object] }, // Danh sách yếu tố rủi ro
+      scoredAt: { type: Date }, // Thời điểm chấm điểm
+    },
+    _id: false,
+    required: false,
+  })
+  aiScore?: {
+    pd: number;
+    creditScore: number;
+    grade: string;
+    subGrade: string;
+    tier: string;
+    decision: string;
+    riskLevel: string;
+    riskFactors: Array<Record<string, any>>;
+    scoredAt: Date;
+  };
+
   @Prop({ type: [Object], default: [] })
   repaymentHistory: Array<{
     amount: number;

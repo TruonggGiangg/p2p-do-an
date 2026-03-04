@@ -57,6 +57,14 @@ export default () => ({
     bypassFaceMatch: process.env.EKYC_BYPASS_FACE_MATCH === 'true',
   },
 
+  // AIScore PD (Probability of Default) Service
+  // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+  aiscore: {
+    serviceUrl: process.env.AISCORE_SERVICE_URL || 'http://localhost:8001',
+    timeout: parseInt(process.env.AISCORE_TIMEOUT || '15000', 10),
+    enabled: process.env.AISCORE_ENABLED === 'true', // false by default, bật khi cần
+  },
+
   // VNPT SmartCA Digital Signature
   smartca: {
     apiUrl: process.env.SMARTCA_API_URL || 'https://gwsca.vnpt.vn',
