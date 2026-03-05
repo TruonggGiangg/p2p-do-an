@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import {
     Card, Form, Input, Button, Space, Typography, Avatar, Row, Col, Divider,
-    theme, App, Spin, Tag,
+    theme, App, Spin, Tag, Table,
 } from 'antd';
 import {
     UserOutlined, MailOutlined, PhoneOutlined, LockOutlined,
-    SafetyCertificateOutlined, SaveOutlined, KeyOutlined,
+    SafetyCertificateOutlined, SaveOutlined, KeyOutlined, HistoryOutlined,
 } from '@ant-design/icons';
-import { adminApi } from '../api/admin';
+import { adminApi, ActivityLogDto } from '../api/admin';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -30,6 +31,13 @@ export default function StaffProfilePage() {
     const [savingProfile, setSavingProfile] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
 
+    // Activity log state
+    const [logs, setLogs] = useState<ActivityLogDto[]>([]);
+    const [logTotal, setLogTotal] = useState(0);
+    const [logPage, setLogPage] = useState(1);
+    const [logLoading, setLogLoading] = useState(false);
+    const LOG_PAGE_SIZE = 10;
+
     const fetchProfile = async () => {
         try {
             setLoading(true);
@@ -48,9 +56,28 @@ export default function StaffProfilePage() {
         }
     };
 
+    const fetchMyLogs = async (page = 1) => {
+        if (!profile?._id) return;
+        setLogLoading(true);
+        try {
+            const res = await adminApi.getMyActivityLogs(page, LOG_PAGE_SIZE);
+            setLogs(res.logs);
+            setLogTotal(res.total);
+            setLogPage(page);
+        } catch {
+            console.error('Failed to fetch activity logs');
+        } finally {
+            setLogLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchProfile();
     }, []);
+
+    useEffect(() => {
+        if (profile?._id) fetchMyLogs(1);
+    }, [profile?._id]);
 
     const handleUpdateProfile = async () => {
         try {
@@ -113,7 +140,7 @@ export default function StaffProfilePage() {
     }
 
     return (
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+        <div style={{ margin: '0 auto' }}>
             {/* Profile Header */}
             <Card
                 bordered={false}
@@ -280,6 +307,119 @@ export default function StaffProfilePage() {
                     </Card>
                 </Col>
             </Row>
+
+            {/* Activity History Table */}
+            <Card
+                bordered={false}
+                title={
+                    <Space>
+                        <HistoryOutlined style={{ color: token.colorPrimary }} />
+                        <span style={{ fontWeight: 600 }}>Lịch sử hoạt động cá nhân</span>
+                    </Space>
+                }
+                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+            >
+                <Table<ActivityLogDto>
+                    dataSource={logs}
+                    rowKey="_id"
+                    loading={logLoading}
+                    size="small"
+                    pagination={{
+                        current: logPage,
+                        total: logTotal,
+                        pageSize: LOG_PAGE_SIZE,
+                        size: 'small',
+                        showTotal: (t) => `${t} hoạt động`,
+                        onChange: (p) => fetchMyLogs(p),
+                    }}
+                    scroll={{ x: 700 }}
+                    columns={[
+                        {
+                            title: 'Thời gian',
+                            dataIndex: 'createdAt',
+                            key: 'createdAt',
+                            width: 150,
+                            render: (v: string) => (
+                                <Text style={{ fontSize: 12 }}>
+                                    {dayjs(v).format('DD/MM/YYYY HH:mm:ss')}
+                                </Text>
+                            ),
+                        },
+                        {
+                            title: 'Hành động',
+                            dataIndex: 'action',
+                            key: 'action',
+                            width: 220,
+                            render: (v: string, r: ActivityLogDto) => (
+                                <Space direction="vertical" size={0}>
+                                    <Text strong style={{ fontSize: 13 }}>{v}</Text>
+                                    {r.targetInfo?.borrowerName && (
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            Người vay: {r.targetInfo.borrowerName} ({r.targetInfo.borrowerUsername})
+                                        </Text>
+                                    )}
+                                    {r.targetInfo?.fineractLoanId && !r.targetInfo?.borrowerName && (
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            Khoản vay #{r.targetInfo.fineractLoanId}
+                                        </Text>
+                                    )}
+                                </Space>
+                            ),
+                        },
+                        {
+                            title: 'Method',
+                            dataIndex: 'method',
+                            key: 'method',
+                            width: 80,
+                            align: 'center',
+                            render: (v: string) => {
+                                const colorMap: Record<string, string> = {
+                                    POST: '#059669', PUT: '#D97706', PATCH: '#D97706', DELETE: '#DC2626',
+                                };
+                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
+                            },
+                        },
+                        {
+                            title: 'Đường dẫn',
+                            dataIndex: 'path',
+                            key: 'path',
+                            ellipsis: true,
+                            render: (v: string) => <Text type="secondary" style={{ fontSize: 11 }}>{v}</Text>,
+                        },
+                        {
+                            title: 'Thời gian XL',
+                            dataIndex: 'duration',
+                            key: 'duration',
+                            width: 90,
+                            align: 'center',
+                            render: (v: number) => v != null ? <Text type="secondary" style={{ fontSize: 11 }}>{v}ms</Text> : '-',
+                        },
+                    ]}
+                    expandable={{
+                        expandedRowRender: (record: ActivityLogDto) => (
+                            <div style={{ padding: '8px 0' }}>
+                                {record.requestBody && Object.keys(record.requestBody).length > 0 && (
+                                    <div style={{
+                                        padding: '8px 12px',
+                                        background: token.colorBgLayout,
+                                        border: `1px solid ${token.colorBorderSecondary}`,
+                                    }}>
+                                        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, display: 'block', marginBottom: 4 }}>Request Body:</Text>
+                                        <pre style={{
+                                            margin: 0, fontSize: 11, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                            color: token.colorText, fontFamily: "'Consolas', monospace", maxHeight: 200, overflow: 'auto',
+                                        }}>
+                                            {JSON.stringify(record.requestBody, null, 2)}
+                                        </pre>
+                                    </div>
+                                )}
+                            </div>
+                        ),
+                        rowExpandable: (record: ActivityLogDto) =>
+                            !!(record.requestBody && Object.keys(record.requestBody).length > 0),
+                    }}
+                />
+            </Card>
         </div>
     );
 }

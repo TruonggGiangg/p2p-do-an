@@ -63,19 +63,8 @@ export class AdminController {
   @ApiOperation({ summary: 'Lấy thông tin cá nhân của user hiện tại' })
   @ApiResponse({ status: 200 })
   async getMyProfile(@Req() req: any) {
-    const user = req.user;
-    return {
-      statusCode: 200,
-      message: 'OK',
-      data: {
-        _id: user._id?.toString(),
-        username: user.username,
-        email: user.email,
-        phoneNumber: user.phoneNumber || user.username,
-        profile: user.profile || {},
-        roles: user.roles || [],
-      },
-    };
+    const profile = await this.adminService.getMyProfile(req.user._id?.toString());
+    return { statusCode: 200, message: 'OK', data: profile };
   }
 
   @Put('me/profile')
@@ -87,6 +76,18 @@ export class AdminController {
   ) {
     const result = await this.adminService.updateMyProfile(req.user._id.toString(), body);
     return { statusCode: 200, message: 'Cập nhật thành công', data: result };
+  }
+
+  @Get('me/activity-logs')
+  @ApiOperation({ summary: 'Lịch sử hoạt động của user hiện tại' })
+  @ApiResponse({ status: 200 })
+  async getMyActivityLogs(@Req() req: any, @Query('page') page?: string, @Query('limit') limit?: string) {
+    const result = await this.activityLogService.findByUser(
+      req.user._id?.toString(),
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
   }
 
   @Put('me/password')
@@ -323,6 +324,15 @@ export class AdminController {
   async disburseLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
     const result = await this.adminService.disburseLoan(fineractLoanId);
     return { statusCode: 200, message: 'Đã giải ngân', data: result };
+  }
+
+  @Get('loans/:fineractLoanId/contract-status')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
+  @ApiOperation({ summary: 'Kiểm tra trạng thái hợp đồng (đã ký chưa)' })
+  @ApiResponse({ status: 200 })
+  async getContractStatus(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.getContractStatus(fineractLoanId);
+    return { statusCode: 200, message: 'OK', data: result };
   }
 
   @Get('loans/:fineractLoanId/details')

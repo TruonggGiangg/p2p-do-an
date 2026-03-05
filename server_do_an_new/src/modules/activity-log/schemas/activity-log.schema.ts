@@ -47,6 +47,10 @@ export class ActivityLog extends Document {
   @Prop()
   userAgent: string;
 
+  /** Thông tin đối tượng bị tác động (người vay, khoản vay…) */
+  @Prop({ type: Object })
+  targetInfo: Record<string, any>;
+
   /** Thời gian xử lý (ms) */
   @Prop()
   duration: number;

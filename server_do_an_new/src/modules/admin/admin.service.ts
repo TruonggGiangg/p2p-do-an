@@ -783,7 +783,21 @@ export class AdminService {
       // Không block việc approve nếu tạo contract thất bại
     }
 
-    return { fineractLoanId, status: 'approved' };
+    // Lấy thông tin người vay
+    let borrowerName = '';
+    let borrowerUsername = '';
+    try {
+      const borrower = await this.userModel.findById(app.userId);
+      if (borrower) {
+        borrowerName =
+          [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
+        borrowerUsername = borrower.username;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return { fineractLoanId, status: 'approved', borrowerName, borrowerUsername };
   }
 
   /**
@@ -792,10 +806,18 @@ export class AdminService {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan)
+    if (!loan) throw new BadRequestException(`Khoản vay Fineract #${fineractLoanId} không tồn tại trong hệ thống`);
+
+    // 0. Check contract is signed before allowing disbursement
+    const contract = await this.loanContractModel.findOne({ loanId: loan._id });
+    if (!contract) {
+      throw new BadRequestException(`Khoản vay #${fineractLoanId} chưa có hợp đồng. Không thể giải ngân.`);
+    }
+    if (contract.status !== 'signed') {
       throw new BadRequestException(
-        `Kho\u1ea3n vay Fineract #${fineractLoanId} kh\u00f4ng t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng`,
+        `Hợp đồng khoản vay #${fineractLoanId} chưa được ký (trạng thái: ${contract.status}). Người vay cần ký hợp đồng trước khi giải ngân.`,
       );
+    }
 
     // 1. Disburse on Fineract
     await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
@@ -829,7 +851,39 @@ export class AdminService {
       this.logger.warn(`[disburseLoan] Failed to create notification: ${err?.message}`);
     }
 
-    return { fineractLoanId, status: 'disbursed' };
+    // Lấy thông tin người vay
+    let borrowerName = '';
+    let borrowerUsername = '';
+    try {
+      const borrower = await this.userModel.findById(loan.userId);
+      if (borrower) {
+        borrowerName =
+          [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
+        borrowerUsername = borrower.username;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    return { fineractLoanId, status: 'disbursed', borrowerName, borrowerUsername };
+  }
+
+  /**
+   * Get contract status for a loan (used by admin to check before disburse)
+   */
+  async getContractStatus(fineractLoanId: number) {
+    this.logger.log(`[getContractStatus] fineractLoanId=${fineractLoanId}`);
+    const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!loan) return { hasContract: false, contractStatus: null, signedAt: null };
+
+    const contract = await this.loanContractModel.findOne({ loanId: loan._id }).lean().exec();
+    if (!contract) return { hasContract: false, contractStatus: null, signedAt: null };
+
+    return {
+      hasContract: true,
+      contractStatus: contract.status,
+      signedAt: contract.signedAt || null,
+    };
   }
 
   async getLoanDetails(fineractLoanId: number) {
@@ -1468,6 +1522,22 @@ export class AdminService {
   }
 
   // ── Self-service Profile & Password ────────────────────────────────────────
+
+  /**
+   * Lấy hồ sơ đầy đủ từ DB (không dùng JWT payload)
+   */
+  async getMyProfile(userId: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+    return {
+      _id: user._id?.toString(),
+      username: user.username,
+      email: user.email || '',
+      phoneNumber: user.phoneNumber || user.username || '',
+      profile: user.profile || {},
+      roles: (user as any).roles || [],
+    };
+  }
 
   /**
    * Cập nhật hồ sơ cá nhân (staff tự cập nhật)

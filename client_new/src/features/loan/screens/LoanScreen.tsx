@@ -21,6 +21,7 @@ type LoanScreenNav = NativeStackNavigationProp<RootStackParamList, 'LoanProductD
 // Helper functions for recent loans section
 const getStatusInfo = (loan: LoanHistoryItem) => {
     const sf = loan.statusInfo;
+
     if (sf) {
         if (sf.active) return { text: 'Đang vay', color: '#3B82F6' };
         if (sf.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981' };

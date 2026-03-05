@@ -29,6 +29,7 @@ export default function LoanApprovalsPage() {
     const [canApprove, setCanApprove] = useState(true);
     const [missingRequired, setMissingRequired] = useState<string[]>([]);
     const [documentReviewing, setDocumentReviewing] = useState<Set<number>>(new Set());
+    const [contractStatus, setContractStatus] = useState<{ hasContract: boolean; contractStatus: string | null; signedAt: string | null } | null>(null);
 
     const handleApprove = useCallback(async (loan: LoanDto) => {
         if (!loan.fineractLoanId) return;
@@ -62,16 +63,19 @@ export default function LoanApprovalsPage() {
         setViewLoanId(loanId);
         setLoadingDetails(true);
         setLoadingDocuments(true);
+        setContractStatus(null);
         try {
-            const [details, docs, canApproveRes] = await Promise.all([
+            const [details, docs, canApproveRes, contractRes] = await Promise.all([
                 adminApi.getLoanDetails(loanId),
                 adminApi.getLoanDocuments(loanId),
                 adminApi.canApproveLoan(loanId),
+                adminApi.getContractStatus(loanId),
             ]);
             setLoanDetails(details);
             setLoanDocuments(docs);
             setCanApprove(canApproveRes.canApprove);
             setMissingRequired(canApproveRes.missingRequired || []);
+            setContractStatus(contractRes);
         } catch (e: any) {
             messageApi.error('Không thể tải chi tiết khoản vay');
             setViewLoanId(null);
@@ -313,10 +317,10 @@ export default function LoanApprovalsPage() {
             {/* Stats Cards - Enhanced with gradient backgrounds */}
             <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
                 <Col xs={24} sm={12} lg={8}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
+                    <Card
+                        bordered={false}
+                        style={{
+                            borderRadius: 0,
                             background: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
                             boxShadow: '0 4px 12px rgba(30, 64, 175, 0.25)',
                             height: '100%',
@@ -324,13 +328,13 @@ export default function LoanApprovalsPage() {
                         bodyStyle={{ padding: '24px' }}
                     >
                         <Flex align="center" gap={16}>
-                            <div style={{ 
-                                width: 60, 
-                                height: 60, 
-                                borderRadius: 0, 
+                            <div style={{
+                                width: 60,
+                                height: 60,
+                                borderRadius: 0,
                                 background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
+                                display: 'flex',
+                                alignItems: 'center',
                                 justifyContent: 'center',
                                 flexShrink: 0,
                             }}>
@@ -340,25 +344,25 @@ export default function LoanApprovalsPage() {
                                 <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
                                     Chờ duyệt
                                 </Typography.Text>
-                                <Statistic 
-                                    value={loans.length} 
-                                    valueStyle={{ 
-                                        fontSize: 32, 
-                                        fontWeight: 700, 
+                                <Statistic
+                                    value={loans.length}
+                                    valueStyle={{
+                                        fontSize: 32,
+                                        fontWeight: 700,
                                         color: '#FFFFFF',
                                         lineHeight: 1.2,
-                                    }} 
+                                    }}
                                 />
                             </div>
                         </Flex>
                     </Card>
                 </Col>
-                
+
                 <Col xs={24} sm={12} lg={8}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
+                    <Card
+                        bordered={false}
+                        style={{
+                            borderRadius: 0,
                             background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                             boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
                             height: '100%',
@@ -366,13 +370,13 @@ export default function LoanApprovalsPage() {
                         bodyStyle={{ padding: '24px' }}
                     >
                         <Flex align="center" gap={16}>
-                            <div style={{ 
-                                width: 60, 
-                                height: 60, 
-                                borderRadius: 0, 
+                            <div style={{
+                                width: 60,
+                                height: 60,
+                                borderRadius: 0,
                                 background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
+                                display: 'flex',
+                                alignItems: 'center',
                                 justifyContent: 'center',
                                 flexShrink: 0,
                             }}>
@@ -382,26 +386,26 @@ export default function LoanApprovalsPage() {
                                 <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
                                     Tổng vốn cần duyệt
                                 </Typography.Text>
-                                <Statistic 
-                                    value={totalCapital} 
-                                    formatter={v => fmtVND(Number(v))} 
-                                    valueStyle={{ 
-                                        fontSize: 24, 
-                                        fontWeight: 700, 
+                                <Statistic
+                                    value={totalCapital}
+                                    formatter={v => fmtVND(Number(v))}
+                                    valueStyle={{
+                                        fontSize: 24,
+                                        fontWeight: 700,
                                         color: '#FFFFFF',
                                         lineHeight: 1.2,
-                                    }} 
+                                    }}
                                 />
                             </div>
                         </Flex>
                     </Card>
                 </Col>
-                
+
                 <Col xs={24} sm={12} lg={8}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
+                    <Card
+                        bordered={false}
+                        style={{
+                            borderRadius: 0,
                             background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
                             boxShadow: '0 4px 12px rgba(217, 119, 6, 0.25)',
                             height: '100%',
@@ -409,13 +413,13 @@ export default function LoanApprovalsPage() {
                         bodyStyle={{ padding: '24px' }}
                     >
                         <Flex align="center" gap={16}>
-                            <div style={{ 
-                                width: 60, 
-                                height: 60, 
-                                borderRadius: 0, 
+                            <div style={{
+                                width: 60,
+                                height: 60,
+                                borderRadius: 0,
                                 background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
+                                display: 'flex',
+                                alignItems: 'center',
                                 justifyContent: 'center',
                                 flexShrink: 0,
                             }}>
@@ -425,15 +429,15 @@ export default function LoanApprovalsPage() {
                                 <Typography.Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 4 }}>
                                     Sản phẩm vay
                                 </Typography.Text>
-                                <Statistic 
-                                    value={new Set(loans.map(l => l.productShortName)).size} 
-                                    suffix=" loại" 
-                                    valueStyle={{ 
-                                        fontSize: 32, 
-                                        fontWeight: 700, 
+                                <Statistic
+                                    value={new Set(loans.map(l => l.productShortName)).size}
+                                    suffix=" loại"
+                                    valueStyle={{
+                                        fontSize: 32,
+                                        fontWeight: 700,
                                         color: '#FFFFFF',
                                         lineHeight: 1.2,
-                                    }} 
+                                    }}
                                 />
                             </div>
                         </Flex>
@@ -474,20 +478,20 @@ export default function LoanApprovalsPage() {
                     defaultCollapsed: false,
                 }}
                 scroll={{ x: 1750 }}
-                pagination={{ 
-                    pageSize: 15, 
-                    showSizeChanger: true, 
+                pagination={{
+                    pageSize: 15,
+                    showSizeChanger: true,
                     showTotal: t => `Tổng ${t} khoản vay chờ duyệt`,
                     showQuickJumper: true,
                 }}
                 locale={{ emptyText: '🎉 Không có khoản vay nào chờ phê duyệt' }}
                 toolBarRender={() => [
-                    <Button 
-                        key="reload" 
-                        icon={<ReloadOutlined />} 
+                    <Button
+                        key="reload"
+                        icon={<ReloadOutlined />}
                         onClick={() => actionRef.current?.reload()}
                         size="large"
-                        style={{ 
+                        style={{
                             height: 44,
                             padding: '0 20px',
                             fontWeight: 600,
@@ -496,10 +500,10 @@ export default function LoanApprovalsPage() {
                         Làm mới
                     </Button>
                 ]}
-                options={{ 
-                    reload: true, 
-                    density: true, 
-                    fullScreen: true, 
+                options={{
+                    reload: true,
+                    density: true,
+                    fullScreen: true,
                     setting: true,
                     search: true,
                 }}
@@ -604,6 +608,17 @@ export default function LoanApprovalsPage() {
                                                 }}>
                                                     {loanDetails.status?.value?.toUpperCase()}
                                                 </Tag>
+                                                {contractStatus?.hasContract && (
+                                                    <Tag
+                                                        color={contractStatus.contractStatus === 'signed' ? 'blue' : contractStatus.contractStatus === 'active' ? 'green' : contractStatus.contractStatus === 'pending_signature' ? 'orange' : 'default'}
+                                                        style={{ padding: '4px 12px', borderRadius: 0, fontWeight: 600, fontSize: 12, margin: 0 }}
+                                                    >
+                                                        {contractStatus.contractStatus === 'pending_signature' ? '📝 Chờ ký hợp đồng'
+                                                            : contractStatus.contractStatus === 'signed' ? '✅ Đã ký hợp đồng'
+                                                                : contractStatus.contractStatus === 'active' ? '📄 HĐ đang hiệu lực'
+                                                                    : `HĐ: ${contractStatus.contractStatus}`}
+                                                    </Tag>
+                                                )}
 
                                                 {viewLoanId && (
                                                     <Space>
@@ -626,17 +641,31 @@ export default function LoanApprovalsPage() {
                                                                 </Button>
                                                             </Tooltip>
                                                         )}
-                                                        <Popconfirm
-                                                            title="Giải ngân khoản vay"
-                                                            description="Xác nhận giải ngân ngay bây giờ?"
-                                                            onConfirm={() => { handleDisburse({ fineractLoanId: viewLoanId } as LoanDto); setViewLoanId(null); setLoanDetails(null); }}
-                                                            okText="Giải ngân" cancelText="Hủy"
-                                                            okButtonProps={{ danger: true }}
-                                                        >
-                                                            <Button size="middle" danger icon={<SendOutlined />} loading={disbursing.has(viewLoanId)} style={{ borderRadius: 0, fontWeight: 600 }}>
-                                                                Giải ngân
-                                                            </Button>
-                                                        </Popconfirm>
+                                                        {contractStatus?.hasContract && contractStatus.contractStatus === 'signed' ? (
+                                                            <Popconfirm
+                                                                title="Giải ngân khoản vay"
+                                                                description="Xác nhận giải ngân ngay bây giờ?"
+                                                                onConfirm={() => { handleDisburse({ fineractLoanId: viewLoanId } as LoanDto); setViewLoanId(null); setLoanDetails(null); }}
+                                                                okText="Giải ngân" cancelText="Hủy"
+                                                                okButtonProps={{ danger: true }}
+                                                            >
+                                                                <Button size="middle" danger icon={<SendOutlined />} loading={disbursing.has(viewLoanId)} style={{ borderRadius: 0, fontWeight: 600 }}>
+                                                                    Giải ngân
+                                                                </Button>
+                                                            </Popconfirm>
+                                                        ) : (
+                                                            <Tooltip title={
+                                                                !contractStatus?.hasContract
+                                                                    ? 'Chưa có hợp đồng cho khoản vay này'
+                                                                    : contractStatus?.contractStatus === 'pending_signature'
+                                                                        ? 'Người vay chưa ký hợp đồng. Cần ký trước khi giải ngân.'
+                                                                        : `Trạng thái hợp đồng: ${contractStatus?.contractStatus}`
+                                                            }>
+                                                                <Button size="middle" icon={<SendOutlined />} disabled style={{ borderRadius: 0, fontWeight: 600 }}>
+                                                                    Giải ngân
+                                                                </Button>
+                                                            </Tooltip>
+                                                        )}
                                                     </Space>
                                                 )}
                                             </Flex>

@@ -253,6 +253,13 @@ export interface ActivityLogDto {
   statusCode: number;
   requestBody?: Record<string, any>;
   responseMessage?: string;
+  targetInfo?: {
+    borrowerName?: string;
+    borrowerUsername?: string;
+    fineractLoanId?: number;
+    staffId?: string;
+    staffName?: string;
+  };
   ip?: string;
   userAgent?: string;
   duration?: number;
@@ -466,6 +473,29 @@ export const adminApi = {
       .post<{
         data: { fineractLoanId: number; status: string };
       }>(`/api/admin/loans/${fineractLoanId}/disburse`)
+      .then((r) => r.data.data),
+
+  getContractStatus: (fineractLoanId: number) =>
+    api
+      .get<{
+        data: {
+          hasContract: boolean;
+          contractStatus: string | null;
+          signedAt: string | null;
+        };
+      }>(`/api/admin/loans/${fineractLoanId}/contract-status`)
+      .then((r) => r.data.data),
+
+  getMyActivityLogs: (page = 1, limit = 20) =>
+    api
+      .get<{
+        data: {
+          logs: ActivityLogDto[];
+          total: number;
+          page: number;
+          totalPages: number;
+        };
+      }>(`/api/admin/me/activity-logs`, { params: { page, limit } })
       .then((r) => r.data.data),
 
   getLoanDetails: (fineractLoanId: number | { id?: number }) => {

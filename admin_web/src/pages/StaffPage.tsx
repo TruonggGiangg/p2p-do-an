@@ -4,7 +4,7 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
     Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
-    Card, Row, Col, Modal, Form, Input, App, Select, Popconfirm, Drawer, Pagination, Spin,
+    Card, Row, Col, Modal, Form, Input, App, Select, Popconfirm, Drawer, Table,
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined,
@@ -12,7 +12,7 @@ import {
     PlusOutlined, EditOutlined,
     IdcardOutlined, MailOutlined, SafetyCertificateOutlined,
     CheckCircleOutlined, StopOutlined, UndoOutlined, LockOutlined,
-    HistoryOutlined, ClockCircleOutlined,
+    HistoryOutlined,
 } from '@ant-design/icons';
 import { adminApi, StaffDto, ActivityLogDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
@@ -476,7 +476,6 @@ export default function StaffPage() {
                     viewMode !== 'deleted' && (
                         <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)} style={{ fontWeight: 500 }}>Thêm nhân viên</Button>
                     ),
-                    <Button key="history" icon={<HistoryOutlined />} onClick={() => openLogDrawer(null)} style={{ fontWeight: 500 }}>Lịch sử tổng thể</Button>,
                     <Button key="refresh" icon={<ReloadOutlined />} onClick={() => { fetchGlobalStats(); actionRef.current?.reload(); }}>Làm mới</Button>,
                 ].filter(Boolean)}
                 headerTitle={<Space><Title level={5} style={{ margin: 0 }}>{getHeaderTitle()}</Title></Space>}
@@ -555,9 +554,7 @@ export default function StaffPage() {
                     <Space>
                         <HistoryOutlined style={{ fontSize: 18 }} />
                         <div>
-                            <div style={{ fontWeight: 600, fontSize: 15 }}>
-                                {logDrawerStaff ? 'Lịch sử hoạt động' : 'Lịch sử tổng thể'}
-                            </div>
+                            <div style={{ fontWeight: 600, fontSize: 15 }}>Lịch sử hoạt động</div>
                             {logDrawerStaff && (
                                 <div style={{ fontSize: 12, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>
                                     {logDrawerStaff.displayName || logDrawerStaff.username}
@@ -569,118 +566,139 @@ export default function StaffPage() {
                 placement="right"
                 width={Math.min(1100, window.innerWidth * 0.95)}
                 open={logDrawerOpen}
-                styles={{ body: { padding: '24px', overflowX: 'auto' } }}
+                styles={{ body: { padding: '16px', overflowX: 'auto' } }}
                 destroyOnHidden
                 onClose={() => { setLogDrawerOpen(false); setLogDrawerStaff(null); }}
             >
-                <Spin spinning={logLoading}>
-                    {logs.length === 0 && !logLoading ? (
-                        <div style={{ textAlign: 'center', padding: '60px 0', color: token.colorTextSecondary }}>
-                            <ClockCircleOutlined style={{ fontSize: 48, marginBottom: 16, display: 'block', opacity: 0.3 }} />
-                            <Text type="secondary">Chưa có lịch sử hoạt động nào</Text>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {logs.map((log) => {
-                                const methodColorMap: Record<string, string> = {
-                                    POST: '#059669',
-                                    PUT: '#D97706',
-                                    PATCH: '#D97706',
-                                    DELETE: '#DC2626',
+                <Table<ActivityLogDto>
+                    dataSource={logs}
+                    rowKey="_id"
+                    loading={logLoading}
+                    size="small"
+                    pagination={{
+                        current: logPage,
+                        total: logTotal,
+                        pageSize: LOG_PAGE_SIZE,
+                        size: 'small',
+                        showTotal: (t) => `${t} hoạt động`,
+                        onChange: (p) => fetchLogs(p),
+                    }}
+                    scroll={{ x: 850 }}
+                    columns={[
+                        {
+                            title: 'Thời gian',
+                            dataIndex: 'createdAt',
+                            key: 'createdAt',
+                            width: 150,
+                            render: (v: string) => (
+                                <Text style={{ fontSize: 12 }}>
+                                    {dayjs(v).format('DD/MM/YYYY HH:mm:ss')}
+                                </Text>
+                            ),
+                        },
+                        {
+                            title: 'Hành động',
+                            dataIndex: 'action',
+                            key: 'action',
+                            width: 200,
+                            render: (v: string, r: ActivityLogDto) => (
+                                <Space direction="vertical" size={0}>
+                                    <Text strong style={{ fontSize: 13 }}>{v}</Text>
+                                    {r.targetInfo?.borrowerName && (
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            Người vay: {r.targetInfo.borrowerName} ({r.targetInfo.borrowerUsername})
+                                        </Text>
+                                    )}
+                                    {r.targetInfo?.fineractLoanId && !r.targetInfo?.borrowerName && (
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            Khoản vay #{r.targetInfo.fineractLoanId}
+                                        </Text>
+                                    )}
+                                    {r.targetInfo?.staffName && (
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            Nhân viên: {r.targetInfo.staffName}
+                                        </Text>
+                                    )}
+                                </Space>
+                            ),
+                        },
+                        {
+                            title: 'Method',
+                            dataIndex: 'method',
+                            key: 'method',
+                            width: 80,
+                            align: 'center',
+                            render: (v: string) => {
+                                const colorMap: Record<string, string> = {
+                                    POST: '#059669', PUT: '#D97706', PATCH: '#D97706', DELETE: '#DC2626',
                                 };
-                                const methodColor = methodColorMap[log.method] || token.colorPrimary;
-                                return (
-                                    <Card
-                                        key={log._id}
-                                        size="small"
-                                        bordered
-                                        style={{
-                                            borderRadius: 0,
-                                            borderLeft: `3px solid ${methodColor}`,
-                                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                                        }}
-                                        bodyStyle={{ padding: '12px 16px' }}
+                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
+                            },
+                        },
+                        {
+                            title: 'Người thực hiện',
+                            dataIndex: 'username',
+                            key: 'username',
+                            width: 160,
+                            render: (v: string, r: ActivityLogDto) => (
+                                <Space size={4}>
+                                    <Text style={{ fontSize: 12 }}>{v}</Text>
+                                    <Tag
+                                        color={r.userRole === 'admin' ? 'blue' : 'green'}
+                                        style={{ borderRadius: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}
                                     >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                                            <Text strong style={{ fontSize: 13 }}>{log.action}</Text>
-                                            <Tag
-                                                color={methodColor}
-                                                style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0, lineHeight: '20px' }}
-                                            >
-                                                {log.method}
-                                            </Tag>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                            <Text type="secondary" style={{ fontSize: 12 }}>
-                                                <UserOutlined style={{ marginRight: 4 }} />
-                                                {log.username}
-                                                <Tag
-                                                    style={{
-                                                        marginLeft: 8,
-                                                        borderRadius: 0,
-                                                        fontSize: 11,
-                                                        padding: '0 6px',
-                                                        lineHeight: '18px',
-                                                    }}
-                                                    color={log.userRole === 'admin' ? 'blue' : 'green'}
-                                                >
-                                                    {log.userRole === 'admin' ? 'Admin' : 'Nhân viên'}
-                                                </Tag>
-                                            </Text>
-                                            <Text type="secondary" style={{ fontSize: 11 }}>
-                                                <ClockCircleOutlined style={{ marginRight: 4 }} />
-                                                {dayjs(log.createdAt).format('DD/MM/YYYY HH:mm:ss')}
-                                                {log.duration != null && (
-                                                    <span style={{ marginLeft: 8, opacity: 0.7 }}>{log.duration}ms</span>
-                                                )}
-                                            </Text>
-                                            <Text type="secondary" style={{ fontSize: 11, opacity: 0.7 }}>
-                                                {log.path}
-                                            </Text>
-                                            {log.requestBody && Object.keys(log.requestBody).length > 0 && (
-                                                <div style={{
-                                                    marginTop: 6,
-                                                    padding: '8px 10px',
-                                                    background: token.colorBgLayout,
-                                                    border: `1px solid ${token.colorBorderSecondary}`,
-                                                    borderRadius: 0,
-                                                    maxHeight: 160,
-                                                    overflow: 'auto',
-                                                }}>
-                                                    <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, display: 'block', marginBottom: 4 }}>Request Body:</Text>
-                                                    <pre style={{
-                                                        margin: 0,
-                                                        fontSize: 11,
-                                                        lineHeight: 1.4,
-                                                        whiteSpace: 'pre-wrap',
-                                                        wordBreak: 'break-all',
-                                                        color: token.colorText,
-                                                        fontFamily: "'Fira Code', 'Consolas', monospace",
-                                                    }}>
-                                                        {JSON.stringify(log.requestBody, null, 2)}
-                                                    </pre>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </Card>
-                                );
-                            })}
-                        </div>
-                    )}
-                    {logTotal > LOG_PAGE_SIZE && (
-                        <div style={{ textAlign: 'center', marginTop: 20, paddingBottom: 8 }}>
-                            <Pagination
-                                current={logPage}
-                                total={logTotal}
-                                pageSize={LOG_PAGE_SIZE}
-                                size="small"
-                                showSizeChanger={false}
-                                onChange={(p) => fetchLogs(p)}
-                                showTotal={(t) => `${t} hoạt động`}
-                            />
-                        </div>
-                    )}
-                </Spin>
+                                        {r.userRole === 'admin' ? 'Admin' : 'NV'}
+                                    </Tag>
+                                </Space>
+                            ),
+                        },
+                        {
+                            title: 'Đường dẫn',
+                            dataIndex: 'path',
+                            key: 'path',
+                            width: 240,
+                            ellipsis: true,
+                            render: (v: string) => <Text type="secondary" style={{ fontSize: 11 }}>{v}</Text>,
+                        },
+                        {
+                            title: 'Thời gian XL',
+                            dataIndex: 'duration',
+                            key: 'duration',
+                            width: 90,
+                            align: 'center',
+                            render: (v: number) => v != null ? <Text type="secondary" style={{ fontSize: 11 }}>{v}ms</Text> : '-',
+                        },
+                    ]}
+                    expandable={{
+                        expandedRowRender: (record: ActivityLogDto) => (
+                            <div style={{ padding: '8px 0' }}>
+                                {record.requestBody && Object.keys(record.requestBody).length > 0 && (
+                                    <div style={{
+                                        padding: '8px 12px',
+                                        background: token.colorBgLayout,
+                                        border: `1px solid ${token.colorBorderSecondary}`,
+                                        marginBottom: 8,
+                                    }}>
+                                        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, display: 'block', marginBottom: 4 }}>Request Body:</Text>
+                                        <pre style={{
+                                            margin: 0, fontSize: 11, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                            color: token.colorText, fontFamily: "'Consolas', monospace", maxHeight: 200, overflow: 'auto',
+                                        }}>
+                                            {JSON.stringify(record.requestBody, null, 2)}
+                                        </pre>
+                                    </div>
+                                )}
+                                {record.responseMessage && (
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                        Response: {record.responseMessage}
+                                    </Text>
+                                )}
+                            </div>
+                        ),
+                        rowExpandable: (record: ActivityLogDto) =>
+                            !!(record.requestBody && Object.keys(record.requestBody).length > 0) || !!record.responseMessage,
+                    }}
+                />
             </Drawer>
         </div>
     );

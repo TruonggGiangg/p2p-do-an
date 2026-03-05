@@ -87,6 +87,41 @@ function resolveAction(method: string, path: string): string {
 /** Chỉ log các method ghi dữ liệu */
 const LOGGED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** Chỉ log cho admin/staff */
+const LOGGED_ROLES = new Set(['admin', 'staff']);
+
+/**
+ * Trích xuất thông tin đối tượng bị tác động từ responseBody.
+ */
+function extractTargetInfo(method: string, path: string, responseBody: any): Record<string, any> | null {
+  const data = responseBody?.data;
+  if (!data) return null;
+
+  // Loan approve / disburse → có thông tin người vay
+  if (data.borrowerName || data.borrowerUsername) {
+    return {
+      borrowerName: data.borrowerName || '',
+      borrowerUsername: data.borrowerUsername || '',
+      fineractLoanId: data.fineractLoanId,
+    };
+  }
+
+  // Khoản vay (có fineractLoanId)
+  if (data.fineractLoanId) {
+    return { fineractLoanId: data.fineractLoanId };
+  }
+
+  // Staff operations (có staffId hoặc username)
+  if (data.staffId || data.username) {
+    return {
+      staffId: data.staffId || data._id,
+      staffName: data.displayName || data.username,
+    };
+  }
+
+  return null;
+}
+
 @Injectable()
 export class ActivityLogInterceptor implements NestInterceptor {
   private readonly logger = new Logger('ActivityLog');
@@ -121,13 +156,19 @@ export class ActivityLogInterceptor implements NestInterceptor {
               ? 'staff'
               : roles[0] || 'unknown';
 
-          const logEntry = {
+          // Chỉ log cho admin/staff — bỏ qua borrower/lender
+          if (!LOGGED_ROLES.has(userRole)) return;
+
+          const cleanPath = url.split('?')[0];
+          const targetInfo = extractTargetInfo(method, cleanPath, responseBody);
+
+          const logEntry: any = {
             userId: user._id || user.sub || user.keycloakUserId || 'unknown',
             username: user.username || user.email || 'unknown',
             userRole,
             method,
-            path: url.split('?')[0], // Bỏ query string
-            action: resolveAction(method, url.split('?')[0]),
+            path: cleanPath,
+            action: resolveAction(method, cleanPath),
             statusCode: response.statusCode,
             requestBody: sanitizeBody(body),
             responseMessage: responseBody?.message || '',
@@ -135,6 +176,10 @@ export class ActivityLogInterceptor implements NestInterceptor {
             userAgent: headers['user-agent'] || '',
             duration,
           };
+
+          if (targetInfo) {
+            logEntry.targetInfo = targetInfo;
+          }
 
           // Fire-and-forget: ghi log không chặn response
           this.activityLogService.create(logEntry).catch(err => {
