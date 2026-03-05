@@ -59,6 +59,54 @@ export class AdminController {
     };
   }
 
+  @Get('me/profile')
+  @ApiOperation({ summary: 'Lấy thông tin cá nhân của user hiện tại' })
+  @ApiResponse({ status: 200 })
+  async getMyProfile(@Req() req: any) {
+    const user = req.user;
+    return {
+      statusCode: 200,
+      message: 'OK',
+      data: {
+        _id: user._id?.toString(),
+        username: user.username,
+        email: user.email,
+        phoneNumber: user.phoneNumber || user.username,
+        profile: user.profile || {},
+        roles: user.roles || [],
+      },
+    };
+  }
+
+  @Put('me/profile')
+  @ApiOperation({ summary: 'Cập nhật hồ sơ cá nhân' })
+  @ApiResponse({ status: 200 })
+  async updateMyProfile(
+    @Req() req: any,
+    @Body() body: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string },
+  ) {
+    const result = await this.adminService.updateMyProfile(req.user._id.toString(), body);
+    return { statusCode: 200, message: 'Cập nhật thành công', data: result };
+  }
+
+  @Put('me/password')
+  @ApiOperation({ summary: 'Đổi mật khẩu cá nhân' })
+  @ApiResponse({ status: 200 })
+  async changeMyPassword(@Req() req: any, @Body() body: { currentPassword: string; newPassword: string }) {
+    if (!body.currentPassword || !body.newPassword) {
+      throw new BadRequestException('Vui lòng nhập mật khẩu hiện tại và mật khẩu mới');
+    }
+    if (body.newPassword.length < 6) {
+      throw new BadRequestException('Mật khẩu mới phải có ít nhất 6 ký tự');
+    }
+    const result = await this.adminService.changeMyPassword(
+      req.user._id.toString(),
+      body.currentPassword,
+      body.newPassword,
+    );
+    return { statusCode: 200, message: 'Đổi mật khẩu thành công', data: result };
+  }
+
   @Get('loan-products')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
   @ApiOperation({ summary: 'Danh sách sản phẩm vay từ Fineract (cho admin)' })

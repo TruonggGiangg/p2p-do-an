@@ -14,6 +14,7 @@ import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
+import StaffProfilePage from './pages/StaffProfilePage';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from './AbilityContext';
 import { Action, Subject, AppAbility, buildAbilityForRole, buildEmptyAbility } from './ability';
@@ -184,6 +185,7 @@ export default function App() {
                     <StaffDetailPage />
                   </ProtectedRoute>
                 } />
+                <Route path="profile" element={<StaffProfilePage />} />
                 <Route path="sync-drift" element={
                   <ProtectedRoute action={Action.Read} subject="SyncDrift">
                     <SyncDriftPage />

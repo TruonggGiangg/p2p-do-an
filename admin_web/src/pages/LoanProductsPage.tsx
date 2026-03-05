@@ -270,7 +270,7 @@ export default function LoanProductsPage() {
           setViewProductDetails(null);
         }}
         width={Math.min(1100, window.innerWidth * 0.95)}
-        destroyOnClose
+        destroyOnHidden
         styles={{ body: { padding: '24px', overflowX: 'auto' } }}
         extra={
           <Button icon={<CloseOutlined />} onClick={() => { setViewModalVisible(false); setViewProductDetails(null); }}>

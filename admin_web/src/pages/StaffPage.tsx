@@ -68,7 +68,7 @@ export default function StaffPage() {
         }
     };
 
-    const openLogDrawer = (staff: StaffDto) => {
+    const openLogDrawer = (staff: StaffDto | null = null) => {
         setLogDrawerStaff(staff);
         setLogDrawerOpen(true);
         fetchLogs(1, staff);
@@ -467,6 +467,7 @@ export default function StaffPage() {
                 actionRef={actionRef}
                 rowKey={(r) => r._id || 'unknown'}
                 columns={columns}
+
                 request={fetchData}
                 onRow={(r) => ({ onClick: () => navigate(`/staff/${r._id}`), style: { cursor: 'pointer' } })}
                 pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} nhân viên` }}
@@ -475,6 +476,7 @@ export default function StaffPage() {
                     viewMode !== 'deleted' && (
                         <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)} style={{ fontWeight: 500 }}>Thêm nhân viên</Button>
                     ),
+                    <Button key="history" icon={<HistoryOutlined />} onClick={() => openLogDrawer(null)} style={{ fontWeight: 500 }}>Lịch sử tổng thể</Button>,
                     <Button key="refresh" icon={<ReloadOutlined />} onClick={() => { fetchGlobalStats(); actionRef.current?.reload(); }}>Làm mới</Button>,
                 ].filter(Boolean)}
                 headerTitle={<Space><Title level={5} style={{ margin: 0 }}>{getHeaderTitle()}</Title></Space>}
@@ -553,7 +555,9 @@ export default function StaffPage() {
                     <Space>
                         <HistoryOutlined style={{ fontSize: 18 }} />
                         <div>
-                            <div style={{ fontWeight: 600, fontSize: 15 }}>Lịch sử hoạt động</div>
+                            <div style={{ fontWeight: 600, fontSize: 15 }}>
+                                {logDrawerStaff ? 'Lịch sử hoạt động' : 'Lịch sử tổng thể'}
+                            </div>
                             {logDrawerStaff && (
                                 <div style={{ fontSize: 12, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>
                                     {logDrawerStaff.displayName || logDrawerStaff.username}
@@ -562,11 +566,12 @@ export default function StaffPage() {
                         </div>
                     </Space>
                 }
-                placement="left"
-                width={520}
+                placement="right"
+                width={Math.min(1100, window.innerWidth * 0.95)}
                 open={logDrawerOpen}
+                styles={{ body: { padding: '24px', overflowX: 'auto' } }}
+                destroyOnHidden
                 onClose={() => { setLogDrawerOpen(false); setLogDrawerStaff(null); }}
-                styles={{ body: { padding: '16px 24px' } }}
             >
                 <Spin spinning={logLoading}>
                     {logs.length === 0 && !logLoading ? (
@@ -632,6 +637,30 @@ export default function StaffPage() {
                                             <Text type="secondary" style={{ fontSize: 11, opacity: 0.7 }}>
                                                 {log.path}
                                             </Text>
+                                            {log.requestBody && Object.keys(log.requestBody).length > 0 && (
+                                                <div style={{
+                                                    marginTop: 6,
+                                                    padding: '8px 10px',
+                                                    background: token.colorBgLayout,
+                                                    border: `1px solid ${token.colorBorderSecondary}`,
+                                                    borderRadius: 0,
+                                                    maxHeight: 160,
+                                                    overflow: 'auto',
+                                                }}>
+                                                    <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, display: 'block', marginBottom: 4 }}>Request Body:</Text>
+                                                    <pre style={{
+                                                        margin: 0,
+                                                        fontSize: 11,
+                                                        lineHeight: 1.4,
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-all',
+                                                        color: token.colorText,
+                                                        fontFamily: "'Fira Code', 'Consolas', monospace",
+                                                    }}>
+                                                        {JSON.stringify(log.requestBody, null, 2)}
+                                                    </pre>
+                                                </div>
+                                            )}
                                         </div>
                                     </Card>
                                 );

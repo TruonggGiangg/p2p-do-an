@@ -5,6 +5,7 @@ import { FineractLoanService } from '../fineract/services/fineract-loan.service'
 import { FineractClientService } from '../fineract/services/fineract-client.service';
 import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
 import { KeycloakService } from '../auth/services/keycloak.service';
+import { KeycloakAuthService } from '../auth/services/keycloak-auth.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
@@ -75,6 +76,7 @@ export class AdminService {
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
     private readonly keycloakService: KeycloakService,
+    private readonly keycloakAuthService: KeycloakAuthService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly ekycService: EkycService,
   ) {}
@@ -1463,5 +1465,76 @@ export class AdminService {
     );
     this.logger.log(`[migratePhoneNumbers] Updated ${result.modifiedCount} users`);
     return { modifiedCount: result.modifiedCount };
+  }
+
+  // ── Self-service Profile & Password ────────────────────────────────────────
+
+  /**
+   * Cập nhật hồ sơ cá nhân (staff tự cập nhật)
+   */
+  async updateMyProfile(
+    userId: string,
+    dto: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string },
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+
+    if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
+    if (dto.email !== undefined) user.email = dto.email;
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
+    user.markModified('profile');
+    await user.save();
+
+    // Sync Keycloak
+    if (user.keycloakId && (dto.firstName || dto.lastName || dto.email)) {
+      try {
+        const token = await (this.keycloakService as any).getAdminToken();
+        const realm = (this.keycloakService as any).realm;
+        const userRes = await (this.keycloakService as any).httpClient.get(
+          `/admin/realms/${realm}/users/${user.keycloakId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const kcUser = userRes.data;
+        if (dto.firstName) kcUser.firstName = dto.firstName;
+        if (dto.lastName) kcUser.lastName = dto.lastName;
+        if (dto.email) kcUser.email = dto.email;
+        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        this.logger.log(`[updateMyProfile] Synced Keycloak user ${user.keycloakId}`);
+      } catch (err: any) {
+        this.logger.warn(`[updateMyProfile] Keycloak sync failed: ${err.message}`);
+      }
+    }
+
+    return {
+      _id: user._id?.toString(),
+      username: user.username,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      profile: user.profile,
+    };
+  }
+
+  /**
+   * Đổi mật khẩu: xác thực mật khẩu hiện tại qua Keycloak, rồi đặt mật khẩu mới
+   */
+  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+    if (!user.keycloakId) throw new BadRequestException('Tài khoản không liên kết Keycloak');
+
+    // Xác thực mật khẩu hiện tại bằng cách gọi Keycloak token endpoint
+    try {
+      await this.keycloakAuthService.loginWithPassword(user.username, currentPassword);
+    } catch {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+
+    // Đặt mật khẩu mới qua Admin API
+    await this.keycloakService.resetUserPassword(user.keycloakId, newPassword);
+
+    return { success: true };
   }
 }

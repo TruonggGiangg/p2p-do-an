@@ -14,6 +14,7 @@ import {
   SunOutlined,
   MoonOutlined,
   TeamOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { AbilityContext } from '../AbilityContext';
@@ -30,6 +31,7 @@ const menuItems = [
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
+  { key: '/profile', icon: <IdcardOutlined />, label: 'Hồ sơ cá nhân' },
 ];
 
 export default function AppLayout() {
@@ -51,6 +53,7 @@ export default function AppLayout() {
   const filteredMenuItems = menuItems.filter(item => {
     if (item.key === '/staff') return ability.can(Action.Read, 'Staff');
     if (item.key === '/sync-drift') return ability.can(Action.Read, 'SyncDrift');
+    if (item.key === '/profile') return !userRoles.includes('admin'); // Staff only
     return true;
   });
 

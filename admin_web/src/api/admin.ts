@@ -276,6 +276,36 @@ export const adminApi = {
       }>("/api/admin/me/permissions")
       .then((r) => r.data.data),
 
+  /** Fetch current user profile */
+  getMyProfile: () =>
+    api
+      .get<{
+        data: {
+          _id: string;
+          username: string;
+          email: string;
+          phoneNumber: string;
+          profile: { firstName?: string; lastName?: string };
+          roles: string[];
+        };
+      }>("/api/admin/me/profile")
+      .then((r) => r.data.data),
+
+  /** Update current user profile */
+  updateMyProfile: (body: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phoneNumber?: string;
+  }) =>
+    api
+      .put<{ data: any }>("/api/admin/me/profile", body)
+      .then((r) => r.data.data),
+
+  /** Change current user password */
+  changeMyPassword: (body: { currentPassword: string; newPassword: string }) =>
+    api.put<{ data: any }>("/api/admin/me/password", body).then((r) => r.data),
+
   getLoanProducts: () =>
     api
       .get<{ data: { products: LoanProductDto[] } }>("/api/admin/loan-products")

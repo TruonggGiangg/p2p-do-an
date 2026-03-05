@@ -169,16 +169,12 @@ export class KeycloakService {
         }
       }
 
-      await this.httpClient.put(
-        `/admin/realms/${this.realm}/users/${userId}`,
-        user,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+      await this.httpClient.put(`/admin/realms/${this.realm}/users/${userId}`, user, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      );
+      });
       this.logger.log(`Updated user ${userId} attributes in Keycloak`);
     } catch (error: any) {
       this.logger.error(`Failed to update Keycloak user ${userId}`, error.response?.data || error.message);
@@ -192,6 +188,34 @@ export class KeycloakService {
   async findUserByUsername(username: string): Promise<any | null> {
     const users = await this.findUsersByUsername(username);
     return users.length > 0 ? users[0] : null;
+  }
+
+  /**
+   * Reset user password in Keycloak (Admin API)
+   */
+  async resetUserPassword(userId: string, newPassword: string): Promise<void> {
+    const token = await this.getAdminToken();
+
+    try {
+      await this.httpClient.put(
+        `/admin/realms/${this.realm}/users/${userId}/reset-password`,
+        {
+          type: 'password',
+          value: newPassword,
+          temporary: false,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      this.logger.log(`Reset password for Keycloak user ${userId}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to reset password for user ${userId}`, error.response?.data || error.message);
+      throw new InternalServerErrorException('Không thể đổi mật khẩu trên Keycloak');
+    }
   }
 
   /**
