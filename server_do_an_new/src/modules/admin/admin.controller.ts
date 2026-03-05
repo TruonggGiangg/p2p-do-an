@@ -437,10 +437,37 @@ export class AdminController {
   }
 
   @Delete('staff/:id')
-  @ApiOperation({ summary: 'Xóa nhân viên' })
+  @ApiOperation({ summary: 'Khóa nhân viên (soft delete)' })
   @ApiResponse({ status: 200 })
   async deleteStaff(@Param('id') id: string) {
     const result = await this.adminService.deleteStaff(id);
-    return { statusCode: 200, message: 'Đã xóa nhân viên', data: result };
+    return { statusCode: 200, message: 'Đã khóa nhân viên', data: result };
+  }
+
+  @Post('staff/:id/restore')
+  @ApiOperation({ summary: 'Khôi phục nhân viên đã khóa' })
+  @ApiResponse({ status: 200 })
+  async restoreStaff(@Param('id') id: string) {
+    const result = await this.adminService.restoreStaff(id);
+    return { statusCode: 200, message: 'Đã khôi phục nhân viên', data: result };
+  }
+
+  @Get('staff-deleted')
+  @ApiOperation({ summary: 'Danh sách nhân viên đã khóa' })
+  @ApiResponse({ status: 200 })
+  async getDeletedStaffList(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const result = await this.adminService.getDeletedStaffList(
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Post('migrate-phone-numbers')
+  @ApiOperation({ summary: 'Migration: Set phoneNumber = username cho tất cả user' })
+  @ApiResponse({ status: 200 })
+  async migratePhoneNumbers() {
+    const result = await this.adminService.migratePhoneNumbers();
+    return { statusCode: 200, message: 'Migration hoàn tất', data: result };
   }
 }

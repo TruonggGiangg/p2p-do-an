@@ -5,9 +5,9 @@ import {
     Row, Col, Avatar, Divider, Form, Input, Modal, theme, Select,
 } from 'antd';
 import {
-    ArrowLeftOutlined, UserOutlined, EditOutlined, DeleteOutlined,
-    MailOutlined, PhoneOutlined,
-    CalendarOutlined, DatabaseOutlined,
+    ArrowLeftOutlined, UserOutlined, EditOutlined, LockOutlined,
+    MailOutlined, PhoneOutlined, UndoOutlined,
+    CalendarOutlined, DatabaseOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { adminApi, StaffDto } from '../api/admin';
 import dayjs from 'dayjs';
@@ -48,7 +48,6 @@ export default function StaffDetailPage() {
             firstName: staff.profile?.firstName || '',
             lastName: staff.profile?.lastName || '',
             email: staff.email || '',
-            phoneNumber: staff.phoneNumber || '',
             status: staff.status || 'active',
         });
         setEditModalOpen(true);
@@ -74,21 +73,44 @@ export default function StaffDetailPage() {
     const handleDelete = () => {
         if (!staff) return;
         modal.confirm({
-            title: 'Xác nhận xóa nhân viên',
-            content: `Bạn có chắc muốn xóa nhân viên "${staff.displayName || staff.username}"?`,
-            okText: 'Xóa',
+            title: 'Xác nhận khóa tài khoản',
+            content: `Bạn có chắc muốn khóa tài khoản "${staff.displayName || staff.username}"? Tài khoản sẽ bị vô hiệu hóa và có thể khôi phục sau.`,
+            okText: 'Khóa tài khoản',
             okType: 'danger',
             cancelText: 'Hủy',
             onOk: async () => {
                 try {
                     await adminApi.deleteStaff(staff._id);
-                    messageApi.success('Đã xóa nhân viên');
-                    navigate('/staff');
+                    messageApi.success('Đã khóa tài khoản nhân viên');
+                    fetchStaff();
                 } catch (err: any) {
-                    messageApi.error(err?.response?.data?.message || 'Xóa thất bại');
+                    messageApi.error(err?.response?.data?.message || 'Khóa thất bại');
                 }
             },
         });
+    };
+
+    const handleRestore = async () => {
+        if (!staff) return;
+        try {
+            await adminApi.restoreStaff(staff._id);
+            messageApi.success(`Đã khôi phục nhân viên ${staff.displayName || staff.username}`);
+            fetchStaff();
+        } catch (err: any) {
+            messageApi.error(err?.response?.data?.message || 'Khôi phục thất bại');
+        }
+    };
+
+    const handleStatusChange = async (newStatus: string) => {
+        if (!staff) return;
+        try {
+            await adminApi.updateStaff(staff._id, { status: newStatus });
+            const labels: Record<string, string> = { active: 'Hoạt động', inactive: 'Không hoạt động', suspended: 'Tạm khóa' };
+            messageApi.success(`Đã chuyển trạng thái thành "${labels[newStatus] || newStatus}"`);
+            fetchStaff();
+        } catch (err: any) {
+            messageApi.error(err?.response?.data?.message || 'Đổi trạng thái thất bại');
+        }
     };
 
     if (loading) {
@@ -134,21 +156,35 @@ export default function StaffDetailPage() {
                     <Title level={4} style={{ margin: 0 }}>Chi tiết nhân viên</Title>
                 </Space>
                 <Space>
-                    <Button
-                        icon={<EditOutlined />}
-                        onClick={openEdit}
-                        style={{ borderRadius: 0 }}
-                    >
-                        Sửa
-                    </Button>
-                    <Button
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={handleDelete}
-                        style={{ borderRadius: 0 }}
-                    >
-                        Xóa
-                    </Button>
+                    {staff.isDeleted ? (
+                        <Button
+                            type="primary"
+                            ghost
+                            icon={<UndoOutlined />}
+                            onClick={handleRestore}
+                            style={{ borderRadius: 0 }}
+                        >
+                            Khôi phục tài khoản
+                        </Button>
+                    ) : (
+                        <>
+                            <Button
+                                icon={<EditOutlined />}
+                                onClick={openEdit}
+                                style={{ borderRadius: 0 }}
+                            >
+                                Sửa
+                            </Button>
+                            <Button
+                                danger
+                                icon={<LockOutlined />}
+                                onClick={handleDelete}
+                                style={{ borderRadius: 0 }}
+                            >
+                                Khóa tài khoản
+                            </Button>
+                        </>
+                    )}
                 </Space>
             </div>
 
@@ -164,10 +200,13 @@ export default function StaffDetailPage() {
                                 size={80}
                                 icon={<UserOutlined />}
                                 style={{
-                                    background: staff.status === 'active'
-                                        ? `linear-gradient(135deg, ${token.colorSuccess} 0%, #047857 100%)`
-                                        : `linear-gradient(135deg, ${token.colorPrimary} 0%, #1E3A8A 100%)`,
+                                    background: staff.isDeleted
+                                        ? token.colorTextTertiary
+                                        : staff.status === 'active'
+                                            ? `linear-gradient(135deg, ${token.colorSuccess} 0%, #047857 100%)`
+                                            : `linear-gradient(135deg, ${token.colorPrimary} 0%, #1E3A8A 100%)`,
                                     marginBottom: 16,
+                                    opacity: staff.isDeleted ? 0.6 : 1,
                                 }}
                             />
                             <Title level={4} style={{ margin: '0 0 4px 0' }}>
@@ -175,12 +214,16 @@ export default function StaffDetailPage() {
                             </Title>
                             <Text type="secondary">{staff.username}</Text>
                             <div style={{ marginTop: 12 }}>
-                                <Tag
-                                    color={statusInfo.color}
-                                    style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}
-                                >
-                                    {statusInfo.text}
-                                </Tag>
+                                {staff.isDeleted ? (
+                                    <Tag color="error" style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
+                                ) : (
+                                    <Tag
+                                        color={statusInfo.color}
+                                        style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}
+                                    >
+                                        {statusInfo.text}
+                                    </Tag>
+                                )}
                             </div>
                         </div>
 
@@ -240,9 +283,21 @@ export default function StaffDetailPage() {
                                 }
                             </Descriptions.Item>
                             <Descriptions.Item label="Trạng thái">
-                                <Tag color={statusInfo.color} style={{ borderRadius: 0, border: 'none' }}>
-                                    {statusInfo.text}
-                                </Tag>
+                                {staff.isDeleted ? (
+                                    <Tag color="error" style={{ borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
+                                ) : (
+                                    <Select
+                                        value={staff.status}
+                                        size="small"
+                                        style={{ minWidth: 150 }}
+                                        onChange={handleStatusChange}
+                                        options={[
+                                            { value: 'active', label: 'Hoạt động' },
+                                            { value: 'inactive', label: 'Không hoạt động' },
+                                            { value: 'suspended', label: 'Tạm khóa' },
+                                        ]}
+                                    />
+                                )}
                             </Descriptions.Item>
                             <Descriptions.Item label="Họ">
                                 {staff.profile?.firstName || '–'}
@@ -271,22 +326,55 @@ export default function StaffDetailPage() {
                     {staff.metadata && Object.keys(staff.metadata).length > 0 && (
                         <Card
                             bordered={false}
-                            title="Metadata"
+                            title={
+                                <Space>
+                                    <SafetyCertificateOutlined />
+                                    <span>Thông tin bổ sung</span>
+                                </Space>
+                            }
                             style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginTop: 24 }}
                         >
                             <Descriptions
                                 bordered
-                                column={1}
-                                size="small"
+                                column={{ xs: 1, sm: 2 }}
+                                size="middle"
                                 labelStyle={{ fontWeight: 500, width: 180 }}
                             >
-                                {Object.entries(staff.metadata).map(([key, value]) => (
-                                    <Descriptions.Item key={key} label={key}>
-                                        <Text style={{ fontSize: 12 }}>
-                                            {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '–')}
+                                {staff.metadata.userType && (
+                                    <Descriptions.Item label="Loại tài khoản">
+                                        <Tag color="blue" style={{ borderRadius: 0, border: 'none' }}>
+                                            {staff.metadata.userType === 'staff' ? 'Nhân viên' : staff.metadata.userType === 'admin' ? 'Quản trị viên' : staff.metadata.userType}
+                                        </Tag>
+                                    </Descriptions.Item>
+                                )}
+                                {staff.metadata.fineractClientId && (
+                                    <Descriptions.Item label="Fineract Client ID">
+                                        <Text copyable={{ text: String(staff.metadata.fineractClientId) }} style={{ fontSize: 12 }}>
+                                            #{staff.metadata.fineractClientId}
                                         </Text>
                                     </Descriptions.Item>
-                                ))}
+                                )}
+                                {staff.metadata.txPublicKey && (
+                                    <Descriptions.Item label="Public Key" span={2}>
+                                        <Text copyable={{ text: staff.metadata.txPublicKey }} style={{ fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                            {staff.metadata.txPublicKey.length > 60
+                                                ? `${staff.metadata.txPublicKey.slice(0, 30)}...${staff.metadata.txPublicKey.slice(-30)}`
+                                                : staff.metadata.txPublicKey}
+                                        </Text>
+                                    </Descriptions.Item>
+                                )}
+                                {Object.entries(staff.metadata)
+                                    .filter(([key]) => !['userType', 'fineractClientId', 'txPublicKey'].includes(key))
+                                    .map(([key, value]) => (
+                                        <Descriptions.Item key={key} label={key}>
+                                            <Text style={{ fontSize: 12 }}>
+                                                {typeof value === 'object'
+                                                    ? Object.entries(value as Record<string, unknown>)
+                                                        .map(([k, v]) => `${k}: ${v}`).join(', ')
+                                                    : String(value ?? '–')}
+                                            </Text>
+                                        </Descriptions.Item>
+                                    ))}
                             </Descriptions>
                         </Card>
                     )}
@@ -327,22 +415,20 @@ export default function StaffDetailPage() {
                             </Form.Item>
                         </Col>
                     </Row>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item
-                                name="email"
-                                label="Email"
-                                rules={[{ type: 'email', message: 'Email không hợp lệ' }]}
-                            >
-                                <Input prefix={<MailOutlined />} placeholder="email@example.com" />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="phoneNumber" label="Số điện thoại">
-                                <Input prefix={<PhoneOutlined />} placeholder="0901234567" />
-                            </Form.Item>
-                        </Col>
-                    </Row>
+                    {staff && (
+                        <div style={{ background: token.colorBgLayout, padding: '12px 16px', borderRadius: 4, marginBottom: 16 }}>
+                            <Text type="secondary" style={{ fontSize: 13 }}>
+                                <PhoneOutlined /> Số điện thoại / Tên đăng nhập: <Text strong>{staff.phoneNumber || staff.username}</Text>
+                            </Text>
+                        </div>
+                    )}
+                    <Form.Item
+                        name="email"
+                        label="Email"
+                        rules={[{ type: 'email', message: 'Email không hợp lệ' }]}
+                    >
+                        <Input prefix={<MailOutlined />} placeholder="email@example.com" />
+                    </Form.Item>
                     <Form.Item name="status" label="Trạng thái">
                         <Select
                             options={[

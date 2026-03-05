@@ -445,6 +445,14 @@ export class AdminService {
       if (u.fineractClientId) userMap.set(String(u.fineractClientId), u);
     }
 
+    // 2b. Lọc bỏ các client thuộc staff hoặc admin (chỉ hiện khách hàng)
+    const staffAdminIds = await this.userModel
+      .find({ 'metadata.userType': { $in: ['staff', 'admin'] }, fineractClientId: { $exists: true, $ne: null } })
+      .select('fineractClientId')
+      .lean();
+    const excludeClientIds = new Set(staffAdminIds.map((u: any) => String(u.fineractClientId)));
+    uniqueClients = uniqueClients.filter((c: any) => !excludeClientIds.has(String(c.id)));
+
     // 3. Paginate the Fineract list (after keyword filter)
     const total = uniqueClients.length;
     const skip = (page - 1) * limit;
@@ -1170,6 +1178,18 @@ export class AdminService {
     dto.userType = 'staff'; // Luôn ép userType = staff khi tạo qua admin
     this.logger.log(`[createStaff] Creating staff: ${dto.phoneNumber}`);
     const result = await this.fineractSignupService.signup(dto);
+
+    // Cập nhật phoneNumber = username (phoneNumber) cho user vừa tạo
+    try {
+      const user = await this.userModel.findOne({ username: dto.phoneNumber });
+      if (user) {
+        user.phoneNumber = dto.phoneNumber;
+        await user.save();
+      }
+    } catch (err: any) {
+      this.logger.warn(`[createStaff] Failed to set phoneNumber: ${err.message}`);
+    }
+
     return { message: 'Đăng ký thành công', data: result };
   }
 
@@ -1177,13 +1197,14 @@ export class AdminService {
    * Lấy danh sách nhân viên (từ MongoDB, lọc userType=staff)
    */
   async getStaffList(page = 1, limit = 20, keyword?: string) {
-    const filter: any = { 'metadata.userType': 'staff' };
+    const filter: any = { 'metadata.userType': 'staff', isDeleted: { $ne: true } };
 
     if (keyword) {
       const q = keyword.toLowerCase();
       filter.$or = [
         { username: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } },
+        { phoneNumber: { $regex: q, $options: 'i' } },
         { 'profile.firstName': { $regex: q, $options: 'i' } },
         { 'profile.lastName': { $regex: q, $options: 'i' } },
       ];
@@ -1200,10 +1221,44 @@ export class AdminService {
       profile: u.profile || {},
       status: u.status,
       keycloakId: u.keycloakId,
+      fineractClientId: u.fineractClientId || null,
       fineractStaffId: u.metadata?.fineractStaffId ?? null,
-      phoneNumber: u.metadata?.phoneNumber ?? null,
+      phoneNumber: u.phoneNumber || u.username || null,
       displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
       createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      isDeleted: u.isDeleted || false,
+    }));
+
+    // Đếm thêm số deleted (cho stats)
+    const deletedCount = await this.userModel.countDocuments({ 'metadata.userType': 'staff', isDeleted: true });
+
+    return { staff: staffList, total, page, limit, deletedCount };
+  }
+
+  /**
+   * Lấy danh sách nhân viên đã bị khóa (isDeleted=true)
+   */
+  async getDeletedStaffList(page = 1, limit = 20) {
+    const filter: any = { 'metadata.userType': 'staff', isDeleted: true };
+    const total = await this.userModel.countDocuments(filter);
+    const skip = (page - 1) * limit;
+    const users = await this.userModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean();
+
+    const staffList = users.map((u: any) => ({
+      _id: u._id?.toString(),
+      username: u.username,
+      email: u.email || null,
+      profile: u.profile || {},
+      status: u.status,
+      keycloakId: u.keycloakId,
+      fineractClientId: u.fineractClientId || null,
+      fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      phoneNumber: u.phoneNumber || u.username || null,
+      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      isDeleted: true,
     }));
 
     return { staff: staffList, total, page, limit };
@@ -1229,17 +1284,20 @@ export class AdminService {
       profile: user.profile || {},
       status: user.status,
       keycloakId: user.keycloakId,
+      fineractClientId: user.fineractClientId || null,
       fineractStaffId: user.metadata?.fineractStaffId ?? null,
-      phoneNumber: user.metadata?.phoneNumber ?? null,
+      phoneNumber: user.phoneNumber || user.username || null,
       displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       metadata: user.metadata,
+      isDeleted: user.isDeleted || false,
     };
   }
 
   /**
    * Cập nhật nhân viên: MongoDB + Keycloak (nếu cần)
+   * Không cho cập nhật phoneNumber / username
    */
   async updateStaff(staffId: string, dto: UpdateStaffDto) {
     let user: any = null;
@@ -1251,20 +1309,15 @@ export class AdminService {
     }
     if (!user) throw new NotFoundException('Nhân viên không tồn tại');
 
-    // Cập nhật MongoDB
+    // Cập nhật MongoDB (chỉ cho phép firstName, lastName, email, status)
     if (dto.firstName !== undefined || dto.lastName !== undefined) {
       if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
       if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
     }
     if (dto.email !== undefined) user.email = dto.email;
-    if (dto.phoneNumber !== undefined) {
-      if (!user.metadata) user.metadata = {};
-      user.metadata.phoneNumber = dto.phoneNumber;
-    }
     if (dto.status !== undefined) user.status = dto.status;
 
     user.markModified('profile');
-    user.markModified('metadata');
     await user.save();
 
     // Cập nhật Keycloak (nếu có thay đổi tên / email)
@@ -1293,13 +1346,12 @@ export class AdminService {
 
     // Cập nhật Fineract staff (nếu có fineractStaffId)
     const fineractStaffId = user.metadata?.fineractStaffId;
-    if (fineractStaffId && (dto.firstName || dto.lastName || dto.phoneNumber || dto.email)) {
+    if (fineractStaffId && (dto.firstName || dto.lastName || dto.email)) {
       try {
         const fineractClient = this.fineractClientService['client'];
         const payload: any = {};
         if (dto.firstName) payload.firstname = dto.firstName;
         if (dto.lastName) payload.lastname = dto.lastName;
-        if (dto.phoneNumber) payload.mobileNo = dto.phoneNumber;
         if (dto.email) payload.emailAddress = dto.email;
 
         await fineractClient.put(`/staff/${fineractStaffId}`, payload);
@@ -1313,8 +1365,7 @@ export class AdminService {
   }
 
   /**
-   * Xóa nhân viên: Disable Keycloak + xóa MongoDB
-   * (Không xóa Fineract staff vì có thể có dữ liệu tham chiếu)
+   * Xóa nhân viên (soft delete): Disable Keycloak + isDeleted=true
    */
   async deleteStaff(staffId: string) {
     let user: any = null;
@@ -1348,10 +1399,67 @@ export class AdminService {
       }
     }
 
-    // Xóa khỏi MongoDB
-    await this.userModel.deleteOne({ _id: user._id });
-    this.logger.log(`[deleteStaff] Deleted staff ${user._id} from MongoDB`);
+    // Soft delete: đánh dấu isDeleted = true
+    user.isDeleted = true;
+    user.status = 'suspended';
+    await user.save();
+    this.logger.log(`[deleteStaff] Soft deleted staff ${user._id}`);
 
     return { deleted: true, staffId: user._id?.toString() };
+  }
+
+  /**
+   * Khôi phục nhân viên: Enable Keycloak + isDeleted=false
+   */
+  async restoreStaff(staffId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(staffId)) {
+      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff', isDeleted: true });
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff', isDeleted: true });
+    }
+    if (!user) throw new NotFoundException('Nhân viên không tồn tại hoặc chưa bị khóa');
+
+    // Re-enable trên Keycloak
+    if (user.keycloakId) {
+      try {
+        const token = await (this.keycloakService as any).getAdminToken();
+        const realm = (this.keycloakService as any).realm;
+
+        const userRes = await (this.keycloakService as any).httpClient.get(
+          `/admin/realms/${realm}/users/${user.keycloakId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const kcUser = userRes.data;
+        kcUser.enabled = true;
+
+        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        this.logger.log(`[restoreStaff] Re-enabled Keycloak user ${user.keycloakId}`);
+      } catch (err: any) {
+        this.logger.warn(`[restoreStaff] Keycloak re-enable failed: ${err.message}`);
+      }
+    }
+
+    user.isDeleted = false;
+    user.status = 'active';
+    await user.save();
+    this.logger.log(`[restoreStaff] Restored staff ${user._id}`);
+
+    return this.getStaffById(user._id.toString());
+  }
+
+  /**
+   * Migration: Set phoneNumber = username cho tất cả user chưa có phoneNumber
+   */
+  async migratePhoneNumbers() {
+    const result = await this.userModel.updateMany(
+      { $or: [{ phoneNumber: { $exists: false } }, { phoneNumber: null }, { phoneNumber: '' }] },
+      [{ $set: { phoneNumber: '$username' } }],
+    );
+    this.logger.log(`[migratePhoneNumbers] Updated ${result.modifiedCount} users`);
+    return { modifiedCount: result.modifiedCount };
   }
 }

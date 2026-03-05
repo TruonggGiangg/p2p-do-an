@@ -19,7 +19,13 @@ export class User extends Document {
   username: string; // Phone number
 
   @Prop({ required: false })
+  phoneNumber?: string;
+
+  @Prop({ required: false })
   email?: string;
+
+  @Prop({ type: Boolean, default: false })
+  isDeleted: boolean;
 
   @Prop({
     type: {

@@ -213,12 +213,14 @@ export interface StaffDto {
   profile?: { firstName?: string; lastName?: string; avatar?: string };
   status: string;
   keycloakId?: string;
+  fineractClientId?: string | null;
   fineractStaffId?: number | null;
   phoneNumber?: string | null;
   displayName?: string;
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  isDeleted?: boolean;
 }
 
 export interface CreateStaffBody {
@@ -234,7 +236,6 @@ export interface UpdateStaffBody {
   firstName?: string;
   lastName?: string;
   email?: string;
-  phoneNumber?: string;
   status?: string;
 }
 
@@ -564,6 +565,7 @@ export const adminApi = {
           total: number;
           page: number;
           limit: number;
+          deletedCount?: number;
         };
       }>(`/api/admin/staff?${params.toString()}`)
       .then((r) => r.data.data);
@@ -589,5 +591,34 @@ export const adminApi = {
       .delete<{
         data: { deleted: boolean; staffId: string };
       }>(`/api/admin/staff/${id}`)
+      .then((r) => r.data.data),
+
+  restoreStaff: (id: string) =>
+    api
+      .post<{ data: StaffDto }>(`/api/admin/staff/${id}/restore`)
+      .then((r) => r.data.data),
+
+  getDeletedStaffList: (page = 1, limit = 20) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    return api
+      .get<{
+        data: {
+          staff: StaffDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/staff-deleted?${params.toString()}`)
+      .then((r) => r.data.data);
+  },
+
+  migratePhoneNumbers: () =>
+    api
+      .post<{
+        data: { modifiedCount: number };
+      }>("/api/admin/migrate-phone-numbers")
       .then((r) => r.data.data),
 };
