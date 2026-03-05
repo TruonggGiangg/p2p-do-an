@@ -8,7 +8,11 @@ import { KeycloakService } from '../auth/services/keycloak.service';
 import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
 import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
-import { SavingsProductSnapshot, SnapshotSavingsProductItem, SAVINGS_SNAPSHOT_SCOPE } from './schemas/savings-product-snapshot.schema';
+import {
+  SavingsProductSnapshot,
+  SnapshotSavingsProductItem,
+  SAVINGS_SNAPSHOT_SCOPE,
+} from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
 import {
   flattenLoanProduct,
@@ -27,6 +31,9 @@ import { Notification } from '../loan/schemas/notification.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { ContractService } from '../loan/contract.service';
 import { EkycService } from '../ekyc/ekyc.service';
+import { FineractSignupService } from 'src/modules/auth/services/fineract-signup.service';
+import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -63,6 +70,7 @@ export class AdminService {
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
+    private readonly fineractSignupService: FineractSignupService,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
@@ -169,7 +177,12 @@ export class AdminService {
     );
   }
 
-  async logSyncDrift(added: ProductDiffItem[], removed: ProductDiffItem[], modified: ProductDiffItem[], scope: 'loan' | 'savings' = 'loan') {
+  async logSyncDrift(
+    added: ProductDiffItem[],
+    removed: ProductDiffItem[],
+    modified: ProductDiffItem[],
+    scope: 'loan' | 'savings' = 'loan',
+  ) {
     const hasDrift = added.length > 0 || removed.length > 0 || modified.length > 0;
     await this.syncDriftLogModel.create({
       scope,
@@ -382,9 +395,9 @@ export class AdminService {
         officeName: fc?.officeName ?? 'Head Office',
         activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
         displayName:
-          ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
-          (fc as any)?.externalId ||
-          String((fc as any)?.id),
+          (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
+          fc?.externalId ||
+          String(fc?.id),
         // KYC data if available
         kycCompletedAt: u?.kycData?.metadata?.kycCompletedAt ?? null,
         hasKycData: !!u?.kycData,
@@ -457,9 +470,9 @@ export class AdminService {
         officeName: fc?.officeName ?? 'Head Office',
         activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
         displayName:
-          ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
-          (fc as any)?.externalId ||
-          String((fc as any)?.id),
+          (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
+          fc?.externalId ||
+          String(fc?.id),
         kycStatus: u?.kycStatus ?? 'NONE',
         mobileNo: fc?.mobileNo ?? null,
         staffName: fc?.staffName ?? fc?.staffDisplayName ?? null,
@@ -502,13 +515,13 @@ export class AdminService {
       fineractClientId: user?.fineractClientId ?? String(fineractClientId),
       status: user?.status ?? 'active',
       kycStatus: user?.kycStatus ?? 'NONE',
-      createdAt: (user as any)?.createdAt ?? null,
+      createdAt: user?.createdAt ?? null,
       // Fineract enrichment
       fineractStatus: fc?.status ?? null,
       officeName: fc?.officeName ?? 'Head Office',
       activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
       displayName:
-        ((fc as any)?.displayName ?? `${(fc as any)?.firstname || ''} ${(fc as any)?.lastname || ''}`.trim()) ||
+        (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
         user?.username ||
         `FC_${fineractClientId}`,
       mobileNo: fc?.mobileNo ?? fc?.phoneNumber ?? null,
@@ -1146,5 +1159,199 @@ export class AdminService {
     }
     if (!user) throw new NotFoundException('Khách hàng không tồn tại');
     return user;
+  }
+
+  // ========== STAFF MANAGEMENT (CRUD) ==========
+
+  /**
+   * Tạo nhân viên: 1) Keycloak → 2) Fineract staff → 3) MongoDB
+   */
+  async createStaff(dto: RegisterDto) {
+    dto.userType = 'staff'; // Luôn ép userType = staff khi tạo qua admin
+    this.logger.log(`[createStaff] Creating staff: ${dto.phoneNumber}`);
+    const result = await this.fineractSignupService.signup(dto);
+    return { message: 'Đăng ký thành công', data: result };
+  }
+
+  /**
+   * Lấy danh sách nhân viên (từ MongoDB, lọc userType=staff)
+   */
+  async getStaffList(page = 1, limit = 20, keyword?: string) {
+    const filter: any = { 'metadata.userType': 'staff' };
+
+    if (keyword) {
+      const q = keyword.toLowerCase();
+      filter.$or = [
+        { username: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { 'profile.firstName': { $regex: q, $options: 'i' } },
+        { 'profile.lastName': { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const total = await this.userModel.countDocuments(filter);
+    const skip = (page - 1) * limit;
+    const users = await this.userModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+
+    const staffList = users.map((u: any) => ({
+      _id: u._id?.toString(),
+      username: u.username,
+      email: u.email || null,
+      profile: u.profile || {},
+      status: u.status,
+      keycloakId: u.keycloakId,
+      fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      phoneNumber: u.metadata?.phoneNumber ?? null,
+      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
+      createdAt: u.createdAt,
+    }));
+
+    return { staff: staffList, total, page, limit };
+  }
+
+  /**
+   * Lấy chi tiết nhân viên theo ID
+   */
+  async getStaffById(staffId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(staffId)) {
+      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' }).lean();
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' }).lean();
+    }
+    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
+
+    return {
+      _id: user._id?.toString(),
+      username: user.username,
+      email: user.email || null,
+      profile: user.profile || {},
+      status: user.status,
+      keycloakId: user.keycloakId,
+      fineractStaffId: user.metadata?.fineractStaffId ?? null,
+      phoneNumber: user.metadata?.phoneNumber ?? null,
+      displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      metadata: user.metadata,
+    };
+  }
+
+  /**
+   * Cập nhật nhân viên: MongoDB + Keycloak (nếu cần)
+   */
+  async updateStaff(staffId: string, dto: UpdateStaffDto) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(staffId)) {
+      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' });
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' });
+    }
+    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
+
+    // Cập nhật MongoDB
+    if (dto.firstName !== undefined || dto.lastName !== undefined) {
+      if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
+      if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
+    }
+    if (dto.email !== undefined) user.email = dto.email;
+    if (dto.phoneNumber !== undefined) {
+      if (!user.metadata) user.metadata = {};
+      user.metadata.phoneNumber = dto.phoneNumber;
+    }
+    if (dto.status !== undefined) user.status = dto.status;
+
+    user.markModified('profile');
+    user.markModified('metadata');
+    await user.save();
+
+    // Cập nhật Keycloak (nếu có thay đổi tên / email)
+    if (user.keycloakId && (dto.firstName || dto.lastName || dto.email)) {
+      try {
+        const token = await (this.keycloakService as any).getAdminToken();
+        const realm = (this.keycloakService as any).realm;
+
+        const userRes = await (this.keycloakService as any).httpClient.get(
+          `/admin/realms/${realm}/users/${user.keycloakId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const kcUser = userRes.data;
+        if (dto.firstName) kcUser.firstName = dto.firstName;
+        if (dto.lastName) kcUser.lastName = dto.lastName;
+        if (dto.email) kcUser.email = dto.email;
+
+        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        this.logger.log(`[updateStaff] Updated Keycloak user ${user.keycloakId}`);
+      } catch (err: any) {
+        this.logger.warn(`[updateStaff] Keycloak update failed: ${err.message}`);
+      }
+    }
+
+    // Cập nhật Fineract staff (nếu có fineractStaffId)
+    const fineractStaffId = user.metadata?.fineractStaffId;
+    if (fineractStaffId && (dto.firstName || dto.lastName || dto.phoneNumber || dto.email)) {
+      try {
+        const fineractClient = this.fineractClientService['client'];
+        const payload: any = {};
+        if (dto.firstName) payload.firstname = dto.firstName;
+        if (dto.lastName) payload.lastname = dto.lastName;
+        if (dto.phoneNumber) payload.mobileNo = dto.phoneNumber;
+        if (dto.email) payload.emailAddress = dto.email;
+
+        await fineractClient.put(`/staff/${fineractStaffId}`, payload);
+        this.logger.log(`[updateStaff] Updated Fineract staff ${fineractStaffId}`);
+      } catch (err: any) {
+        this.logger.warn(`[updateStaff] Fineract staff update failed: ${err.message}`);
+      }
+    }
+
+    return this.getStaffById(user._id.toString());
+  }
+
+  /**
+   * Xóa nhân viên: Disable Keycloak + xóa MongoDB
+   * (Không xóa Fineract staff vì có thể có dữ liệu tham chiếu)
+   */
+  async deleteStaff(staffId: string) {
+    let user: any = null;
+    if (Types.ObjectId.isValid(staffId)) {
+      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' });
+    }
+    if (!user) {
+      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' });
+    }
+    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
+
+    // Disable trên Keycloak (không xóa hẳn)
+    if (user.keycloakId) {
+      try {
+        const token = await (this.keycloakService as any).getAdminToken();
+        const realm = (this.keycloakService as any).realm;
+
+        const userRes = await (this.keycloakService as any).httpClient.get(
+          `/admin/realms/${realm}/users/${user.keycloakId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const kcUser = userRes.data;
+        kcUser.enabled = false;
+
+        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        this.logger.log(`[deleteStaff] Disabled Keycloak user ${user.keycloakId}`);
+      } catch (err: any) {
+        this.logger.warn(`[deleteStaff] Keycloak disable failed: ${err.message}`);
+      }
+    }
+
+    // Xóa khỏi MongoDB
+    await this.userModel.deleteOne({ _id: user._id });
+    this.logger.log(`[deleteStaff] Deleted staff ${user._id} from MongoDB`);
+
+    return { deleted: true, staffId: user._id?.toString() };
   }
 }

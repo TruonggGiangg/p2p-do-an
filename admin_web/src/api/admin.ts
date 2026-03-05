@@ -204,6 +204,40 @@ export interface LoanDto {
   willing?: string;
 }
 
+// ── Staff types ──────────────────────────────────────────────────────────────
+
+export interface StaffDto {
+  _id: string;
+  username: string;
+  email?: string | null;
+  profile?: { firstName?: string; lastName?: string; avatar?: string };
+  status: string;
+  keycloakId?: string;
+  fineractStaffId?: number | null;
+  phoneNumber?: string | null;
+  displayName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateStaffBody {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email?: string;
+  password: string;
+  userType?: "borrower" | "lender" | "staff";
+}
+
+export interface UpdateStaffBody {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phoneNumber?: string;
+  status?: string;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     api.post<{
@@ -269,7 +303,9 @@ export const adminApi = {
     const params = new URLSearchParams({ limit: String(limit) });
     if (scope) params.set("scope", scope);
     return api
-      .get<{ data: SyncDriftLogDto[] }>(`/api/admin/sync-drift?${params.toString()}`)
+      .get<{
+        data: SyncDriftLogDto[];
+      }>(`/api/admin/sync-drift?${params.toString()}`)
       .then((r) => r.data.data);
   },
 
@@ -282,7 +318,9 @@ export const adminApi = {
 
   getSavingsProducts: () =>
     api
-      .get<{ data: { products: SavingsProductDto[] } }>("/api/admin/savings-products")
+      .get<{
+        data: { products: SavingsProductDto[] };
+      }>("/api/admin/savings-products")
       .then((r) => r.data.data.products),
 
   getSavingsProductDetails: (productId: number) =>
@@ -511,4 +549,45 @@ export const adminApi = {
       .post<{ data: any }>(`/api/admin/kyc/${userId}/save`, formData)
       .then((r) => r.data.data);
   },
+
+  // ── Staff Management ───────────────────────────────────────────────────────
+  getStaffList: (page = 1, limit = 20, keyword?: string) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    if (keyword?.trim()) params.set("keyword", keyword.trim());
+    return api
+      .get<{
+        data: {
+          staff: StaffDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/staff?${params.toString()}`)
+      .then((r) => r.data.data);
+  },
+
+  getStaffById: (id: string) =>
+    api
+      .get<{ data: StaffDto }>(`/api/admin/staff/${id}`)
+      .then((r) => r.data.data),
+
+  createStaff: (body: CreateStaffBody) =>
+    api
+      .post<{ data: StaffDto }>("/api/admin/staff", body)
+      .then((r) => r.data.data),
+
+  updateStaff: (id: string, body: UpdateStaffBody) =>
+    api
+      .put<{ data: StaffDto }>(`/api/admin/staff/${id}`, body)
+      .then((r) => r.data.data),
+
+  deleteStaff: (id: string) =>
+    api
+      .delete<{
+        data: { deleted: boolean; staffId: string };
+      }>(`/api/admin/staff/${id}`)
+      .then((r) => r.data.data),
 };

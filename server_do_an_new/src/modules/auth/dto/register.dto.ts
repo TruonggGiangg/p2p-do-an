@@ -38,13 +38,13 @@ export class RegisterDto {
   password: string;
 
   @ApiPropertyOptional({
-    enum: ['borrower', 'lender'],
+    enum: ['borrower', 'lender', 'staff'],
     example: 'borrower',
-    description: 'Loại người dùng (người vay hoặc người cho vay)',
+    description: 'Loại người dùng (người vay hoặc người cho vay hoặc nhân viên)',
   })
-  @IsEnum(['borrower', 'lender'])
+  @IsEnum(['borrower', 'lender', 'staff'])
   @IsOptional()
-  userType?: 'borrower' | 'lender';
+  userType?: 'borrower' | 'lender' | 'staff';
 }
 
 export class RefreshTokenDto {

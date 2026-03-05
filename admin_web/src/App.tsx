@@ -12,6 +12,8 @@ import SyncDriftPage from './pages/SyncDriftPage';
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
+import StaffPage from './pages/StaffPage';
+import StaffDetailPage from './pages/StaffDetailPage';
 
 // Professional fintech color palette - Deep Blue/Slate
 const LIGHT_PALETTE = {
@@ -151,6 +153,8 @@ export default function App() {
               <Route path="loan-approvals" element={<LoanApprovalsPage />} />
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
+              <Route path="staff" element={<StaffPage />} />
+              <Route path="staff/:id" element={<StaffDetailPage />} />
               <Route path="sync-drift" element={<SyncDriftPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

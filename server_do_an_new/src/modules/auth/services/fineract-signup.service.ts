@@ -13,7 +13,7 @@ export interface SignupData {
   phoneNumber: string;
   email?: string;
   password: string;
-  userType?: 'borrower' | 'lender';
+  userType?: 'borrower' | 'lender' | 'staff';
 }
 
 export interface SignupResult {
@@ -32,7 +32,7 @@ export class FineractSignupService {
     private readonly fineractService: FineractService,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
-  ) { }
+  ) {}
 
   /**
    * Complete signup process:
@@ -81,10 +81,12 @@ export class FineractSignupService {
 
       // Note: Savings account will be created after admin approves KYC
       // Because Fineract requires client to be active before creating savings account
-      this.logger.log(`[SIGNUP] Client ${fineractClientId} created (inactive). E-wallet will be created after KYC approval.`);
+      this.logger.log(
+        `[SIGNUP] Client ${fineractClientId} created (inactive). E-wallet will be created after KYC approval.`,
+      );
 
       // Step 4: Save user to MongoDB (inactive status - pending KYC and approval)
-      const mongoUser = await this.userModel.create({
+      await this.userModel.create({
         keycloakId: keycloakUserId,
         fineractClientId: fineractClientId.toString(),
         username,

@@ -15,10 +15,12 @@ import { AdminService } from './admin.service';
 import { FineractModule } from '../fineract/fineract.module';
 import { LoanModule } from '../loan/loan.module';
 import { EkycModule } from '../ekyc/ekyc.module';
+import { AuthModule } from 'src/modules/auth/auth.module';
 
 @Module({
   imports: [
     FineractModule,
+    AuthModule,
     EkycModule,
     forwardRef(() => LoanModule),
     MongooseModule.forFeature([

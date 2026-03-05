@@ -1,4 +1,20 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  Res,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -8,13 +24,15 @@ import { AdminService } from './admin.service';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { SetProductDocumentTypesDto } from './dto/set-product-document-types.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
+import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) { }
+  constructor(private readonly adminService: AdminService) {}
 
   @Get('loan-products')
   @ApiOperation({ summary: 'Danh sách sản phẩm vay từ Fineract (cho admin)' })
@@ -137,11 +155,7 @@ export class AdminController {
   @Get('customers')
   @ApiOperation({ summary: 'Danh sách khách hàng (phân trang)' })
   @ApiResponse({ status: 200 })
-  async getCustomers(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('keyword') keyword?: string,
-  ) {
+  async getCustomers(@Query('page') page?: string, @Query('limit') limit?: string, @Query('keyword') keyword?: string) {
     const result = await this.adminService.getCustomers(
       page ? parseInt(page, 10) : 1,
       limit ? Math.min(parseInt(limit, 10), 100) : 20,
@@ -319,12 +333,16 @@ export class AdminController {
     if (typeof frontOCRData === 'string') {
       try {
         frontOCRData = JSON.parse(frontOCRData);
-      } catch {}
+      } catch (error) {
+        console.error('Lỗi parse frontOCRData:', error);
+      }
     }
     if (typeof backOCRData === 'string') {
       try {
         backOCRData = JSON.parse(backOCRData);
-      } catch {}
+      } catch (error) {
+        console.error('Lỗi parse backOCRData:', error);
+      }
     }
     if (!frontOCRData) {
       throw new BadRequestException('Thiếu thông tin OCR mặt trước CCCD');
@@ -378,5 +396,51 @@ export class AdminController {
     res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
     res.setHeader('Content-Disposition', response.headers['content-disposition'] || 'inline');
     res.send(response.data);
+  }
+
+  // ── Staff Management ──────────────────────────────────────────────────────
+
+  @Post('staff')
+  @ApiOperation({ summary: 'Tạo nhân viên (Keycloak → Fineract → MongoDB)' })
+  @ApiResponse({ status: 201 })
+  async createStaff(@Body() dto: RegisterDto) {
+    const result = await this.adminService.createStaff(dto);
+    return { statusCode: 201, message: 'Đã tạo nhân viên', data: result };
+  }
+
+  @Get('staff')
+  @ApiOperation({ summary: 'Danh sách nhân viên (phân trang)' })
+  @ApiResponse({ status: 200 })
+  async getStaffList(@Query('page') page?: string, @Query('limit') limit?: string, @Query('keyword') keyword?: string) {
+    const result = await this.adminService.getStaffList(
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+      keyword?.trim() || undefined,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Get('staff/:id')
+  @ApiOperation({ summary: 'Chi tiết nhân viên' })
+  @ApiResponse({ status: 200 })
+  async getStaffById(@Param('id') id: string) {
+    const staff = await this.adminService.getStaffById(id);
+    return { statusCode: 200, message: 'OK', data: staff };
+  }
+
+  @Put('staff/:id')
+  @ApiOperation({ summary: 'Cập nhật nhân viên' })
+  @ApiResponse({ status: 200 })
+  async updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
+    const result = await this.adminService.updateStaff(id, dto);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Delete('staff/:id')
+  @ApiOperation({ summary: 'Xóa nhân viên' })
+  @ApiResponse({ status: 200 })
+  async deleteStaff(@Param('id') id: string) {
+    const result = await this.adminService.deleteStaff(id);
+    return { statusCode: 200, message: 'Đã xóa nhân viên', data: result };
   }
 }

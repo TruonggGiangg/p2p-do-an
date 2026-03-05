@@ -12,6 +12,7 @@ import {
   LogoutOutlined,
   SunOutlined,
   MoonOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 
@@ -24,6 +25,7 @@ const menuItems = [
   { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
+  { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
 ];
 
@@ -87,8 +89,8 @@ export default function AppLayout() {
             boxShadow: '0 4px 12px rgba(30, 64, 175, 0.3)',
           }}>P2</div>
           {!collapsed && (
-            <Text strong style={{ 
-              color: '#FFFFFF', 
+            <Text strong style={{
+              color: '#FFFFFF',
               fontSize: 18,
               letterSpacing: '0.5px',
               fontWeight: 700,
@@ -103,14 +105,14 @@ export default function AppLayout() {
             selectedKeys={[selectedKey]}
             items={menuItems.map((item) => ({
               key: item.key,
-              icon: React.cloneElement(item.icon as React.ReactElement, { 
-                style: { fontSize: 18, marginRight: 4 } 
+              icon: React.cloneElement(item.icon as React.ReactElement, {
+                style: { fontSize: 18, marginRight: 4 }
               }),
               label: item.label,
               onClick: () => navigate(item.key),
             }))}
-            style={{ 
-              background: 'transparent', 
+            style={{
+              background: 'transparent',
               border: 'none',
               fontSize: 15,
             }}
@@ -125,14 +127,14 @@ export default function AppLayout() {
           display: 'flex', alignItems: 'center', gap: 12,
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}>
-          <Avatar 
-            size={collapsed ? 32 : 36} 
-            icon={<UserOutlined />} 
-            style={{ 
-              background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`, 
+          <Avatar
+            size={collapsed ? 32 : 36}
+            icon={<UserOutlined />}
+            style={{
+              background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`,
               flexShrink: 0,
               fontWeight: 600,
-            }} 
+            }}
           />
           {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -147,8 +149,8 @@ export default function AppLayout() {
         </div>
       </Sider>
 
-      <Layout style={{ 
-        marginLeft: collapsed ? 80 : 260, 
+      <Layout style={{
+        marginLeft: collapsed ? 80 : 260,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         background: isDarkMode ? '#0F172A' : '#F1F5F9',
       }}>
@@ -167,16 +169,16 @@ export default function AppLayout() {
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
         }}>
           <div>
-            <Title level={4} style={{ 
-              margin: 0, 
-              fontSize: 18, 
+            <Title level={4} style={{
+              margin: 0,
+              fontSize: 18,
               fontWeight: 600,
               color: isDarkMode ? '#F1F5F9' : '#0F172A',
             }}>
               {menuItems.find(item => item.key === selectedKey)?.label || 'Dashboard'}
             </Title>
           </div>
-          
+
           <Space size="large">
             <Tooltip title={isDarkMode ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
               <Button
@@ -217,7 +219,7 @@ export default function AppLayout() {
               danger
               icon={<LogoutOutlined />}
               onClick={logout}
-              style={{ 
+              style={{
                 height: 40,
                 padding: '0 20px',
                 fontWeight: 500,
