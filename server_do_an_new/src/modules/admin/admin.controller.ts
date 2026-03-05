@@ -30,6 +30,7 @@ import { PoliciesGuard } from '../casl/policies.guard';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { Action } from '../casl/actions.enum';
 import { CaslAbilityFactory } from '../casl/casl-ability.factory';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -39,6 +40,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   /**
@@ -536,5 +538,36 @@ export class AdminController {
   async migratePhoneNumbers() {
     const result = await this.adminService.migratePhoneNumbers();
     return { statusCode: 200, message: 'Migration hoàn tất', data: result };
+  }
+
+  // ── Activity Logs ─────────────────────────────────────────────────────────
+
+  @Get('activity-logs')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Staff'))
+  @ApiOperation({ summary: 'Lấy danh sách lịch sử hoạt động (phân trang)' })
+  @ApiResponse({ status: 200 })
+  async getActivityLogs(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const result = await this.activityLogService.findAll(
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Get('activity-logs/user/:userId')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Staff'))
+  @ApiOperation({ summary: 'Lấy lịch sử hoạt động theo userId' })
+  @ApiResponse({ status: 200 })
+  async getActivityLogsByUser(
+    @Param('userId') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.activityLogService.findByUser(
+      userId,
+      page ? parseInt(page, 10) : 1,
+      limit ? Math.min(parseInt(limit, 10), 100) : 20,
+    );
+    return { statusCode: 200, message: 'OK', data: result };
   }
 }

@@ -1309,13 +1309,15 @@ export class AdminService {
     }
     if (!user) throw new NotFoundException('Nhân viên không tồn tại');
 
-    // Cập nhật MongoDB (chỉ cho phép firstName, lastName, email, status)
+    // Cập nhật MongoDB (firstName, lastName, email, status, phoneNumber)
     if (dto.firstName !== undefined || dto.lastName !== undefined) {
       if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
       if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
     }
     if (dto.email !== undefined) user.email = dto.email;
     if (dto.status !== undefined) user.status = dto.status;
+    // phoneNumber là riêng biệt với username — không ảnh hưởng đăng nhập
+    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
 
     user.markModified('profile');
     await user.save();

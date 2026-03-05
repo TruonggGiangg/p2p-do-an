@@ -4,7 +4,7 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
     Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
-    Card, Row, Col, Modal, Form, Input, App, Select, Popconfirm,
+    Card, Row, Col, Modal, Form, Input, App, Select, Popconfirm, Drawer, Pagination, Spin,
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined,
@@ -12,8 +12,9 @@ import {
     PlusOutlined, EditOutlined,
     IdcardOutlined, MailOutlined, SafetyCertificateOutlined,
     CheckCircleOutlined, StopOutlined, UndoOutlined, LockOutlined,
+    HistoryOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
-import { adminApi, StaffDto } from '../api/admin';
+import { adminApi, StaffDto, ActivityLogDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import dayjs from 'dayjs';
 
@@ -40,6 +41,38 @@ export default function StaffPage() {
         inactive: 0,
         deleted: 0,
     });
+
+    // -- Activity Log Drawer state
+    const [logDrawerOpen, setLogDrawerOpen] = useState(false);
+    const [logDrawerStaff, setLogDrawerStaff] = useState<StaffDto | null>(null);
+    const [logs, setLogs] = useState<ActivityLogDto[]>([]);
+    const [logTotal, setLogTotal] = useState(0);
+    const [logPage, setLogPage] = useState(1);
+    const [logLoading, setLogLoading] = useState(false);
+    const LOG_PAGE_SIZE = 15;
+
+    const fetchLogs = async (page = 1, staff?: StaffDto | null) => {
+        const target = staff !== undefined ? staff : logDrawerStaff;
+        setLogLoading(true);
+        try {
+            const res = target
+                ? await adminApi.getActivityLogsByUser(target._id, page, LOG_PAGE_SIZE)
+                : await adminApi.getActivityLogs(page, LOG_PAGE_SIZE);
+            setLogs(res.logs);
+            setLogTotal(res.total);
+            setLogPage(page);
+        } catch (err) {
+            console.error('Failed to fetch activity logs:', err);
+        } finally {
+            setLogLoading(false);
+        }
+    };
+
+    const openLogDrawer = (staff: StaffDto) => {
+        setLogDrawerStaff(staff);
+        setLogDrawerOpen(true);
+        fetchLogs(1, staff);
+    };
 
     const fetchGlobalStats = async () => {
         try {
@@ -88,6 +121,7 @@ export default function StaffPage() {
             firstName: staff.profile?.firstName || '',
             lastName: staff.profile?.lastName || '',
             email: staff.email || '',
+            phoneNumber: staff.phoneNumber || '',
             status: staff.status || 'active',
         });
         setEditModalOpen(true);
@@ -285,7 +319,7 @@ export default function StaffPage() {
             key: 'actions',
             align: 'center',
             fixed: 'right',
-            width: 280,
+            width: 330,
             onCell: () => ({ style: { paddingLeft: 16, paddingRight: 16, whiteSpace: 'nowrap' } }),
             render: (_, r) => {
                 if (r.isDeleted) {
@@ -293,6 +327,9 @@ export default function StaffPage() {
                         <Space size={8}>
                             <Tooltip title="Xem chi tiết">
                                 <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 0, fontSize: 12 }}>Chi tiết</Button>
+                            </Tooltip>
+                            <Tooltip title="Lịch sử hoạt động">
+                                <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
                             </Tooltip>
                             <Popconfirm title="Khôi phục nhân viên?" description="Tài khoản sẽ được kích hoạt lại" okText="Khôi phục" cancelText="Hủy" onConfirm={() => handleRestore(r)} onPopupClick={(e) => e.stopPropagation()}>
                                 <Button type="primary" ghost icon={<UndoOutlined />} onClick={(e) => e.stopPropagation()} style={{ borderRadius: 0, fontSize: 12 }}>Khôi phục</Button>
@@ -307,6 +344,9 @@ export default function StaffPage() {
                         </Tooltip>
                         <Tooltip title="Sửa">
                             <Button icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                        </Tooltip>
+                        <Tooltip title="Lịch sử hoạt động">
+                            <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
                         </Tooltip>
                         <Tooltip title="Khóa tài khoản">
                             <Button danger icon={<LockOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
@@ -493,11 +533,126 @@ export default function StaffPage() {
                     <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
                         <Input prefix={<MailOutlined />} placeholder="email@example.com" />
                     </Form.Item>
-                    <Form.Item name="status" label="Trang thai">
+                    <Form.Item
+                        name="phoneNumber"
+                        label="Số điện thoại thực tế"
+                        extra="Có thể khác với tên đăng nhập — không ảnh hưởng username"
+                        rules={[{ min: 10, message: 'Tối thiểu 10 ký tự' }]}
+                    >
+                        <Input prefix={<PhoneOutlined />} placeholder="0901234567" />
+                    </Form.Item>
+                    <Form.Item name="status" label="Trạng thái">
                         <Select options={[{ value: 'active', label: 'Hoạt động' }, { value: 'inactive', label: 'Không hoạt động' }, { value: 'suspended', label: 'Tạm khóa' }]} />
                     </Form.Item>
                 </Form>
             </Modal>
+
+            {/* Activity Log Drawer */}
+            <Drawer
+                title={
+                    <Space>
+                        <HistoryOutlined style={{ fontSize: 18 }} />
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: 15 }}>Lịch sử hoạt động</div>
+                            {logDrawerStaff && (
+                                <div style={{ fontSize: 12, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>
+                                    {logDrawerStaff.displayName || logDrawerStaff.username}
+                                </div>
+                            )}
+                        </div>
+                    </Space>
+                }
+                placement="left"
+                width={520}
+                open={logDrawerOpen}
+                onClose={() => { setLogDrawerOpen(false); setLogDrawerStaff(null); }}
+                styles={{ body: { padding: '16px 24px' } }}
+            >
+                <Spin spinning={logLoading}>
+                    {logs.length === 0 && !logLoading ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: token.colorTextSecondary }}>
+                            <ClockCircleOutlined style={{ fontSize: 48, marginBottom: 16, display: 'block', opacity: 0.3 }} />
+                            <Text type="secondary">Chưa có lịch sử hoạt động nào</Text>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {logs.map((log) => {
+                                const methodColorMap: Record<string, string> = {
+                                    POST: '#059669',
+                                    PUT: '#D97706',
+                                    PATCH: '#D97706',
+                                    DELETE: '#DC2626',
+                                };
+                                const methodColor = methodColorMap[log.method] || token.colorPrimary;
+                                return (
+                                    <Card
+                                        key={log._id}
+                                        size="small"
+                                        bordered
+                                        style={{
+                                            borderRadius: 0,
+                                            borderLeft: `3px solid ${methodColor}`,
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                        }}
+                                        bodyStyle={{ padding: '12px 16px' }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                            <Text strong style={{ fontSize: 13 }}>{log.action}</Text>
+                                            <Tag
+                                                color={methodColor}
+                                                style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0, lineHeight: '20px' }}
+                                            >
+                                                {log.method}
+                                            </Tag>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <Text type="secondary" style={{ fontSize: 12 }}>
+                                                <UserOutlined style={{ marginRight: 4 }} />
+                                                {log.username}
+                                                <Tag
+                                                    style={{
+                                                        marginLeft: 8,
+                                                        borderRadius: 0,
+                                                        fontSize: 11,
+                                                        padding: '0 6px',
+                                                        lineHeight: '18px',
+                                                    }}
+                                                    color={log.userRole === 'admin' ? 'blue' : 'green'}
+                                                >
+                                                    {log.userRole === 'admin' ? 'Admin' : 'Nhân viên'}
+                                                </Tag>
+                                            </Text>
+                                            <Text type="secondary" style={{ fontSize: 11 }}>
+                                                <ClockCircleOutlined style={{ marginRight: 4 }} />
+                                                {dayjs(log.createdAt).format('DD/MM/YYYY HH:mm:ss')}
+                                                {log.duration != null && (
+                                                    <span style={{ marginLeft: 8, opacity: 0.7 }}>{log.duration}ms</span>
+                                                )}
+                                            </Text>
+                                            <Text type="secondary" style={{ fontSize: 11, opacity: 0.7 }}>
+                                                {log.path}
+                                            </Text>
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {logTotal > LOG_PAGE_SIZE && (
+                        <div style={{ textAlign: 'center', marginTop: 20, paddingBottom: 8 }}>
+                            <Pagination
+                                current={logPage}
+                                total={logTotal}
+                                pageSize={LOG_PAGE_SIZE}
+                                size="small"
+                                showSizeChanger={false}
+                                onChange={(p) => fetchLogs(p)}
+                                showTotal={(t) => `${t} hoạt động`}
+                            />
+                        </div>
+                    )}
+                </Spin>
+            </Drawer>
         </div>
     );
 }

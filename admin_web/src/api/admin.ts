@@ -236,7 +236,27 @@ export interface UpdateStaffBody {
   firstName?: string;
   lastName?: string;
   email?: string;
+  phoneNumber?: string;
   status?: string;
+}
+
+// ── Activity Log types ───────────────────────────────────────────────────────
+
+export interface ActivityLogDto {
+  _id: string;
+  userId: string;
+  username: string;
+  userRole: string;
+  method: string;
+  path: string;
+  action: string;
+  statusCode: number;
+  requestBody?: Record<string, any>;
+  responseMessage?: string;
+  ip?: string;
+  userAgent?: string;
+  duration?: number;
+  createdAt: string;
 }
 
 export const adminApi = {
@@ -629,4 +649,39 @@ export const adminApi = {
         data: { modifiedCount: number };
       }>("/api/admin/migrate-phone-numbers")
       .then((r) => r.data.data),
+
+  // ── Activity Logs ──────────────────────────────────────────────────────────
+  getActivityLogs: (page = 1, limit = 20) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    return api
+      .get<{
+        data: {
+          logs: ActivityLogDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/activity-logs?${params.toString()}`)
+      .then((r) => r.data.data);
+  },
+
+  getActivityLogsByUser: (userId: string, page = 1, limit = 20) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    return api
+      .get<{
+        data: {
+          logs: ActivityLogDto[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(`/api/admin/activity-logs/user/${userId}?${params.toString()}`)
+      .then((r) => r.data.data);
+  },
 };

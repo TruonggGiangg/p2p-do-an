@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -16,6 +16,8 @@ import { SmartOtpModule } from './modules/smart-otp/smart-otp.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { EkycModule } from './modules/ekyc/ekyc.module';
 import { DigitalSignatureModule } from './modules/digital-signature/digital-signature.module';
+import { ActivityLogModule } from './modules/activity-log/activity-log.module';
+import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -57,6 +59,7 @@ import { validate } from './config/validation';
     TwoFactorModule,
     EkycModule,
     DigitalSignatureModule,
+    ActivityLogModule,
   ],
 
   controllers: [AppController],
@@ -70,6 +73,11 @@ import { validate } from './config/validation';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    // Global ActivityLog interceptor (ghi log POST/PUT/PATCH/DELETE vào DB)
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ActivityLogInterceptor,
     },
   ],
 })

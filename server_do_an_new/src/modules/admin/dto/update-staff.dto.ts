@@ -17,6 +17,11 @@ export class UpdateStaffDto {
   @IsEmail()
   email?: string;
 
+  @ApiPropertyOptional({ description: 'Số điện thoại (không thay đổi username)' })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
   @ApiPropertyOptional({ description: 'Trạng thái (active / inactive / suspended)' })
   @IsOptional()
   @IsString()
