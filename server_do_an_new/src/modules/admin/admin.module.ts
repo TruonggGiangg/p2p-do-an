@@ -16,12 +16,14 @@ import { FineractModule } from '../fineract/fineract.module';
 import { LoanModule } from '../loan/loan.module';
 import { EkycModule } from '../ekyc/ekyc.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
+import { CaslModule } from '../casl/casl.module';
 
 @Module({
   imports: [
     FineractModule,
     AuthModule,
     EkycModule,
+    CaslModule,
     forwardRef(() => LoanModule),
     MongooseModule.forFeature([
       { name: DocumentType.name, schema: DocumentTypeSchema },

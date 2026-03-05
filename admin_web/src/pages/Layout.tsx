@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Typography, Avatar, Space, theme, Tooltip } from 'antd';
 import React from 'react';
+import { useAbility } from '@casl/react';
 import {
   FileTextOutlined,
   BankOutlined,
@@ -15,6 +16,8 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Sider, Header, Content } = Layout;
 const { Text, Title } = Typography;
@@ -35,18 +38,30 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
   const { isDarkMode, toggleTheme } = useTheme();
+  const ability = useAbility(AbilityContext);
 
   const user: any = (() => {
     try { return JSON.parse(localStorage.getItem('admin_user') || '{}'); } catch { return {}; }
   })();
 
+  const userRoles: string[] = user?.roles || [];
+  const roleLabel = userRoles.includes('admin') ? 'Quản trị viên' : 'Nhân viên';
+
+  // Filter menu items based on CASL ability
+  const filteredMenuItems = menuItems.filter(item => {
+    if (item.key === '/staff') return ability.can(Action.Read, 'Staff');
+    if (item.key === '/sync-drift') return ability.can(Action.Read, 'SyncDrift');
+    return true;
+  });
+
   const logout = () => {
     localStorage.removeItem('admin_access_token');
     localStorage.removeItem('admin_user');
+    ability.update([]); // Clear CASL permissions
     navigate('/login', { replace: true });
   };
 
-  const selectedKey = menuItems
+  const selectedKey = filteredMenuItems
     .slice()
     .reverse()
     .find((item) => location.pathname === item.key || (item.key !== '/' && location.pathname.startsWith(item.key)))
@@ -103,7 +118,8 @@ export default function AppLayout() {
             theme="dark"
             mode="inline"
             selectedKeys={[selectedKey]}
-            items={menuItems.map((item) => ({
+            items={filteredMenuItems.map((item) => ({
+              key: item.key,
               key: item.key,
               icon: React.cloneElement(item.icon as React.ReactElement, {
                 style: { fontSize: 18, marginRight: 4 }
@@ -142,7 +158,7 @@ export default function AppLayout() {
                 {user?.username || 'Admin'}
               </Text>
               <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, display: 'block' }}>
-                Administrator
+                {roleLabel}
               </Text>
             </div>
           )}
@@ -175,7 +191,7 @@ export default function AppLayout() {
               fontWeight: 600,
               color: isDarkMode ? '#F1F5F9' : '#0F172A',
             }}>
-              {menuItems.find(item => item.key === selectedKey)?.label || 'Dashboard'}
+              {filteredMenuItems.find(item => item.key === selectedKey)?.label || 'Dashboard'}
             </Title>
           </div>
 

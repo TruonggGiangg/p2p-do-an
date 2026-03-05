@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext, useEffect } from 'react';
+import React, { useState, useMemo, createContext, useContext, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import viVN from 'antd/locale/vi_VN';
@@ -14,6 +14,9 @@ import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from './AbilityContext';
+import { Action, Subject, AppAbility, buildAbilityForRole, buildEmptyAbility } from './ability';
 
 // Professional fintech color palette - Deep Blue/Slate
 const LIGHT_PALETTE = {
@@ -53,7 +56,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ProtectedRoute({ action, subject, children }: { action: Action; subject: Subject; children: React.ReactNode }) {
+  const ability = useAbility(AbilityContext);
+  if (!ability.can(action, subject)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
+  const [ability] = useState<AppAbility>(() => {
+    try {
+      const userStr = localStorage.getItem('admin_user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return buildAbilityForRole(user.roles || []);
+      }
+    } catch { /* ignore */ }
+    return buildEmptyAbility();
+  });
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('admin_theme');
     return saved ? saved === 'dark' : false; // Default to light mode for professional look
@@ -136,30 +156,44 @@ export default function App() {
           },
         }}
       >
-        <AntApp>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <AppLayout />
-                </RequireAuth>
-              }
-            >
-              <Route index element={<DocumentTypesPage />} />
-              <Route path="loan-products" element={<LoanProductsPage />} />
-              <Route path="savings-products" element={<SavingsProductsPage />} />
-              <Route path="loan-approvals" element={<LoanApprovalsPage />} />
-              <Route path="customers" element={<CustomersPage />} />
-              <Route path="customers/:id" element={<CustomerDetailPage />} />
-              <Route path="staff" element={<StaffPage />} />
-              <Route path="staff/:id" element={<StaffDetailPage />} />
-              <Route path="sync-drift" element={<SyncDriftPage />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AntApp>
+        <AbilityContext.Provider value={ability}>
+          <AntApp>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <AppLayout />
+                  </RequireAuth>
+                }
+              >
+                <Route index element={<DocumentTypesPage />} />
+                <Route path="loan-products" element={<LoanProductsPage />} />
+                <Route path="savings-products" element={<SavingsProductsPage />} />
+                <Route path="loan-approvals" element={<LoanApprovalsPage />} />
+                <Route path="customers" element={<CustomersPage />} />
+                <Route path="customers/:id" element={<CustomerDetailPage />} />
+                <Route path="staff" element={
+                  <ProtectedRoute action={Action.Read} subject="Staff">
+                    <StaffPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="staff/:id" element={
+                  <ProtectedRoute action={Action.Read} subject="Staff">
+                    <StaffDetailPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="sync-drift" element={
+                  <ProtectedRoute action={Action.Read} subject="SyncDrift">
+                    <SyncDriftPage />
+                  </ProtectedRoute>
+                } />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AntApp>
+        </AbilityContext.Provider>
       </ConfigProvider>
     </ThemeContext.Provider>
   );

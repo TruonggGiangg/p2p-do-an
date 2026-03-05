@@ -26,15 +26,39 @@ import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { SetProductDocumentTypesDto } from './dto/set-product-document-types.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { PoliciesGuard } from '../casl/policies.guard';
+import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
+import { Action } from '../casl/actions.enum';
+import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin')
-@UseGuards(JwtAuthGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
+  ) {}
+
+  /**
+   * Returns the raw CASL rules for the current user so the
+   * admin-web front-end can build a matching Ability instance.
+   */
+  @Get('me/permissions')
+  @ApiOperation({ summary: 'Lấy danh sách quyền của user hiện tại (cho frontend CASL)' })
+  @ApiResponse({ status: 200 })
+  async getMyPermissions(@Req() req: any) {
+    const ability = this.caslAbilityFactory.createForUser(req.user);
+    return {
+      statusCode: 200,
+      message: 'OK',
+      data: { rules: ability.rules, roles: req.user.roles ?? [] },
+    };
+  }
 
   @Get('loan-products')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
   @ApiOperation({ summary: 'Danh sách sản phẩm vay từ Fineract (cho admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách sản phẩm vay' })
   async getLoanProducts() {
@@ -43,6 +67,7 @@ export class AdminController {
   }
 
   @Get('loan-products/:productId/details')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
   @ApiOperation({ summary: 'Chi tiết cấu hình sản phẩm vay từ Fineract' })
   @ApiResponse({ status: 200 })
   async getLoanProductDetails(@Param('productId', ParseIntPipe) productId: number) {
@@ -51,6 +76,7 @@ export class AdminController {
   }
 
   @Get('document-types')
+  @CheckPolicies(ability => ability.can(Action.Read, 'DocumentType'))
   @ApiOperation({ summary: 'Danh sách loại tài liệu' })
   @ApiResponse({ status: 200 })
   async getDocumentTypes() {
@@ -59,6 +85,7 @@ export class AdminController {
   }
 
   @Post('document-types')
+  @CheckPolicies(ability => ability.can(Action.Create, 'DocumentType'))
   @ApiOperation({ summary: 'Tạo loại tài liệu' })
   @ApiResponse({ status: 201 })
   async createDocumentType(@Body() dto: CreateDocumentTypeDto) {
@@ -67,6 +94,7 @@ export class AdminController {
   }
 
   @Get('document-types/:id')
+  @CheckPolicies(ability => ability.can(Action.Read, 'DocumentType'))
   @ApiOperation({ summary: 'Chi tiết loại tài liệu' })
   @ApiResponse({ status: 200 })
   async getDocumentType(@Param('id') id: string) {
@@ -75,6 +103,7 @@ export class AdminController {
   }
 
   @Put('document-types/:id')
+  @CheckPolicies(ability => ability.can(Action.Update, 'DocumentType'))
   @ApiOperation({ summary: 'Cập nhật loại tài liệu' })
   @ApiResponse({ status: 200 })
   async updateDocumentType(@Param('id') id: string, @Body() dto: UpdateDocumentTypeDto) {
@@ -83,6 +112,7 @@ export class AdminController {
   }
 
   @Delete('document-types/:id')
+  @CheckPolicies(ability => ability.can(Action.Delete, 'DocumentType'))
   @ApiOperation({ summary: 'Xóa loại tài liệu' })
   @ApiResponse({ status: 200 })
   async removeDocumentType(@Param('id') id: string) {
@@ -91,6 +121,7 @@ export class AdminController {
   }
 
   @Get('loan-products/:fineractProductId/document-types')
+  @CheckPolicies(ability => ability.can(Action.Read, 'DocumentType'))
   @ApiOperation({ summary: 'Lấy cấu hình loại tài liệu theo sản phẩm vay' })
   @ApiResponse({ status: 200 })
   async getProductDocumentTypes(@Param('fineractProductId', ParseIntPipe) fineractProductId: number) {
@@ -99,6 +130,7 @@ export class AdminController {
   }
 
   @Put('loan-products/:fineractProductId/document-types')
+  @CheckPolicies(ability => ability.can(Action.Update, 'DocumentType'))
   @ApiOperation({ summary: 'Gắn loại tài liệu cho sản phẩm vay' })
   @ApiResponse({ status: 200 })
   async setProductDocumentTypes(
@@ -110,6 +142,7 @@ export class AdminController {
   }
 
   @Get('sync-drift')
+  @CheckPolicies(ability => ability.can(Action.Read, 'SyncDrift'))
   @ApiOperation({ summary: 'Lịch sử đồng bộ / cảnh báo lệch với Fineract' })
   @ApiResponse({ status: 200 })
   async getSyncDriftLogs(@Query('limit') limit?: string, @Query('scope') scope?: 'loan' | 'savings') {
@@ -119,6 +152,7 @@ export class AdminController {
   }
 
   @Post('sync-compare')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'SyncDrift'))
   @ApiOperation({ summary: 'So sánh danh sách sản phẩm vay với Fineract (và ghi log)' })
   @ApiResponse({ status: 200 })
   async syncCompare() {
@@ -127,6 +161,7 @@ export class AdminController {
   }
 
   @Get('savings-products')
+  @CheckPolicies(ability => ability.can(Action.Read, 'SavingsProduct'))
   @ApiOperation({ summary: 'Danh sách sản phẩm tiết kiệm từ Fineract (cho admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách sản phẩm tiết kiệm' })
   async getSavingsProducts() {
@@ -135,6 +170,7 @@ export class AdminController {
   }
 
   @Get('savings-products/:productId/details')
+  @CheckPolicies(ability => ability.can(Action.Read, 'SavingsProduct'))
   @ApiOperation({ summary: 'Chi tiết cấu hình sản phẩm tiết kiệm từ Fineract' })
   @ApiResponse({ status: 200 })
   async getSavingsProductDetails(@Param('productId', ParseIntPipe) productId: number) {
@@ -143,6 +179,7 @@ export class AdminController {
   }
 
   @Post('sync-compare-savings')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'SyncDrift'))
   @ApiOperation({ summary: 'So sánh danh sách sản phẩm tiết kiệm với Fineract (và ghi log)' })
   @ApiResponse({ status: 200 })
   async syncCompareSavings() {
@@ -153,6 +190,7 @@ export class AdminController {
   // ── Customers ──────────────────────────────────────────────────────────────
 
   @Get('customers')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Customer'))
   @ApiOperation({ summary: 'Danh sách khách hàng (phân trang)' })
   @ApiResponse({ status: 200 })
   async getCustomers(@Query('page') page?: string, @Query('limit') limit?: string, @Query('keyword') keyword?: string) {
@@ -165,6 +203,7 @@ export class AdminController {
   }
 
   @Get('customers/pending-approval')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Customer'))
   @ApiOperation({ summary: 'Danh sách khách hàng chờ phê duyệt (inactive clients)' })
   @ApiResponse({ status: 200 })
   async getPendingApprovalCustomers(
@@ -181,6 +220,7 @@ export class AdminController {
   }
 
   @Get('customers/:id')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Customer'))
   @ApiOperation({ summary: 'Chi tiết khách hàng' })
   @ApiResponse({ status: 200 })
   async getCustomer(@Param('id') id: string) {
@@ -189,6 +229,7 @@ export class AdminController {
   }
 
   @Get('customers/:id/detail')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Customer'))
   @ApiOperation({ summary: 'Chi tiết đầy đủ khách hàng (như Mifos: summary, savings, charges)' })
   @ApiResponse({ status: 200 })
   async getCustomerDetail(@Param('id') id: string) {
@@ -197,6 +238,7 @@ export class AdminController {
   }
 
   @Get('customers/:id/loans')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Khoản vay của khách hàng (chỉ sản phẩm P*)' })
   @ApiResponse({ status: 200 })
   async getCustomerLoans(@Param('id') id: string) {
@@ -207,6 +249,7 @@ export class AdminController {
   // ── Loan Approvals ──────────────────────────────────────────────────────────
 
   @Get('loans/pending')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Danh sách khoản vay chờ phê duyệt (sản phẩm P*)' })
   @ApiResponse({ status: 200 })
   async getPendingLoans() {
@@ -215,6 +258,7 @@ export class AdminController {
   }
 
   @Post('loans/:fineractLoanId/approve')
+  @CheckPolicies(ability => ability.can(Action.Approve, 'Loan'))
   @ApiOperation({ summary: 'Phê duyệt khoản vay' })
   @ApiResponse({ status: 200 })
   async approveLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
@@ -223,6 +267,7 @@ export class AdminController {
   }
 
   @Post('loans/:fineractLoanId/disburse')
+  @CheckPolicies(ability => ability.can(Action.Disburse, 'Loan'))
   @ApiOperation({ summary: 'Giải ngân khoản vay' })
   @ApiResponse({ status: 200 })
   async disburseLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
@@ -231,6 +276,7 @@ export class AdminController {
   }
 
   @Get('loans/:fineractLoanId/details')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Chi tiết khoản vay từ Fineract (bao gồm lịch trả nợ)' })
   @ApiResponse({ status: 200 })
   async getLoanDetails(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
@@ -239,6 +285,7 @@ export class AdminController {
   }
 
   @Get('loans/:fineractLoanId/documents')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanDocument'))
   @ApiOperation({ summary: 'Danh sách tài liệu của khoản vay' })
   @ApiResponse({ status: 200 })
   async getLoanDocuments(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
@@ -247,6 +294,7 @@ export class AdminController {
   }
 
   @Post('loans/:fineractLoanId/documents/:documentId/approve')
+  @CheckPolicies(ability => ability.can(Action.Approve, 'LoanDocument'))
   @ApiOperation({ summary: 'Duyệt tài liệu' })
   @ApiResponse({ status: 200 })
   async approveDocument(
@@ -258,6 +306,7 @@ export class AdminController {
   }
 
   @Post('loans/:fineractLoanId/documents/:documentId/reject')
+  @CheckPolicies(ability => ability.can(Action.Update, 'LoanDocument'))
   @ApiOperation({ summary: 'Từ chối tài liệu' })
   @ApiResponse({ status: 200 })
   async rejectDocument(
@@ -269,6 +318,7 @@ export class AdminController {
   }
 
   @Get('loans/:fineractLoanId/can-approve')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Kiểm tra đã duyệt đủ tài liệu bắt buộc chưa' })
   @ApiResponse({ status: 200 })
   async canApproveLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
@@ -277,6 +327,7 @@ export class AdminController {
   }
 
   @Get('loans/:fineractLoanId/documents/:documentId')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanDocument'))
   @ApiOperation({ summary: 'Tải tài liệu của khoản vay' })
   async getLoanDocumentStream(
     @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
@@ -292,6 +343,7 @@ export class AdminController {
   // ── KYC Approvals ──────────────────────────────────────────────────────────
 
   @Get('kyc/pending')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Kyc'))
   @ApiOperation({ summary: 'Danh sách KYC chờ phê duyệt' })
   @ApiResponse({ status: 200 })
   async getPendingKyc() {
@@ -300,6 +352,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/ocr-front')
+  @CheckPolicies(ability => ability.can(Action.Create, 'Kyc'))
   @UseInterceptors(AnyFilesInterceptor())
   @ApiOperation({ summary: 'OCR mặt trước CCCD (nhân viên tải lên giúp khách hàng)' })
   async ocrFront(@Param('userId') userId: string, @UploadedFiles() files: any[]) {
@@ -312,6 +365,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/ocr-back')
+  @CheckPolicies(ability => ability.can(Action.Create, 'Kyc'))
   @UseInterceptors(AnyFilesInterceptor())
   @ApiOperation({ summary: 'OCR mặt sau CCCD' })
   async ocrBack(@Param('userId') userId: string, @UploadedFiles() files: any[]) {
@@ -324,6 +378,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/save')
+  @CheckPolicies(ability => ability.can(Action.Create, 'Kyc'))
   @UseInterceptors(AnyFilesInterceptor())
   @ApiOperation({ summary: 'Lưu KYC (nhân viên làm giúp khách hàng)' })
   async saveKyc(@Param('userId') userId: string, @UploadedFiles() files: any[], @Req() req: any) {
@@ -360,6 +415,7 @@ export class AdminController {
   }
 
   @Get('kyc/:userId')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Kyc'))
   @ApiOperation({ summary: 'Chi tiết KYC (OCR + tài liệu)' })
   @ApiResponse({ status: 200 })
   async getKycDetail(@Param('userId') userId: string) {
@@ -368,6 +424,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/approve')
+  @CheckPolicies(ability => ability.can(Action.Approve, 'Kyc'))
   @ApiOperation({ summary: 'Phê duyệt KYC' })
   @ApiResponse({ status: 200 })
   async approveKyc(@Param('userId') userId: string) {
@@ -376,6 +433,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/reject')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Kyc'))
   @ApiOperation({ summary: 'Từ chối KYC' })
   @ApiResponse({ status: 200 })
   async rejectKyc(@Param('userId') userId: string) {
@@ -384,6 +442,7 @@ export class AdminController {
   }
 
   @Get('kyc/:userId/documents/:entityType/:entityId/:documentId')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Kyc'))
   @ApiOperation({ summary: 'Tải tài liệu KYC (CCCD) từ Fineract' })
   async getKycDocumentStream(
     @Param('userId') userId: string,
@@ -401,6 +460,7 @@ export class AdminController {
   // ── Staff Management ──────────────────────────────────────────────────────
 
   @Post('staff')
+  @CheckPolicies(ability => ability.can(Action.Create, 'Staff'))
   @ApiOperation({ summary: 'Tạo nhân viên (Keycloak → Fineract → MongoDB)' })
   @ApiResponse({ status: 201 })
   async createStaff(@Body() dto: RegisterDto) {
@@ -409,6 +469,7 @@ export class AdminController {
   }
 
   @Get('staff')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Staff'))
   @ApiOperation({ summary: 'Danh sách nhân viên (phân trang)' })
   @ApiResponse({ status: 200 })
   async getStaffList(@Query('page') page?: string, @Query('limit') limit?: string, @Query('keyword') keyword?: string) {
@@ -421,6 +482,7 @@ export class AdminController {
   }
 
   @Get('staff/:id')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Staff'))
   @ApiOperation({ summary: 'Chi tiết nhân viên' })
   @ApiResponse({ status: 200 })
   async getStaffById(@Param('id') id: string) {
@@ -429,6 +491,7 @@ export class AdminController {
   }
 
   @Put('staff/:id')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Staff'))
   @ApiOperation({ summary: 'Cập nhật nhân viên' })
   @ApiResponse({ status: 200 })
   async updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
@@ -437,6 +500,7 @@ export class AdminController {
   }
 
   @Delete('staff/:id')
+  @CheckPolicies(ability => ability.can(Action.Delete, 'Staff'))
   @ApiOperation({ summary: 'Khóa nhân viên (soft delete)' })
   @ApiResponse({ status: 200 })
   async deleteStaff(@Param('id') id: string) {
@@ -445,6 +509,7 @@ export class AdminController {
   }
 
   @Post('staff/:id/restore')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Staff'))
   @ApiOperation({ summary: 'Khôi phục nhân viên đã khóa' })
   @ApiResponse({ status: 200 })
   async restoreStaff(@Param('id') id: string) {
@@ -453,6 +518,7 @@ export class AdminController {
   }
 
   @Get('staff-deleted')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Staff'))
   @ApiOperation({ summary: 'Danh sách nhân viên đã khóa' })
   @ApiResponse({ status: 200 })
   async getDeletedStaffList(@Query('page') page?: string, @Query('limit') limit?: string) {
@@ -464,6 +530,7 @@ export class AdminController {
   }
 
   @Post('migrate-phone-numbers')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'Migration'))
   @ApiOperation({ summary: 'Migration: Set phoneNumber = username cho tất cả user' })
   @ApiResponse({ status: 200 })
   async migratePhoneNumbers() {

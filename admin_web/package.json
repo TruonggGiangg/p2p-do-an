@@ -11,6 +11,8 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
     "@ant-design/pro-components": "^2.8.10",
+    "@casl/ability": "^6.8.0",
+    "@casl/react": "^5.0.1",
     "antd": "^6.3.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.19",

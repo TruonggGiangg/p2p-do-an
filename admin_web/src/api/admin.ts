@@ -248,6 +248,14 @@ export const adminApi = {
       refreshToken: string;
     }>("/api/auth/login", { username, password }),
 
+  /** Fetch CASL rules for the current user */
+  getMyPermissions: () =>
+    api
+      .get<{
+        data: { rules: any[]; roles: string[] };
+      }>("/api/admin/me/permissions")
+      .then((r) => r.data.data),
+
   getLoanProducts: () =>
     api
       .get<{ data: { products: LoanProductDto[] } }>("/api/admin/loan-products")

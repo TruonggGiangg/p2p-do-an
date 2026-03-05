@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { theme, Typography, Button, Input, Form, Alert, Card } from 'antd';
 import { adminApi } from '../api/admin';
+import { AbilityContext } from '../AbilityContext';
+import { buildAbilityForRole } from '../ability';
 
 const { Title, Text } = Typography;
-const ADMIN_ROLE = 'admin';
+const ALLOWED_ROLES = ['admin', 'staff'];
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const ability = useContext(AbilityContext);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,12 +24,14 @@ export default function LoginPage() {
       const res = await adminApi.login(username, password);
       const data = (res.data as any)?.data ?? res.data;
       const roles: string[] = data?.roles ?? [];
-      if (!roles.includes(ADMIN_ROLE)) {
-        setError('Tài khoản không có quyền admin.');
+      if (!roles.some(r => ALLOWED_ROLES.includes(r))) {
+        setError('Tài khoản không có quyền truy cập hệ thống quản trị.');
         return;
       }
       localStorage.setItem('admin_access_token', res.data.accessToken);
       localStorage.setItem('admin_user', JSON.stringify(data));
+      // Update CASL ability with user roles
+      ability.update(buildAbilityForRole(roles).rules);
       navigate('/', { replace: true });
     } catch (err: any) {
       const isNetworkError = err.message === 'Network Error' || err.code === 'ERR_NETWORK' || !err.response;
