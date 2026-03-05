@@ -1,18 +1,61 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-    Card, Descriptions, Tag, Button, Space, Typography, Spin, App,
+    Card, Tag, Button, Space, Typography, Spin, App,
     Row, Col, Avatar, Divider, Form, Input, Modal, theme, Select,
 } from 'antd';
 import {
     ArrowLeftOutlined, UserOutlined, EditOutlined, LockOutlined,
     MailOutlined, PhoneOutlined, UndoOutlined,
     CalendarOutlined, DatabaseOutlined, SafetyCertificateOutlined,
+    IdcardOutlined, KeyOutlined, CloudServerOutlined,
+    ClockCircleOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { adminApi, StaffDto } from '../api/admin';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
+
+/* ── Helper Components ── */
+
+function ProfileField({ label, value }: { label: string; value: React.ReactNode }) {
+    return (
+        <div>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</Text>
+            <div style={{ fontSize: 14 }}>{typeof value === 'string' ? <Text strong>{value}</Text> : value}</div>
+        </div>
+    );
+}
+
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ color: '#8c8c8c', marginTop: 2, fontSize: 15 }}>{icon}</span>
+            <div style={{ minWidth: 0 }}>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1 }}>{label}</Text>
+                <Text style={{ fontSize: 13, wordBreak: 'break-word' }}>{value}</Text>
+            </div>
+        </div>
+    );
+}
+
+function IdField({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fafafa', padding: '10px 14px', borderRadius: 4 }}>
+            <span style={{ color: '#8c8c8c', fontSize: 16 }}>{icon}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1, marginBottom: 2 }}>{label}</Text>
+                {value ? (
+                    <Text copyable={{ text: value }} style={{ fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        {value}
+                    </Text>
+                ) : (
+                    <Text type="secondary">–</Text>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export default function StaffDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -197,7 +240,7 @@ export default function StaffDetailPage() {
                     >
                         <div style={{ textAlign: 'center', padding: '24px 0' }}>
                             <Avatar
-                                size={80}
+                                size={96}
                                 icon={<UserOutlined />}
                                 style={{
                                     background: staff.isDeleted
@@ -212,172 +255,218 @@ export default function StaffDetailPage() {
                             <Title level={4} style={{ margin: '0 0 4px 0' }}>
                                 {staff.displayName || staff.username}
                             </Title>
-                            <Text type="secondary">{staff.username}</Text>
+                            <Text type="secondary" style={{ fontSize: 13 }}>{staff.username}</Text>
                             <div style={{ marginTop: 12 }}>
                                 {staff.isDeleted ? (
                                     <Tag color="error" style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
                                 ) : (
-                                    <Tag
-                                        color={statusInfo.color}
-                                        style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}
-                                    >
-                                        {statusInfo.text}
-                                    </Tag>
+                                    <Select
+                                        value={staff.status}
+                                        size="small"
+                                        variant="borderless"
+                                        onChange={handleStatusChange}
+                                        style={{ minWidth: 140 }}
+                                        options={[
+                                            { value: 'active', label: <Tag color="success" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Hoạt động</Tag> },
+                                            { value: 'inactive', label: <Tag color="default" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Không hoạt động</Tag> },
+                                            { value: 'suspended', label: <Tag color="error" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Tạm khóa</Tag> },
+                                        ]}
+                                    />
                                 )}
                             </div>
                         </div>
 
-                        <Divider />
+                        <Divider style={{ margin: '16px 0' }} />
 
-                        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <MailOutlined style={{ color: token.colorTextSecondary }} />
-                                <Text>{staff.email || '–'}</Text>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <PhoneOutlined style={{ color: token.colorTextSecondary }} />
-                                <Text>{staff.phoneNumber || '–'}</Text>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <CalendarOutlined style={{ color: token.colorTextSecondary }} />
-                                <Text>
-                                    Ngày tạo: {staff.createdAt ? dayjs(staff.createdAt).format('DD/MM/YYYY HH:mm') : '–'}
-                                </Text>
-                            </div>
+                        {/* Contact Info */}
+                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                            <InfoRow icon={<MailOutlined />} label="Email" value={staff.email || '–'} />
+                            <InfoRow icon={<PhoneOutlined />} label="Số điện thoại" value={staff.phoneNumber || '–'} />
+                            <InfoRow icon={<CalendarOutlined />} label="Ngày tạo" value={staff.createdAt ? dayjs(staff.createdAt).format('DD/MM/YYYY HH:mm') : '–'} />
+                            {staff.updatedAt && (
+                                <InfoRow icon={<ClockCircleOutlined />} label="Cập nhật" value={dayjs(staff.updatedAt).format('DD/MM/YYYY HH:mm')} />
+                            )}
                         </Space>
+
+                        {staff.metadata?.userType && (
+                            <>
+                                <Divider style={{ margin: '16px 0' }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Text type="secondary" style={{ fontSize: 13 }}>Loại tài khoản</Text>
+                                    <Tag color="blue" style={{ borderRadius: 0, border: 'none', fontWeight: 500 }}>
+                                        {staff.metadata.userType === 'staff' ? 'Nhân viên' : staff.metadata.userType === 'admin' ? 'Quản trị viên' : staff.metadata.userType}
+                                    </Tag>
+                                </div>
+                            </>
+                        )}
                     </Card>
                 </Col>
 
-                {/* Detail Info */}
+                {/* Right Side - Info Cards */}
                 <Col xs={24} lg={16}>
+                    {/* Personal Info Card */}
                     <Card
                         bordered={false}
-                        title={
-                            <Space>
-                                <DatabaseOutlined />
-                                <span>Thông tin hệ thống</span>
-                            </Space>
-                        }
-                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        title={<Space><UserOutlined /><span>Thông tin cá nhân</span></Space>}
+                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
+                        bodyStyle={{ padding: '20px 24px' }}
                     >
-                        <Descriptions
-                            bordered
-                            column={{ xs: 1, sm: 2 }}
-                            size="middle"
-                            labelStyle={{ fontWeight: 500, width: 180 }}
-                        >
-                            <Descriptions.Item label="MongoDB ID">
-                                <Text copyable={{ text: staff._id }} style={{ fontSize: 12 }}>
-                                    {staff._id}
-                                </Text>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Keycloak ID">
-                                <Text copyable={staff.keycloakId ? { text: staff.keycloakId } : false} style={{ fontSize: 12 }}>
-                                    {staff.keycloakId || '–'}
-                                </Text>
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Fineract Staff ID">
-                                {staff.fineractStaffId
-                                    ? <Tag color="blue">#{staff.fineractStaffId}</Tag>
-                                    : <Text type="secondary">–</Text>
-                                }
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Trạng thái">
-                                {staff.isDeleted ? (
-                                    <Tag color="error" style={{ borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
-                                ) : (
-                                    <Select
-                                        value={staff.status}
-                                        size="small"
-                                        style={{ minWidth: 150 }}
-                                        onChange={handleStatusChange}
-                                        options={[
-                                            { value: 'active', label: 'Hoạt động' },
-                                            { value: 'inactive', label: 'Không hoạt động' },
-                                            { value: 'suspended', label: 'Tạm khóa' },
-                                        ]}
+                        <Row gutter={[48, 20]}>
+                            <Col xs={24} sm={12}>
+                                <ProfileField label="Họ và tên đệm" value={staff.profile?.firstName || '–'} />
+                            </Col>
+                            <Col xs={24} sm={12}>
+                                <ProfileField label="Tên" value={staff.profile?.lastName || '–'} />
+                            </Col>
+                            <Col xs={24} sm={12}>
+                                <ProfileField label="Email" value={staff.email || '–'} />
+                            </Col>
+                            <Col xs={24} sm={12}>
+                                <ProfileField label="Số điện thoại" value={staff.phoneNumber || '–'} />
+                            </Col>
+                            <Col xs={24} sm={12}>
+                                <ProfileField label="Tên đăng nhập" value={staff.username} />
+                            </Col>
+                            <Col xs={24} sm={12}>
+                                <ProfileField
+                                    label="Trạng thái"
+                                    value={
+                                        staff.isDeleted
+                                            ? <Tag color="error" style={{ borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
+                                            : <Tag color={statusInfo.color} style={{ borderRadius: 0, border: 'none' }}>{statusInfo.text}</Tag>
+                                    }
+                                />
+                            </Col>
+                        </Row>
+                    </Card>
+
+                    {/* System IDs Card */}
+                    <Card
+                        bordered={false}
+                        title={<Space><DatabaseOutlined /><span>Thông tin hệ thống</span></Space>}
+                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
+                        bodyStyle={{ padding: '20px 24px' }}
+                    >
+                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                            <IdField
+                                icon={<IdcardOutlined />}
+                                label="MongoDB ID"
+                                value={staff._id}
+                            />
+                            <IdField
+                                icon={<KeyOutlined />}
+                                label="Keycloak ID"
+                                value={staff.keycloakId || null}
+                            />
+                            <Row gutter={[48, 16]}>
+                                <Col xs={24} sm={12}>
+                                    <div>
+                                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                            <CloudServerOutlined style={{ marginRight: 6 }} />Fineract Staff ID
+                                        </Text>
+                                        {staff.fineractStaffId
+                                            ? <Tag color="blue" style={{ borderRadius: 0 }}>#{staff.fineractStaffId}</Tag>
+                                            : <Text type="secondary">–</Text>
+                                        }
+                                    </div>
+                                </Col>
+                                <Col xs={24} sm={12}>
+                                    <div>
+                                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                            <CloudServerOutlined style={{ marginRight: 6 }} />Fineract Client ID
+                                        </Text>
+                                        {staff.fineractClientId || staff.metadata?.fineractClientId
+                                            ? <Tag color="geekblue" style={{ borderRadius: 0 }}>#{staff.fineractClientId || staff.metadata?.fineractClientId}</Tag>
+                                            : <Text type="secondary">–</Text>
+                                        }
+                                    </div>
+                                </Col>
+                            </Row>
+                            <Row gutter={[48, 16]}>
+                                <Col xs={24} sm={12}>
+                                    <ProfileField
+                                        label="Ngày tạo"
+                                        value={staff.createdAt ? dayjs(staff.createdAt).format('DD/MM/YYYY HH:mm:ss') : '–'}
                                     />
-                                )}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Họ">
-                                {staff.profile?.firstName || '–'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Tên">
-                                {staff.profile?.lastName || '–'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Email">
-                                {staff.email || '–'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Số điện thoại">
-                                {staff.phoneNumber || '–'}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Ngày tạo" span={2}>
-                                {staff.createdAt ? dayjs(staff.createdAt).format('DD/MM/YYYY HH:mm:ss') : '–'}
-                            </Descriptions.Item>
-                            {staff.updatedAt && (
-                                <Descriptions.Item label="Cập nhật lần cuối" span={2}>
-                                    {dayjs(staff.updatedAt).format('DD/MM/YYYY HH:mm:ss')}
-                                </Descriptions.Item>
-                            )}
-                        </Descriptions>
+                                </Col>
+                                <Col xs={24} sm={12}>
+                                    <ProfileField
+                                        label="Cập nhật lần cuối"
+                                        value={staff.updatedAt ? dayjs(staff.updatedAt).format('DD/MM/YYYY HH:mm:ss') : '–'}
+                                    />
+                                </Col>
+                            </Row>
+                        </Space>
                     </Card>
 
                     {/* Metadata Card */}
-                    {staff.metadata && Object.keys(staff.metadata).length > 0 && (
-                        <Card
-                            bordered={false}
-                            title={
-                                <Space>
-                                    <SafetyCertificateOutlined />
-                                    <span>Thông tin bổ sung</span>
-                                </Space>
-                            }
-                            style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginTop: 24 }}
-                        >
-                            <Descriptions
-                                bordered
-                                column={{ xs: 1, sm: 2 }}
-                                size="middle"
-                                labelStyle={{ fontWeight: 500, width: 180 }}
+                    {staff.metadata && (() => {
+                        const extraKeys = Object.keys(staff.metadata).filter(k => !['userType', 'fineractClientId'].includes(k));
+                        if (extraKeys.length === 0) return null;
+                        const metaLabels: Record<string, string> = {
+                            syncStatus: 'Trạng thái đồng bộ',
+                            registeredAt: 'Ngày đăng ký',
+                            txPublicKey: 'Public Key (Blockchain)',
+                        };
+                        return (
+                            <Card
+                                bordered={false}
+                                title={<Space><SafetyCertificateOutlined /><span>Thông tin bổ sung</span></Space>}
+                                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                                bodyStyle={{ padding: '20px 24px' }}
                             >
-                                {staff.metadata.userType && (
-                                    <Descriptions.Item label="Loại tài khoản">
-                                        <Tag color="blue" style={{ borderRadius: 0, border: 'none' }}>
-                                            {staff.metadata.userType === 'staff' ? 'Nhân viên' : staff.metadata.userType === 'admin' ? 'Quản trị viên' : staff.metadata.userType}
-                                        </Tag>
-                                    </Descriptions.Item>
-                                )}
-                                {staff.metadata.fineractClientId && (
-                                    <Descriptions.Item label="Fineract Client ID">
-                                        <Text copyable={{ text: String(staff.metadata.fineractClientId) }} style={{ fontSize: 12 }}>
-                                            #{staff.metadata.fineractClientId}
-                                        </Text>
-                                    </Descriptions.Item>
-                                )}
-                                {staff.metadata.txPublicKey && (
-                                    <Descriptions.Item label="Public Key" span={2}>
-                                        <Text copyable={{ text: staff.metadata.txPublicKey }} style={{ fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                                            {staff.metadata.txPublicKey.length > 60
-                                                ? `${staff.metadata.txPublicKey.slice(0, 30)}...${staff.metadata.txPublicKey.slice(-30)}`
-                                                : staff.metadata.txPublicKey}
-                                        </Text>
-                                    </Descriptions.Item>
-                                )}
-                                {Object.entries(staff.metadata)
-                                    .filter(([key]) => !['userType', 'fineractClientId', 'txPublicKey'].includes(key))
-                                    .map(([key, value]) => (
-                                        <Descriptions.Item key={key} label={key}>
-                                            <Text style={{ fontSize: 12 }}>
-                                                {typeof value === 'object'
-                                                    ? Object.entries(value as Record<string, unknown>)
-                                                        .map(([k, v]) => `${k}: ${v}`).join(', ')
-                                                    : String(value ?? '–')}
-                                            </Text>
-                                        </Descriptions.Item>
-                                    ))}
-                            </Descriptions>
-                        </Card>
-                    )}
+                                <Row gutter={[48, 20]}>
+                                    {extraKeys.map(key => {
+                                        const val = staff.metadata![key];
+                                        const label = metaLabels[key] || key;
+                                        let display: React.ReactNode;
+
+                                        if (key === 'syncStatus') {
+                                            const syncColors: Record<string, string> = {
+                                                synced: 'success',
+                                                pending: 'processing',
+                                                'registered-pending-approval': 'warning',
+                                                failed: 'error',
+                                            };
+                                            display = (
+                                                <Tag
+                                                    color={syncColors[String(val)] || 'default'}
+                                                    icon={<SyncOutlined />}
+                                                    style={{ borderRadius: 0, border: 'none' }}
+                                                >
+                                                    {String(val)}
+                                                </Tag>
+                                            );
+                                        } else if (key === 'registeredAt' || key.toLowerCase().includes('date') || key.toLowerCase().includes('at')) {
+                                            const d = dayjs(String(val));
+                                            display = d.isValid() ? d.format('DD/MM/YYYY HH:mm:ss') : String(val ?? '–');
+                                        } else if (key === 'txPublicKey') {
+                                            const pkStr = String(val);
+                                            display = (
+                                                <Text
+                                                    copyable={{ text: pkStr }}
+                                                    style={{ fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all' }}
+                                                >
+                                                    {pkStr.length > 40 ? `${pkStr.slice(0, 20)}...${pkStr.slice(-20)}` : pkStr}
+                                                </Text>
+                                            );
+                                        } else if (typeof val === 'object' && val !== null) {
+                                            display = Object.entries(val as Record<string, unknown>)
+                                                .map(([k, v]) => `${k}: ${v}`).join(', ');
+                                        } else {
+                                            display = String(val ?? '–');
+                                        }
+
+                                        return (
+                                            <Col key={key} xs={24} sm={key === 'txPublicKey' ? 24 : 12}>
+                                                <ProfileField label={label} value={display} />
+                                            </Col>
+                                        );
+                                    })}
+                                </Row>
+                            </Card>
+                        );
+                    })()}
                 </Col>
             </Row>
 
