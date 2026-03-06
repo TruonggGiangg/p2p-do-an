@@ -12,5 +12,7 @@ export enum OtpActionType {
   PROFILE_UPDATE = 'PROFILE_UPDATE', // Cập nhật thông tin nhạy cảm
   REPAYMENT = 'REPAYMENT', // Trả nợ một phần
   PREPAY = 'PREPAY', // Tất toán sớm
+  PIN_SETUP = 'PIN_SETUP', // Thiết lập mã PIN
+  PIN_CHANGE = 'PIN_CHANGE', // Đổi mã PIN
   OTHER = 'OTHER', // Khác
 }

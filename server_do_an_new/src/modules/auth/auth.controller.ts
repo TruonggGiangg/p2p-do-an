@@ -7,9 +7,11 @@ import { AuthService } from './auth.service';
 import { KeycloakAuthService } from './services/keycloak-auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
+import { PinService } from './services/pin.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { SetupPinDto } from './dto/pin.dto';
 import { RefreshTokenDto } from './dto/register.dto';
 import { KeycloakUser } from './interfaces/auth.interface';
 import type { UserPayload } from './interfaces/auth.interface';
@@ -26,7 +28,8 @@ export class AuthController {
     private readonly keycloakAuthService: KeycloakAuthService,
     private readonly fineractSignupService: FineractSignupService,
     private readonly twoFactorService: TwoFactorService,
-  ) { }
+    private readonly pinService: PinService,
+  ) {}
 
   @Public()
   @Post('register')
@@ -130,12 +133,39 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   async getProfile(@CurrentUser() user: UserPayload) {
     const mongoProfile = user._id ? await this.userSyncService.getProfileWithKyc(user._id) : null;
+    const pinStatus = user._id ? await this.pinService.getStatus(user._id) : { hasPin: false };
     const data = {
       ...user,
       profile: mongoProfile?.profile,
       kycStatus: mongoProfile?.kycStatus ?? 'NONE',
+      hasPin: pinStatus.hasPin,
     };
     return { data };
+  }
+
+  // ── PIN Endpoints ─────────────────────────────────────────────────────────
+
+  @Get('pin/status')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái mã PIN' })
+  @ApiResponse({ status: 200, description: 'Trả về hasPin true/false' })
+  async getPinStatus(@CurrentUser() user: UserPayload) {
+    if (!user._id) throw new UnauthorizedException();
+    const status = await this.pinService.getStatus(user._id);
+    return { success: true, ...status };
+  }
+
+  @Post('pin/setup')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Thiết lập mã PIN (yêu cầu Smart OTP)' })
+  @ApiResponse({ status: 200, description: 'Thiết lập mã PIN thành công' })
+  @ApiResponse({ status: 400, description: 'OTP không hợp lệ hoặc PIN không đúng định dạng' })
+  async setupPin(@CurrentUser() user: UserPayload, @Body() body: SetupPinDto) {
+    if (!user._id) throw new UnauthorizedException();
+    await this.pinService.setupPin(user._id, body.pin, body.sessionId);
+    return { success: true, message: 'Thiết lập mã PIN thành công' };
   }
 
   @Public()

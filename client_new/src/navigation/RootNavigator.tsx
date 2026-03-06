@@ -20,10 +20,12 @@ import type { LoanProduct } from '../features/loan/services/loan.service';
 import type { LoanProductConfig, LoanScheduleResult } from '../features/loan/services/loan.service';
 import type { BnplLoan } from '../features/bnpl/api/bnpl.api';
 import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
+import PinSetupScreen from '../features/auth/screens/PinSetupScreen';
 
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
+    PinSetup: undefined;
     Transfer: undefined;
     Notifications: undefined;
     Wallets: undefined;
@@ -58,12 +60,17 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
+
+    // Sau khi đăng nhập, nếu chưa có PIN thì redirect sang PinSetup
+    const needsPinSetup = isAuthenticated && user?.hasPin === false;
 
     return (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             {!isAuthenticated ? (
                 <Stack.Screen name="Auth" component={AuthNavigator} />
+            ) : needsPinSetup ? (
+                <Stack.Screen name="PinSetup" component={PinSetupScreen} />
             ) : (
                 <>
                     <Stack.Screen name="Main" component={MainNavigator} />

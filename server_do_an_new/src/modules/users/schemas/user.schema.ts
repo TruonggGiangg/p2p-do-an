@@ -87,6 +87,20 @@ export class User extends Document {
     lastScoredAt: Date;
   };
 
+  // PIN (mã PIN 6 chữ số để xác thực nhanh)
+  @Prop({
+    type: {
+      hash: { type: String },
+      setAt: { type: Date },
+    },
+    _id: false,
+    required: false,
+  })
+  pin?: {
+    hash: string;
+    setAt: Date;
+  };
+
   // Smart OTP Configuration (optional)
   @Prop({
     type: {

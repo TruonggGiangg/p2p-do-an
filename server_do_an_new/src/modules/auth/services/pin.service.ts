@@ -1,0 +1,69 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import * as bcrypt from 'bcryptjs';
+import { User } from '../../users/schemas/user.schema';
+import { SmartOtpService } from '../../smart-otp/services/smart-otp.service';
+import { OtpActionType } from '../../smart-otp/enums/otp-action-type.enum';
+
+/**
+ * PIN Service
+ * Quản lý mã PIN 6 chữ số cho xác thực nhanh
+ * PIN được hash bằng bcrypt trước khi lưu
+ */
+@Injectable()
+export class PinService {
+  private readonly logger = new Logger(PinService.name);
+  private readonly BCRYPT_ROUNDS = 12;
+
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly smartOtpService: SmartOtpService,
+  ) {}
+
+  /**
+   * Lấy trạng thái PIN của user
+   */
+  async getStatus(userId: string): Promise<{ hasPin: boolean; pinSetAt?: Date }> {
+    const user = await this.userModel.findById(userId).select('pin').lean();
+    const hasPin = !!(user as any)?.pin?.hash;
+    const pinSetAt = hasPin ? (user as any).pin.setAt : undefined;
+    return { hasPin, pinSetAt };
+  }
+
+  /**
+   * Thiết lập PIN lần đầu hoặc đặt lại PIN
+   * Yêu cầu Smart OTP session đã xác thực (PIN_SETUP)
+   */
+  async setupPin(userId: string, pin: string, sessionId: string): Promise<void> {
+    // 1. Consume verified OTP session để xác nhận user đã xác thực
+    const result = await this.smartOtpService.consumeVerifiedSession(userId, sessionId, OtpActionType.PIN_SETUP);
+
+    if (!result.valid) {
+      throw new BadRequestException(result.message || 'Xác thực Smart OTP thất bại');
+    }
+
+    // 2. Hash PIN bằng bcrypt (salt 12 rounds)
+    const hash = await bcrypt.hash(pin, this.BCRYPT_ROUNDS);
+
+    // 3. Lưu hashed PIN vào MongoDB
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: {
+        'pin.hash': hash,
+        'pin.setAt': new Date(),
+      },
+    });
+
+    this.logger.log(`[PIN] User ${userId} setup PIN successfully`);
+  }
+
+  /**
+   * Xác thực PIN (dùng khi cần verify PIN nhanh)
+   */
+  async verifyPin(userId: string, pin: string): Promise<boolean> {
+    const user = await this.userModel.findById(userId).select('pin').lean();
+    const pinHash = (user as any)?.pin?.hash;
+    if (!pinHash) return false;
+    return bcrypt.compare(pin, pinHash);
+  }
+}

@@ -7,12 +7,14 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
+import { PinService } from './services/pin.service';
 
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { TwoFactorModule } from '../two-factor/two-factor.module';
+import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 
 @Module({
   imports: [
@@ -21,6 +23,7 @@ import { TwoFactorModule } from '../two-factor/two-factor.module';
     WalletsModule,
     MongooseModule.forFeature([{ name: Wallet.name, schema: WalletSchema }]),
     TwoFactorModule,
+    SmartOtpModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -33,8 +36,8 @@ import { TwoFactorModule } from '../two-factor/two-factor.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, FineractSignupService, UserSyncService, JwtStrategy],
+  providers: [AuthService, FineractSignupService, UserSyncService, PinService, JwtStrategy],
 
-  exports: [AuthService, JwtStrategy, FineractSignupService],
+  exports: [AuthService, JwtStrategy, FineractSignupService, PinService],
 })
-export class AuthModule { }
+export class AuthModule {}

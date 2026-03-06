@@ -37,6 +37,8 @@ const ACTION_TITLES: Record<string, string> = {
   PASSWORD_CHANGE: 'Đổi mật khẩu',
   REPAYMENT: 'Trả nợ',
   PREPAY: 'Tất toán',
+  PIN_SETUP: 'Thiết lập mã PIN',
+  PIN_CHANGE: 'Đổi mã PIN',
 };
 
 export interface OTPVerifyModalProps {

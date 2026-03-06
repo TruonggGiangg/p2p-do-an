@@ -200,6 +200,18 @@ export class SmartOtpService {
   }
 
   /**
+   * Consume verified session (2-step flow)
+   * Server-side: sau khi /otp/verify thành công, API transaction gọi hàm này
+   */
+  async consumeVerifiedSession(
+    userId: string,
+    sessionId: string,
+    actionType: OtpActionType,
+  ): Promise<{ valid: boolean; message: string; actionData?: any }> {
+    return this.otpSessionService.consumeSession(userId, sessionId, actionType);
+  }
+
+  /**
    * Consume verified session
    */
   async consumeSession(userId: string, sessionId: string, actionType: OtpActionType) {
