@@ -4,10 +4,36 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePin } from '../contexts/PinContext';
+import { PinVerifyModal } from '../components';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import LoanScreen from '../features/loan/screens/LoanScreen';
 import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
+
+/** HOC: bọc screen yêu cầu PIN 1 lần/phiên */
+function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
+    return function PinGatedScreen(props: P) {
+        const { pinVerified, markPinVerified } = usePin();
+
+        if (!pinVerified) {
+            return (
+                <PinVerifyModal
+                    visible
+                    dismissable={false}
+                    onSuccess={markPinVerified}
+                    title="Xác thực mã PIN"
+                    subtitle="Nhập mã PIN để truy cập tính năng này"
+                />
+            );
+        }
+
+        return <WrappedComponent {...props} />;
+    };
+}
+
+const PinGatedLoanScreen = withPinGate(LoanScreen);
+const PinGatedBNPLScreen = withPinGate(BNPLScreen);
 
 export type MainTabParamList = {
     Home: undefined;
@@ -76,12 +102,12 @@ export default function MainNavigator() {
             />
             <Tab.Screen
                 name="Loan"
-                component={LoanScreen}
+                component={PinGatedLoanScreen}
                 options={{ tabBarLabel: 'Vay vốn' }}
             />
             <Tab.Screen
                 name="BNPL"
-                component={BNPLScreen}
+                component={PinGatedBNPLScreen}
                 options={{ tabBarLabel: 'BNPL' }}
             />
             <Tab.Screen

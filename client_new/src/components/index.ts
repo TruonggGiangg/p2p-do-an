@@ -16,5 +16,6 @@ export * from "./common/FloatingActionButton";
 export { default as FintechPullToRefresh } from "./common/FintechPullToRefresh";
 export { OTPVerifyModal } from "./common/OTPVerifyModal";
 export { OTPProtectedAction } from "./common/OTPProtectedAction";
+export { PinVerifyModal } from "./common/PinVerifyModal";
 export { default as VentoUltimateLoading } from "./common/VentoSVGLoading";
 export * from "./WalletCard";

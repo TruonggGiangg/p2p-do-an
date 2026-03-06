@@ -21,11 +21,13 @@ import type { LoanProductConfig, LoanScheduleResult } from '../features/loan/ser
 import type { BnplLoan } from '../features/bnpl/api/bnpl.api';
 import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
 import PinSetupScreen from '../features/auth/screens/PinSetupScreen';
+import PinChangeScreen from '../features/auth/screens/PinChangeScreen';
 
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
     PinSetup: undefined;
+    PinChange: undefined;
     Transfer: undefined;
     Notifications: undefined;
     Wallets: undefined;
@@ -74,6 +76,7 @@ export default function RootNavigator() {
             ) : (
                 <>
                     <Stack.Screen name="Main" component={MainNavigator} />
+                    <Stack.Screen name="PinChange" component={PinChangeScreen} />
                     <Stack.Screen name="Transfer" component={TransferScreen} />
                     <Stack.Screen name="Notifications" component={NotificationScreen} />
                     <Stack.Screen name="Wallets" component={WalletsScreen} />

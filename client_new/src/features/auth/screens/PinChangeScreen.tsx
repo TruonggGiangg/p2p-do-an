@@ -1,14 +1,8 @@
 /**
- * PIN Setup Screen
- * Thiết lập mã PIN 6 chữ số cho người dùng lần đầu đăng nhập
- *
- * Flow:
- *  Step 1 → Nhập PIN (6 chữ số)
- *  Step 2 → Nhập lại PIN xác nhận
- *  Step 3 → Xác thực Smart OTP → Gọi API lưu PIN
- *  Done   → Thông báo thành công + điều hướng
+ * PinChangeScreen
+ * Đổi mã PIN: Nhập PIN cũ → Nhập PIN mới → Xác nhận PIN mới → Smart OTP → Lưu
  */
-import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import {
     View,
     Text,
@@ -25,16 +19,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { useAuth } from '../../../contexts/AuthContext';
 import { OTPVerifyModal } from '../../../components';
 import { pinAPI } from '../api/pin.api';
 import { OtpActionType } from '../../../types/otp.types';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
-type PinSetupNav = NativeStackNavigationProp<RootStackParamList, 'PinSetup'>;
-
-// ── Numpad Layout ──────────────────────────────────────────────────────────────
 const NUMPAD_KEYS = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -44,9 +32,8 @@ const NUMPAD_KEYS = [
 
 const PIN_LENGTH = 6;
 
-type Step = 'enter' | 'confirm' | 'otp' | 'success';
+type Step = 'oldPin' | 'newPin' | 'confirmPin' | 'otp' | 'success';
 
-// ── PIN Dot component ──────────────────────────────────────────────────────────
 function PinDot({ filled, shake, theme }: { filled: boolean; shake: Animated.Value; theme: any }) {
     return (
         <Animated.View
@@ -62,14 +49,13 @@ function PinDot({ filled, shake, theme }: { filled: boolean; shake: Animated.Val
     );
 }
 
-export default function PinSetupScreen() {
-    const navigation = useNavigation<PinSetupNav>();
+export default function PinChangeScreen() {
+    const navigation = useNavigation();
     const { theme } = useTheme();
-    const { refreshUser } = useAuth();
     const insets = useSafeAreaInsets();
     const c = theme.colors;
 
-    // Cached safe area top — tránh header giựt khi insets thay đổi
+    // Cached Safe Area
     const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
     const cachedTopInset = useRef<number>(FALLBACK_TOP);
     const [ready, setReady] = useState(false);
@@ -81,18 +67,22 @@ export default function PinSetupScreen() {
     }, [insets.top, ready]);
     const stableTop = cachedTopInset.current;
 
-    const [step, setStep] = useState<Step>('enter');
-    const [pin, setPin] = useState('');
+    const [step, setStep] = useState<Step>('oldPin');
+    const [oldPin, setOldPin] = useState('');
+    const [newPin, setNewPin] = useState('');
     const [confirmPin, setConfirmPin] = useState('');
     const [otpVisible, setOtpVisible] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [verifyingOld, setVerifyingOld] = useState(false);
 
-    // Shake animation khi nhập sai
     const shakeAnim = useRef(new Animated.Value(0)).current;
     const successScale = useRef(new Animated.Value(0)).current;
     const successOpacity = useRef(new Animated.Value(0)).current;
 
-    const currentPin = step === 'enter' ? pin : confirmPin;
+    const currentPin =
+        step === 'oldPin' ? oldPin :
+            step === 'newPin' ? newPin :
+                confirmPin;
 
     const triggerShake = useCallback(() => {
         Vibration.vibrate(400);
@@ -105,63 +95,88 @@ export default function PinSetupScreen() {
         ]).start();
     }, [shakeAnim]);
 
+    const verifyOldPin = useCallback(async (pin: string) => {
+        setVerifyingOld(true);
+        try {
+            const res = await pinAPI.verifyPin(pin);
+            if (res.success) {
+                setTimeout(() => setStep('newPin'), 200);
+            } else {
+                triggerShake();
+                setTimeout(() => {
+                    setOldPin('');
+                    Alert.alert('Mã PIN không đúng', 'Vui lòng nhập lại mã PIN hiện tại.', [{ text: 'Thử lại' }]);
+                }, 300);
+            }
+        } catch {
+            triggerShake();
+            setTimeout(() => {
+                setOldPin('');
+                Alert.alert('Mã PIN không đúng', 'Vui lòng nhập lại mã PIN hiện tại.', [{ text: 'Thử lại' }]);
+            }, 300);
+        } finally {
+            setVerifyingOld(false);
+        }
+    }, [triggerShake]);
+
     const handleKeyPress = useCallback(
         (key: string) => {
-            if (step === 'otp' || step === 'success') return;
+            if (step === 'otp' || step === 'success' || verifyingOld) return;
 
             if (key === '⌫') {
-                if (step === 'enter') {
-                    setPin((prev) => prev.slice(0, -1));
-                } else {
-                    setConfirmPin((prev) => prev.slice(0, -1));
-                }
+                if (step === 'oldPin') setOldPin((p) => p.slice(0, -1));
+                else if (step === 'newPin') setNewPin((p) => p.slice(0, -1));
+                else setConfirmPin((p) => p.slice(0, -1));
                 return;
             }
-
             if (!key) return;
 
-            if (step === 'enter') {
-                if (pin.length >= PIN_LENGTH) return;
-                const next = pin + key;
-                setPin(next);
-
+            if (step === 'oldPin') {
+                if (oldPin.length >= PIN_LENGTH) return;
+                const next = oldPin + key;
+                setOldPin(next);
                 if (next.length === PIN_LENGTH) {
-                    // Auto advance to confirm step after brief delay
-                    setTimeout(() => setStep('confirm'), 200);
+                    verifyOldPin(next);
                 }
-            } else {
+            } else if (step === 'newPin') {
+                if (newPin.length >= PIN_LENGTH) return;
+                const next = newPin + key;
+                setNewPin(next);
+                if (next.length === PIN_LENGTH) {
+                    setTimeout(() => setStep('confirmPin'), 200);
+                }
+            } else if (step === 'confirmPin') {
                 if (confirmPin.length >= PIN_LENGTH) return;
                 const next = confirmPin + key;
                 setConfirmPin(next);
-
                 if (next.length === PIN_LENGTH) {
-                    // Validate match
-                    if (next !== pin) {
+                    if (next !== newPin) {
                         triggerShake();
                         setTimeout(() => {
                             setConfirmPin('');
-                            Alert.alert(
-                                'Mã PIN không khớp',
-                                'Mã PIN xác nhận không đúng. Vui lòng nhập lại.',
-                                [{ text: 'Thử lại' }],
-                            );
+                            Alert.alert('Mã PIN không khớp', 'Mã PIN xác nhận không đúng. Vui lòng nhập lại.', [{ text: 'Thử lại' }]);
                         }, 300);
                     } else {
-                        // Open Smart OTP modal
                         setTimeout(() => setOtpVisible(true), 200);
                     }
                 }
             }
         },
-        [step, pin, confirmPin, triggerShake],
+        [step, oldPin, newPin, confirmPin, triggerShake, verifyOldPin, verifyingOld],
     );
 
     const handleBack = useCallback(() => {
-        if (step === 'confirm') {
-            setStep('enter');
+        if (step === 'newPin') {
+            setStep('oldPin');
+            setOldPin('');
+            setNewPin('');
+        } else if (step === 'confirmPin') {
+            setStep('newPin');
             setConfirmPin('');
+        } else {
+            navigation.goBack();
         }
-    }, [step]);
+    }, [step, navigation]);
 
     const handleOtpCancel = useCallback(() => {
         setOtpVisible(false);
@@ -173,23 +188,11 @@ export default function PinSetupScreen() {
             setOtpVisible(false);
             setSubmitting(true);
             try {
-                await pinAPI.setupPin({ pin, sessionId });
-                // Refresh user để cập nhật hasPin = true
-                await refreshUser();
+                await pinAPI.changePin({ oldPin, newPin, sessionId });
                 setStep('success');
-                // Animate success
                 Animated.parallel([
-                    Animated.spring(successScale, {
-                        toValue: 1,
-                        tension: 50,
-                        friction: 7,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(successOpacity, {
-                        toValue: 1,
-                        duration: 300,
-                        useNativeDriver: true,
-                    }),
+                    Animated.spring(successScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }),
+                    Animated.timing(successOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
                 ]).start();
             } catch (err: any) {
                 const message = err?.response?.data?.message || err?.message || 'Đã có lỗi xảy ra';
@@ -199,38 +202,34 @@ export default function PinSetupScreen() {
                 setSubmitting(false);
             }
         },
-        [pin, refreshUser, successScale, successOpacity],
+        [oldPin, newPin, successScale, successOpacity],
     );
 
-    const handleSuccessDone = useCallback(() => {
-        navigation.replace('Main');
-    }, [navigation]);
-
-    // ── Render ────────────────────────────────────────────────────────────────
-
+    // ── Render ──
     const titleByStep: Record<Step, string> = {
-        enter: 'Tạo mã PIN',
-        confirm: 'Xác nhận mã PIN',
+        oldPin: 'Nhập mã PIN hiện tại',
+        newPin: 'Tạo mã PIN mới',
+        confirmPin: 'Xác nhận mã PIN mới',
         otp: 'Xác thực Smart OTP',
         success: 'Hoàn tất',
     };
 
     const subtitleByStep: Record<Step, string> = {
-        enter: 'Nhập mã PIN 6 chữ số để bảo vệ tài khoản',
-        confirm: 'Nhập lại mã PIN vừa tạo để xác nhận',
+        oldPin: 'Nhập mã PIN hiện tại để xác minh',
+        newPin: 'Nhập mã PIN mới 6 chữ số',
+        confirmPin: 'Nhập lại mã PIN mới để xác nhận',
         otp: '',
         success: '',
     };
+
+    const stepIndex = step === 'oldPin' ? 0 : step === 'newPin' ? 1 : 2;
 
     if (step === 'success') {
         return (
             <View style={[styles.container, { backgroundColor: c.background }]}>
                 <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
                 <Animated.View
-                    style={[
-                        styles.successWrapper,
-                        { opacity: successOpacity, transform: [{ scale: successScale }] },
-                    ]}
+                    style={[styles.successWrapper, { opacity: successOpacity, transform: [{ scale: successScale }] }]}
                 >
                     <LinearGradient
                         colors={[c.success + '20', c.success + '05']}
@@ -238,19 +237,16 @@ export default function PinSetupScreen() {
                     >
                         <MaterialCommunityIcons name="shield-check" size={72} color={c.success} />
                     </LinearGradient>
-                    <Text style={[styles.successTitle, { color: c.textPrimary }]}>
-                        Thiết lập thành công!
-                    </Text>
+                    <Text style={[styles.successTitle, { color: c.textPrimary }]}>Đổi mã PIN thành công!</Text>
                     <Text style={[styles.successSub, { color: c.textSecondary }]}>
-                        Mã PIN của bạn đã được thiết lập. Bạn có thể sử dụng mã PIN để xác thực nhanh các
-                        giao dịch.
+                        Mã PIN mới của bạn đã được cập nhật. Hãy nhớ mã PIN mới để sử dụng cho các lần xác thực tiếp theo.
                     </Text>
                     <TouchableOpacity
-                        onPress={handleSuccessDone}
+                        onPress={() => navigation.goBack()}
                         style={[styles.doneBtn, { backgroundColor: c.success }]}
                         activeOpacity={0.85}
                     >
-                        <Text style={styles.doneBtnText}>Bắt đầu sử dụng</Text>
+                        <Text style={styles.doneBtnText}>Quay lại</Text>
                     </TouchableOpacity>
                 </Animated.View>
             </View>
@@ -266,15 +262,10 @@ export default function PinSetupScreen() {
                 colors={[c.primary, c.primaryDark ?? c.primary]}
                 style={[styles.header, { paddingTop: stableTop + 10 }]}
             >
-                {/* Back button - only on confirm step */}
                 <View style={styles.headerRow}>
-                    {step === 'confirm' ? (
-                        <TouchableOpacity onPress={handleBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
-                        </TouchableOpacity>
-                    ) : (
-                        <View style={styles.backBtn} />
-                    )}
+                    <TouchableOpacity onPress={handleBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+                    </TouchableOpacity>
                     <View style={styles.headerCenter}>
                         <MaterialCommunityIcons name="shield-lock" size={32} color="#000" />
                     </View>
@@ -285,16 +276,13 @@ export default function PinSetupScreen() {
 
                 {/* Step indicator */}
                 <View style={styles.stepRow}>
-                    {['enter', 'confirm'].map((s, i) => (
+                    {['oldPin', 'newPin', 'confirmPin'].map((s, i) => (
                         <View
                             key={s}
                             style={[
                                 styles.stepDot,
                                 {
-                                    backgroundColor:
-                                        step === s || (step === 'confirm' && i === 0)
-                                            ? '#000'
-                                            : 'rgba(0,0,0,0.3)',
+                                    backgroundColor: i <= stepIndex ? '#000' : 'rgba(0,0,0,0.3)',
                                     width: step === s ? 24 : 8,
                                 },
                             ]}
@@ -303,16 +291,11 @@ export default function PinSetupScreen() {
                 </View>
             </LinearGradient>
 
-            {/* PIN dots display */}
+            {/* PIN dots */}
             <View style={styles.pinArea}>
                 <View style={styles.dotsRow}>
                     {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-                        <PinDot
-                            key={i}
-                            filled={i < currentPin.length}
-                            shake={shakeAnim}
-                            theme={theme}
-                        />
+                        <PinDot key={i} filled={i < currentPin.length} shake={shakeAnim} theme={theme} />
                     ))}
                 </View>
             </View>
@@ -339,19 +322,13 @@ export default function PinSetupScreen() {
                                         },
                                     ]}
                                     onPress={() => handleKeyPress(key)}
-                                    disabled={isEmpty || submitting}
+                                    disabled={isEmpty || submitting || verifyingOld}
                                     activeOpacity={0.6}
                                 >
                                     {isBackspace ? (
-                                        <MaterialCommunityIcons
-                                            name="backspace-outline"
-                                            size={22}
-                                            color={c.textSecondary}
-                                        />
+                                        <MaterialCommunityIcons name="backspace-outline" size={22} color={c.textSecondary} />
                                     ) : (
-                                        <Text style={[styles.numpadKeyText, { color: c.textPrimary }]}>
-                                            {key}
-                                        </Text>
+                                        <Text style={[styles.numpadKeyText, { color: c.textPrimary }]}>{key}</Text>
                                     )}
                                 </TouchableOpacity>
                             );
@@ -363,10 +340,10 @@ export default function PinSetupScreen() {
             {/* Smart OTP Modal */}
             <OTPVerifyModal
                 visible={otpVisible}
-                actionType={OtpActionType.PIN_SETUP}
+                actionType={OtpActionType.PIN_CHANGE}
                 actionData={{}}
                 title="Xác thực Smart OTP"
-                description="Nhập mã OTP để xác nhận tạo mã PIN"
+                description="Nhập mã OTP để xác nhận đổi mã PIN"
                 onSuccess={handleOtpSuccess}
                 onCancel={handleOtpCancel}
             />
@@ -375,10 +352,7 @@ export default function PinSetupScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    // ── Header ─────────────────────────────────────────────────────────────
+    container: { flex: 1 },
     header: {
         paddingBottom: 24,
         paddingHorizontal: 24,
@@ -397,9 +371,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    headerCenter: {
-        alignItems: 'center',
-    },
+    headerCenter: { alignItems: 'center' },
     headerTitle: {
         fontSize: 22,
         fontWeight: '700',
@@ -424,7 +396,6 @@ const styles = StyleSheet.create({
         height: 8,
         borderRadius: 4,
     },
-    // ── PIN dots ────────────────────────────────────────────────────────────
     pinArea: {
         flex: 1,
         justifyContent: 'center',
@@ -440,7 +411,6 @@ const styles = StyleSheet.create({
         borderRadius: 9,
         borderWidth: 2,
     },
-    // ── Numpad ──────────────────────────────────────────────────────────────
     numpad: {
         paddingBottom: Platform.OS === 'ios' ? 36 : 20,
         paddingTop: 16,
@@ -467,7 +437,6 @@ const styles = StyleSheet.create({
         fontSize: 22,
         fontWeight: '600',
     },
-    // ── Success ─────────────────────────────────────────────────────────────
     successWrapper: {
         flex: 1,
         justifyContent: 'center',

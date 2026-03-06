@@ -22,7 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction, PinVerifyModal } from '../../../components';
 import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
@@ -91,6 +91,10 @@ export default function LoanConfirmScreen() {
     const [successData, setSuccessData] = useState<{ entirelyPay: number } | null>(null);
     const successScaleAnim = useRef(new Animated.Value(0)).current;
     const successOpacityAnim = useRef(new Animated.Value(0)).current;
+
+    // PIN verification trước OTP
+    const [showPinVerify, setShowPinVerify] = useState(false);
+    const otpTriggerRef = useRef<(() => void) | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -478,7 +482,7 @@ export default function LoanConfirmScreen() {
                     </CommonCard>
                 )}
 
-                {/* ── Submit (Smart OTP protected) ── */}
+                {/* ── Submit (PIN + Smart OTP protected) ── */}
                 <OTPProtectedAction
                     actionType={OtpActionType.LOAN_CREATE}
                     actionData={{ capital, periodMonth, productId: product.id }}
@@ -488,6 +492,8 @@ export default function LoanConfirmScreen() {
                     description="Nhập mã OTP để xác nhận tạo khoản vay"
                 >
                     {({ trigger, isLoading, isInitialized }) => {
+                        // Lưu trigger ref để gọi sau khi PIN thành công
+                        otpTriggerRef.current = trigger;
                         const handlePress = () => {
                             if (!selectedWallet) {
                                 Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
@@ -502,7 +508,8 @@ export default function LoanConfirmScreen() {
                                 Alert.alert('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
                                 return;
                             }
-                            trigger();
+                            // Bước 1: xác thực PIN trước
+                            setShowPinVerify(true);
                         };
                         const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized;
                         return (
@@ -544,6 +551,20 @@ export default function LoanConfirmScreen() {
                 title={imagePickerDocId ? (documentTypes.find(d => d.id === imagePickerDocId)?.name ?? 'Chọn ảnh') : 'Chọn ảnh'}
                 allowCamera
                 quality={0.85}
+            />
+
+            {/* ── PIN Verify Modal (trước OTP) ── */}
+            <PinVerifyModal
+                visible={showPinVerify}
+                dismissable
+                onCancel={() => setShowPinVerify(false)}
+                onSuccess={() => {
+                    setShowPinVerify(false);
+                    // Bước 2: sau PIN thành công → trigger OTP
+                    setTimeout(() => otpTriggerRef.current?.(), 300);
+                }}
+                title="Xác thực mã PIN"
+                subtitle="Nhập mã PIN trước khi xác nhận khoản vay"
             />
 
             {/* ── Success Modal ── */}

@@ -204,6 +204,19 @@ export default function ProfileScreen() {
                     <SmartOTPSection />
                     <View style={{ height: 12 }} />
                     <TwoFactorSection />
+                    <View style={{ height: 12 }} />
+                    <SettingItem
+                        icon="lock-reset"
+                        title="Đổi mã PIN"
+                        subtitle={user?.hasPin ? 'Thay đổi mã PIN bảo mật' : 'Chưa thiết lập mã PIN'}
+                        onPress={() => {
+                            if (!user?.hasPin) {
+                                Alert.alert('Chưa có mã PIN', 'Bạn cần thiết lập mã PIN trước.');
+                                return;
+                            }
+                            (navigation as any).getParent()?.navigate('PinChange');
+                        }}
+                    />
                 </View>
 
                 <View style={styles.menuSection}>

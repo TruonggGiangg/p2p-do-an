@@ -66,4 +66,34 @@ export class PinService {
     if (!pinHash) return false;
     return bcrypt.compare(pin, pinHash);
   }
+
+  /**
+   * Đổi mã PIN (xác nhận PIN cũ + Smart OTP)
+   */
+  async changePin(userId: string, oldPin: string, newPin: string, sessionId: string): Promise<void> {
+    // 1. Verify old PIN
+    const isOldValid = await this.verifyPin(userId, oldPin);
+    if (!isOldValid) {
+      throw new BadRequestException('Mã PIN cũ không đúng');
+    }
+
+    // 2. Consume verified OTP session
+    const result = await this.smartOtpService.consumeVerifiedSession(userId, sessionId, OtpActionType.PIN_CHANGE);
+    if (!result.valid) {
+      throw new BadRequestException(result.message || 'Xác thực Smart OTP thất bại');
+    }
+
+    // 3. Hash new PIN
+    const hash = await bcrypt.hash(newPin, this.BCRYPT_ROUNDS);
+
+    // 4. Save
+    await this.userModel.findByIdAndUpdate(userId, {
+      $set: {
+        'pin.hash': hash,
+        'pin.setAt': new Date(),
+      },
+    });
+
+    this.logger.log(`[PIN] User ${userId} changed PIN successfully`);
+  }
 }

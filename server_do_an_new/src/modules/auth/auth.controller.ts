@@ -11,7 +11,7 @@ import { PinService } from './services/pin.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { SetupPinDto } from './dto/pin.dto';
+import { SetupPinDto, VerifyPinDto, ChangePinDto } from './dto/pin.dto';
 import { RefreshTokenDto } from './dto/register.dto';
 import { KeycloakUser } from './interfaces/auth.interface';
 import type { UserPayload } from './interfaces/auth.interface';
@@ -166,6 +166,34 @@ export class AuthController {
     if (!user._id) throw new UnauthorizedException();
     await this.pinService.setupPin(user._id, body.pin, body.sessionId);
     return { success: true, message: 'Thiết lập mã PIN thành công' };
+  }
+
+  @Post('pin/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({ summary: 'Xác thực mã PIN' })
+  @ApiResponse({ status: 200, description: 'Kết quả xác thực PIN' })
+  async verifyPin(@CurrentUser() user: UserPayload, @Body() body: VerifyPinDto) {
+    if (!user._id) throw new UnauthorizedException();
+    const valid = await this.pinService.verifyPin(user._id, body.pin);
+    if (!valid) {
+      return { success: false, message: 'Mã PIN không đúng' };
+    }
+    return { success: true, message: 'Xác thực PIN thành công' };
+  }
+
+  @Post('pin/change')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Đổi mã PIN (yêu cầu PIN cũ + Smart OTP)' })
+  @ApiResponse({ status: 200, description: 'Đổi mã PIN thành công' })
+  @ApiResponse({ status: 400, description: 'PIN cũ không đúng hoặc OTP không hợp lệ' })
+  async changePin(@CurrentUser() user: UserPayload, @Body() body: ChangePinDto) {
+    if (!user._id) throw new UnauthorizedException();
+    await this.pinService.changePin(user._id, body.oldPin, body.newPin, body.sessionId);
+    return { success: true, message: 'Đổi mã PIN thành công' };
   }
 
   @Public()
