@@ -4,7 +4,7 @@
  *  - Gate khi vào tab BNPL / Loan (1 lần/phiên)
  *  - Xác thực trước Smart OTP khi tạo khoản vay
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import {
     View,
     Text,
@@ -77,9 +77,17 @@ export function PinVerifyModal({
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
-    const stableTopRef = useRef(FALLBACK_TOP);
-    if (insets.top > 0) stableTopRef.current = insets.top;
-    const stableTop = stableTopRef.current;
+    const cachedTopInset = useRef<number>(FALLBACK_TOP);
+    const [ready, setReady] = useState(false);
+
+    useLayoutEffect(() => {
+        if (insets.top > 0 && !ready) {
+            cachedTopInset.current = insets.top;
+            setReady(true);
+        }
+    }, [insets.top, ready]);
+
+    const stableTop = cachedTopInset.current;
 
     const triggerShake = useCallback(() => {
         Vibration.vibrate(400);

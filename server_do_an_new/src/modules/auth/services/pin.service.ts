@@ -62,7 +62,7 @@ export class PinService {
    */
   async verifyPin(userId: string, pin: string): Promise<boolean> {
     const user = await this.userModel.findById(userId).select('pin').lean();
-    const pinHash = (user as any)?.pin?.hash;
+    const pinHash = user?.pin?.hash;
     if (!pinHash) return false;
     return bcrypt.compare(pin, pinHash);
   }
