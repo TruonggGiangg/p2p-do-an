@@ -12,7 +12,7 @@ import { AdminModule } from '../admin/admin.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { UsersModule } from '../users/users.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
-import { DigitalSignatureModule } from '../digital-signature/digital-signature.module';
+import { SmartCAModule } from '../digital-signature/smartca.module';
 
 @Module({
   imports: [
@@ -26,7 +26,7 @@ import { DigitalSignatureModule } from '../digital-signature/digital-signature.m
     WalletsModule,
     UsersModule,
     SmartOtpModule,
-    DigitalSignatureModule,
+    SmartCAModule,
   ],
   controllers: [LoanController],
   providers: [LoanService, RepaymentService, ContractService],

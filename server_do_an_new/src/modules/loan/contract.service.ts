@@ -6,7 +6,7 @@ import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 import { generateLoanContractHTML } from './templates/loan-contract.template';
-import { DigitalSignatureService } from '../digital-signature/digital-signature.service';
+import { SmartCAService } from '../digital-signature/smartca.service';
 
 @Injectable()
 export class ContractService {
@@ -17,7 +17,7 @@ export class ContractService {
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(User.name) private userModel: Model<User>,
-    @Optional() private digitalSignatureService?: DigitalSignatureService,
+    @Optional() private readonly smartCAService: SmartCAService,
   ) {}
 
   /**
@@ -217,32 +217,32 @@ export class ContractService {
    * Ký hợp đồng bằng chữ ký số VNPT SmartCA (Cách 2 — embedded SDK)
    * Flow: Server tạo phiên ký → trả thông tin cho client → client mở SDK → confirm kết quả
    */
-  async initiateSmartCaSigning(
-    contractId: string,
-    userId: string,
-    options?: { clientIp?: string; userAgent?: string },
-  ): Promise<{
-    signatureId: string;
-    transactionId: string;
-    signingSessionId: string;
-    credentialId: string;
-    expiresAt: Date;
-  }> {
-    if (!this.digitalSignatureService) {
-      throw new BadRequestException('Dịch vụ ký số chưa được cấu hình');
-    }
-    return this.digitalSignatureService.initiateSigningRequest(contractId, userId, options);
-  }
+  // async initiateSmartCaSigning(
+  //   contractId: string,
+  //   userId: string,
+  //   options?: { clientIp?: string; userAgent?: string },
+  // ): Promise<{
+  //   signatureId: string;
+  //   transactionId: string;
+  //   signingSessionId: string;
+  //   credentialId: string;
+  //   expiresAt: Date;
+  // }> {
+  //   if (!this.smartCAService) {
+  //     throw new BadRequestException('Dịch vụ ký số chưa được cấu hình');
+  //   }
+  //   return this.smartCAService.initiateSigningRequest(contractId, userId, options);
+  // }
 
   /**
    * Lấy trạng thái chữ ký số của hợp đồng
    */
-  async getContractSignatureInfo(contractCode: string, userId: string) {
-    if (!this.digitalSignatureService) {
-      return null;
-    }
-    return this.digitalSignatureService.getSignatureByContract(contractCode, userId);
-  }
+  // async getContractSignatureInfo(contractCode: string, userId: string) {
+  //   if (!this.smartCAService) {
+  //     return null;
+  //   }
+  //   return this.smartCAService.getSignatureByContract(contractCode, userId);
+  // }
 
   /**
    * Sinh HTML hợp đồng (dùng cho hiển thị trên client hoặc xuất PDF)

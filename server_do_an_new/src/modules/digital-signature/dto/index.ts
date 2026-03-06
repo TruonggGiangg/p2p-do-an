@@ -1,2 +1,2 @@
-export { InitiateSigningDto } from './initiate-signing.dto';
+export { PreparePDFDto } from './prepare-pdf.dto';
 export { SmartCaCallbackDto } from './smartca-callback.dto';

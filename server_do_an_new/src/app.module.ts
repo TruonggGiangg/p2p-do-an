@@ -15,13 +15,13 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SmartOtpModule } from './modules/smart-otp/smart-otp.module';
 import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { EkycModule } from './modules/ekyc/ekyc.module';
-import { DigitalSignatureModule } from './modules/digital-signature/digital-signature.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
 import { validate } from './config/validation';
+import { SmartCAModule } from './modules/digital-signature/smartca.module';
 
 @Module({
   imports: [
@@ -58,8 +58,8 @@ import { validate } from './config/validation';
     SmartOtpModule,
     TwoFactorModule,
     EkycModule,
-    DigitalSignatureModule,
     ActivityLogModule,
+    SmartCAModule,
   ],
 
   controllers: [AppController],
