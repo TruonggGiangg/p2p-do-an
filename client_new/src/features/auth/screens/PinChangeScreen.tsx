@@ -273,7 +273,10 @@ export default function PinChangeScreen() {
                 </View>
                 <Text style={styles.headerTitle}>{titleByStep[step]}</Text>
                 <Text style={styles.headerSub}>{subtitleByStep[step]}</Text>
+            </LinearGradient>
 
+            {/* PIN dots */}
+            <View style={styles.pinArea}>
                 {/* Step indicator */}
                 <View style={styles.stepRow}>
                     {['oldPin', 'newPin', 'confirmPin'].map((s, i) => (
@@ -282,17 +285,14 @@ export default function PinChangeScreen() {
                             style={[
                                 styles.stepDot,
                                 {
-                                    backgroundColor: i <= stepIndex ? '#000' : 'rgba(0,0,0,0.3)',
+                                    backgroundColor: i <= stepIndex ? c.primary : c.border,
                                     width: step === s ? 24 : 8,
                                 },
                             ]}
                         />
                     ))}
                 </View>
-            </LinearGradient>
 
-            {/* PIN dots */}
-            <View style={styles.pinArea}>
                 <View style={styles.dotsRow}>
                     {Array.from({ length: PIN_LENGTH }).map((_, i) => (
                         <PinDot key={i} filled={i < currentPin.length} shake={shakeAnim} theme={theme} />
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        marginTop: 16,
+        marginBottom: 32,
     },
     stepDot: {
         height: 8,
