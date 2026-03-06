@@ -9,6 +9,7 @@ import {
     StyleSheet,
     TouchableOpacity,
     Animated,
+    ActivityIndicator,
     Alert,
     Platform,
     StatusBar,
@@ -74,6 +75,7 @@ export default function PinChangeScreen() {
     const [otpVisible, setOtpVisible] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [verifyingOld, setVerifyingOld] = useState(false);
+    const [error, setError] = useState('');
 
     const shakeAnim = useRef(new Animated.Value(0)).current;
     const successScale = useRef(new Animated.Value(0)).current;
@@ -97,23 +99,21 @@ export default function PinChangeScreen() {
 
     const verifyOldPin = useCallback(async (pin: string) => {
         setVerifyingOld(true);
+        setError('');
         try {
             const res = await pinAPI.verifyPin(pin);
             if (res.success) {
+                setError('');
                 setTimeout(() => setStep('newPin'), 200);
             } else {
                 triggerShake();
-                setTimeout(() => {
-                    setOldPin('');
-                    Alert.alert('Mã PIN không đúng', 'Vui lòng nhập lại mã PIN hiện tại.', [{ text: 'Thử lại' }]);
-                }, 300);
+                setError('Mã PIN không đúng');
+                setTimeout(() => setOldPin(''), 300);
             }
         } catch {
             triggerShake();
-            setTimeout(() => {
-                setOldPin('');
-                Alert.alert('Mã PIN không đúng', 'Vui lòng nhập lại mã PIN hiện tại.', [{ text: 'Thử lại' }]);
-            }, 300);
+            setError('Mã PIN không đúng');
+            setTimeout(() => setOldPin(''), 300);
         } finally {
             setVerifyingOld(false);
         }
@@ -122,6 +122,7 @@ export default function PinChangeScreen() {
     const handleKeyPress = useCallback(
         (key: string) => {
             if (step === 'otp' || step === 'success' || verifyingOld) return;
+            setError('');
 
             if (key === '⌫') {
                 if (step === 'oldPin') setOldPin((p) => p.slice(0, -1));
@@ -152,10 +153,8 @@ export default function PinChangeScreen() {
                 if (next.length === PIN_LENGTH) {
                     if (next !== newPin) {
                         triggerShake();
-                        setTimeout(() => {
-                            setConfirmPin('');
-                            Alert.alert('Mã PIN không khớp', 'Mã PIN xác nhận không đúng. Vui lòng nhập lại.', [{ text: 'Thử lại' }]);
-                        }, 300);
+                        setError('Mã PIN không khớp');
+                        setTimeout(() => setConfirmPin(''), 300);
                     } else {
                         setTimeout(() => setOtpVisible(true), 200);
                     }
@@ -166,6 +165,7 @@ export default function PinChangeScreen() {
     );
 
     const handleBack = useCallback(() => {
+        setError('');
         if (step === 'newPin') {
             setStep('oldPin');
             setOldPin('');
@@ -298,6 +298,8 @@ export default function PinChangeScreen() {
                         <PinDot key={i} filled={i < currentPin.length} shake={shakeAnim} theme={theme} />
                     ))}
                 </View>
+                {error ? <Text style={[styles.errorText, { color: c.error }]}>{error}</Text> : null}
+                {verifyingOld ? <ActivityIndicator color={c.primary} style={{ marginTop: 16 }} /> : null}
             </View>
 
             {/* Numpad */}
@@ -410,6 +412,11 @@ const styles = StyleSheet.create({
         height: 18,
         borderRadius: 9,
         borderWidth: 2,
+    },
+    errorText: {
+        marginTop: 16,
+        fontSize: 14,
+        fontWeight: '500',
     },
     numpad: {
         paddingBottom: Platform.OS === 'ios' ? 36 : 20,

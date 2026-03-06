@@ -4,7 +4,7 @@
  *  - Gate khi vào tab BNPL / Loan (1 lần/phiên)
  *  - Xác thực trước Smart OTP khi tạo khoản vay
  */
-import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import {
     View,
     Text,
@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { pinAPI } from '../../features/auth/api/pin.api';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 const NUMPAD_KEYS = [
     ['1', '2', '3'],
@@ -88,6 +89,54 @@ export function PinVerifyModal({
     }, [insets.top, ready]);
 
     const stableTop = cachedTopInset.current;
+
+    // ── Biometric ──
+    const [biometricAvailable, setBiometricAvailable] = useState(false);
+    const [biometricType, setBiometricType] = useState<'fingerprint' | 'facial'>('fingerprint');
+    const biometricPrompted = useRef(false);
+    const onSuccessRef = useRef(onSuccess);
+    onSuccessRef.current = onSuccess;
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const compatible = await LocalAuthentication.hasHardwareAsync();
+                const enrolled = await LocalAuthentication.isEnrolledAsync();
+                if (compatible && enrolled) {
+                    setBiometricAvailable(true);
+                    const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+                    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                        setBiometricType('facial');
+                    }
+                }
+            } catch { }
+        })();
+    }, []);
+
+    const handleBiometricAuth = useCallback(async () => {
+        try {
+            const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Xác thực để tiếp tục',
+                cancelLabel: 'Huỷ',
+                disableDeviceFallback: true,
+            });
+            if (result.success) {
+                setPin('');
+                setError('');
+                onSuccessRef.current();
+            }
+        } catch { }
+    }, []);
+
+    useEffect(() => {
+        if (visible && biometricAvailable && !biometricPrompted.current) {
+            biometricPrompted.current = true;
+            handleBiometricAuth();
+        }
+        if (!visible) {
+            biometricPrompted.current = false;
+        }
+    }, [visible, biometricAvailable, handleBiometricAuth]);
 
     const triggerShake = useCallback(() => {
         Vibration.vibrate(400);
@@ -187,6 +236,18 @@ export function PinVerifyModal({
                     </View>
                     {error ? <Text style={[styles.errorText, { color: c.error }]}>{error}</Text> : null}
                     {verifying ? <ActivityIndicator color={c.primary} style={{ marginTop: 16 }} /> : null}
+                    {biometricAvailable && (
+                        <TouchableOpacity onPress={handleBiometricAuth} style={styles.biometricBtn} activeOpacity={0.7}>
+                            <MaterialCommunityIcons
+                                name={biometricType === 'facial' ? 'face-recognition' : 'fingerprint'}
+                                size={36}
+                                color={c.primary}
+                            />
+                            <Text style={[styles.biometricText, { color: c.primary }]}>
+                                {biometricType === 'facial' ? 'Xác thực bằng Face ID' : 'Xác thực bằng vân tay'}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Numpad */}
@@ -290,6 +351,16 @@ const styles = StyleSheet.create({
         marginTop: 16,
         fontSize: 14,
         fontWeight: '500',
+    },
+    biometricBtn: {
+        alignItems: 'center',
+        marginTop: 28,
+        paddingVertical: 8,
+    },
+    biometricText: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginTop: 8,
     },
     numpad: {
         paddingBottom: Platform.OS === 'ios' ? 36 : 20,
