@@ -221,7 +221,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
             {/* Header */}
             <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
               <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <MaterialCommunityIcons name="shield-checkmark" size={28} color="#fff" />
+                <MaterialCommunityIcons name="shield-check" size={28} color="#fff" />
               </View>
               <View style={styles.headerTextContainer}>
                 <Text style={styles.title}>{title}</Text>
@@ -241,14 +241,21 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
             </View>
 
             <View style={[styles.body, { backgroundColor: theme.colors.surface }]}>
-              {generatedOTP && (
+              {generatedOTP ? (
                 <View style={[styles.autoFillBadge, { backgroundColor: theme.colors.primary + '15' }]}>
                   <MaterialCommunityIcons name="flash" size={12} color={theme.colors.primary} />
                   <Text style={[styles.autoFillText, { color: theme.colors.primary }]}>
                     Đã tự động điền mã OTP
                   </Text>
                 </View>
-              )}
+              ) : isRegistered ? (
+                <View style={[styles.autoFillBadge, { backgroundColor: theme.colors.warning + '15' }]}>
+                  <ActivityIndicator size="small" color={theme.colors.warning} style={{ marginRight: 6 }} />
+                  <Text style={[styles.autoFillText, { color: theme.colors.warning }]}>
+                    Đang tạo mã OTP...
+                  </Text>
+                </View>
+              ) : null}
 
               <Text style={[styles.actionLabel, { color: theme.colors.textMuted }]}>
                 Xác nhận {actionTitle}
@@ -258,7 +265,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
                 {otpInput.map((digit, index) => (
                   <TextInput
                     key={index}
-                    ref={(r) => (inputRefs.current[index] = r)}
+                    ref={(r) => { inputRefs.current[index] = r; }}
                     style={[
                       styles.otpInput,
                       { borderColor: theme.colors.border, color: theme.colors.textPrimary },
@@ -340,9 +347,16 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
 
               {!isRegistered && (
                 <View style={styles.warningBox}>
-                  <Text style={[styles.warningText, { color: theme.colors.error }]}>
-                    Bạn chưa kích hoạt Smart OTP
+                  <Text style={[styles.warningText, { color: theme.colors.error, marginBottom: 12 }]}>
+                    Bạn chưa kích hoạt Smart OTP trên thiết bị này
                   </Text>
+                  <TouchableOpacity
+                    style={[styles.registerNowBtn, { backgroundColor: theme.colors.primary }]}
+                    onPress={() => requestOTPSession(actionType, actionData)} // or just re-init
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.registerNowText}>Kích hoạt ngay</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -522,5 +536,16 @@ const styles = StyleSheet.create({
   },
   warningText: {
     fontSize: 12,
+    textAlign: 'center',
+  },
+  registerNowBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+  },
+  registerNowText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });

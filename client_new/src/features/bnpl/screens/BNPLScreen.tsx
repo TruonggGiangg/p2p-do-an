@@ -117,7 +117,8 @@ export default function BNPLScreen() {
     }, []);
 
     const fetchData = async () => {
-        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
+        const MIN_DISPLAY_MS = 1700;
+        const minDelay = new Promise(resolve => setTimeout(resolve, MIN_DISPLAY_MS));
         try {
             await Promise.all([
                 minDelay,
@@ -339,7 +340,7 @@ export default function BNPLScreen() {
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <BinanceHeader title="Ví Trả Sau (BNPL)" />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <VentoUltimateLoading size={200} />
+                    <VentoUltimateLoading size={110} />
                 </View>
             </View>
         );

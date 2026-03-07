@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,13 +16,18 @@ import ProfileScreen from '../features/profile/screens/ProfileScreen';
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
     return function PinGatedScreen(props: P) {
         const { pinVerified, markPinVerified } = usePin();
+        const navigation = useNavigation<any>();
+        const isFocused = useIsFocused();
 
         if (!pinVerified) {
             return (
                 <PinVerifyModal
-                    visible
-                    dismissable={false}
+                    visible={isFocused}
+                    dismissable={true}
                     onSuccess={markPinVerified}
+                    onCancel={() => {
+                        navigation.navigate('Home');
+                    }}
                     title="Xác thực mã PIN"
                     subtitle="Nhập mã PIN để truy cập tính năng này"
                 />

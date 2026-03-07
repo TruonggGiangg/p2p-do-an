@@ -28,8 +28,8 @@ import VentoUltimateLoading from './VentoSVGLoading';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const REFRESH_THRESHOLD = 55;
-const HEADER_HEIGHT = 150;
-const REFRESH_SHOW_HEIGHT = 100;
+const HEADER_HEIGHT = 160;
+const REFRESH_TRIGGER = 100;
 
 // Vùng cho phép kéo: scrollY <= này mới nhận pull. Đủ lớn để lần kéo thứ 2+ vẫn hoạt động
 const PULL_ZONE_THRESHOLD = 80;
@@ -161,7 +161,8 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         }
     );
 
-    const MIN_DISPLAY_MS = 350; // Giảm để kéo lại ngay sau refresh, không phải đợi lâu
+    const MIN_DISPLAY_MS = 1700; // Đã đồng bộ với Home (1.7s)
+    // Giảm để kéo lại ngay sau refresh, không phải đợi lâu
 
     useEffect(() => {
         if (refreshing) {
@@ -173,7 +174,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             isRefreshingValue.value = true;
             setIsRefreshingUI(true);
             setShowParticles(true);
-            translationY.value = withSpring(REFRESH_SHOW_HEIGHT, {
+            translationY.value = withSpring(REFRESH_TRIGGER, {
                 damping: 18,
                 stiffness: 130,
                 mass: 0.7,
@@ -314,7 +315,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             if (isRefreshingValue.value) return;
 
             if (translationY.value >= REFRESH_THRESHOLD) {
-                translationY.value = withSpring(REFRESH_SHOW_HEIGHT, {
+                translationY.value = withSpring(REFRESH_TRIGGER, {
                     damping: 16,
                     stiffness: 140,
                     mass: 0.8,
@@ -442,14 +443,14 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             >
                 <View style={styles.indicatorWrapper}>
                     <VentoUltimateLoading
-                        size={100}
+                        size={110}
                         staggerScale={0.4}
                         strokeWidth={9}
                         showLabel={false}
                         progress={pullProgress}
                         isRefreshing={isRefreshingUI}
-                        primaryColor={activePrimary}
-                        glowColor={activeGlow}
+                        primaryColor={primaryColor}
+                        glowColor={glowColor}
                     />
                     {renderParticles()}
                 </View>

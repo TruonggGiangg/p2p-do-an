@@ -60,7 +60,8 @@ export default function LoanScreen() {
     const [loadingLoans, setLoadingLoans] = useState(false);
 
     const fetchProducts = async () => {
-        const minDelay = new Promise(resolve => setTimeout(resolve, 300));
+        const MIN_DISPLAY_MS = 1700; // Đã đồng bộ với Home (1.7s)
+        const minDelay = new Promise(resolve => setTimeout(resolve, MIN_DISPLAY_MS));
         try {
             const [data] = await Promise.all([
                 loanService.getLoanProducts(),
@@ -165,7 +166,11 @@ export default function LoanScreen() {
 
                 {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
-                        <VentoUltimateLoading size={200} />
+                        <VentoUltimateLoading
+                            size={110}
+                            primaryColor="#F0B90B"
+                            glowColor="rgba(240, 185, 11, 0.3)"
+                        />
                     </View>
                 ) : (
                     <FlatList

@@ -19,6 +19,7 @@ import {
     Platform,
     StatusBar,
     Vibration,
+    ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,6 +29,8 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { OTPVerifyModal } from '../../../components';
 import { pinAPI } from '../api/pin.api';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { useSmartOTP } from '../../../shared/hooks';
 import { OtpActionType } from '../../../types/otp.types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
@@ -79,6 +82,7 @@ export default function PinSetupScreen() {
             setReady(true);
         }
     }, [insets.top, ready]);
+    const { isRegistered, registerDevice, isLoading: isOtpLoading } = useSmartOTP();
     const stableTop = cachedTopInset.current;
 
     const [step, setStep] = useState<Step>('enter');
@@ -206,6 +210,36 @@ export default function PinSetupScreen() {
         navigation.replace('Main');
     }, [navigation]);
 
+    const [biometricSupported, setBiometricSupported] = useState(false);
+    useEffect(() => {
+        if (step === 'success') {
+            LocalAuthentication.hasHardwareAsync().then(hasHardware => {
+                LocalAuthentication.isEnrolledAsync().then(hasEnrolled => {
+                    setBiometricSupported(hasHardware && hasEnrolled);
+                });
+            });
+        }
+    }, [step]);
+
+    const handleEnableBiometric = async () => {
+        try {
+            const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Xác thực để kích hoạt FaceID/Vân tay',
+                disableDeviceFallback: true,
+            });
+            if (result.success) {
+                Alert.alert('Thành công', 'Đã kích hoạt xác thực sinh trắc học.');
+                handleSuccessDone();
+            } else {
+                if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
+                    Alert.alert('Lỗi xác thực', `Không thể xác thực: ${result.error}`);
+                }
+            }
+        } catch (e: any) {
+            Alert.alert('Lỗi hệ thống', `Không thể khởi động FaceID: ${e.message}`);
+        }
+    };
+
     // ── Render ────────────────────────────────────────────────────────────────
 
     const titleByStep: Record<Step, string> = {
@@ -221,6 +255,68 @@ export default function PinSetupScreen() {
         otp: '',
         success: '',
     };
+
+    if (!isRegistered && step !== 'success') {
+        return (
+            <View style={[styles.container, { backgroundColor: c.background }]}>
+                <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
+                <LinearGradient
+                    colors={[c.primary, c.primaryDark ?? c.primary]}
+                    style={[styles.header, { paddingTop: stableTop + 10 }]}
+                >
+                    <View style={styles.headerRow}>
+                        <View style={styles.backBtn} />
+                        <View style={styles.headerCenter}>
+                            <MaterialCommunityIcons name="shield-alert" size={32} color="#000" />
+                        </View>
+                        <View style={styles.backBtn} />
+                    </View>
+                    <Text style={styles.headerTitle}>Kích hoạt Smart OTP</Text>
+                    <Text style={styles.headerSub}>
+                        Bạn cần kích hoạt Smart OTP trên thiết bị này trước khi thiết lập mã PIN để bảo vệ tài khoản.
+                    </Text>
+                </LinearGradient>
+
+                <View style={styles.activateContainer}>
+                    <View style={[styles.activateIconBg, { backgroundColor: c.primary + '15' }]}>
+                        <MaterialCommunityIcons name="cellphone-key" size={80} color={c.primary} />
+                    </View>
+
+                    <View style={styles.featureList}>
+                        <View style={styles.featureItem}>
+                            <MaterialCommunityIcons name="check-circle" size={20} color={c.success} />
+                            <Text style={[styles.featureText, { color: c.textSecondary }]}>Xác thực giao dịch an toàn</Text>
+                        </View>
+                        <View style={styles.featureItem}>
+                            <MaterialCommunityIcons name="check-circle" size={20} color={c.success} />
+                            <Text style={[styles.featureText, { color: c.textSecondary }]}>Không cần chờ tin nhắn SMS</Text>
+                        </View>
+                        <View style={styles.featureItem}>
+                            <MaterialCommunityIcons name="check-circle" size={20} color={c.success} />
+                            <Text style={[styles.featureText, { color: c.textSecondary }]}>Bảo mật đa tầng bằng thiết bị</Text>
+                        </View>
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={() => registerDevice()}
+                        style={[styles.activateBtn, { backgroundColor: c.primary }]}
+                        disabled={isOtpLoading}
+                        activeOpacity={0.85}
+                    >
+                        {isOtpLoading ? (
+                            <ActivityIndicator color="#000" />
+                        ) : (
+                            <Text style={styles.activateBtnText}>Kích hoạt ngay</Text>
+                        )}
+                    </TouchableOpacity>
+
+                    <Text style={[styles.activateNote, { color: c.textDim }]}>
+                        Thiết bị của bạn sẽ được định danh để xác thực các giao dịch sau này.
+                    </Text>
+                </View>
+            </View>
+        );
+    }
 
     if (step === 'success') {
         return (
@@ -252,6 +348,16 @@ export default function PinSetupScreen() {
                     >
                         <Text style={styles.doneBtnText}>Bắt đầu sử dụng</Text>
                     </TouchableOpacity>
+
+                    {biometricSupported && (
+                        <TouchableOpacity
+                            onPress={handleEnableBiometric}
+                            style={[styles.biometricSetupBtn, { marginTop: 16 }]}
+                        >
+                            <MaterialCommunityIcons name="face-recognition" size={20} color={c.primary} />
+                            <Text style={[styles.biometricSetupText, { color: c.primary }]}>Sử dụng FaceID/Vân tay lần sau</Text>
+                        </TouchableOpacity>
+                    )}
                 </Animated.View>
             </View>
         );
@@ -503,5 +609,61 @@ const styles = StyleSheet.create({
         color: '#000',
         fontSize: 16,
         fontWeight: '700',
+    },
+    // ── Activate UI ──────────────────────────────────────────────────────────
+    activateContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 32,
+    },
+    activateIconBg: {
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    featureList: {
+        width: '100%',
+        marginBottom: 40,
+        gap: 12,
+    },
+    featureItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    featureText: {
+        fontSize: 15,
+    },
+    activateBtn: {
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    activateBtnText: {
+        color: '#000',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    activateNote: {
+        fontSize: 12,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    biometricSetupBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 8,
+    },
+    biometricSetupText: {
+        fontSize: 14,
+        fontWeight: '500',
     },
 });

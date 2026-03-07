@@ -16,6 +16,7 @@ import {
     StatusBar,
     Vibration,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -124,18 +125,30 @@ export function PinVerifyModal({
                 setPin('');
                 setError('');
                 onSuccessRef.current();
+            } else {
+                // For debugging: show reason if it's not a user cancel
+                if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
+                    Alert.alert('Lỗi xác thực', `FaceID không thành công: ${result.error}`);
+                }
             }
-        } catch { }
+        } catch (e: any) {
+            Alert.alert('Lỗi hệ thống', `Không thể khởi động FaceID: ${e.message}`);
+        }
     }, []);
 
     useEffect(() => {
+        let timeout: NodeJS.Timeout;
         if (visible && biometricAvailable && !biometricPrompted.current) {
             biometricPrompted.current = true;
-            handleBiometricAuth();
+            // On iOS, we want it to be immediate but after the modal slide animation starts to feel native
+            timeout = setTimeout(() => {
+                handleBiometricAuth();
+            }, Platform.OS === 'ios' ? 250 : 500);
         }
         if (!visible) {
             biometricPrompted.current = false;
         }
+        return () => timeout && clearTimeout(timeout);
     }, [visible, biometricAvailable, handleBiometricAuth]);
 
     const triggerShake = useCallback(() => {
@@ -211,13 +224,9 @@ export function PinVerifyModal({
                     style={[styles.header, { paddingTop: stableTop + 10 }]}
                 >
                     <View style={styles.headerRow}>
-                        {dismissable ? (
-                            <TouchableOpacity onPress={handleClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <MaterialCommunityIcons name="close" size={24} color="#000" />
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={styles.backBtn} />
-                        )}
+                        <TouchableOpacity onPress={handleClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+                        </TouchableOpacity>
                         <View style={styles.headerCenter}>
                             <MaterialCommunityIcons name="shield-lock" size={32} color="#000" />
                         </View>

@@ -41,6 +41,12 @@
           "photosPermission": "Cho phép ứng dụng truy cập thư viện ảnh của bạn.",
           "cameraPermission": "Cho phép ứng dụng sử dụng camera."
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Cho phép ứng dụng sử dụng FaceID để xác thực bảo mật."
+        }
       ]
     ]
   }
