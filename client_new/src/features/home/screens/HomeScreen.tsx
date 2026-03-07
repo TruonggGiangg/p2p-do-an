@@ -207,7 +207,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    loadingWrap: { marginTop: 100, alignItems: 'center' },
     scrollContent: { paddingTop: 4 },
     section: { paddingHorizontal: 16, marginTop: 20 },
     portfolioCard: { padding: 20 },

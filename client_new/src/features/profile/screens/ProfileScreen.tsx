@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, RefreshControl, Platform, Dimensions, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, RoleBadges, CommonCard, CommonButton, FintechPullToRefresh } from '../../../components';
-import { SmartOTPSection, TwoFactorSection } from '../components';
+import { BinanceHeader, RoleBadges, CommonCard, CommonButton, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
+import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
 export default function ProfileScreen() {
@@ -15,7 +15,17 @@ export default function ProfileScreen() {
     const { theme, themeMode, toggleTheme, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const isDark = themeMode === 'dark';
 
+    const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    useEffect(() => {
+        const init = async () => {
+            const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
+            await minDelay;
+            setLoading(false);
+        };
+        init();
+    }, []);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -74,176 +84,178 @@ export default function ProfileScreen() {
                 onRefresh={onRefresh}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
+                primaryColor={theme.colors.primary}
+                glowColor={theme.colors.primaryLight}
             >
-                {/* User Info Header Section */}
-                <View style={styles.userInfoSection}>
-                    <CommonCard style={styles.profileCard}>
-                        <View style={styles.profileHeaderContent}>
-                            <View style={styles.avatarWrapper}>
-                                <View style={[styles.avatar, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
-                                    <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
-                                </View>
-                                <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success }]}>
-                                    <MaterialCommunityIcons name="check-decagram" size={14} color="#000" />
-                                </View>
-                            </View>
+                {loading && !refreshing ? (
+                    <View style={styles.loadingContainer}>
+                        <VentoUltimateLoading
+                            size={110}
+                            primaryColor="#F0B90B"
+                            glowColor="rgba(240, 185, 11, 0.3)"
+                        />
+                    </View>
+                ) : (
+                    <>
+                        {/* User Info Header Section */}
+                        <View style={styles.userInfoSection}>
+                            <CommonCard style={styles.profileCard}>
+                                <View style={styles.profileHeaderContent}>
+                                    <View style={styles.avatarWrapper}>
+                                        <View style={[styles.avatar, { backgroundColor: theme.colors.backgroundSecondary || '#2b3139' }]}>
+                                            <Text style={[styles.avatarText, { color: theme.colors.primary }]}>{initials}</Text>
+                                        </View>
+                                        <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success }]}>
+                                            <MaterialCommunityIcons name="check-decagram" size={14} color="#000" />
+                                        </View>
+                                    </View>
 
-                            <View style={styles.userBaseInfo}>
-                                <View style={styles.nameRow}>
-                                    <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{displayName}</Text>
-                                    <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-                                        <Text style={[styles.levelText, { color: theme.colors.primary }]}>VIP 1</Text>
+                                    <View style={styles.userBaseInfo}>
+                                        <View style={styles.nameRow}>
+                                            <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{displayName}</Text>
+                                            <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+                                                <Text style={[styles.levelText, { color: theme.colors.primary }]}>VIP 1</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={[styles.userUid, { color: theme.colors.textSecondary }]}>UID: {uid}</Text>
                                     </View>
                                 </View>
-                                <Text style={[styles.userUid, { color: theme.colors.textSecondary }]}>UID: {uid}</Text>
-                            </View>
+
+                                {/* Role Badges simplified inside card */}
+                                <View style={styles.badgesInCard}>
+                                    <RoleBadges roles={user?.roles || []} />
+                                </View>
+                            </CommonCard>
                         </View>
 
-                        {/* Role Badges simplified inside card */}
-                        <View style={styles.badgesInCard}>
-                            <RoleBadges roles={user?.roles || []} />
+                        <View style={[styles.divider, { backgroundColor: theme.colors.border + '20' }]} />
+
+                        {/* Settings Sections */}
+                        <View style={styles.menuSection}>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>LOAN</Text>
+                            <SettingItem
+                                icon="history"
+                                title="Lịch sử khoản vay"
+                                subtitle="Xem các khoản vay của bạn"
+                                onPress={() => (navigation as any).getParent()?.navigate('LoanHistory')}
+                            />
                         </View>
-                    </CommonCard>
-                </View>
 
-                <View style={[styles.divider, { backgroundColor: theme.colors.border + '20' }]} />
+                        <View style={styles.menuSection}>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>PREFERENCES</Text>
 
-                {/* Settings Sections */}
-                <View style={styles.menuSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>LOAN</Text>
-                    <SettingItem
-                        icon="history"
-                        title="Lịch sử khoản vay"
-                        subtitle="Xem các khoản vay của bạn"
-                        onPress={() => (navigation as any).getParent()?.navigate('LoanHistory')}
-                    />
-                </View>
+                            <SettingItem
+                                icon={isDark ? 'weather-night' : 'weather-sunny'}
+                                title="Appearance"
+                                subtitle={isDark ? 'Dark Mode' : 'Light Mode'}
+                                onPressWithEvent={(e: any) => {
+                                    if (Platform.OS === 'web' && e?.nativeEvent) {
+                                        const ne = e.nativeEvent as { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
+                                        toggleThemeWithTransition({
+                                            clientX: ne.clientX ?? ne.pageX,
+                                            clientY: ne.clientY ?? ne.pageY,
+                                            nativeEvent: e.nativeEvent,
+                                        });
+                                    } else {
+                                        const ne = e?.nativeEvent as { pageX?: number; pageY?: number; locationX?: number; locationY?: number };
+                                        const { width, height } = Dimensions.get('window');
+                                        const x = ne?.pageX ?? ne?.locationX ?? width / 2;
+                                        const y = ne?.pageY ?? ne?.locationY ?? height / 2;
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        toggleThemeWithOverlay(x, y);
+                                    }
+                                }}
+                                rightElement={
+                                    <View pointerEvents="none">
+                                        <Switch
+                                            value={isDark}
+                                            trackColor={{
+                                                false: theme.colors.border,
+                                                true: theme.colors.primary + '80',
+                                            }}
+                                            thumbColor={isDark ? theme.colors.primary : '#fff'}
+                                        />
+                                    </View>
+                                }
+                            />
 
-                <View style={styles.menuSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>PREFERENCES</Text>
+                            <SettingItem
+                                icon="earth"
+                                title="Language"
+                                subtitle="Tiếng Việt (Vietnam)"
+                            />
+                        </View>
 
-                    <SettingItem
-                        icon={isDark ? 'weather-night' : 'weather-sunny'}
-                        title="Appearance"
-                        subtitle={isDark ? 'Dark Mode' : 'Light Mode'}
-                        onPressWithEvent={(e: any) => {
-                            if (Platform.OS === 'web' && e?.nativeEvent) {
-                                const ne = e.nativeEvent as { clientX?: number; clientY?: number; pageX?: number; pageY?: number };
-                                toggleThemeWithTransition({
-                                    clientX: ne.clientX ?? ne.pageX,
-                                    clientY: ne.clientY ?? ne.pageY,
-                                    nativeEvent: e.nativeEvent,
-                                });
-                            } else {
-                                const ne = e?.nativeEvent as { pageX?: number; pageY?: number; locationX?: number; locationY?: number };
-                                const { width, height } = Dimensions.get('window');
-                                const x = ne?.pageX ?? ne?.locationX ?? width / 2;
-                                const y = ne?.pageY ?? ne?.locationY ?? height / 2;
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                toggleThemeWithOverlay(x, y);
-                            }
-                        }}
-                        rightElement={
-                            <View pointerEvents="none">
-                                <Switch
-                                    value={isDark}
-                                    trackColor={{
-                                        false: theme.colors.border,
-                                        true: theme.colors.primary + '80',
-                                    }}
-                                    thumbColor={isDark ? theme.colors.primary : '#fff'}
-                                />
-                            </View>
-                        }
-                    />
+                        <View style={styles.menuSection}>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SECURITY</Text>
+                            <SettingItem
+                                icon="shield-check-outline"
+                                title="Xác minh danh tính"
+                                subtitle={
+                                    (user as any)?.kycStatus === 'VERIFIED'
+                                        ? 'Đã xác minh (eKYC)'
+                                        : (user as any)?.kycStatus === 'PENDING'
+                                            ? 'Đang chờ phê duyệt'
+                                            : 'Chưa xác minh'
+                                }
+                                onPress={() => {
+                                    const status = (user as any)?.kycStatus;
+                                    if (status === 'PENDING') {
+                                        Alert.alert(
+                                            'Đang chờ phê duyệt',
+                                            'Hồ sơ xác minh danh tính của bạn đang được xử lý. Vui lòng chờ kết quả từ hệ thống.',
+                                            [{ text: 'Đã hiểu' }]
+                                        );
+                                        return;
+                                    }
+                                    if (status === 'VERIFIED') {
+                                        Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.');
+                                        return;
+                                    }
+                                    (navigation as any).getParent()?.navigate('KYCIntro');
+                                }}
+                                color={
+                                    (user as any)?.kycStatus === 'VERIFIED'
+                                        ? theme.colors.success
+                                        : (user as any)?.kycStatus === 'PENDING'
+                                            ? theme.colors.primary
+                                            : theme.colors.warning
+                                }
+                            />
+                            <View style={{ height: 12 }} />
+                            <SmartOTPSection />
+                            <View style={{ height: 12 }} />
+                            <TwoFactorSection />
+                            <PinSection />
+                        </View>
 
-                    <SettingItem
-                        icon="earth"
-                        title="Language"
-                        subtitle="Tiếng Việt (Vietnam)"
-                    />
-                </View>
+                        <View style={styles.menuSection}>
+                            <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SUPPORT</Text>
+                            <SettingItem
+                                icon="help-circle-outline"
+                                title="Help Center"
+                            />
+                            <SettingItem
+                                icon="chat-processing-outline"
+                                title="Live Chat"
+                            />
+                        </View>
 
-                <View style={styles.menuSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SECURITY</Text>
-                    <SettingItem
-                        icon="shield-check-outline"
-                        title="Xác minh danh tính"
-                        subtitle={
-                            (user as any)?.kycStatus === 'VERIFIED'
-                                ? 'Đã xác minh (eKYC)'
-                                : (user as any)?.kycStatus === 'PENDING'
-                                    ? 'Đang chờ phê duyệt'
-                                    : 'Chưa xác minh'
-                        }
-                        onPress={() => {
-                            const status = (user as any)?.kycStatus;
-                            if (status === 'PENDING') {
-                                Alert.alert(
-                                    'Đang chờ phê duyệt',
-                                    'Hồ sơ xác minh danh tính của bạn đang được xử lý. Vui lòng chờ kết quả từ hệ thống.',
-                                    [{ text: 'Đã hiểu' }]
-                                );
-                                return;
-                            }
-                            if (status === 'VERIFIED') {
-                                Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.');
-                                return;
-                            }
-                            (navigation as any).getParent()?.navigate('KYCIntro');
-                        }}
-                        color={
-                            (user as any)?.kycStatus === 'VERIFIED'
-                                ? theme.colors.success
-                                : (user as any)?.kycStatus === 'PENDING'
-                                    ? theme.colors.primary
-                                    : theme.colors.warning
-                        }
-                    />
-                    <View style={{ height: 12 }} />
-                    <SmartOTPSection />
-                    <View style={{ height: 12 }} />
-                    <TwoFactorSection />
-                    <View style={{ height: 12 }} />
-                    <SettingItem
-                        icon="lock-reset"
-                        title="Đổi mã PIN"
-                        subtitle={user?.hasPin ? 'Thay đổi mã PIN bảo mật' : 'Chưa thiết lập mã PIN'}
-                        onPress={() => {
-                            if (!user?.hasPin) {
-                                Alert.alert('Chưa có mã PIN', 'Bạn cần thiết lập mã PIN trước.');
-                                return;
-                            }
-                            (navigation as any).getParent()?.navigate('PinChange');
-                        }}
-                    />
-                </View>
+                        {/* Logout Button */}
+                        <View style={styles.logoutWrapper}>
+                            <CommonButton
+                                title="Log Out"
+                                onPress={logout}
+                                variant="secondary"
+                                style={styles.logoutBtn}
+                                textStyle={{ color: theme.colors.error }}
+                                icon="logout"
+                            />
+                        </View>
 
-                <View style={styles.menuSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textDim }]}>SUPPORT</Text>
-                    <SettingItem
-                        icon="help-circle-outline"
-                        title="Help Center"
-                    />
-                    <SettingItem
-                        icon="chat-processing-outline"
-                        title="Live Chat"
-                    />
-                </View>
-
-                {/* Logout Button */}
-                <View style={styles.logoutWrapper}>
-                    <CommonButton
-                        title="Log Out"
-                        onPress={logout}
-                        variant="secondary"
-                        style={styles.logoutBtn}
-                        textStyle={{ color: theme.colors.error }}
-                        icon="logout"
-                    />
-                </View>
-
-                <Text style={[styles.versionText, { color: theme.colors.textDim }]}>Version 2.85.0</Text>
+                        <Text style={[styles.versionText, { color: theme.colors.textDim }]}>Version 2.85.0</Text>
+                    </>
+                )}
             </FintechPullToRefresh>
         </View>
     );
@@ -258,6 +270,10 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         paddingBottom: 80,
+    },
+    loadingContainer: {
+        marginTop: 100,
+        alignItems: 'center',
     },
     userInfoSection: {
         paddingHorizontal: 20,

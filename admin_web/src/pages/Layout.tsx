@@ -15,6 +15,7 @@ import {
   MoonOutlined,
   TeamOutlined,
   IdcardOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { AbilityContext } from '../AbilityContext';
@@ -28,6 +29,7 @@ const menuItems = [
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
   { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
+  { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
@@ -53,6 +55,7 @@ export default function AppLayout() {
   const filteredMenuItems = menuItems.filter(item => {
     if (item.key === '/staff') return ability.can(Action.Read, 'Staff');
     if (item.key === '/sync-drift') return ability.can(Action.Read, 'SyncDrift');
+    if (item.key === '/loan-support-requests') return ability.can(Action.Read, 'LoanApplication');
     if (item.key === '/profile') return !userRoles.includes('admin'); // Staff only
     return true;
   });
@@ -122,7 +125,6 @@ export default function AppLayout() {
             mode="inline"
             selectedKeys={[selectedKey]}
             items={filteredMenuItems.map((item) => ({
-              key: item.key,
               key: item.key,
               icon: React.cloneElement(item.icon as React.ReactElement, {
                 style: { fontSize: 18, marginRight: 4 }

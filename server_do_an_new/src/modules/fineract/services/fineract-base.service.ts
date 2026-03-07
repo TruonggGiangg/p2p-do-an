@@ -33,7 +33,12 @@ export class FineractBaseService {
             const year = now.getFullYear();
             return `${day} ${month} ${year}`;
         }
-        return now.toISOString().split('T')[0]; // yyyy-MM-dd (ISO)
+
+        // Return local YYYY-MM-DD instead of UTC
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     // -------------------- CONFIG HELPERS --------------------

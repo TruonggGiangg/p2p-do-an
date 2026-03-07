@@ -364,6 +364,11 @@ export default function LoanProductsPage() {
                         <Descriptions.Item label="Hạn mức dư nợ tối đa">{viewProductDetails.outstandingLoanBalance?.toLocaleString()}</Descriptions.Item>
                         <Descriptions.Item label="Kế hoạch lịch trả nợ">{translateValue(viewProductDetails.loanScheduleType?.value)}</Descriptions.Item>
                         <Descriptions.Item label="Kiểu xử lý lịch">{translateValue(viewProductDetails.loanScheduleProcessingType?.value)}</Descriptions.Item>
+                        <Descriptions.Item label="Gia hạn trả gốc">{viewProductDetails.graceOnPrincipalPayment || 0} kỳ</Descriptions.Item>
+                        <Descriptions.Item label="Gia hạn trả lãi">{viewProductDetails.graceOnInterestPayment || 0} kỳ</Descriptions.Item>
+                        <Descriptions.Item label="Gia hạn chuẩn quá hạn">{viewProductDetails.graceOnArrearsAgeing || 0} ngày</Descriptions.Item>
+                        <Descriptions.Item label="Số ngày quá hạn chuyển NPA">{viewProductDetails.overdueDaysForNPA || 0} ngày</Descriptions.Item>
+                        <Descriptions.Item label="Chuyển khỏi NPA khi hoàn trả nợ quá hạn">{viewProductDetails.accountMovesOutOfNPAOnlyOnArrearsCompletion ? 'Có' : 'Không'}</Descriptions.Item>
                       </Descriptions>
                     )
                   },
@@ -380,6 +385,72 @@ export default function LoanProductsPage() {
                         </Descriptions>
                       ) : (
                         <Empty description="Tính năng tái tính toán lãi không được bật" />
+                      )
+                    )
+                  },
+                  {
+                    key: 'delinquency',
+                    label: 'Nhóm quá hạn',
+                    children: (
+                      viewProductDetails.delinquencyBucket ? (
+                        <div>
+                          <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
+                            <Descriptions.Item label="Tên nhóm">{viewProductDetails.delinquencyBucket.name}</Descriptions.Item>
+                            <Descriptions.Item label="ID">{viewProductDetails.delinquencyBucket.id}</Descriptions.Item>
+                          </Descriptions>
+                          <Text strong>Các khoảng thời gian quá hạn:</Text>
+                          <List
+                            size="small"
+                            bordered
+                            dataSource={
+                              (viewProductDetails.delinquencyBucket.ranges?.length > 0
+                                ? viewProductDetails.delinquencyBucket.ranges
+                                : viewProductDetails.delinquencyBucketOptions?.find((opt: any) => opt.id === viewProductDetails.delinquencyBucket.id)?.ranges) || []
+                            }
+                            style={{ marginTop: 8 }}
+                            renderItem={(range: any) => (
+                              <List.Item>
+                                <Space>
+                                  <Tag color="volcano">{range.classification}</Tag>
+                                  <Text>
+                                    {range.minimumAgeDays}
+                                    {range.maximumAgeDays ? ` - ${range.maximumAgeDays}` : '+'} ngày
+                                  </Text>
+                                </Space>
+                              </List.Item>
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        <Empty description="Chưa cấu hình nhóm nợ quá hạn" />
+                      )
+                    )
+                  },
+                  {
+                    key: 'charges',
+                    label: 'Các loại phí',
+                    children: (
+                      (viewProductDetails.charges?.length > 0 || viewProductDetails.chargeOptions?.length > 0) ? (
+                        <List
+                          itemLayout="horizontal"
+                          dataSource={viewProductDetails.charges || viewProductDetails.chargeOptions || []}
+                          renderItem={(charge: any) => (
+                            <List.Item>
+                              <List.Item.Meta
+                                title={<Text strong>{charge.name}</Text>}
+                                description={
+                                  <Space split={<Text type="secondary">|</Text>}>
+                                    <Text type="secondary">Số tiền: {charge.amount?.toLocaleString()} {charge.currency?.code}</Text>
+                                    <Text type="secondary">Thời điểm: {translateValue(charge.chargeTimeType?.value)}</Text>
+                                    <Text type="secondary">Cách tính: {translateValue(charge.chargeCalculationType?.value)}</Text>
+                                  </Space>
+                                }
+                              />
+                            </List.Item>
+                          )}
+                        />
+                      ) : (
+                        <Empty description="Không có phí nào được cấu hình" />
                       )
                     )
                   },

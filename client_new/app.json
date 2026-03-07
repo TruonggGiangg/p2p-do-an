@@ -13,7 +13,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Cho phép ứng dụng sử dụng FaceID để xác thực bảo mật."
+      }
     },
     "android": {
       "adaptiveIcon": {

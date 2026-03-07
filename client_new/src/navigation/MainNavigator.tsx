@@ -16,7 +16,7 @@ import ProfileScreen from '../features/profile/screens/ProfileScreen';
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
     return function PinGatedScreen(props: P) {
         const { pinVerified, markPinVerified } = usePin();
-        const navigation = useNavigation<any>();
+        const navigation = useNavigation();
         const isFocused = useIsFocused();
 
         if (!pinVerified) {
@@ -25,9 +25,7 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
                     visible={isFocused}
                     dismissable={true}
                     onSuccess={markPinVerified}
-                    onCancel={() => {
-                        navigation.navigate('Home');
-                    }}
+                    onCancel={() => (navigation as any).navigate('Home')}
                     title="Xác thực mã PIN"
                     subtitle="Nhập mã PIN để truy cập tính năng này"
                 />

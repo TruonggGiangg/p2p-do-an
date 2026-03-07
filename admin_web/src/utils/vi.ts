@@ -60,14 +60,12 @@ export const VALUE_VI: Record<string, string> = {
   'Quarterly': 'Hàng quý',
   'Annually': 'Hàng năm',
 
-  // Fee/Strategy
-  'Equal amortization': 'Trả gốc đều',
-  'Fee': 'Phí',
-  'Interest': 'Lãi',
-
-  // Schedule
-  'Horizontal': 'Ngang',
-  'Vertical': 'Dọc',
+  // Delinquency
+  'Nhóm 1 (1-30 days)': 'Nhóm 1 (1-30 ngày)',
+  'Nhóm 2 (31-60 days)': 'Nhóm 2 (31-60 ngày)',
+  'Nhóm 3 (61-90 days)': 'Nhóm 3 (61-90 ngày)',
+  'Nhóm quá hạn (>90 ngày)': 'Nhóm quá hạn (>90 ngày)',
+  'Chính sách quản lý quá hạn P2P': 'Chính sách quản lý quá hạn P2P',
 };
 
 /** Dịch giá trị - kiểm tra không phân biệt hoa thường */

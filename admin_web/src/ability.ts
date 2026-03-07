@@ -30,8 +30,8 @@ export type Subject =
   | 'Kyc'
   | 'Staff'
   | 'Migration'
+  | 'LoanApplication'
   | 'all';
-
 export type AppAbility = PureAbility<[Action, Subject]>;
 
 /**
@@ -79,6 +79,10 @@ export function buildAbilityForRole(roles: string[]): AppAbility {
     can(Action.Read, 'LoanDocument');
     can(Action.Approve, 'LoanDocument');
     can(Action.Update, 'LoanDocument');
+
+    // Loan Application Support Requests
+    can(Action.Read, 'LoanApplication');
+    can(Action.Update, 'LoanApplication');
 
     // Staff — no access
     cannot(Action.Manage, 'Staff');

@@ -339,7 +339,7 @@ export default function BNPLScreen() {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <BinanceHeader title="Ví Trả Sau (BNPL)" />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <View style={{ marginTop: 100, alignItems: 'center' }}>
                     <VentoUltimateLoading size={110} />
                 </View>
             </View>

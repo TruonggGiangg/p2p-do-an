@@ -13,13 +13,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : exception instanceof Error
-          ? HttpStatus.INTERNAL_SERVER_ERROR
-          : HttpStatus.INTERNAL_SERVER_ERROR;
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const message = exception instanceof Error ? exception.message : 'Internal server error';
 
-    this.logger.error(`Unhandled exception: ${message}`, exception instanceof Error ? exception.stack : undefined);
+    // Log with request details
+    const logMessage = `${request.method} ${request.url} - ${status} - ${message}`;
+    if (status >= 500) {
+      this.logger.error(logMessage, exception instanceof Error ? exception.stack : undefined);
+    } else {
+      this.logger.warn(logMessage);
+    }
 
     const errorResponse = {
       success: false,
@@ -27,7 +31,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       path: request.url,
       method: request.method,
-      message: process.env.NODE_ENV === 'production' ? 'Internal server error' : message,
+      message: process.env.NODE_ENV === 'production' && status >= 500 ? 'Internal server error' : message,
       error: exception instanceof Error ? exception.name : 'Error',
     };
 

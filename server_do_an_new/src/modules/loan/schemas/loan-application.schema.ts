@@ -71,6 +71,27 @@ export class LoanApplication extends Document {
   @Prop({ required: false })
   fineractLoanId?: number;
 
+  @Prop({ required: false, default: 0 })
+  outstandingAmount?: number;
+
+  @Prop({ required: false, default: 0 })
+  totalPenaltyExpected?: number;
+
+  @Prop({ required: false, default: 0 })
+  totalFeeExpected?: number;
+
+  @Prop({ required: false, default: 0 })
+  totalOverdue?: number;
+
+  @Prop({ required: false, default: 0 })
+  delinquentDays?: number;
+
+  @Prop({ required: false })
+  delinquencyClassification?: string;
+
+  @Prop({ required: false })
+  fineractStatusString?: string;
+
   // ── AIScore PD Result ──
   // Lưu kết quả chấm điểm tín dụng khi tạo khoản vay
   // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision

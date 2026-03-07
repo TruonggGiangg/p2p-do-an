@@ -100,11 +100,12 @@ const LABEL_MAP: Record<string, string> = {
   taxGroup: 'Nhóm thuế',
   overdraftLimit: 'Hạn mức thấu chi',
   inMultiplesOf: 'Bội số tiền',
+  delinquencyBucket: 'Nhóm quản lý quá hạn',
 };
 
 const SKIP_KEYS = new Set([
   'charges', 'paymentAllocation', 'creditAllocation', 'accountingMappings',
-  'currencyOptions', 'interestRecalculationData', 'delinquencyBucket',
+  'currencyOptions', 'interestRecalculationData',
   'delinquencyBucketOptions', 'advancedPaymentAllocationTypes',
   'advancedPaymentAllocationTransactionTypes', 'advancedPaymentAllocationFutureInstallmentAllocationRules',
   'creditAllocationTransactionTypes', 'creditAllocationAllocationTypes',

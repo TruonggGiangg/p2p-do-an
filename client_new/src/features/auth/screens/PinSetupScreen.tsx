@@ -20,6 +20,8 @@ import {
     StatusBar,
     Vibration,
     ActivityIndicator,
+    TextInput,
+    Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -29,6 +31,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { OTPVerifyModal } from '../../../components';
 import { pinAPI } from '../api/pin.api';
+import TwoFactorService from '../../../services/two-factor.service';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useSmartOTP } from '../../../shared/hooks';
 import { OtpActionType } from '../../../types/otp.types';
@@ -90,11 +93,26 @@ export default function PinSetupScreen() {
     const [confirmPin, setConfirmPin] = useState('');
     const [otpVisible, setOtpVisible] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+    const [show2FAModal, setShow2FAModal] = useState(false);
+    const [twoFactorToken, setTwoFactorToken] = useState('');
 
     // Shake animation khi nhập sai
     const shakeAnim = useRef(new Animated.Value(0)).current;
     const successScale = useRef(new Animated.Value(0)).current;
     const successOpacity = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const check2FA = async () => {
+            try {
+                const status = await TwoFactorService.getStatus();
+                setIs2FAEnabled(status.enabled);
+            } catch (err) {
+                console.error('[PinSetupScreen] Check 2FA error:', err);
+            }
+        };
+        check2FA();
+    }, []);
 
     const currentPin = step === 'enter' ? pin : confirmPin;
 
@@ -230,13 +248,16 @@ export default function PinSetupScreen() {
             if (result.success) {
                 Alert.alert('Thành công', 'Đã kích hoạt xác thực sinh trắc học.');
                 handleSuccessDone();
-            } else {
-                if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
-                    Alert.alert('Lỗi xác thực', `Không thể xác thực: ${result.error}`);
-                }
             }
-        } catch (e: any) {
-            Alert.alert('Lỗi hệ thống', `Không thể khởi động FaceID: ${e.message}`);
+            // Trường hợp người dùng huỷ hoặc lỗi → im lặng
+        } catch {
+            // Expo Go không hỗ trợ FaceID do thiếu quyền NSFaceIDUsageDescription
+            // Khi build native với EAS Build hoặc expo run:ios sẽ hoạt động bình thường
+            Alert.alert(
+                'Không thể kích hoạt FaceID',
+                'Tính năng này cần build native (không phải Expo Go). Bạn có thể bỏ qua và vẫn dùng mã PIN bình thường.',
+                [{ text: 'Tiếp tục', onPress: handleSuccessDone }]
+            );
         }
     };
 
@@ -298,7 +319,29 @@ export default function PinSetupScreen() {
                     </View>
 
                     <TouchableOpacity
-                        onPress={() => registerDevice()}
+                        onPress={async () => {
+                            if (is2FAEnabled) {
+                                if (Platform.OS === 'ios') {
+                                    Alert.prompt(
+                                        'Xác thực 2FA',
+                                        'Tài khoản của bạn đã bật 2FA. Vui lòng nhập mã từ Google Authenticator để kích hoạt Smart OTP.',
+                                        [
+                                            { text: 'Hủy', style: 'cancel' },
+                                            {
+                                                text: 'Xác nhận',
+                                                onPress: (token?: string) => registerDevice(token),
+                                            },
+                                        ],
+                                        'plain-text',
+                                    );
+                                } else {
+                                    // Android fallback using a state for modal
+                                    setShow2FAModal(true);
+                                }
+                            } else {
+                                registerDevice();
+                            }
+                        }}
                         style={[styles.activateBtn, { backgroundColor: c.primary }]}
                         disabled={isOtpLoading}
                         activeOpacity={0.85}
@@ -309,6 +352,70 @@ export default function PinSetupScreen() {
                             <Text style={styles.activateBtnText}>Kích hoạt ngay</Text>
                         )}
                     </TouchableOpacity>
+
+                    {/* Simple 2FA Modal for Android/Web */}
+                    {show2FAModal && (
+                        <Modal
+                            visible={show2FAModal}
+                            transparent={true}
+                            animationType="fade"
+                            onRequestClose={() => setShow2FAModal(false)}
+                        >
+                            <View style={styles.modalOverlay}>
+                                <View style={[styles.modalContent, { backgroundColor: c.surface }]}>
+                                    <View style={styles.modalHeader}>
+                                        <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Xác thực 2FA</Text>
+                                        <TouchableOpacity onPress={() => setShow2FAModal(false)}>
+                                            <MaterialCommunityIcons name="close" size={24} color={c.textDim} />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <Text style={[styles.modalSub, { color: c.textSecondary }]}>
+                                        Nhập mã 2FA từ ứng dụng Authenticator để kích hoạt Smart OTP.
+                                    </Text>
+                                    <View style={[styles.inputContainer, { borderColor: twoFactorToken.length === 6 ? c.primary : c.border }]}>
+                                        <TextInput
+                                            style={[styles.textInput, { color: c.textPrimary }]}
+                                            value={twoFactorToken}
+                                            onChangeText={setTwoFactorToken}
+                                            placeholder="000000"
+                                            placeholderTextColor={c.textDim}
+                                            keyboardType="number-pad"
+                                            maxLength={6}
+                                            autoFocus
+                                        />
+                                    </View>
+                                    <View style={styles.modalActions}>
+                                        <TouchableOpacity
+                                            style={[styles.modalBtn, { backgroundColor: c.border + '20' }]}
+                                            onPress={() => {
+                                                setShow2FAModal(false);
+                                                setTwoFactorToken('');
+                                            }}
+                                        >
+                                            <Text style={[styles.modalBtnText, { color: c.textPrimary }]}>Hủy</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.modalBtn, { backgroundColor: c.primary }]}
+                                            disabled={twoFactorToken.length !== 6 || isOtpLoading}
+                                            onPress={async () => {
+                                                const success = await registerDevice(twoFactorToken);
+                                                if (success) {
+                                                    setShow2FAModal(false);
+                                                    setTwoFactorToken('');
+                                                }
+                                            }}
+                                        >
+                                            {isOtpLoading ? (
+                                                <ActivityIndicator size="small" color="#000" />
+                                            ) : (
+                                                <Text style={styles.modalBtnText}>Xác nhận</Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </View>
+                        </Modal>
+                    )}
 
                     <Text style={[styles.activateNote, { color: c.textDim }]}>
                         Thiết bị của bạn sẽ được định danh để xác thực các giao dịch sau này.
@@ -665,5 +772,72 @@ const styles = StyleSheet.create({
     biometricSetupText: {
         fontSize: 14,
         fontWeight: '500',
+    },
+    // ── 2FA Modal styles ──────────────────────────────────────────────────
+    modalOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+        zIndex: 1000,
+    },
+    modalContent: {
+        width: '100%',
+        borderRadius: 20,
+        padding: 24,
+        alignItems: 'center',
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+    },
+    modalSub: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    inputContainer: {
+        width: '100%',
+        height: 56,
+        borderWidth: 1.5,
+        borderRadius: 12,
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        marginBottom: 24,
+    },
+    textInput: {
+        fontSize: 24,
+        fontWeight: '700',
+        textAlign: 'center',
+        letterSpacing: 8,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    modalBtn: {
+        flex: 1,
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalBtnText: {
+        fontWeight: '700',
+        fontSize: 15,
     },
 });

@@ -125,14 +125,12 @@ export function PinVerifyModal({
                 setPin('');
                 setError('');
                 onSuccessRef.current();
-            } else {
-                // For debugging: show reason if it's not a user cancel
-                if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
-                    Alert.alert('Lỗi xác thực', `FaceID không thành công: ${result.error}`);
-                }
             }
-        } catch (e: any) {
-            Alert.alert('Lỗi hệ thống', `Không thể khởi động FaceID: ${e.message}`);
+            // Nếu người dùng huỷ hoặc lỗi → im lặng và để người dùng nhập PIN
+        } catch {
+            // Bỏ qua lỗi thiếu quyền (thường xảy ra trên Expo Go)
+            // Khi build native (EAS/expo run:ios) với app.json đúng thì sẽ hoạt động
+            setBiometricAvailable(false);
         }
     }, []);
 

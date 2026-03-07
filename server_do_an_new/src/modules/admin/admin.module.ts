@@ -7,6 +7,7 @@ import { SavingsProductSnapshot, SavingsProductSnapshotSchema } from './schemas/
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
+import { LoanSupportRequest, LoanSupportRequestSchema } from '../loan/schemas/loan-support-request.schema';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { Notification, NotificationSchema } from '../loan/schemas/notification.schema';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
@@ -33,6 +34,7 @@ import { CaslModule } from '../casl/casl.module';
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
+      { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
       { name: Wallet.name, schema: WalletSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: LoanContract.name, schema: LoanContractSchema },
@@ -42,4 +44,4 @@ import { CaslModule } from '../casl/casl.module';
   providers: [AdminService],
   exports: [AdminService],
 })
-export class AdminModule {}
+export class AdminModule { }

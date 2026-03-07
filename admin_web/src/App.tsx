@@ -1,4 +1,4 @@
-import React, { useState, useMemo, createContext, useContext, useEffect } from 'react';
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import viVN from 'antd/locale/vi_VN';
@@ -12,6 +12,7 @@ import SyncDriftPage from './pages/SyncDriftPage';
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
+import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
@@ -173,6 +174,11 @@ export default function App() {
                 <Route path="loan-products" element={<LoanProductsPage />} />
                 <Route path="savings-products" element={<SavingsProductsPage />} />
                 <Route path="loan-approvals" element={<LoanApprovalsPage />} />
+                <Route path="loan-support-requests" element={
+                  <ProtectedRoute action={Action.Read} subject="LoanApplication">
+                    <LoanSupportRequestsPage />
+                  </ProtectedRoute>
+                } />
                 <Route path="customers" element={<CustomersPage />} />
                 <Route path="customers/:id" element={<CustomerDetailPage />} />
                 <Route path="staff" element={

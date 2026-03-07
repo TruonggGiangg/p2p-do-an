@@ -41,7 +41,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly activityLogService: ActivityLogService,
-  ) {}
+  ) { }
 
   /**
    * Returns the raw CASL rules for the current user so the
@@ -627,5 +627,40 @@ export class AdminController {
       limit ? Math.min(parseInt(limit, 10), 100) : 20,
     );
     return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  // ── Loan Support Requests ──────────────────────────────────────────────────
+
+  @Get('loan-support-requests')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanApplication'))
+  @ApiOperation({ summary: 'Lấy danh sách yêu cầu hỗ trợ nợ (Waive/Reschedule)' })
+  @ApiResponse({ status: 200 })
+  async getSupportRequests(@Query() query: any) {
+    const result = await this.adminService.getSupportRequests(query);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
+  @Post('loan-support-requests/:id/approve-waive')
+  @CheckPolicies(ability => ability.can(Action.Update, 'LoanApplication'))
+  @ApiOperation({ summary: 'Phê duyệt yêu cầu miễn giảm phí phạt' })
+  @ApiResponse({ status: 200 })
+  async approveWaivePenalty(@Req() req: any, @Param('id') id: string) {
+    const adminId = req.user?._id ?? req.user?.sub;
+    const result = await this.adminService.approveWaivePenalty(id, adminId);
+    return { statusCode: 200, message: 'Miễn giảm phí phạt thành công', data: result };
+  }
+
+  @Post('loan-support-requests/:id/approve-reschedule')
+  @CheckPolicies(ability => ability.can(Action.Update, 'LoanApplication'))
+  @ApiOperation({ summary: 'Phê duyệt yêu cầu cơ cấu lại nợ' })
+  @ApiResponse({ status: 200 })
+  async approveReschedule(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body('note') note?: string
+  ) {
+    const adminId = req.user?._id ?? req.user?.sub;
+    const result = await this.adminService.approveReschedule(id, adminId, note);
+    return { statusCode: 200, message: 'Cơ cấu nợ thành công', data: result };
   }
 }

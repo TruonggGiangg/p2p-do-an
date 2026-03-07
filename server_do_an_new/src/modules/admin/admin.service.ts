@@ -27,6 +27,7 @@ import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
+import { LoanSupportRequest } from '../loan/schemas/loan-support-request.schema';
 import { Wallet } from '../wallets/schemas/wallet.schema';
 import { Notification } from '../loan/schemas/notification.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
@@ -68,6 +69,7 @@ export class AdminService {
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
+    @InjectModel(LoanSupportRequest.name) private supportRequestModel: Model<LoanSupportRequest>,
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
@@ -79,7 +81,7 @@ export class AdminService {
     private readonly keycloakAuthService: KeycloakAuthService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly ekycService: EkycService,
-  ) {}
+  ) { }
 
   // ---------- Loan products (from Fineract) ----------
   async getLoanProductsForAdmin() {
@@ -902,7 +904,10 @@ export class AdminService {
     }
 
     // Map documentType names
-    const docTypeIds = app.documents.map(d => d.documentTypeId).filter(Boolean);
+    const docTypeIds = app.documents
+      .map(d => d.documentTypeId)
+      .filter(id => id && Types.ObjectId.isValid(id));
+
     const docTypes = await this.documentTypeModel
       .find({ _id: { $in: docTypeIds } })
       .lean()
@@ -911,12 +916,13 @@ export class AdminService {
 
     // Enrich Fineract docs with Mongo data (including reviewStatus)
     return fineractDocs.map(fd => {
-      const mongoDoc = app.documents.find(md => md.fineractDocumentId === fd.id);
+      const mongoDoc = app.documents.find(md => md.fineractDocumentId == fd.id);
       if (mongoDoc) {
+        const typeIdStr = mongoDoc.documentTypeId?.toString();
         return {
           ...fd,
           documentTypeId: mongoDoc.documentTypeId,
-          documentTypeName: typeMap.get(mongoDoc.documentTypeId.toString()) || 'Unknown',
+          documentTypeName: typeIdStr && typeIdStr !== 'unknown' ? (typeMap.get(typeIdStr) || 'Unknown') : (fd.name || 'Fineract Document'),
           originalName: mongoDoc.name,
           uploadedAt: mongoDoc.uploadedAt,
           reviewStatus: mongoDoc.reviewStatus ?? 'pending',
@@ -930,26 +936,87 @@ export class AdminService {
   async approveDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
-    this.logger.log(
-      `[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId} documents=${JSON.stringify(app.documents?.map(d => ({ id: d.fineractDocumentId, type: typeof d.fineractDocumentId })))}`,
-    );
-    const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
-    if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
-    doc.reviewStatus = 'approved';
-    doc.reviewedAt = new Date();
+
+    this.logger.log(`[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
+
+    // Try matching by fineractDocumentId (loose equality for string vs number)
+    let doc = app.documents?.find(d => String(d.fineractDocumentId) === String(documentId));
+
+    if (!doc) {
+      this.logger.warn(`[approveDocument] Document #${documentId} NOT found in MongoDB records for Loan #${fineractLoanId}. Attempting self-healing...`);
+
+      // 1. If it's the ONLY document in Fineract and we have the ONLY required document pending in Mongo
+      // Or simply find any pending document that has NO fineractDocumentId yet
+      const pendingWithoutId = app.documents?.find(d => !d.fineractDocumentId && d.reviewStatus === 'pending');
+
+      if (pendingWithoutId) {
+        this.logger.log(`[approveDocument] Self-healing matching Document #${documentId} to existing pending record [${pendingWithoutId.documentTypeId}]`);
+        doc = pendingWithoutId;
+        doc.fineractDocumentId = Number(documentId);
+        doc.reviewStatus = 'approved';
+        doc.reviewedAt = new Date();
+      } else {
+        // Fallback: fetch from Fineract to at least have a record
+        const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
+        const fd = fineractDocs.find(d => d.id == documentId);
+        if (!fd) {
+          throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+        }
+
+        const newDoc = {
+          fineractDocumentId: Number(documentId),
+          name: fd.name || 'Fineract Document',
+          documentTypeId: 'unknown',
+          uploadedAt: new Date(),
+          reviewStatus: 'approved' as const,
+          reviewedAt: new Date(),
+        };
+        if (!app.documents) app.documents = [];
+        app.documents.push(newDoc as any);
+        doc = newDoc as any;
+      }
+    } else {
+      doc.reviewStatus = 'approved';
+      doc.reviewedAt = new Date();
+      // Ensure ID is number
+      doc.fineractDocumentId = Number(documentId);
+    }
+
     app.markModified('documents');
     await app.save();
-    this.logger.log(`[approveDocument] SAVED: documentId=${documentId} reviewStatus=approved`);
+    this.logger.log(`[approveDocument] SUCCESS: documentId=${documentId} reviewStatus=approved`);
     return { documentId, reviewStatus: 'approved' };
   }
 
   async rejectDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
-    const doc = app.documents?.find(d => d.fineractDocumentId === documentId);
-    if (!doc) throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay này`);
-    doc.reviewStatus = 'rejected';
-    doc.reviewedAt = new Date();
+
+    let doc = app.documents?.find(d => d.fineractDocumentId === documentId);
+
+    if (!doc) {
+      const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
+      const fd = fineractDocs.find(d => d.id === documentId);
+      if (!fd) {
+        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+      }
+
+      const newDoc = {
+        fineractDocumentId: documentId,
+        name: fd.name || 'Fineract Document',
+        documentTypeId: 'unknown',
+        uploadedAt: new Date(),
+        reviewStatus: 'rejected' as const,
+        reviewedAt: new Date(),
+      };
+      if (!app.documents) app.documents = [];
+      app.documents.push(newDoc as any);
+      doc = newDoc as any;
+    } else {
+      doc.reviewStatus = 'rejected';
+      doc.reviewedAt = new Date();
+    }
+
     app.markModified('documents');
     await app.save();
     return { documentId, reviewStatus: 'rejected' };
@@ -957,21 +1024,48 @@ export class AdminService {
 
   /** Kiểm tra khoản vay đã duyệt đủ tài liệu bắt buộc chưa */
   async canApproveLoan(fineractLoanId: number): Promise<{ canApprove: boolean; missingRequired: string[] }> {
-    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean();
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) return { canApprove: false, missingRequired: ['Khoản vay không tồn tại'] };
+
+    // HEAL ON THE FLY: If we have an 'unknown' approved doc and a pending typed doc, merge them.
+    // Or if we have an 'unknown' approved doc and it's the ONLY one, and we're missing exactly one requirement.
+    const documents = app.documents || [];
+    let unknownApproved = documents.find(d => d.documentTypeId === 'unknown' && d.reviewStatus === 'approved');
+    const pendingWithTypeId = documents.find(d => d.documentTypeId !== 'unknown' && d.reviewStatus === 'pending');
+
+    this.logger.log(`[canApproveLoan] fineractLoanId=${fineractLoanId} documents: ${JSON.stringify(documents.map(d => ({ type: d.documentTypeId, name: d.name, status: d.reviewStatus, fid: d.fineractDocumentId })))}`);
+
+    if (unknownApproved && pendingWithTypeId) {
+      this.logger.log(`[canApproveLoan] Auto-healing document merge for loan #${fineractLoanId} (unknown+pending)`);
+      pendingWithTypeId.fineractDocumentId = unknownApproved.fineractDocumentId;
+      pendingWithTypeId.reviewStatus = 'approved';
+      pendingWithTypeId.reviewedAt = unknownApproved.reviewedAt;
+
+      // Remove the unknown one
+      app.documents = documents.filter(d => d !== unknownApproved) as any;
+      app.markModified('documents');
+      await app.save();
+    }
+
     const productId = app.productId;
     const requiredDocTypes = await this.loanProductDocModel
       .find({ fineractProductId: productId, required: true })
       .populate('documentTypeId')
       .lean();
+
+    this.logger.log(`[canApproveLoan] Required for product ${productId}: ${JSON.stringify(requiredDocTypes.map(r => ({ name: (r.documentTypeId as any)?.name, id: (r.documentTypeId as any)?._id?.toString() })))}`);
+
     if (requiredDocTypes.length === 0) return { canApprove: true, missingRequired: [] };
     const approvedDocTypeIds = new Set(
       (app.documents || []).filter(d => d.reviewStatus === 'approved').map(d => d.documentTypeId?.toString()),
     );
+    this.logger.log(`[canApproveLoan] fineractLoanId=${fineractLoanId} approvedDocTypeIds: [${Array.from(approvedDocTypeIds).join(', ')}]`);
+
     const missingRequired: string[] = [];
     for (const r of requiredDocTypes) {
       const typeId = (r.documentTypeId as any)?._id?.toString();
       const typeName = (r.documentTypeId as any)?.name || 'Tài liệu bắt buộc';
+      this.logger.log(`[canApproveLoan] Checking required: ${typeName} (${typeId}) -> found: ${approvedDocTypeIds.has(typeId)}`);
       if (!approvedDocTypeIds.has(typeId)) missingRequired.push(typeName);
     }
     return { canApprove: missingRequired.length === 0, missingRequired };
@@ -1606,5 +1700,89 @@ export class AdminService {
     await this.keycloakService.resetUserPassword(user.keycloakId, newPassword);
 
     return { success: true };
+  }
+
+  // =============================================
+  // LOAN SUPPORT REQUESTS (WAIVE / RESCHEDULE)
+  // =============================================
+
+  async getSupportRequests(query: any) {
+    const filter: any = {};
+    if (query.status) filter.status = query.status;
+    if (query.requestType) filter.requestType = query.requestType;
+
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
+
+    const [items, total] = await Promise.all([
+      this.supportRequestModel.find(filter)
+        .populate('userId', 'username email fullName phoneNumber')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+        .exec(),
+      this.supportRequestModel.countDocuments(filter)
+    ]);
+
+    return { items, total, page, limit };
+  }
+
+  async approveWaivePenalty(requestId: string, adminId: string) {
+    const request = await this.supportRequestModel.findById(requestId);
+    if (!request || request.requestType !== 'WAIVE_PENALTY' || request.status !== 'PENDING') {
+      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
+    }
+
+    // Call fineract to waive penalties
+    await this.fineractLoanService.waiveAllPenalties(request.fineractLoanId);
+
+    // Mark request as approved
+    request.status = 'APPROVED';
+    request.resolvedBy = new Types.ObjectId(adminId);
+    request.resolvedAt = new Date();
+    await request.save();
+
+    return request;
+  }
+
+  async approveReschedule(requestId: string, adminId: string, adminNote?: string) {
+    const request = await this.supportRequestModel.findById(requestId);
+    if (!request || request.requestType !== 'RESCHEDULE' || request.status !== 'PENDING') {
+      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
+    }
+
+    if (!request.proposedRescheduleDate) {
+      throw new BadRequestException('Thiếu thông tin ngày đến hạn mới để cơ cấu nợ');
+    }
+
+    // Get loan details to find current schedule
+    const loanDetails = await this.fineractLoanService.getLoanDetails(String(request.fineractLoanId));
+    let rescheduleFromDate = new Date().toISOString().split('T')[0]; // fallback
+
+    // Find the first unpaid period to reschedule from
+    if (loanDetails && loanDetails.repaymentSchedule && loanDetails.repaymentSchedule.periods) {
+      const firstUnpaid = loanDetails.repaymentSchedule.periods.find((p: any) => p.period > 0 && !p.complete);
+      if (firstUnpaid && firstUnpaid.dueDate) {
+        const dateArr = firstUnpaid.dueDate;
+        rescheduleFromDate = Array.isArray(dateArr) ? `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}-${String(dateArr[2]).padStart(2, '0')}` : dateArr;
+      }
+    }
+
+    // Call fineract to reschedule
+    await this.fineractLoanService.rescheduleLoan(request.fineractLoanId, {
+      rescheduleFromDate: rescheduleFromDate,
+      adjustedDueDate: request.proposedRescheduleDate,
+      rescheduleReasonId: 1 // Default "Other" reason in standard config
+    });
+
+    // Mark request as approved
+    request.status = 'APPROVED';
+    request.resolvedBy = new Types.ObjectId(adminId);
+    request.resolvedAt = new Date();
+    request.adminNote = adminNote || 'Approved Reschedule';
+    await request.save();
+
+    return request;
   }
 }

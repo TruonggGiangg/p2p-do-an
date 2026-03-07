@@ -14,4 +14,5 @@ export type Subject =
   | 'Kyc'
   | 'Staff'
   | 'Migration'
+  | 'LoanApplication'
   | 'all'; // CASL wildcard

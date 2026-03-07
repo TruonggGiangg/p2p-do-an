@@ -31,6 +31,7 @@ interface OutstandingInfo {
     totalOutstanding: number;
     principalOutstanding: number;
     interestOutstanding: number;
+    penaltyOutstanding?: number;
 }
 
 interface ScheduleData {
@@ -150,6 +151,13 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const [repaymentAmount, setRepaymentAmount] = useState('');
     const [fineractDetails, setFineractDetails] = useState<any>(null);
 
+    // Support Request States
+    const [showSupportModal, setShowSupportModal] = useState(false);
+    const [supportType, setSupportType] = useState<'WAIVE_PENALTY' | 'RESCHEDULE' | null>(null);
+    const [supportReason, setSupportReason] = useState('');
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [submittingSupport, setSubmittingSupport] = useState(false);
+
     const isActive = useMemo(() =>
         fineractDetails?.status?.active === true ||
         loan.status === 'success' ||
@@ -207,6 +215,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         totalOutstanding: outData.totalOutstanding,
                         principalOutstanding: outData.principalOutstanding || 0,
                         interestOutstanding: outData.interestOutstanding || 0,
+                        penaltyOutstanding: outData.penaltyOutstanding || 0,
                     });
                 }
             } catch (outErr) {
@@ -322,6 +331,38 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
         );
     };
 
+    // Submitting Support Request handler
+    const handleSupportSubmit = async () => {
+        if (!supportType) return;
+        if (!supportReason.trim()) {
+            Alert.alert('Chưa nhập lý do', 'Vui lòng nhập lý do/yêu cầu của bạn');
+            return;
+        }
+        if (supportType === 'RESCHEDULE' && !rescheduleDate.trim()) {
+            Alert.alert('Chưa nhập ngày', 'Vui lòng nhập ngày bạn muốn dời lịch trả nợ (VD: YYYY-MM-DD)');
+            return;
+        }
+
+        try {
+            setSubmittingSupport(true);
+            const res = await loanService.submitSupportRequest({
+                loanId: loan.id!,
+                requestType: supportType,
+                reason: supportReason,
+                proposedRescheduleDate: supportType === 'RESCHEDULE' ? rescheduleDate : undefined
+            });
+            if (res.success) {
+                Alert.alert('Gửi yêu cầu thành công', 'Chúng tôi sẽ xem xét và phản hồi sớm nhất.', [{ text: 'OK', onPress: () => setShowSupportModal(false) }]);
+            } else {
+                Alert.alert('Gửi thất bại', res.message || 'Đã có lỗi xảy ra');
+            }
+        } catch (error: any) {
+            Alert.alert('Lỗi', error.response?.data?.message || 'Đã có lỗi hệ thống xảy ra');
+        } finally {
+            setSubmittingSupport(false);
+        }
+    };
+
     // ---- Render Tabs ----
     const renderInfoTab = () => {
         const statusDisplay = getStatusInfo(fineractDetails?.status || rawLoan?.statusInfo, loan.status);
@@ -368,6 +409,37 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         </View>
                     )}
                 </View>
+
+                {/* Overdue Alerts & Support Actions */}
+                {outstanding && isActive && ((outstanding.penaltyOutstanding && outstanding.penaltyOutstanding > 0) || fineractDetails?.isOverdue) && (
+                    <View style={[styles.card, { backgroundColor: colors.errorGlass, borderColor: colors.errorBorder }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                            <Ionicons name="warning" size={20} color={colors.error} />
+                            <Text style={[styles.cardTitle, { color: colors.error, marginBottom: 0, marginLeft: 8 }]}>CẢNH BÁO QUÁ HẠN</Text>
+                        </View>
+                        <Text style={{ color: colors.error, fontSize: 13, marginBottom: 14 }}>
+                            Khoản vay của bạn đã trễ hạn quá mức quy định. Vui lòng thanh toán sớm để tránh ảnh hưởng đến điểm tín dụng.
+                        </Text>
+
+                        {/* Support buttons */}
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity
+                                style={[styles.actionBtn, { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                                onPress={() => { setSupportType('WAIVE_PENALTY'); setShowSupportModal(true); setSupportReason(''); }}
+                            >
+                                <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary, marginLeft: 4 }}>Xin Xóa Phạt</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.actionBtn, { flex: 1, backgroundColor: colors.primary }]}
+                                onPress={() => { setSupportType('RESCHEDULE'); setShowSupportModal(true); setSupportReason(''); setRescheduleDate(''); }}
+                            >
+                                <Ionicons name="calendar-outline" size={16} color="#000" />
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#000', marginLeft: 4 }}>Xin Cơ Cấu Nợ</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
 
                 {/* Contract Button */}
                 <TouchableOpacity
@@ -581,6 +653,62 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 </TouchableOpacity>
                                 <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={processRepayment}>
                                     <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>Xác nhận</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
+
+            {/* Support Request Modal */}
+            <Modal visible={showSupportModal} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShowSupportModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowSupportModal(false)} />
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+                        <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+                            <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+                            <Text style={[styles.modalHeader, { color: colors.text }]}>
+                                {supportType === 'WAIVE_PENALTY' ? 'Yêu cầu Xóa Phạt' : 'Yêu cầu Cơ cấu nợ'}
+                            </Text>
+                            <Text style={[styles.modalSubHeader, { color: colors.textSecondary }]}>
+                                {supportType === 'WAIVE_PENALTY'
+                                    ? 'Xin vui lòng cho biết lý do bạn không thể thanh toán đúng hạn và mức phí phạt mong muốn được miễn giảm.'
+                                    : 'Xin vui lòng đề xuất ngày dời lịch thanh toán và lý do khó khăn tài chính hiện tại của bạn.'}
+                            </Text>
+
+                            {supportType === 'RESCHEDULE' && (
+                                <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, paddingHorizontal: 12 }]}>
+                                    <TextInput
+                                        style={[styles.moneyInput, { color: colors.text, fontSize: 16, fontWeight: '500' }]}
+                                        value={rescheduleDate}
+                                        onChangeText={setRescheduleDate}
+                                        placeholder="Ngày (VD: 2024-12-30)"
+                                        placeholderTextColor={colors.textMuted}
+                                    />
+                                </View>
+                            )}
+
+                            <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, height: 100, padding: 12, alignItems: 'flex-start' }]}>
+                                <TextInput
+                                    style={[{ color: colors.text, flex: 1, fontSize: 15, width: '100%' }]}
+                                    value={supportReason}
+                                    onChangeText={setSupportReason}
+                                    placeholder="Lý do chi tiết..."
+                                    placeholderTextColor={colors.textMuted}
+                                    multiline
+                                    textAlignVertical="top"
+                                />
+                            </View>
+
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1.5 }]} onPress={() => setShowSupportModal(false)} disabled={submittingSupport}>
+                                    <Text style={[styles.btnCancelText, { color: colors.textSecondary }]}>Hủy</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSupportSubmit} disabled={submittingSupport}>
+                                    {submittingSupport
+                                        ? <ActivityIndicator size="small" color="#000" />
+                                        : <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>Gửi Yêu Cầu</Text>
+                                    }
                                 </TouchableOpacity>
                             </View>
                         </View>

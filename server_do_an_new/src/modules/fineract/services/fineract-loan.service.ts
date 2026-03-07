@@ -55,8 +55,7 @@ export class FineractLoanService extends FineractBaseService {
                 throw new BadRequestException(`Loan product ${data.productId} is missing required configuration`);
             }
 
-            const today = new Date();
-            const submittedOnDate = today.toISOString().split('T')[0];
+            const submittedOnDate = this.getTodayFormatted('iso');
             const expectedDisbursementDate = data.expectedDisbursementDate || submittedOnDate;
 
             const payload = {
@@ -254,6 +253,18 @@ export class FineractLoanService extends FineractBaseService {
             return response.data;
         } catch (error: any) {
             this.handleError(error, `Failed to get loan product ${productId}`);
+        }
+    }
+
+    /**
+     * Get delinquency bucket details from Fineract
+     */
+    async getDelinquencyBucket(bucketId: number): Promise<any> {
+        try {
+            const response = await this.client.get(`/delinquency/buckets/${bucketId}`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, `Failed to get delinquency bucket ${bucketId}`);
         }
     }
 
@@ -655,6 +666,82 @@ export class FineractLoanService extends FineractBaseService {
         } catch (error: any) {
             this.logger.warn(`[getLoanCharges] Failed for loan ${loanId}: ${error.message}`);
             return [];
+        }
+    }
+    /**
+     * Waive a specific charge on a loan (e.g., penalty)
+     */
+    async waiveLoanCharge(loanId: number | string, chargeId: number | string): Promise<any> {
+        try {
+            const response = await this.client.post(`/loans/${loanId}/charges/${chargeId}?command=waive`);
+            this.logger.log(`[waiveLoanCharge] SUCCESS | loanId=${loanId} chargeId=${chargeId}`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`[waiveLoanCharge] FAILED for loan ${loanId}, charge ${chargeId}: ${error.message}`);
+            this.handleError(error, `Failed to waive charge ${chargeId} for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Waive all penalty charges for a loan (Custom workflow)
+     */
+    async waiveAllPenalties(loanId: number | string): Promise<void> {
+        this.logger.log(`[waiveAllPenalties] START | loanId=${loanId}`);
+        const charges = await this.getLoanCharges(Number(loanId));
+        const penaltyCharges = charges.filter((c: any) => c.penalty === true && c.isWaived === false && c.isPaid === false);
+
+        if (penaltyCharges.length === 0) {
+            this.logger.log(`[waiveAllPenalties] No active penalties found for loanId=${loanId}`);
+            return;
+        }
+
+        for (const charge of penaltyCharges) {
+            await this.waiveLoanCharge(loanId, charge.id);
+        }
+    }
+
+    /**
+     * Reschedule a loan in Fineract
+     */
+    async rescheduleLoan(loanId: number | string, data: {
+        rescheduleFromDate: string; // ISO Date yyyy-MM-dd
+        adjustedDueDate: string; // ISO Date yyyy-MM-dd
+        rescheduleReasonId?: number;
+        extraTerms?: number;
+    }): Promise<any> {
+        try {
+            const payload = {
+                rescheduleFromDate: data.rescheduleFromDate,
+                adjustedDueDate: data.adjustedDueDate,
+                rescheduleReasonId: data.rescheduleReasonId || 1, // Need a valid reason ID configured in Fineract
+                extraTerms: data.extraTerms,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en'
+            };
+
+            // 1. Create Reschedule Request
+            const createRes = await this.client.post(`/rescheduleloans`, {
+                loanId: loanId,
+                ...payload
+            });
+
+            const rescheduleId = createRes.data.resourceId;
+            this.logger.log(`[rescheduleLoan] Created request ${rescheduleId} for loanId=${loanId}`);
+
+            // 2. Approve Reschedule Request
+            const today = this.getTodayFormatted('iso');
+            const approveRes = await this.client.post(`/rescheduleloans/${rescheduleId}?command=approve`, {
+                approvedOnDate: today,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en'
+            });
+
+            this.logger.log(`[rescheduleLoan] SUCCESS | Approved reschedule for loanId=${loanId}`);
+            return approveRes.data;
+        } catch (error: any) {
+            this.logger.error(`[rescheduleLoan] FAILED for loan ${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[rescheduleLoan] Details: ${JSON.stringify(error.response.data)}`);
+            this.handleError(error, `Failed to reschedule loan ${loanId}`);
         }
     }
 }

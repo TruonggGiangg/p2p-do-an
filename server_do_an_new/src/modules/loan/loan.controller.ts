@@ -1,3 +1,4 @@
+import { LoanSupportRequest, SupportRequestType } from './schemas/loan-support-request.schema';
 import {
   Controller,
   Get,
@@ -32,7 +33,7 @@ export class LoanController {
     private readonly loanService: LoanService,
     private readonly repaymentService: RepaymentService,
     private readonly contractService: ContractService,
-  ) {}
+  ) { }
 
   // =============================================
   // LOAN CREATION & INFO
@@ -288,6 +289,31 @@ export class LoanController {
     return {
       statusCode: HttpStatus.OK,
       message: 'OK',
+      data: result,
+    };
+  }
+
+  @Post(':loanId/support-request')
+  @ApiOperation({ summary: 'Gửi yêu cầu hỗ trợ (Xóa phạt / Cơ cấu nợ) cho khoản vay quá hạn' })
+  @ApiResponse({ status: 201, description: 'Yêu cầu được gửi thành công' })
+  async submitSupportRequest(
+    @Req() req: any,
+    @Param('loanId') loanId: string,
+    @Body() body: {
+      requestType: SupportRequestType;
+      reason: string;
+      proposedRescheduleDate?: string;
+      proposedExtraPeriods?: number;
+    }
+  ) {
+    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+    if (!userId) {
+      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+    }
+    const result = await this.loanService.submitSupportRequest(userId, loanId, body);
+    return {
+      statusCode: HttpStatus.CREATED,
+      message: 'Gửi yêu cầu hỗ trợ thành công',
       data: result,
     };
   }

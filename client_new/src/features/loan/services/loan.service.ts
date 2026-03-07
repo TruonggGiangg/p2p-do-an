@@ -228,6 +228,23 @@ export interface NotificationListResponse {
 }
 
 // =============================================
+// LOAN SUPPORT REQUESTS
+// =============================================
+
+export interface LoanSupportRequestPayload {
+  loanId: string;
+  requestType: 'WAIVE_PENALTY' | 'RESCHEDULE';
+  reason: string;
+  proposedRescheduleDate?: string;
+}
+
+export interface LoanSupportRequestResult {
+  success: boolean;
+  message: string;
+  data: any;
+}
+
+// =============================================
 // DIGITAL SIGNATURE — VNPT SmartCA Interfaces
 // =============================================
 
@@ -540,6 +557,18 @@ class LoanService {
       data: { charges: ProductCharge[] };
     }>(`/api/loan/products/${productId}/charges`);
     return response.data.data?.charges ?? [];
+  }
+
+  // =============================================
+  // LOAN SUPPORT REQUESTS Methods
+  // =============================================
+
+  /**
+   * Khách hàng gửi yêu cầu hỗ trợ (Xin xóa phạt hoặc Cơ cấu nợ)
+   */
+  async submitSupportRequest(payload: LoanSupportRequestPayload): Promise<LoanSupportRequestResult> {
+    const response = await api.post<LoanSupportRequestResult>('/api/loan/support-request', payload);
+    return response.data;
   }
 
   // =============================================

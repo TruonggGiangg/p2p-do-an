@@ -8,6 +8,7 @@ import { SmartOtpService } from '../smart-otp/services/smart-otp.service';
 import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
+import { LoanSupportRequest, SupportRequestType } from './schemas/loan-support-request.schema';
 import { roundToCurrency } from '../../utils/RoundingUtils';
 
 const DEFAULT_IN_MULTIPLES_OF = 1000;
@@ -58,7 +59,8 @@ export class LoanService {
     private readonly smartOtpService: SmartOtpService,
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-  ) {}
+    @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
+  ) { }
 
   async getLoanProducts() {
     this.logger.log('Fetching loan products from Fineract');
@@ -769,14 +771,17 @@ export class LoanService {
     form.append('description', `Document for loan application ${loanId}`);
 
     const result = await this.fineractLoanService.uploadDocument(app.fineractLoanId, form);
+    const fineractDocId = Number(result.resourceId || result.id);
+
+    this.logger.log(`[uploadDocument] Fineract upload SUCCESS | docId=${fineractDocId} for type=${documentTypeId}`);
 
     // Cập nhật metadata trong MongoDB
-    const docIndex = app.documents.findIndex(d => d.documentTypeId === documentTypeId);
+    const docIndex = app.documents.findIndex(d => String(d.documentTypeId) === String(documentTypeId));
     const docMetadata: LoanApplication['documents'][number] = {
-      documentTypeId,
+      documentTypeId: String(documentTypeId),
       name: file.originalname,
-      uri: `/api/loan/${loanId}/documents/${result.resourceId}`,
-      fineractDocumentId: result.resourceId,
+      uri: `/api/loan/${loanId}/documents/${fineractDocId}`,
+      fineractDocumentId: fineractDocId,
       uploadedAt: new Date(),
       reviewStatus: 'pending' as const, // Explicitly set pending for admin review
     };
@@ -787,6 +792,7 @@ export class LoanService {
       app.documents.push(docMetadata);
     }
 
+    app.markModified('documents');
     await app.save();
     return docMetadata;
   }
@@ -811,5 +817,51 @@ export class LoanService {
     }
 
     return this.fineractLoanService.downloadDocument(app.fineractLoanId, Number(documentId));
+  }
+
+  /**
+   * Submit Support Request for an overdue loan
+   */
+  async submitSupportRequest(userId: string, loanId: string, dto: {
+    requestType: SupportRequestType;
+    reason: string;
+    proposedRescheduleDate?: string;
+    proposedExtraPeriods?: number;
+  }) {
+    const loan = await this.loanApplicationModel.findOne({
+      _id: new Types.ObjectId(loanId),
+      userId: new Types.ObjectId(userId)
+    });
+
+    if (!loan || !loan.fineractLoanId) {
+      throw new NotFoundException('Khoản vay không hợp lệ hoặc chưa được đồng bộ');
+    }
+
+    if (!loan.totalOverdue || loan.totalOverdue <= 0) {
+      throw new BadRequestException('Khoản vay của bạn hiện không trong trạng thái nợ quá hạn');
+    }
+
+    // Check if there is already a pending request
+    const existing = await this.supportRequestModel.findOne({
+      loanId: new Types.ObjectId(loanId),
+      status: 'PENDING'
+    });
+
+    if (existing) {
+      throw new BadRequestException('Bạn đang có một yêu cầu hỗ trợ chờ duyệt cho khoản vay này.');
+    }
+
+    const request = await this.supportRequestModel.create({
+      userId: new Types.ObjectId(userId),
+      loanId: new Types.ObjectId(loanId),
+      fineractLoanId: loan.fineractLoanId,
+      requestType: dto.requestType,
+      reason: dto.reason,
+      proposedRescheduleDate: dto.proposedRescheduleDate,
+      proposedExtraPeriods: dto.proposedExtraPeriods,
+      status: 'PENDING'
+    });
+
+    return request;
   }
 }

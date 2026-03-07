@@ -37,7 +37,8 @@ export class RepaymentService {
      * Thanh toán theo kỳ (Repayment)
      */
     async makeRepayment(userId: string, loanId: string, amount: number, repaymentDate?: string): Promise<any> {
-        this.logger.log(`[makeRepayment] START | userId=${userId} loanId=${loanId} amount=${amount}`);
+        const today = this.fineractLoanService.getTodayFormatted();
+        this.logger.log(`[makeRepayment] START | userId=${userId} loanId=${loanId} amount=${amount} repaymentDateBody=${repaymentDate} getTodayFormatted=${today}`);
 
         // 1. Validate input
         if (!amount || amount <= 0) {
@@ -63,7 +64,12 @@ export class RepaymentService {
         }
 
         // 4. Gọi Fineract repayment API
-        const date = repaymentDate || new Date().toISOString().split('T')[0];
+        // Ưu tiên ngày server (local today) nếu ngày gửi lên bị cũ (stale)
+        let date = repaymentDate || today;
+        if (repaymentDate && repaymentDate < today) {
+            this.logger.warn(`[makeRepayment] Client provided date ${repaymentDate} is earlier than server date ${today}. Using server date.`);
+            date = today;
+        }
         let fineractResult: any;
         try {
             fineractResult = await this.fineractLoanService.makeRepayment(
@@ -161,7 +167,12 @@ export class RepaymentService {
         this.logger.log(`[prepayLoan] Prepay amount=${prepayInfo.amount} (principal=${prepayInfo.principalPortion} interest=${prepayInfo.interestPortion} fees=${prepayInfo.feesPortion} penalty=${prepayInfo.penaltyPortion})`);
 
         // 2. Gọi Fineract prepay
-        const date = repaymentDate || new Date().toISOString().split('T')[0];
+        const today = this.fineractLoanService.getTodayFormatted();
+        let date = repaymentDate || today;
+        if (repaymentDate && repaymentDate < today) {
+            this.logger.warn(`[prepayLoan] Client provided date ${repaymentDate} is earlier than server date ${today}. Using server date.`);
+            date = today;
+        }
         let fineractResult: any;
         try {
             fineractResult = await this.fineractLoanService.prepayLoan(
