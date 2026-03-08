@@ -339,9 +339,30 @@ export class AdminController {
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Chi tiết khoản vay từ Fineract (bao gồm lịch trả nợ)' })
   @ApiResponse({ status: 200 })
-  async getLoanDetails(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
-    const details = await this.adminService.getLoanDetails(fineractLoanId);
+  async getLoanDetails(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Query('sync') sync?: string,
+  ) {
+    const details = await this.adminService.getLoanDetails(fineractLoanId, sync === 'true');
     return { statusCode: 200, message: 'OK', data: details };
+  }
+
+  @Post('loans/:fineractLoanId/sync')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Loan'))
+  @ApiOperation({ summary: 'Đồng bộ dữ liệu khoản vay từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async syncLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.syncLoanFromFineract(fineractLoanId);
+    return { statusCode: 200, message: 'Đồng bộ thành công', data: result };
+  }
+
+  @Post('customers/:id/sync-loans')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Customer'))
+  @ApiOperation({ summary: 'Đồng bộ toàn bộ khoản vay của khách hàng từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async syncCustomerLoans(@Param('id') id: string) {
+    const result = await this.adminService.syncClientLoansFromFineract(id);
+    return { statusCode: 200, message: 'Đồng bộ hoàn tất', data: result };
   }
 
   @Get('loans/:fineractLoanId/documents')

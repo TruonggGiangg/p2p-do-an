@@ -151,15 +151,48 @@ export class FineractLoanService extends FineractBaseService {
         }
     }
 
-    /**
-     * Get loan details with repayment schedule
-     */
     async getLoanDetails(loanId: string): Promise<any> {
         try {
-            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule,transactions`);
+            // associations=summary is key for financial data
+            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule,transactions,charges,collateral,guarantors,meeting,overdueCharges,delinquent,summary`);
             return response.data;
         } catch (error: any) {
             this.handleError(error, `Failed to get loan details ${loanId}`);
+        }
+    }
+
+    async getDelinquencyData(loanId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/loans/${loanId}?associations=collection,delinquencyRange,delinquencyTag`);
+            return response.data;
+        } catch (error: any) {
+            this.handleError(error, `Failed to get delinquency data for loan ${loanId}`);
+        }
+    }
+
+    async getDelinquencyTags(loanId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/loans/${loanId}/delinquencytags`);
+            return response.data;
+        } catch (error: any) {
+            if (error.response?.status === 404) {
+                this.logger.warn(`Delinquency tags not found for loan ${loanId} (Standard current loan)`);
+                return [];
+            }
+            this.handleError(error, `Failed to get delinquency tags for loan ${loanId}`);
+        }
+    }
+
+    async getDelinquencyActions(loanId: string): Promise<any> {
+        try {
+            const response = await this.client.get(`/loans/${loanId}/delinquency-actions`);
+            return response.data;
+        } catch (error: any) {
+            if (error.response?.status === 404) {
+                this.logger.warn(`Delinquency actions not supported for loan ${loanId} or Fineract version.`);
+                return [];
+            }
+            this.handleError(error, `Failed to get delinquency actions for loan ${loanId}`);
         }
     }
 

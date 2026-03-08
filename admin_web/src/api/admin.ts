@@ -498,26 +498,36 @@ export const adminApi = {
       }>(`/api/admin/me/activity-logs`, { params: { page, limit } })
       .then((r) => r.data.data),
 
-  getLoanDetails: (fineractLoanId: number | { id?: number }) => {
+  getLoanDetails: (fineractLoanId: number | { id?: number }, sync = false) => {
     const id =
       typeof fineractLoanId === "object" &&
-      fineractLoanId != null &&
-      "id" in fineractLoanId
+        fineractLoanId != null &&
+        "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);
     if (!Number.isFinite(num))
       throw new Error(`Invalid fineractLoanId: ${fineractLoanId}`);
     return api
-      .get<{ data: any }>(`/api/admin/loans/${num}/details`)
+      .get<{ data: any }>(`/api/admin/loans/${num}/details?sync=${sync}`)
       .then((r) => r.data.data);
   },
+
+  syncLoan: (fineractLoanId: number) =>
+    api
+      .post<{ data: any }>(`/api/admin/loans/${fineractLoanId}/sync`)
+      .then((r) => r.data.data),
+
+  syncCustomerLoans: (userId: string) =>
+    api
+      .post<{ data: any }>(`/api/admin/customers/${userId}/sync-loans`)
+      .then((r) => r.data.data),
 
   getLoanDocuments: (fineractLoanId: number | { id?: number }) => {
     const id =
       typeof fineractLoanId === "object" &&
-      fineractLoanId != null &&
-      "id" in fineractLoanId
+        fineractLoanId != null &&
+        "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);
@@ -534,8 +544,8 @@ export const adminApi = {
   ) => {
     const id =
       typeof fineractLoanId === "object" &&
-      fineractLoanId != null &&
-      "id" in fineractLoanId
+        fineractLoanId != null &&
+        "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);

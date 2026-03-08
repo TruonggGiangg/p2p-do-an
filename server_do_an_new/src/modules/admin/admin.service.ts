@@ -26,7 +26,7 @@ import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
 import { User } from '../users/schemas/user.schema';
-import { LoanApplication } from '../loan/schemas/loan-application.schema';
+import { LoanApplication, LoanApplicationStatus } from '../loan/schemas/loan-application.schema';
 import { LoanSupportRequest } from '../loan/schemas/loan-support-request.schema';
 import { Wallet } from '../wallets/schemas/wallet.schema';
 import { Notification } from '../loan/schemas/notification.schema';
@@ -888,9 +888,198 @@ export class AdminService {
     };
   }
 
-  async getLoanDetails(fineractLoanId: number) {
-    this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId}`);
-    return this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+  async getLoanDetails(fineractLoanId: number, sync = false) {
+    this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId} sync=${sync}`);
+    if (sync) {
+      await this.syncLoanFromFineract(fineractLoanId);
+    }
+    const fl = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (app) {
+      return {
+        ...fl,
+        ...app.toObject(),
+        delinquentDays: app.delinquentDays,
+        delinquencyClassification: app.delinquencyClassification,
+        delinquencyRange: app.delinquencyRange || fl.delinquencyRange,
+        delinquencyTags: app.delinquencyTags || [],
+        installmentLevelDelinquency: app.installmentLevelDelinquency || [],
+        delinquencyActions: app.delinquencyActions || [],
+      };
+    }
+    return fl;
+  }
+
+  /**
+   * Synchronize a single loan from Fineract to MongoDB
+   */
+  async syncLoanFromFineract(fineractLoanId: number): Promise<LoanApplication> {
+    this.logger.log(`[syncLoanFromFineract] fineractLoanId=${fineractLoanId}`);
+
+    // 1. Fetch full details from Fineract
+    const fl = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+    if (!fl) throw new NotFoundException(`Loan #${fineractLoanId} not found in Fineract`);
+
+    // Fetch supplemental data early
+    const dData = await this.fineractLoanService.getDelinquencyData(fineractLoanId.toString()).catch(() => ({}));
+    const dTags = await this.fineractLoanService.getDelinquencyTags(fineractLoanId.toString()).catch(() => []);
+    const dActions = await (this.fineractLoanService as any).getDelinquencyActions?.(fineractLoanId.toString()).catch(() => []) || [];
+
+    // Consolidated data objects - prioritize dData (the detailed delinquency call)
+    const delinquentInfo = dData.delinquent || fl.delinquent || dData.collection || fl.collection || {};
+    const rangeInfo = dData.delinquencyRange || fl.delinquencyRange || {};
+    const summaryInfo = dData.summary || fl.summary || fl.collection || {};
+    const summary = fl.summary || summaryInfo || {};
+
+    // 2. Map status
+    const fStatus = fl.status || {};
+    let internalStatus: LoanApplicationStatus = 'pending';
+    if (fStatus.active) internalStatus = 'approved';
+    if (fStatus.closed) internalStatus = 'closed';
+    if (fStatus.waitingForDisbursal) internalStatus = 'approved';
+    if (fStatus.overpaid) internalStatus = 'closed';
+
+    // 3. Find or create local application
+    let app = await this.loanApplicationModel.findOne({ fineractLoanId });
+
+    if (!app) {
+      // Try to find by userId if it's a new loan from Fineract we don't know about yet
+      // This is rare in this P2P system but good for "Sync Module" robustness
+      this.logger.warn(`[syncLoanFromFineract] No local loan application found for fineractLoanId=${fineractLoanId}. Attempting to create one.`);
+
+      const user = await this.userModel.findOne({ fineractClientId: String(fl.clientId) });
+      if (!user) {
+        throw new BadRequestException(`No local user found for Fineract Client ID ${fl.clientId}`);
+      }
+
+      app = new this.loanApplicationModel({
+        userId: user._id,
+        fineractLoanId,
+        productId: fl.loanProductId || fl.productId,
+        capital: fl.principal || 0,
+        periodMonth: fl.numberOfRepayments || 0,
+        monthlyRatePercent: (fl.annualInterestRate || 0) / 12,
+        disbursementDate: parseFineractDate(fl.timeline?.actualDisbursementDate) || parseFineractDate(fl.timeline?.expectedDisbursementDate) || new Date().toISOString().split('T')[0],
+        disbursementWalletId: new Types.ObjectId(), // Placeholder for external loans
+      });
+    }
+
+    // 4. Update fields
+    app.status = internalStatus;
+    app.fineractStatusString = fStatus.value || fStatus.code;
+    app.outstandingAmount = summary.totalOutstanding || 0;
+    app.totalPenaltyExpected = summary.penaltyChargesOverdue || 0;
+    app.totalFeeExpected = summary.feeChargesOverdue || 0;
+    app.totalOverdue = summary.totalOverdue || 0;
+
+    this.logger.debug(`[syncLoan] DELINQUENCY DATA for loan ${fineractLoanId}: ${JSON.stringify(dData)}`);
+    this.logger.debug(`[syncLoan] DELINQUENCY TAGS for loan ${fineractLoanId}: ${JSON.stringify(dTags)}`);
+    this.logger.debug(`[syncLoan] DELINQUENCY ACTIONS for loan ${fineractLoanId}: ${JSON.stringify(dActions)}`);
+    this.logger.debug(`[syncLoan] RAW fl.delinquent (main call) for loan ${fineractLoanId}: ${JSON.stringify(fl.delinquent)}`);
+
+    // Fineract fix: pastDueDays often returns 0 incorrectly. Use rangeInfo.minimumAgeDays or similar if available.
+    app.delinquentDays = delinquentInfo?.pastDueDays || delinquentInfo?.delinquentDays || rangeInfo?.minimumAgeDays || rangeInfo?.pastDueDays || 0;
+    app.delinquencyClassification = rangeInfo?.classification ?? delinquentInfo?.classification ?? null;
+
+    app.repaymentSchedule = fl.repaymentSchedule?.periods || [];
+    app.transactions = fl.transactions || [];
+    app.charges = fl.charges || [];
+    app.collateral = fl.collateral || [];
+    app.guarantors = fl.guarantors || [];
+
+    // Ensure delinquencyRange is populated with EVERYTHING the frontend expects for the header
+    app.delinquencyRange = {
+      ...(fl.delinquencyRange || {}),
+      ...(dData.delinquencyRange || {}),
+      pastDueDays: app.delinquentDays,
+      classification: app.delinquencyClassification,
+    };
+
+    // Priority for delinquentDate: summaryInfo.overdueSinceDate > dData.delinquent.delinquentDate > dTags earliest
+    let overdueDate = summaryInfo.overdueSinceDate || dData.delinquent?.delinquentDate || fl.delinquencyRange?.delinquentDate;
+
+    if (!overdueDate && dTags.length > 0) {
+      const sortedTags = [...dTags].filter(t => t.addedOnDate).sort((a, b) => {
+        const dateA = a.addedOnDate;
+        const dateB = b.addedOnDate;
+        if (dateA[0] !== dateB[0]) return dateA[0] - dateB[0];
+        if (dateA[1] !== dateB[1]) return dateA[1] - dateB[1];
+        return dateA[2] - dateB[2];
+      });
+      if (sortedTags.length > 0) {
+        overdueDate = sortedTags[0].addedOnDate;
+      }
+    }
+
+    if (overdueDate) {
+      app.delinquencyRange.delinquentDate = overdueDate;
+    }
+
+    app.delinquencyTag = dData.delinquencyTag || fl.delinquencyTag || [];
+    app.installmentLevelDelinquency = dData.delinquent?.installmentLevelDelinquency || dData.collection?.installmentLevelDelinquency || [];
+    app.delinquencyTags = dTags || [];
+    app.delinquencyActions = dActions || [];
+
+    // Map Detailed Summary
+    app.principalPaid = summary.principalPaid || 0;
+    app.principalOutstanding = summary.principalOutstanding || 0;
+    app.interestPaid = summary.interestPaid || 0;
+    app.interestOutstanding = summary.interestOutstanding || 0;
+    app.feePaid = summary.feeChargesPaid || 0;
+    app.feeOutstanding = summary.feeChargesOutstanding || 0;
+    app.penaltyPaid = summary.penaltyChargesPaid || 0;
+    app.penaltyOutstanding = summary.penaltyChargesOutstanding || 0;
+    app.totalPaid = summary.totalRepayment || 0;
+    app.totalOutstanding = summary.totalOutstanding || 0;
+    app.lastPaymentDate = summary.lastPaymentDate;
+    app.lastPaymentAmount = summary.lastPaymentAmount;
+
+    app.lastSyncedAt = new Date();
+
+    app.markModified('repaymentSchedule');
+    app.markModified('transactions');
+    app.markModified('charges');
+    app.markModified('collateral');
+    app.markModified('guarantors');
+    app.markModified('delinquencyRange');
+    app.markModified('delinquencyTag');
+    app.markModified('installmentLevelDelinquency');
+    app.markModified('delinquencyTags');
+    app.markModified('delinquencyActions');
+    app.markModified('principalPaid');
+    app.markModified('interestPaid');
+    app.markModified('feePaid');
+    app.markModified('penaltyPaid');
+    app.markModified('totalPaid');
+    app.markModified('lastPaymentDate');
+
+    return await app.save();
+  }
+
+  /**
+   * Synchronize all loans for a client
+   */
+  async syncClientLoansFromFineract(userId: string): Promise<any> {
+    const customer = await this.getCustomerById(userId);
+    const clientId = customer.fineractClientId;
+    if (!clientId) throw new BadRequestException('Khách hàng chưa có ID Fineract');
+
+    this.logger.log(`[syncClientLoansFromFineract] userId=${userId} clientId=${clientId}`);
+
+    const loans = await this.fineractLoanService.getLoansByClientId(Number(clientId));
+    const results: any[] = [];
+
+    for (const loan of loans) {
+      try {
+        await this.syncLoanFromFineract(loan.id);
+        results.push({ id: loan.id, status: 'success' });
+      } catch (err) {
+        this.logger.error(`[syncClientLoansFromFineract] Error syncing loan ${loan.id}: ${err.message}`);
+        results.push({ id: loan.id, status: 'error', message: err.message });
+      }
+    }
+
+    return { total: loans.length, processed: results };
   }
 
   async getLoanDocuments(fineractLoanId: number) {

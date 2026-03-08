@@ -12,7 +12,7 @@ import {
     DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined,
     IdcardOutlined, PhoneOutlined, MailOutlined, HomeOutlined, TeamOutlined,
     CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined,
-    CheckOutlined, UploadOutlined
+    CheckOutlined, UploadOutlined, PauseCircleOutlined
 } from '@ant-design/icons';
 import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
@@ -38,7 +38,7 @@ export default function CustomerDetailPage() {
 
     // KYC Document view states
     const [kycDocImages, setKycDocImages] = useState<Record<string, string>>({});
-    const [viewingKycDoc, setViewingKycDoc] = useState<{entityType: string; entityId: number; documentId: number; name: string} | null>(null);
+    const [viewingKycDoc, setViewingKycDoc] = useState<{ entityType: string; entityId: number; documentId: number; name: string } | null>(null);
 
     const customer = detail?.customer ?? null;
     const loans = detail?.loans ?? [];
@@ -66,6 +66,7 @@ export default function CustomerDetailPage() {
     const [loanDocuments, setLoanDocuments] = useState<any[]>([]);
     const [loadingDocuments, setLoadingDocuments] = useState(false);
     const [viewLoanId, setViewLoanId] = useState<number | null>(null);
+    const [syncingAll, setSyncingAll] = useState(false);
 
     useEffect(() => {
         if (!id) return;
@@ -79,7 +80,7 @@ export default function CustomerDetailPage() {
     // Load KYC document images when tab is KYC
     useEffect(() => {
         if (activeTab !== 'kyc' || !kyc?.documents?.length || !id) return;
-        
+
         const loadImages = async () => {
             const urls: Record<string, string> = {};
             for (const doc of kyc.documents) {
@@ -104,23 +105,42 @@ export default function CustomerDetailPage() {
         };
     }, [activeTab, kyc, id]);
 
-    const handleViewDetails = async (fineractLoanId: number) => {
+    const handleViewDetails = async (fineractLoanId: number, sync = false) => {
         setIsModalOpen(true);
         setModalLoading(true);
         setLoadingDocuments(true);
         setViewLoanId(fineractLoanId);
         try {
             const [data, docs] = await Promise.all([
-                adminApi.getLoanDetails(fineractLoanId),
+                adminApi.getLoanDetails(fineractLoanId, sync),
                 adminApi.getLoanDocuments(fineractLoanId),
             ]);
             setLoanDetails(data);
             setLoanDocuments(docs);
+            if (sync) message.success('Đã đồng bộ dữ liệu mới nhất từ Fineract');
         } catch (err) {
             message.error('Không thể tải chi tiết khoản vay');
         } finally {
             setModalLoading(false);
             setLoadingDocuments(false);
+        }
+    };
+
+    const handleSyncAllLoans = async () => {
+        if (!id) return;
+        setSyncingAll(true);
+        const hide = message.loading('Đang đồng bộ toàn bộ khoản vay...', 0);
+        try {
+            await adminApi.syncCustomerLoans(id);
+            message.success('Đồng bộ hoàn tất');
+            // Refresh customer detail to get updated loan list
+            const updated = await adminApi.getCustomerDetail(id);
+            setDetail(updated);
+        } catch (err: any) {
+            message.error(err?.response?.data?.message || 'Đồng bộ thất bại');
+        } finally {
+            setSyncingAll(false);
+            hide();
         }
     };
 
@@ -334,39 +354,39 @@ export default function CustomerDetailPage() {
             <Card><Skeleton active /></Card>
         </div>
     );
-    
+
     if (error) return (
         <div style={{ padding: 24 }}>
             <Alert type="error" message={error} />
         </div>
     );
-    
+
     if (!customer) return null;
 
     const totalCapital = loans.reduce((s, l) => s + (l.capital || 0), 0);
 
     // Header card with client info (like Mifos)
     const HeaderCard = () => (
-        <Card 
-            bordered={false} 
-            style={{ 
-                marginBottom: 24, 
-                background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`, 
-                color: '#fff', 
+        <Card
+            bordered={false}
+            style={{
+                marginBottom: 24,
+                background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`,
+                color: '#fff',
                 borderRadius: 0,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
             }}
         >
             <Row gutter={[24, 16]} align="middle">
                 <Col flex="none">
-                    <Avatar 
-                        size={80} 
-                        icon={<UserOutlined />} 
-                        style={{ 
-                            background: 'rgba(255,255,255,0.25)', 
+                    <Avatar
+                        size={80}
+                        icon={<UserOutlined />}
+                        style={{
+                            background: 'rgba(255,255,255,0.25)',
                             fontSize: 36,
                             border: '3px solid rgba(255,255,255,0.5)'
-                        }} 
+                        }}
                     />
                 </Col>
                 <Col flex="auto">
@@ -422,6 +442,16 @@ export default function CustomerDetailPage() {
                             Chưa KYC
                         </Tag>
                     )}
+                    <div style={{ marginTop: 16 }}>
+                        <Button
+                            icon={<ClockCircleOutlined />}
+                            onClick={handleSyncAllLoans}
+                            loading={syncingAll}
+                            style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff' }}
+                        >
+                            Đồng bộ Fineract
+                        </Button>
+                    </div>
                 </Col>
             </Row>
         </Card>
@@ -429,17 +459,17 @@ export default function CustomerDetailPage() {
 
     // Performance History Section
     const PerformanceSection = () => (
-        <Card 
-            title={<Space><InfoCircleOutlined /> Lịch sử hiệu suất</Space>} 
-            bordered={false} 
+        <Card
+            title={<Space><InfoCircleOutlined /> Lịch sử hiệu suất</Space>}
+            bordered={false}
             style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
         >
             {summary ? (
                 <Row gutter={[48, 24]}>
                     <Col span={12}>
-                        <Statistic 
-                            title="Số chu kỳ vay" 
-                            value={summary.loanCycles} 
+                        <Statistic
+                            title="Số chu kỳ vay"
+                            value={summary.loanCycles}
                             valueStyle={{ color: token.colorPrimary, fontSize: 28 }}
                         />
                         <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
@@ -448,9 +478,9 @@ export default function CustomerDetailPage() {
                         </div>
                     </Col>
                     <Col span={12}>
-                        <Statistic 
-                            title="Số tiết kiệm đang hoạt động" 
-                            value={summary.activeSavings} 
+                        <Statistic
+                            title="Số tiết kiệm đang hoạt động"
+                            value={summary.activeSavings}
                             valueStyle={{ color: token.colorSuccess, fontSize: 28 }}
                         />
                         <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
@@ -468,26 +498,26 @@ export default function CustomerDetailPage() {
     const GeneralTab = () => (
         <>
             <PerformanceSection />
-            
+
             {/* Quick Stats - 3 thẻ bằng nhau */}
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                 <Col flex="1 1 0" style={{ minWidth: 200 }}>
                     <Card bordered={false} style={{ borderRadius: 0, background: token.colorPrimaryBg, textAlign: 'center', height: '100%' }}>
-                        <Statistic 
-                            title="Khoản vay" 
-                            value={loans.length} 
-                            prefix={<DollarOutlined />} 
-                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }} 
+                        <Statistic
+                            title="Khoản vay"
+                            value={loans.length}
+                            prefix={<DollarOutlined />}
+                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }}
                         />
                     </Card>
                 </Col>
                 <Col flex="1 1 0" style={{ minWidth: 200 }}>
                     <Card bordered={false} style={{ borderRadius: 0, background: token.colorSuccessBg, textAlign: 'center', height: '100%' }}>
-                        <Statistic 
-                            title="Tổng vốn" 
-                            value={totalCapital} 
-                            formatter={v => fmtVND(Number(v))} 
-                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }} 
+                        <Statistic
+                            title="Tổng vốn"
+                            value={totalCapital}
+                            formatter={v => fmtVND(Number(v))}
+                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }}
                         />
                     </Card>
                 </Col>
@@ -506,9 +536,9 @@ export default function CustomerDetailPage() {
             </Row>
 
             {/* Loan Accounts */}
-            <Card 
-                title={<Space><BankOutlined /> Các tài khoản vay</Space>} 
-                bordered={false} 
+            <Card
+                title={<Space><BankOutlined /> Các tài khoản vay</Space>}
+                bordered={false}
                 style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 {loans.length === 0 ? (
@@ -536,14 +566,14 @@ export default function CustomerDetailPage() {
         const isDirectKyc = !kyc; // Chưa có dữ liệu KYC = trường hợp xác minh trực tiếp tại chỗ
 
         const ApprovalCard = () => (
-            <Card 
-                bordered={false} 
+            <Card
+                bordered={false}
                 style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${token.colorWarningBorder}` }}
             >
                 <Alert
                     message={isDirectKyc ? 'KYC trực tiếp - Đã xác minh khách hàng tại chỗ' : 'Có thông tin KYC và đang chờ phê duyệt'}
-                    description={isDirectKyc 
-                        ? 'Khách hàng chưa nộp hồ sơ eKYC. Nếu đã xác minh trực tiếp tại chỗ, có thể kích hoạt tài khoản để đồng bộ sang Fineract.' 
+                    description={isDirectKyc
+                        ? 'Khách hàng chưa nộp hồ sơ eKYC. Nếu đã xác minh trực tiếp tại chỗ, có thể kích hoạt tài khoản để đồng bộ sang Fineract.'
                         : 'Hồ sơ định danh đã được gửi. Kích hoạt tài khoản sẽ đồng bộ trạng thái sang Fineract.'}
                     type="warning"
                     showIcon
@@ -723,7 +753,7 @@ export default function CustomerDetailPage() {
                                 )}
                             </Col>
                         </Row>
-                                {(ocrData || ocr?.fullName || ocr?.ssn) && (staffFrontFile || staffBackFile) && (
+                        {(ocrData || ocr?.fullName || ocr?.ssn) && (staffFrontFile || staffBackFile) && (
                             <div style={{ marginTop: 16 }}>
                                 {metadata?.kycCompletedAt && (
                                     <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
@@ -745,9 +775,9 @@ export default function CustomerDetailPage() {
 
                 {/* Thông tin OCR - chỉ hiện khi không có upload card (đã lưu, không cần chỉnh sửa) */}
                 {!showUploadCard && (
-                    <Card 
-                        title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>} 
-                        bordered={false} 
+                    <Card
+                        title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>}
+                        bordered={false}
                         style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                     >
                         <Descriptions column={2} bordered size="small">
@@ -765,9 +795,9 @@ export default function CustomerDetailPage() {
                 )}
 
                 {/* KYC Documents */}
-                <Card 
-                    title={<Space><FileTextOutlined /> Hình ảnh CCCD (từ Fineract)</Space>} 
-                    bordered={false} 
+                <Card
+                    title={<Space><FileTextOutlined /> Hình ảnh CCCD (từ Fineract)</Space>}
+                    bordered={false}
                     style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     {documents && documents.length > 0 ? (
@@ -777,31 +807,31 @@ export default function CustomerDetailPage() {
                                 const imgUrl = kycDocImages[key];
                                 return (
                                     <Col xs={24} sm={12} md={8} key={key}>
-                                        <Card 
+                                        <Card
                                             hoverable
                                             cover={
                                                 imgUrl ? (
-                                                    <Image 
-                                                        src={imgUrl} 
+                                                    <Image
+                                                        src={imgUrl}
                                                         alt={doc.label}
                                                         style={{ height: 200, objectFit: 'cover' }}
                                                         preview={{ mask: 'Xem ảnh' }}
                                                     />
                                                 ) : (
-                                                    <div style={{ 
-                                                        height: 200, 
-                                                        background: token.colorFillAlter, 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        justifyContent: 'center' 
+                                                    <div style={{
+                                                        height: 200,
+                                                        background: token.colorFillAlter,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
                                                     }}>
                                                         <Text type="secondary">Đang tải...</Text>
                                                     </div>
                                                 )
                                             }
                                             actions={[
-                                                <Button 
-                                                    type="link" 
+                                                <Button
+                                                    type="link"
                                                     icon={<EyeOutlined />}
                                                     onClick={() => setViewingKycDoc({
                                                         entityType: doc.entityType,
@@ -814,8 +844,8 @@ export default function CustomerDetailPage() {
                                                 </Button>
                                             ]}
                                         >
-                                            <Card.Meta 
-                                                title={doc.label} 
+                                            <Card.Meta
+                                                title={doc.label}
                                                 description={doc.name}
                                             />
                                         </Card>
@@ -835,9 +865,9 @@ export default function CustomerDetailPage() {
     const AccountsTab = () => (
         <>
             {/* Savings Accounts */}
-            <Card 
-                title={<Space><BankOutlined /> Tài khoản tiết kiệm</Space>} 
-                bordered={false} 
+            <Card
+                title={<Space><BankOutlined /> Tài khoản tiết kiệm</Space>}
+                bordered={false}
                 style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 {savingsAccounts.length > 0 ? (
@@ -850,11 +880,13 @@ export default function CustomerDetailPage() {
                             { title: 'Số tài khoản', dataIndex: 'accountNo', key: 'accountNo', render: (v: string) => v || '–' },
                             { title: 'Sản phẩm', dataIndex: 'productName', key: 'productName', render: (v: string) => v || '–' },
                             { title: 'Số dư', key: 'balance', align: 'right', render: (_: any, r: any) => fmtVND(r.accountBalance ?? r.balance ?? 0) },
-                            { title: 'Trạng thái', key: 'status', render: (_: any, r: any) => (
-                                <Tag color={r.status?.active ? 'success' : 'default'}>
-                                    {r.status?.value ?? r.status?.code ?? '–'}
-                                </Tag>
-                            )},
+                            {
+                                title: 'Trạng thái', key: 'status', render: (_: any, r: any) => (
+                                    <Tag color={r.status?.active ? 'success' : 'default'}>
+                                        {r.status?.value ?? r.status?.code ?? '–'}
+                                    </Tag>
+                                )
+                            },
                         ]}
                     />
                 ) : (
@@ -864,9 +896,9 @@ export default function CustomerDetailPage() {
 
             {/* Charges */}
             {charges.length > 0 && (
-                <Card 
-                    title={<Space><DollarOutlined /> Các khoản phí sắp tới</Space>} 
-                    bordered={false} 
+                <Card
+                    title={<Space><DollarOutlined /> Các khoản phí sắp tới</Space>}
+                    bordered={false}
                     style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     <Table
@@ -880,9 +912,11 @@ export default function CustomerDetailPage() {
                             { title: 'Phải trả', dataIndex: 'amount', key: 'amount', align: 'right', render: (v: number) => fmtVND(v) },
                             { title: 'Đã trả', dataIndex: 'amountPaid', key: 'amountPaid', align: 'right', render: (v: number) => fmtVND(v || 0) },
                             { title: 'Đã miễn', dataIndex: 'amountWaived', key: 'amountWaived', align: 'right', render: (v: number) => fmtVND(v || 0) },
-                            { title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right', render: (v: number) => (
-                                <Text type={v > 0 ? 'danger' : 'success'} strong>{fmtVND(v || 0)}</Text>
-                            )},
+                            {
+                                title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right', render: (v: number) => (
+                                    <Text type={v > 0 ? 'danger' : 'success'} strong>{fmtVND(v || 0)}</Text>
+                                )
+                            },
                         ]}
                     />
                 </Card>
@@ -928,8 +962,8 @@ export default function CustomerDetailPage() {
         <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
             {/* Back Button */}
             <Space style={{ marginBottom: 24 }}>
-                <Button 
-                    icon={<ArrowLeftOutlined />} 
+                <Button
+                    icon={<ArrowLeftOutlined />}
                     onClick={() => navigate('/customers')}
                     size="large"
                 >
@@ -942,8 +976,8 @@ export default function CustomerDetailPage() {
 
             {/* Tabs */}
             <Card bordered={false} style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-                <Tabs 
-                    activeKey={activeTab} 
+                <Tabs
+                    activeKey={activeTab}
                     onChange={setActiveTab}
                     items={tabItems}
                     size="large"
@@ -958,83 +992,131 @@ export default function CustomerDetailPage() {
                 onClose={() => { setIsModalOpen(false); setLoanDetails(null); setLoanDocuments([]); setViewLoanId(null); }}
                 width={Math.min(960, window.innerWidth * 0.92)}
                 destroyOnClose
-                styles={{ body: { padding: '0 24px 24px' } }}
+                styles={{ body: { padding: 0 } }}
                 extra={
-                    <Button type="text" icon={<CloseOutlined />} onClick={() => { setIsModalOpen(false); setLoanDetails(null); setLoanDocuments([]); setViewLoanId(null); }} />
+                    <Space>
+                        <Button type="primary" icon={<ClockCircleOutlined />} onClick={() => handleViewDetails(viewLoanId!, true)}>Đồng bộ ngay</Button>
+                        <Button type="text" icon={<CloseOutlined />} onClick={() => { setIsModalOpen(false); setLoanDetails(null); setLoanDocuments([]); setViewLoanId(null); }} />
+                    </Space>
                 }
             >
                 {modalLoading ? (
                     <div style={{ padding: '40px 0', textAlign: 'center' }}><Skeleton active /></div>
                 ) : loanDetails && (
-                    <Tabs defaultActiveKey="overview" items={[
+                    <Tabs defaultActiveKey="overview" type="card" className="mifos-tabs" items={[
                         {
                             key: 'overview',
-                            label: 'Tổng quan',
+                            label: 'Chung',
                             children: (
-                                <div style={{ padding: '8px 0' }}>
+                                <div>
+                                    {/* Mifos Style Blue Header */}
                                     <div style={{
-                                        background: token.colorPrimary,
-                                        padding: '24px',
-                                        borderRadius: '12px',
-                                        marginBottom: '24px',
+                                        background: '#0071b9',
+                                        padding: '24px 32px',
+                                        color: '#fff',
                                         display: 'flex',
                                         justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        color: '#fff',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                        alignItems: 'flex-start',
+                                        position: 'relative'
                                     }}>
-                                        <div style={{ display: 'flex', gap: '48px' }}>
-                                            <div>
-                                                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sản phẩm vay</div>
-                                                <div style={{ color: '#fff', fontSize: '18px', fontWeight: 'bold' }}>{loanDetails.loanProductName} <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontWeight: 'normal' }}>({loanDetails.accountNo})</Text></div>
+                                        <div style={{ display: 'flex', gap: '32px' }}>
+                                            <div style={{
+                                                width: 120, height: 120, background: 'rgba(0,0,0,0.1)',
+                                                borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                                <DollarOutlined style={{ fontSize: 64, color: 'rgba(255,255,255,0.8)' }} />
                                             </div>
-                                            <Divider type="vertical" style={{ height: '40px', background: 'rgba(255,255,255,0.2)', margin: 'auto 0' }} />
-                                            <div>
-                                                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Khách hàng</div>
-                                                <div style={{ color: '#fff', fontSize: '18px', fontWeight: 'bold' }}>{loanDetails.clientName}</div>
+                                            <div style={{ lineHeight: 1.8 }}>
+                                                <div style={{ marginBottom: 8 }}>
+                                                    <Badge status="processing" color="red" />
+                                                    <span style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 8 }}>
+                                                        Sản phẩm vay : {loanDetails.loanProductName} {loanDetails.accountNo}
+                                                    </span>
+                                                </div>
+                                                <div style={{ opacity: 0.9 }}>
+                                                    Khách hàng: <strong style={{ color: '#fff' }}>{loanDetails.clientName} ({loanDetails.clientId})</strong><br />
+                                                    Nhóm nợ: <Tag color={loanDetails.delinquencyRange?.classification ? 'red' : 'green'}>
+                                                        {loanDetails.delinquencyRange?.classification || 'Nợ dủ tiêu chuẩn (Nhóm 1)'}
+                                                    </Tag><br />
+                                                    Số ngày quá hạn: <strong style={{ color: (loanDetails.delinquencyRange?.pastDueDays > 0) ? '#ff4d4f' : '#fff' }}>
+                                                        {loanDetails.delinquencyRange?.pastDueDays ?? 0} ngày
+                                                    </strong>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div style={{ textAlign: 'right' }}>
-                                            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Trạng thái</div>
-                                            <Tag color={loanDetails.status?.active ? 'success' : 'processing'} style={{ padding: '4px 12px', borderRadius: '4px', fontWeight: 'bold', border: 'none' }}>
-                                                {loanDetails.status?.value?.toUpperCase()}
-                                            </Tag>
+                                        <div style={{ textAlign: 'right', lineHeight: 2 }}>
+                                            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.2)' }}>Tổng quan tài khoản</div>
+                                            <Row gutter={16}>
+                                                <Col style={{ textAlign: 'left' }}>Số dư hiện tại</Col>
+                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold' }}>{fmtVND(loanDetails.summary?.totalOutstanding)}</Col>
+                                            </Row>
+                                            <Row gutter={16}>
+                                                <Col style={{ textAlign: 'left' }}>Tiền quá hạn</Col>
+                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold', color: '#ff4d4f' }}>{fmtVND(loanDetails.summary?.totalOverdue)}</Col>
+                                            </Row>
+                                            <Row gutter={16}>
+                                                <Col style={{ textAlign: 'left' }}>Quá hạn từ</Col>
+                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold' }}>
+                                                    {loanDetails.delinquencyRange?.delinquentDate ? [...loanDetails.delinquencyRange.delinquentDate].reverse().join('/') : '–'}
+                                                </Col>
+                                            </Row>
                                         </div>
                                     </div>
 
-                                    <Row gutter={[16, 16]}>
-                                        <Col span={6}>
-                                            <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 8 }}>
-                                                <Statistic title="Số tiền giải ngân" value={loanDetails.principal} prefix={<DollarOutlined />} formatter={v => fmtVND(Number(v))} />
-                                            </Card>
-                                        </Col>
-                                        <Col span={6}>
-                                            <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 8 }}>
-                                                <Statistic title="Dư nợ gốc" value={loanDetails.summary?.principalOutstanding} prefix={<BankOutlined />} formatter={v => fmtVND(Number(v))} />
-                                            </Card>
-                                        </Col>
-                                        <Col span={6}>
-                                            <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 8 }}>
-                                                <Statistic title="Tổng nợ đến hạn" value={loanDetails.summary?.totalExpectedRepayment} prefix={<ClockCircleOutlined />} formatter={v => fmtVND(Number(v))} />
-                                            </Card>
-                                        </Col>
-                                        <Col span={6}>
-                                            <Card size="small" bordered={false} style={{ background: token.colorFillAlter, borderRadius: 8 }}>
-                                                <Statistic
-                                                    title="Tổng nợ quá hạn"
-                                                    value={loanDetails.summary?.totalOverdue}
-                                                    valueStyle={{ color: (loanDetails.summary?.totalOverdue > 0) ? token.colorError : token.colorSuccess }}
-                                                    prefix={<InfoCircleOutlined />}
-                                                    formatter={v => fmtVND(Number(v))}
-                                                />
-                                                {loanDetails.summary?.pastDueDays > 0 && (
-                                                    <div style={{ fontSize: 12, color: token.colorError, marginTop: 4 }}>
-                                                        Quá hạn {loanDetails.summary.pastDueDays} ngày
-                                                    </div>
-                                                )}
-                                            </Card>
-                                        </Col>
-                                    </Row>
+                                    <div style={{ padding: '24px' }}>
+                                        {/* Performance Section */}
+                                        <Card title="Lịch sử hiệu suất" size="small" style={{ marginBottom: 24 }}>
+                                            <Row gutter={24}>
+                                                <Col span={8}>
+                                                    <Descriptions column={1} size="small" bordered>
+                                                        <Descriptions.Item label="Số kỳ trả nợ">{loanDetails.numberOfRepayments}.00</Descriptions.Item>
+                                                        <Descriptions.Item label="Ngày đáo hạn">{loanDetails.timeline?.expectedMaturityDate ? [...loanDetails.timeline.expectedMaturityDate].reverse().join('/') : '–'}</Descriptions.Item>
+                                                    </Descriptions>
+                                                </Col>
+                                                <Col span={8}>
+                                                    <Descriptions column={1} size="small" bordered contentStyle={{ whiteSpace: 'nowrap' }}>
+                                                        <Descriptions.Item label="Tổng số tiền đã trả">{fmtVND(loanDetails.summary?.totalPaid ?? loanDetails.summary?.totalRepayment)}</Descriptions.Item>
+                                                        <Descriptions.Item label="Ngày thanh toán cuối">{loanDetails.summary?.lastPaymentDate ? [...loanDetails.summary.lastPaymentDate].reverse().join('/') : '–'}</Descriptions.Item>
+                                                    </Descriptions>
+                                                </Col>
+                                                <Col span={8}>
+                                                    <Descriptions column={1} size="small" bordered contentStyle={{ whiteSpace: 'nowrap' }}>
+                                                        <Descriptions.Item label="Số tiền thanh toán cuối">{fmtVND(loanDetails.summary?.lastPaymentAmount)}</Descriptions.Item>
+                                                        <Descriptions.Item label="Số kỳ trả nợ quá hạn">{loanDetails.summary?.numberOfRepaymentsOverdue ?? 0}.00</Descriptions.Item>
+                                                    </Descriptions>
+                                                </Col>
+                                            </Row>
+                                        </Card>
+
+                                        {/* Loan Summary Table - Mifos Style */}
+                                        <Card title="Tóm tắt khoản vay" size="small">
+                                            <Table
+                                                size="small"
+                                                pagination={false}
+                                                bordered
+                                                dataSource={[
+                                                    { key: 'principal', label: 'Gốc', original: loanDetails.summary?.principalDisbursed, paid: loanDetails.summary?.principalPaid, waived: loanDetails.summary?.principalWaived, writtenOff: loanDetails.summary?.principalWrittenOff, outstanding: loanDetails.summary?.principalOutstanding, overdue: loanDetails.summary?.principalOverdue },
+                                                    { key: 'interest', label: 'Lãi', original: loanDetails.summary?.interestCharged, paid: loanDetails.summary?.interestPaid, waived: loanDetails.summary?.interestWaived, writtenOff: loanDetails.summary?.interestWrittenOff, outstanding: loanDetails.summary?.interestOutstanding, overdue: loanDetails.summary?.interestOverdue },
+                                                    { key: 'fees', label: 'Phí', original: loanDetails.summary?.feeChargesCharged, paid: loanDetails.summary?.feeChargesPaid, waived: loanDetails.summary?.feeChargesWaived, writtenOff: loanDetails.summary?.feeChargesWrittenOff, outstanding: loanDetails.summary?.feeChargesOutstanding, overdue: loanDetails.summary?.feeChargesOverdue },
+                                                    { key: 'penalties', label: 'Phạt', original: loanDetails.summary?.penaltyChargesCharged, paid: loanDetails.summary?.penaltyChargesPaid, waived: loanDetails.summary?.penaltyChargesWaived, writtenOff: loanDetails.summary?.penaltyChargesWrittenOff, outstanding: loanDetails.summary?.penaltyChargesOutstanding, overdue: loanDetails.summary?.penaltyChargesOverdue },
+                                                    { key: 'total', label: 'Tổng số', original: loanDetails.summary?.totalExpectedRepayment, paid: loanDetails.summary?.totalPaid ?? loanDetails.summary?.totalRepayment, waived: loanDetails.summary?.totalWaived, writtenOff: loanDetails.summary?.totalWrittenOff, outstanding: loanDetails.summary?.totalOutstanding, overdue: loanDetails.summary?.totalOverdue },
+                                                ]}
+                                                columns={[
+                                                    { title: '', dataIndex: 'label', key: 'label' },
+                                                    { title: 'Dự kiến', dataIndex: 'original', key: 'original', align: 'right', render: (v: number) => fmtVND(v) },
+                                                    { title: 'Đã trả', dataIndex: 'paid', key: 'paid', align: 'right', render: (v: number) => fmtVND(v) },
+                                                    { title: 'Đã miễn', dataIndex: 'waived', key: 'waived', align: 'right', render: (v: number) => fmtVND(v) },
+                                                    { title: 'Đã xóa sổ', dataIndex: 'writtenOff', key: 'writtenOff', align: 'right', render: (v: number) => fmtVND(v) },
+                                                    { title: 'Số dư nợ', dataIndex: 'outstanding', key: 'outstanding', align: 'right', render: (v: number) => fmtVND(v) },
+                                                    {
+                                                        title: 'Quá hạn', dataIndex: 'overdue', key: 'overdue', align: 'right', render: (v: number) => (
+                                                            <Text type={v > 0 ? 'danger' : 'secondary'}>{fmtVND(v)}</Text>
+                                                        )
+                                                    },
+                                                ]}
+                                            />
+                                        </Card>
+                                    </div>
                                 </div>
                             )
                         },
@@ -1066,6 +1148,35 @@ export default function CustomerDetailPage() {
                             )
                         },
                         {
+                            key: 'transactions',
+                            label: 'Giao dịch',
+                            children: (
+                                <div style={{ padding: '8px 0' }}>
+                                    <Table
+                                        dataSource={loanDetails.transactions || []}
+                                        pagination={{ pageSize: 10 }}
+                                        size="small"
+                                        rowKey="id"
+                                        scroll={{ x: 1200 }}
+                                        columns={[
+                                            { title: '#', key: 'index', width: 50, render: (_1: any, _2: any, index: number) => index + 1 },
+                                            { title: 'ID', dataIndex: 'id', width: 80 },
+                                            { title: 'Văn phòng', dataIndex: 'officeName', width: 120, render: () => loanDetails.officeName },
+                                            { title: 'Bên ngoài ID', dataIndex: 'externalId', width: 120, render: (v: any) => v || '–' },
+                                            { title: 'Ngày giao dịch', dataIndex: 'date', width: 120, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                            { title: 'Loại', key: 'type', width: 200, render: (_: any, r: any) => <Tag color={r.type?.repayment ? 'green' : (r.type?.disbursement ? 'gold' : 'blue')}>{r.type?.value}</Tag> },
+                                            { title: 'Số tiền', dataIndex: 'amount', align: 'right', width: 120, render: (v: any) => fmtVND(v) },
+                                            { title: 'Gốc', dataIndex: 'principalPortion', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                            { title: 'Lãi', dataIndex: 'interestPortion', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                            { title: 'Phí', dataIndex: 'feeChargesPortion', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                            { title: 'Phạt', dataIndex: 'penaltyChargesPortion', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                            { title: 'Số dư nợ', dataIndex: 'loanBalance', align: 'right', width: 120, render: (v: any) => fmtVND(v) },
+                                        ]}
+                                    />
+                                </div>
+                            )
+                        },
+                        {
                             key: 'schedule',
                             label: 'Lịch trả nợ',
                             children: (
@@ -1073,76 +1184,78 @@ export default function CustomerDetailPage() {
                                     dataSource={loanDetails.repaymentSchedule?.periods || []}
                                     pagination={false}
                                     size="small"
-                                    scroll={{ y: 500, x: 1300 }}
+                                    scroll={{ y: 600, x: 1800 }}
                                     rowKey="period"
                                     columns={[
-                                        { title: '#', dataIndex: 'period', width: 60, fixed: 'left', align: 'center' },
-                                        {
-                                            title: 'Ngày đến hạn',
-                                            dataIndex: 'dueDate',
-                                            width: 120,
-                                            align: 'center',
-                                            render: (v: any) => v ? v.reverse().join('/') : '–'
-                                        },
-                                        {
-                                            title: 'Ngày trả',
-                                            dataIndex: 'obligationsMetOnDate',
-                                            width: 120,
-                                            align: 'center',
-                                            render: (v: any) => v ? <Text type="success">{v.reverse().join('/')}</Text> : '–'
-                                        },
-                                        {
-                                            title: 'Dư nợ gốc',
-                                            dataIndex: 'principalLoanBalanceOutstanding',
-                                            align: 'right',
-                                            width: 150,
-                                            render: (v: any) => v != null ? fmtVND(v) : '–'
-                                        },
-                                        {
-                                            title: 'Gốc (Hẹn/Trả)',
-                                            key: 'principal',
-                                            align: 'right',
-                                            width: 180,
-                                            render: (_: any, r: any) => (
-                                                <div>
-                                                    <div>{fmtVND(r.principalDue)}</div>
-                                                    <div style={{ fontSize: '11px', color: token.colorSuccess }}>{fmtVND(r.principalPaid)}</div>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            title: 'Lãi (Hẹn/Trả)',
-                                            key: 'interest',
-                                            align: 'right',
-                                            width: 180,
-                                            render: (_: any, r: any) => (
-                                                <div>
-                                                    <div>{fmtVND(r.interestDue)}</div>
-                                                    <div style={{ fontSize: '11px', color: token.colorSuccess }}>{fmtVND(r.interestPaid)}</div>
-                                                </div>
-                                            )
-                                        },
-                                        {
-                                            title: 'Phí/Phạt',
-                                            key: 'fees',
-                                            align: 'right',
-                                            width: 140,
-                                            render: (_: any, r: any) => fmtVND((r.feeChargesDue || 0) + (r.penaltyChargesDue || 0))
-                                        },
-                                        {
-                                            title: 'Tổng kỳ',
-                                            dataIndex: 'totalDueForPeriod',
-                                            align: 'right',
-                                            width: 150,
-                                            render: (v: any) => <Text strong>{fmtVND(v)}</Text>
-                                        },
-                                        {
-                                            title: 'Chưa trả',
-                                            dataIndex: 'totalOutstandingForPeriod',
-                                            align: 'right',
-                                            width: 130,
-                                            render: (v: any) => v > 0 ? <Text type="danger">{fmtVND(v)}</Text> : <Badge status="success" text="Đã xong" />
-                                        },
+                                        { title: '#', dataIndex: 'period', width: 50, fixed: 'left' },
+                                        { title: 'Ngày', dataIndex: 'dueDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                        { title: 'Ngày trả', dataIndex: 'obligationsMetOnDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                        { title: 'Dư nợ khoản vay', dataIndex: 'principalLoanBalanceOutstanding', align: 'right', width: 140, render: (v: any) => fmtVND(v) },
+                                        { title: 'Gốc đến hạn', dataIndex: 'principalDue', align: 'right', width: 120, render: (v: any) => fmtVND(v) },
+                                        { title: 'Lãi', dataIndex: 'interestDue', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                        { title: 'Phí', dataIndex: 'feeChargesDue', align: 'right', width: 100, render: (v: any) => fmtVND(v) },
+                                        { title: 'Các khoản phạt', dataIndex: 'penaltyChargesDue', align: 'right', width: 120, render: (v: any) => fmtVND(v) },
+                                        { title: 'Đến hạn', dataIndex: 'totalDueForPeriod', align: 'right', width: 130, render: (v: any) => fmtVND(v) },
+                                        { title: 'Đã trả', dataIndex: 'totalPaidForPeriod', align: 'right', width: 130, render: (v: any) => fmtVND(v) },
+                                        { title: 'Trước', dataIndex: 'totalPaidInAdvanceForPeriod', align: 'right', width: 110, render: (v: any) => fmtVND(v) },
+                                        { title: 'Muộn', dataIndex: 'totalPaidLateForPeriod', align: 'right', width: 110, render: (v: any) => fmtVND(v) },
+                                        { title: 'Chưa thanh toán', dataIndex: 'totalOutstandingForPeriod', align: 'right', width: 140, render: (v: any) => fmtVND(v) },
+                                    ]}
+                                />
+                            )
+                        },
+                        {
+                            key: 'delinquency',
+                            label: 'Thẻ nợ quá hạn',
+                            children: (
+                                <div style={{ padding: '24px' }}>
+                                    <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Thẻ nợ quá hạn</div>
+                                    <Table
+                                        size="small"
+                                        pagination={false}
+                                        style={{ marginBottom: 32 }}
+                                        dataSource={loanDetails.delinquencyTags || []}
+                                        columns={[
+                                            { title: 'Phân loại nợ quá hạn', dataIndex: ['delinquencyRange', 'classification'] },
+                                            { title: 'Đã thêm vào', dataIndex: 'addedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                            { title: 'Gỡ bỏ vào', dataIndex: 'liftedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                        ]}
+                                    />
+                                    <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Thẻ kỳ trả nợ quá hạn</div>
+                                    <Table
+                                        size="small"
+                                        pagination={false}
+                                        dataSource={loanDetails.installmentLevelDelinquency || []}
+                                        columns={[
+                                            { title: 'Phân loại nợ quá hạn', dataIndex: 'classification' },
+                                            { title: 'Ngày', dataIndex: 'minimumAgeDays', render: (v: any) => v != null ? `${v}.00` : '–' },
+                                            { title: 'Số tiền', dataIndex: 'delinquentAmount', render: (v: any) => fmtVND(v) },
+                                        ]}
+                                    />
+                                    <div style={{ marginTop: 24, textAlign: 'right' }}>
+                                        <Button type="primary" icon={<PauseCircleOutlined />}>Tạm dừng phân loại nợ quá hạn</Button>
+                                    </div>
+                                </div>
+                            )
+                        },
+                        {
+                            key: 'charges',
+                            label: 'Các khoản phí',
+                            children: (
+                                <Table
+                                    dataSource={loanDetails.charges || []}
+                                    pagination={false}
+                                    size="small"
+                                    columns={[
+                                        { title: 'Tên', dataIndex: 'name' },
+                                        { title: 'Phí/Phạt', dataIndex: 'penalty', render: (v: any) => v ? 'Phạt' : 'Phí' },
+                                        { title: 'Thanh toán đến hạn vào', dataIndex: 'chargeTimeType', render: (v: any) => v?.value },
+                                        { title: 'Đến hạn tính đến', dataIndex: 'dueDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                        { title: 'Loại tính toán', dataIndex: 'chargeCalculationType', render: (v: any) => v?.value },
+                                        { title: 'Đến hạn', dataIndex: 'amount', align: 'right', render: (v: any) => fmtVND(v) },
+                                        { title: 'Đã trả', dataIndex: 'amountPaid', align: 'right', render: (v: any) => fmtVND(v) },
+                                        { title: 'Đã miễn', dataIndex: 'amountWaived', align: 'right', render: (v: any) => fmtVND(v) },
+                                        { title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', align: 'right', render: (v: any) => fmtVND(v) },
                                     ]}
                                 />
                             )
@@ -1265,6 +1378,32 @@ export default function CustomerDetailPage() {
                     </div>
                 )}
             </Drawer>
+            <style>{`
+                .mifos-tabs .ant-tabs-nav {
+                    background: #f4f4f4;
+                    margin: 0 !important;
+                    padding: 0 24px;
+                }
+                .mifos-tabs .ant-tabs-tab {
+                    border: none !important;
+                    background: transparent !important;
+                    margin: 0 !important;
+                    padding: 12px 20px !important;
+                    border-radius: 0 !important;
+                }
+                .mifos-tabs .ant-tabs-tab-active {
+                    background: #fff !important;
+                    border-top: 3px solid #0071b9 !important;
+                }
+                .mifos-summary-label {
+                    background: #f9f9f9;
+                    font-weight: 500;
+                    width: 150px;
+                }
+                .mifos-tabs .ant-tabs-content-holder {
+                    background: #fff;
+                }
+            `}</style>
         </div>
     );
 }

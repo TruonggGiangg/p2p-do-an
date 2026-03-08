@@ -71,6 +71,9 @@ export class LoanApplication extends Document {
   @Prop({ required: false })
   fineractLoanId?: number;
 
+  @Prop({ required: false })
+  lastSyncedAt?: Date;
+
   @Prop({ required: false, default: 0 })
   outstandingAmount?: number;
 
@@ -84,6 +87,42 @@ export class LoanApplication extends Document {
   totalOverdue?: number;
 
   @Prop({ required: false, default: 0 })
+  principalPaid?: number;
+
+  @Prop({ required: false, default: 0 })
+  principalOutstanding?: number;
+
+  @Prop({ required: false, default: 0 })
+  interestPaid?: number;
+
+  @Prop({ required: false, default: 0 })
+  interestOutstanding?: number;
+
+  @Prop({ required: false, default: 0 })
+  feePaid?: number;
+
+  @Prop({ required: false, default: 0 })
+  feeOutstanding?: number;
+
+  @Prop({ required: false, default: 0 })
+  penaltyPaid?: number;
+
+  @Prop({ required: false, default: 0 })
+  penaltyOutstanding?: number;
+
+  @Prop({ required: false, default: 0 })
+  totalPaid?: number;
+
+  @Prop({ required: false, default: 0 })
+  totalOutstanding?: number;
+
+  @Prop({ type: [Number], required: false })
+  lastPaymentDate?: number[];
+
+  @Prop({ required: false, default: 0 })
+  lastPaymentAmount?: number;
+
+  @Prop({ required: false, default: 0 })
   delinquentDays?: number;
 
   @Prop({ required: false })
@@ -91,6 +130,38 @@ export class LoanApplication extends Document {
 
   @Prop({ required: false })
   fineractStatusString?: string;
+
+  // Store full repayment schedule from Fineract
+  @Prop({ type: [Object], default: [] })
+  repaymentSchedule?: any[];
+
+  // Store full transactions from Fineract
+  @Prop({ type: [Object], default: [] })
+  transactions?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  charges?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  collateral?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  guarantors?: any[];
+
+  @Prop({ type: Object, default: {} })
+  delinquencyRange?: any;
+
+  @Prop({ type: [Object], default: [] })
+  delinquencyTag?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  installmentLevelDelinquency?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  delinquencyTags?: any[];
+
+  @Prop({ type: [Object], default: [] })
+  delinquencyActions?: any[];
 
   // ── AIScore PD Result ──
   // Lưu kết quả chấm điểm tín dụng khi tạo khoản vay
