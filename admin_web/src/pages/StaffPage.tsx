@@ -493,8 +493,8 @@ export default function StaffPage() {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            <Form.Item name="lastName" label="Ten" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
-                                <Input placeholder="Van A" />
+                            <Form.Item name="lastName" label="Tên" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
+                                <Input placeholder="Văn A" />
                             </Form.Item>
                         </Col>
                     </Row>
@@ -526,8 +526,8 @@ export default function StaffPage() {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            <Form.Item name="lastName" label="Ten">
-                                <Input placeholder="Ten" />
+                            <Form.Item name="lastName" label="Tên">
+                                <Input placeholder="Tên" />
                             </Form.Item>
                         </Col>
                     </Row>

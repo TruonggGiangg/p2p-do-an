@@ -14,8 +14,8 @@ import {
   Table,
   Collapse,
 } from 'antd';
-import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, BankOutlined } from '@ant-design/icons';
-import { adminApi, type SyncDriftLogDto, type ProductDiffItemDto } from '../api/admin';
+import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, BankOutlined, FileTextOutlined } from '@ant-design/icons';
+import { adminApi, type SyncDriftLogDto, type ProductDiffItemDto, type LoanSyncRunDto, type LoanSyncRunDetailDto } from '../api/admin';
 import { translateValue } from '../utils/vi';
 
 const { Title, Text } = Typography;
@@ -53,6 +53,87 @@ function FieldChangesTable({ items }: { items: ProductDiffItemDto[] }) {
             ]}
             rowKey="field"
           />
+        ),
+      }))}
+    />
+  );
+}
+
+/** Chi tiết một khoản vay trong lần đồng bộ */
+function LoanSyncDetailRow({ d }: { d: LoanSyncRunDetailDto }) {
+  const hasChanges = d.changes && d.changes.length > 0;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Space>
+        <Tag color={d.status === 'synced' ? 'green' : d.status === 'error' ? 'red' : 'default'}>
+          {d.fineractLoanId}
+        </Tag>
+        <Tag>{d.status === 'synced' ? 'Đã đồng bộ' : d.status === 'skipped' ? 'Bỏ qua' : 'Lỗi'}</Tag>
+        {d.message && <Text type="secondary">{d.message}</Text>}
+      </Space>
+      {hasChanges && (
+        <Table
+          size="small"
+          pagination={false}
+          style={{ marginTop: 8 }}
+          dataSource={d.changes!}
+          columns={[
+            { title: 'Trường', dataIndex: 'label', key: 'label', width: 200 },
+            { title: 'Trước', dataIndex: 'before', key: 'before', render: (v) => fmtVal(v) },
+            { title: 'Sau', dataIndex: 'after', key: 'after', render: (v) => fmtVal(v) },
+          ]}
+          rowKey="field"
+        />
+      )}
+    </div>
+  );
+}
+
+/** Danh sách lần chạy đồng bộ khoản vay với chi tiết từng thay đổi */
+function LoanSyncRunsList({ runs, token }: { runs: LoanSyncRunDto[]; token: any }) {
+  if (runs.length === 0) {
+    return <Empty description="Chưa có lần chạy đồng bộ khoản vay" />;
+  }
+  return (
+    <Timeline
+      mode="left"
+      items={runs.map((run) => ({
+        color: run.errorCount > 0 ? 'red' : 'green',
+        label: (
+          <Text type="secondary">
+            {new Date(run.ranAt).toLocaleString('vi-VN')} · {run.trigger === 'manual' ? 'Thủ công' : 'Tự động'}
+          </Text>
+        ),
+        children: (
+          <Card
+            size="small"
+            style={{
+              marginBottom: 16,
+              borderLeft: `4px solid ${run.errorCount > 0 ? token.colorError : token.colorSuccess}`,
+              background: token.colorBgLayout,
+            }}
+          >
+            <Space wrap style={{ marginBottom: 8 }}>
+              <Tag>Fineract: {run.totalFromFineract}</Tag>
+              <Tag color="green">Đồng bộ: {run.synced}</Tag>
+              {run.skipped > 0 && <Tag color="default">Bỏ qua: {run.skipped}</Tag>}
+              {run.errorCount > 0 && <Tag color="error">Lỗi: {run.errorCount}</Tag>}
+            </Space>
+            {run.details && run.details.length > 0 && (
+              <Collapse
+                size="small"
+                items={[
+                  {
+                    key: 'details',
+                    label: `Chi tiết ${run.details.length} khoản vay`,
+                    children: run.details.map((d, i) => (
+                      <LoanSyncDetailRow key={`${d.fineractLoanId}-${i}`} d={d} />
+                    )),
+                  },
+                ]}
+              />
+            )}
+          </Card>
         ),
       }))}
     />
@@ -123,8 +204,11 @@ export default function SyncDriftPage() {
   const { token } = theme.useToken();
   const [logs, setLogs] = useState<SyncDriftLogDto[]>([]);
   const [savingsLogs, setSavingsLogs] = useState<SyncDriftLogDto[]>([]);
+  const [loanSyncRuns, setLoanSyncRuns] = useState<LoanSyncRunDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingLoans, setLoadingLoans] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingLoans, setSyncingLoans] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('loan');
 
   const load = async () => {
@@ -144,8 +228,22 @@ export default function SyncDriftPage() {
     }
   };
 
+  const loadLoanSyncRuns = async () => {
+    setLoadingLoans(true);
+    try {
+      const data = await adminApi.getLoanSyncRuns(30);
+      setLoanSyncRuns(data ?? []);
+    } catch (e: any) {
+      console.error(e);
+      message.error("Không thể tải lịch sử đồng bộ khoản vay");
+    } finally {
+      setLoadingLoans(false);
+    }
+  };
+
   useEffect(() => {
     load();
+    loadLoanSyncRuns();
   }, []);
 
   const runSyncLoan = async () => {
@@ -171,6 +269,21 @@ export default function SyncDriftPage() {
       message.error(e.response?.data?.message || e.message || 'Đồng bộ thất bại');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const runSyncDisbursedLoans = async () => {
+    setSyncingLoans(true);
+    try {
+      const result = await adminApi.syncDisbursedLoans(300);
+      message.success(
+        `Đồng bộ xong: ${result.synced} đồng bộ, ${result.skipped} bỏ qua, ${result.errors} lỗi${result.runId ? ` (runId: ${result.runId})` : ''}`
+      );
+      loadLoanSyncRuns();
+    } catch (e: any) {
+      message.error(e.response?.data?.message || e.message || 'Đồng bộ khoản vay thất bại');
+    } finally {
+      setSyncingLoans(false);
     }
   };
 
@@ -232,6 +345,25 @@ export default function SyncDriftPage() {
                   </Button>
                 </div>
                 <SyncLogList logs={savingsLogs} token={token} />
+              </Card>
+            ),
+          },
+          {
+            key: 'loans',
+            label: <span><FileTextOutlined /> Khoản vay</span>,
+            children: (
+              <Card loading={loadingLoans}>
+                <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    type="primary"
+                    icon={<SyncOutlined spin={syncingLoans} />}
+                    onClick={runSyncDisbursedLoans}
+                    loading={syncingLoans}
+                  >
+                    Chạy đồng bộ khoản vay
+                  </Button>
+                </div>
+                <LoanSyncRunsList runs={loanSyncRuns} token={token} />
               </Card>
             ),
           },

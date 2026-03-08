@@ -350,12 +350,22 @@ export class AdminController {
 
   @Post('sync-disbursed-loans')
   @CheckPolicies(ability => ability.can(Action.Update, 'Loan'))
-  @ApiOperation({ summary: 'Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo (để trang Khoản vay quá hạn có dữ liệu)' })
+  @ApiOperation({ summary: 'Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi và lưu vào loan_sync_runs' })
   @ApiResponse({ status: 200 })
   async syncDisbursedLoans(@Query('limit') limit?: string) {
     const max = limit != null ? Math.min(parseInt(limit, 10) || 300, 500) : 300;
-    const result = await this.adminService.syncDisbursedLoansFromFineract(max);
+    const result = await this.adminService.syncDisbursedLoansFromFineract(max, { trigger: 'manual' });
     return { statusCode: 200, message: 'Đồng bộ xong', data: result };
+  }
+
+  @Get('loan-sync-runs')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
+  @ApiOperation({ summary: 'Lấy lịch sử chạy đồng bộ khoản vay (truy vết từng thay đổi)' })
+  @ApiResponse({ status: 200 })
+  async getLoanSyncRuns(@Query('limit') limit?: string) {
+    const limitNum = limit != null ? Math.min(parseInt(limit, 10) || 30, 100) : 30;
+    const runs = await this.adminService.getLoanSyncRuns(limitNum);
+    return { statusCode: 200, message: 'OK', data: runs };
   }
 
   @Post('loans/:fineractLoanId/approve')

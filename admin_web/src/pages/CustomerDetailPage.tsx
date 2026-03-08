@@ -1312,6 +1312,7 @@ export default function CustomerDetailPage() {
                                                 <Table
                                                     size="small"
                                                     pagination={false}
+                                                    scroll={{ x: 320 }}
                                                     dataSource={
                                                         (loanDetails.periodDelinquency && loanDetails.periodDelinquency.length > 0)
                                                             ? loanDetails.periodDelinquency
@@ -1319,10 +1320,10 @@ export default function CustomerDetailPage() {
                                                     }
                                                     rowKey="period"
                                                     columns={[
-                                                        { title: 'Kỳ', dataIndex: 'period', width: 50 },
-                                                        { title: 'Ngày đến hạn', dataIndex: 'dueDate' },
-                                                        { title: 'Nhóm', dataIndex: 'classification', render: (v: any) => <Tag color="orange">{v}</Tag> },
-                                                        { title: 'Tiền quá hạn', dataIndex: 'totalOverdue', align: 'right', render: (v: any) => <Text type="danger">{fmtVND(v)}</Text> },
+                                                        { title: 'Kỳ', dataIndex: 'period', width: 56 },
+                                                        { title: 'Ngày đến hạn', dataIndex: 'dueDate', width: 110 },
+                                                        { title: 'Nhóm', dataIndex: 'classification', width: 140, render: (v: any) => v ? <Tag color="orange">{v}</Tag> : '–' },
+                                                        { title: 'Tiền quá hạn', dataIndex: 'totalOverdue', align: 'right', width: 120, render: (v: any) => <Text type="danger" style={{ whiteSpace: 'nowrap' }}>{fmtVND(v)}</Text> },
                                                     ]}
                                                     locale={{ emptyText: 'Không có kỳ nào quá hạn' }}
                                                 />
@@ -1334,11 +1335,13 @@ export default function CustomerDetailPage() {
                                                 <Table
                                                     size="small"
                                                     pagination={false}
+                                                    scroll={{ x: 340 }}
                                                     dataSource={loanDetails.installmentLevelDelinquency || []}
+                                                    rowKey={(r: any) => r.classification || `${r.minimumAgeDays}-${r.maximumAgeDays}`}
                                                     columns={[
-                                                        { title: 'Nhóm nợ', dataIndex: 'classification' },
-                                                        { title: 'Khoảng ngày', key: 'range', render: (_: any, r: any) => `${r.minimumAgeDays}–${r.maximumAgeDays} n` },
-                                                        { title: 'Số tiền', dataIndex: 'delinquentAmount', align: 'right', render: (v: any) => <Text strong>{fmtVND(v)}</Text> },
+                                                        { title: 'Nhóm nợ', dataIndex: 'classification', width: 160 },
+                                                        { title: 'Khoảng ngày', key: 'range', width: 100, render: (_: any, r: any) => `${r.minimumAgeDays ?? '–'}–${r.maximumAgeDays ?? '–'} ngày` },
+                                                        { title: 'Số tiền', dataIndex: 'delinquentAmount', align: 'right', width: 120, render: (v: any) => <Text strong style={{ whiteSpace: 'nowrap' }}>{fmtVND(v)}</Text> },
                                                     ]}
                                                     locale={{ emptyText: 'Chưa có phân bổ tiền quá hạn' }}
                                                 />

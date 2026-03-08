@@ -15,7 +15,7 @@ import {
   SAVINGS_SNAPSHOT_SCOPE,
 } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
-import { LoanSyncRun } from './schemas/loan-sync-run.schema';
+import { LoanSyncRun, type LoanSyncRunDetailItem, type LoanSyncChangeItem } from './schemas/loan-sync-run.schema';
 import {
   flattenLoanProduct,
   flattenSavingsProduct,
@@ -53,6 +53,17 @@ function parseFineractDate(val: any): string | null {
     const parsed = new Date(val);
     return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : null;
   }
+  return null;
+}
+
+/** Parse period dueDate (array [y,m,d] or string) to ISO yyyy-MM-dd for comparison */
+function parsePeriodDueDate(due: any): string | null {
+  if (due == null) return null;
+  if (Array.isArray(due) && due.length >= 3) {
+    const [y, m, d] = due;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}/.test(due)) return due.slice(0, 10);
   return null;
 }
 
@@ -991,7 +1002,8 @@ export class AdminService {
     const delinquentInfo = dData.delinquent || fl.delinquent || dData.collection || fl.collection || {};
     const rangeInfo = dData.delinquencyRange || fl.delinquencyRange || {};
     const summaryInfo = dData.summary || fl.summary || fl.collection || {};
-    const summary = fl.summary || summaryInfo || {};
+    // Prefer fl.summary; fallback to fl.collection (often has post-allocation totals/delinquency)
+    const summary = fl.summary || fl.collection || summaryInfo || {};
 
     // 2. Map status (active = đã giải ngân -> disbursed để trang Khoản vay quá hạn lấy đúng)
     const fStatus = fl.status || {};
@@ -1043,11 +1055,39 @@ export class AdminService {
     app.delinquentDays = delinquentInfo?.pastDueDays || delinquentInfo?.delinquentDays || rangeInfo?.minimumAgeDays || rangeInfo?.pastDueDays || 0;
     app.delinquencyClassification = rangeInfo?.classification ?? delinquentInfo?.classification ?? null;
 
-    app.repaymentSchedule = fl.repaymentSchedule?.periods || [];
+    // Persist full schedule from Fineract (includes principalPaid/interestPaid per period after allocation)
+    const rawPeriods = fl.repaymentSchedule?.periods || [];
+    app.repaymentSchedule = rawPeriods;
+    // Log first period paid amounts to verify allocation (helps debug "payment not allocated" issues)
+    const firstPeriod = rawPeriods.find((p: any) => p.period != null && Number(p.period) > 0);
+    if (firstPeriod) {
+      this.logger.debug(
+        `[syncLoanFromFineract] loan ${fineractLoanId} period 1: principalPaid=${firstPeriod.principalPaid ?? 0} interestPaid=${firstPeriod.interestPaid ?? 0} totalPaidForPeriod=${firstPeriod.totalPaidForPeriod ?? 0}`,
+      );
+    }
+    this.logger.debug(`[syncLoanFromFineract] loan ${fineractLoanId} summary.totalRepayment=${summary.totalRepayment ?? 0} totalOverdue=${summary.totalOverdue ?? 0}`);
     app.transactions = fl.transactions || [];
     app.charges = fl.charges || [];
     app.collateral = fl.collateral || [];
     app.guarantors = fl.guarantors || [];
+
+    // Keep disbursementDate in sync with Fineract (source of truth after disbursal)
+    const fineractDisbursement = parseFineractDate(fl.timeline?.actualDisbursementDate) || parseFineractDate(fl.timeline?.expectedDisbursementDate);
+    if (fineractDisbursement) {
+      app.disbursementDate = fineractDisbursement;
+      app.markModified('disbursementDate');
+    }
+
+    // CRITICAL: Validate disbursement vs first period due date (consistency check)
+    if (firstPeriod && app.disbursementDate) {
+      const firstDueStr = parsePeriodDueDate(firstPeriod.dueDate);
+      if (firstDueStr && firstDueStr < app.disbursementDate) {
+        this.logger.error(
+          `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
+          'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+        );
+      }
+    }
 
     // Ensure delinquencyRange is populated with EVERYTHING the frontend expects for the header
     app.delinquencyRange = {
@@ -1157,35 +1197,91 @@ export class AdminService {
     return { total: loans.length, processed: results };
   }
 
+  /** Các trường theo dõi khi đồng bộ khoản vay (để báo cáo thay đổi nhỏ nhất) */
+  private static LOAN_SYNC_TRACK_FIELDS: Array<{ key: string; label: string }> = [
+    { key: 'status', label: 'Trạng thái' },
+    { key: 'outstandingAmount', label: 'Dư nợ' },
+    { key: 'totalOverdue', label: 'Tổng quá hạn' },
+    { key: 'delinquentDays', label: 'Số ngày quá hạn' },
+    { key: 'delinquencyClassification', label: 'Nhóm nợ' },
+    { key: 'principalPaid', label: 'Gốc đã trả' },
+    { key: 'interestPaid', label: 'Lãi đã trả' },
+    { key: 'totalPaid', label: 'Tổng đã trả' },
+    // lastSyncedAt bỏ khỏi báo cáo vì mỗi lần sync đều cập nhật → luôn "thay đổi", gây nhiễu
+    { key: 'schedulePeriodsCount', label: 'Số kỳ trả nợ' },
+    { key: 'period1PrincipalPaid', label: 'Kỳ 1 gốc đã trả' },
+  ];
+
+  private snapshotLoanForSyncDiff(doc: any): Record<string, any> {
+    if (!doc) return {};
+    const periods = Array.isArray(doc.repaymentSchedule) ? doc.repaymentSchedule : (doc.repaymentSchedule?.periods || []);
+    const firstPeriod = periods.find((p: any) => p.period != null && Number(p.period) > 0);
+    return {
+      status: doc.status,
+      outstandingAmount: doc.outstandingAmount,
+      totalOverdue: doc.totalOverdue,
+      delinquentDays: doc.delinquentDays,
+      delinquencyClassification: doc.delinquencyClassification,
+      principalPaid: doc.principalPaid,
+      interestPaid: doc.interestPaid,
+      totalPaid: doc.totalPaid,
+      lastSyncedAt: doc.lastSyncedAt ? new Date(doc.lastSyncedAt).getTime() : null,
+      schedulePeriodsCount: periods.length,
+      period1PrincipalPaid: firstPeriod?.principalPaid ?? null,
+    };
+  }
+
+  private diffLoanSnapshots(before: Record<string, any>, after: Record<string, any>): LoanSyncChangeItem[] {
+    const changes: LoanSyncChangeItem[] = [];
+    for (const { key, label } of AdminService.LOAN_SYNC_TRACK_FIELDS) {
+      const b = before[key];
+      const a = after[key];
+      if (JSON.stringify(b) === JSON.stringify(a)) continue;
+      changes.push({ field: key, label, before: b, after: a });
+    }
+    return changes;
+  }
+
   /**
    * Lấy tất cả khoản vay đã giải ngân từ Fineract (status 300 = Active) và sync vào Mongo.
-   * Tạo LoanApplication nếu chưa có (khi có user trùng fineractClientId), cập nhật totalOverdue/delinquentDays.
-   * Dùng cho cron và cho trang "Khoản vay quá hạn" để không bỏ sót khoản tạo trực tiếp trên Fineract.
-   * Mỗi lần chạy ghi log vào collection loan_sync_runs (xem trên Mongo).
+   * Ghi từng thay đổi (field-level) vào loan_sync_runs.details để truy vết.
    * @param limit số khoản tối đa mỗi lần chạy
-   * @param options.trigger 'cron' | 'manual' để phân biệt chạy tự động hay từ API
+   * @param options.trigger 'cron' | 'manual'
    */
   async syncDisbursedLoansFromFineract(
     limit = 300,
     options?: { trigger?: 'cron' | 'manual' },
-  ): Promise<{ synced: number; errors: number; skipped: number }> {
-    const loans = await this.fineractLoanService.getLoansByStatus(300); // 300 = Active (disbursed)
-    const toSync = (loans || []).slice(0, limit).map((l: any) => l.id ?? l.loanId).filter((id: any) => id != null);
+  ): Promise<{ synced: number; errors: number; skipped: number; runId?: string }> {
+    // Lấy tất cả khoản vay (mọi trạng thái), không chỉ Active
+    const loans = await this.fineractLoanService.getAllLoans(limit);
+    const toSync = (loans || []).map((l: any) => l.id ?? l.loanId).filter((id: any) => id != null);
     let synced = 0;
     let errors = 0;
     let skipped = 0;
+    const details: LoanSyncRunDetailItem[] = [];
 
     for (const loanId of toSync) {
+      const fid = Number(loanId);
       try {
-        await this.syncLoanFromFineract(Number(loanId));
+        const beforeDoc = await this.loanApplicationModel.findOne({ fineractLoanId: fid }).lean();
+        const before = this.snapshotLoanForSyncDiff(beforeDoc ?? undefined);
+
+        await this.syncLoanFromFineract(fid);
         synced++;
+
+        const afterDoc = await this.loanApplicationModel.findOne({ fineractLoanId: fid }).lean();
+        const after = this.snapshotLoanForSyncDiff(afterDoc ?? undefined);
+        const changes = this.diffLoanSnapshots(before, after);
+        details.push({ fineractLoanId: fid, status: 'synced', changes: changes.length > 0 ? changes : undefined });
       } catch (err: any) {
         if (err instanceof BadRequestException && err?.message?.includes('No local user found')) {
           skipped++;
           this.logger.debug(`[syncDisbursedLoansFromFineract] Loan ${loanId} skipped (no user for client)`);
+          details.push({ fineractLoanId: fid, status: 'skipped', message: 'Không có user local cho client' });
         } else {
           this.logger.warn(`[syncDisbursedLoansFromFineract] Loan ${loanId}: ${err?.message}`);
           errors++;
+          details.push({ fineractLoanId: fid, status: 'error', message: err?.message ?? 'Lỗi đồng bộ' });
         }
       }
     }
@@ -1193,20 +1289,36 @@ export class AdminService {
     this.logger.log(`[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`);
 
     const trigger = options?.trigger ?? 'manual';
+    let runId: string | undefined;
     try {
-      await this.loanSyncRunModel.create({
+      const run = await this.loanSyncRunModel.create({
         ranAt: new Date(),
         trigger,
         totalFromFineract: toSync.length,
         synced,
         errorCount: errors,
         skipped,
+        details,
       });
+      runId = run._id?.toString();
     } catch (logErr: any) {
       this.logger.warn(`[syncDisbursedLoansFromFineract] Failed to write loan_sync_runs: ${logErr?.message}`);
     }
 
-    return { synced, errors, skipped };
+    return { synced, errors, skipped, runId };
+  }
+
+  /**
+   * Lấy danh sách lần chạy đồng bộ khoản vay (loan_sync_runs) để hiển thị và truy vết.
+   */
+  async getLoanSyncRuns(limit = 30): Promise<any[]> {
+    const runs = await this.loanSyncRunModel
+      .find()
+      .sort({ ranAt: -1 })
+      .limit(limit)
+      .lean()
+      .exec();
+    return runs;
   }
 
   /**

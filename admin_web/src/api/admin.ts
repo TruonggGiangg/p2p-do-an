@@ -55,6 +55,35 @@ export interface SyncDriftLogDto {
   modified: ProductDiffItemDto[];
 }
 
+/** Một thay đổi theo trường trong đồng bộ khoản vay */
+export interface LoanSyncChangeDto {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+}
+
+/** Chi tiết đồng bộ từng khoản vay */
+export interface LoanSyncRunDetailDto {
+  fineractLoanId: number;
+  status: "synced" | "skipped" | "error";
+  message?: string;
+  changes?: LoanSyncChangeDto[];
+}
+
+/** Một lần chạy đồng bộ khoản vay (loan_sync_runs) */
+export interface LoanSyncRunDto {
+  _id: string;
+  ranAt: string;
+  trigger: "cron" | "manual";
+  totalFromFineract: number;
+  synced: number;
+  errorCount: number;
+  skipped: number;
+  message?: string;
+  details?: LoanSyncRunDetailDto[];
+}
+
 /** Fineract status object: { id, code, value } */
 export interface FineractStatus {
   id: number;
@@ -496,10 +525,16 @@ export const adminApi = {
       .get<{ data: Array<{ id: number; classification: string; minimumAgeDays?: number }> }>("/api/admin/delinquency-ranges")
       .then((r) => r.data.data),
 
-  /** Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo (để trang Khoản vay quá hạn có dữ liệu). */
+  /** Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi lưu vào loan_sync_runs. */
   syncDisbursedLoans: (limit?: number) =>
     api
-      .post<{ data: { synced: number; errors: number; skipped: number } }>("/api/admin/sync-disbursed-loans", {}, { params: limit != null ? { limit } : {} })
+      .post<{ data: { synced: number; errors: number; skipped: number; runId?: string } }>("/api/admin/sync-disbursed-loans", {}, { params: limit != null ? { limit } : {} })
+      .then((r) => r.data.data),
+
+  /** Lịch sử chạy đồng bộ khoản vay (truy vết từng thay đổi). */
+  getLoanSyncRuns: (limit = 30) =>
+    api
+      .get<{ data: LoanSyncRunDto[] }>(`/api/admin/loan-sync-runs?limit=${limit}`)
       .then((r) => r.data.data),
 
   approveLoan: (fineractLoanId: number) =>

@@ -154,7 +154,7 @@ export class FineractLoanService extends FineractBaseService {
     async getLoanDetails(loanId: string): Promise<any> {
         try {
             // associations=summary is key for financial data
-            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule,transactions,charges,collateral,guarantors,meeting,overdueCharges,delinquent,summary`);
+            const response = await this.client.get(`/loans/${loanId}?associations=repaymentSchedule,transactions,charges,collateral,guarantors,meeting,overdueCharges,delinquent,summary,collection`);
             return response.data;
         } catch (error: any) {
             this.handleError(error, `Failed to get loan details ${loanId}`);
@@ -218,6 +218,24 @@ export class FineractLoanService extends FineractBaseService {
             return response.data?.loanAccounts || [];
         } catch {
             this.logger.error(`Failed to get loans for client ${clientId}`);
+            return [];
+        }
+    }
+
+    /**
+     * Get all loans from Fineract (mọi trạng thái: chờ duyệt, chờ giải ngân, active, đã đóng, ...)
+     * Fineract GET /loans không truyền status => trả về tất cả.
+     */
+    async getAllLoans(limit = 1000): Promise<any[]> {
+        try {
+            this.logger.log(`[getAllLoans] GET /loans (all statuses) limit=${limit}`);
+            const response = await this.client.get('/loans', { params: { limit } });
+            const items = response.data?.pageItems ?? response.data ?? [];
+            this.logger.log(`[getAllLoans] SUCCESS | Got ${Array.isArray(items) ? items.length : 0} items`);
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.logger.error(`[getAllLoans] FAILED: ${error.message}`);
+            this.logger.warn(`Failed to get all loans:`, error?.response?.data ?? error?.message);
             return [];
         }
     }

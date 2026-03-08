@@ -1,10 +1,11 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
 import { WalletsService } from '../wallets/wallets.service';
+import { AdminService } from '../admin/admin.service';
 import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
@@ -30,6 +31,7 @@ export class RepaymentService {
         private readonly fineractLoanService: FineractLoanService,
         private readonly fineractSavingsService: FineractSavingsService,
         private readonly walletsService: WalletsService,
+        @Inject(forwardRef(() => AdminService)) private readonly adminService: AdminService,
         @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
         @InjectModel(User.name) private readonly userModel: Model<User>,
         @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
@@ -109,6 +111,17 @@ export class RepaymentService {
             $push: { repaymentHistory: repaymentRecord },
             ...(newStatus !== loan.status ? { status: newStatus } : {}),
         });
+
+        // Sync loan from Fineract after a short delay so Fineract has time to allocate payment to schedule (principalPaid/interestPaid per period)
+        const syncDelayMs = 2000;
+        this.logger.log(`[makeRepayment] Waiting ${syncDelayMs}ms before sync so Fineract can allocate payment for loan ${fineractLoanId}`);
+        await new Promise((r) => setTimeout(r, syncDelayMs));
+        try {
+            await this.adminService.syncLoanFromFineract(fineractLoanId);
+            this.logger.log(`[makeRepayment] Post-repayment sync succeeded for loan ${fineractLoanId}`);
+        } catch (err: any) {
+            this.logger.warn(`[makeRepayment] Post-repayment sync failed for loan ${fineractLoanId}: ${err?.message}. Loan schedule in Mongo may show unallocated payment until next manual/cron sync.`);
+        }
 
         await this.notificationModel.create({
             userId: loan.userId,
@@ -216,6 +229,16 @@ export class RepaymentService {
             status: 'closed',
             $push: { repaymentHistory: repaymentRecord },
         });
+
+        const syncDelayMs = 2000;
+        this.logger.log(`[prepayLoan] Waiting ${syncDelayMs}ms before sync for loan ${loan.fineractLoanId}`);
+        await new Promise((r) => setTimeout(r, syncDelayMs));
+        try {
+            await this.adminService.syncLoanFromFineract(loan.fineractLoanId!);
+            this.logger.log(`[prepayLoan] Post-prepayment sync succeeded for loan ${loan.fineractLoanId}`);
+        } catch (err: any) {
+            this.logger.warn(`[prepayLoan] Post-prepayment sync failed for loan ${loan.fineractLoanId}: ${err?.message}`);
+        }
 
         await this.notificationModel.create({
             userId: loan.userId,

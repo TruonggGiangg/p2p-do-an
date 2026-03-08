@@ -397,4 +397,44 @@ Trang admin tab **Thẻ nợ quá hạn** → bảng **Quá hạn theo từng k�
 
 ---
 
+## Cảnh báo nhất quán dữ liệu (Critical Consistency)
+
+### 1. Mâu thuẫn ngày giải ngân và lịch trả nợ
+
+**Vấn đề:** Nếu `disbursementDate` (từ Fineract `timeline.actualDisbursementDate`) **sau** ngày đến hạn kỳ đầu tiên trong `repaymentSchedule`, khoản vay sẽ bị tính là quá hạn ngay từ đầu.
+
+**Ví dụ:** disbursementDate = 22/02/2026 nhưng kỳ 1 dueDate = 04/01/2026 → kỳ 1 “quá hạn” trước cả ngày giải ngân.
+
+**Xử lý trong code:**
+
+- Khi **sync loan từ Fineract** (`syncLoanFromFineract`):
+  - `disbursementDate` trên Mongo luôn được cập nhật theo Fineract (`actualDisbursementDate` hoặc `expectedDisbursementDate`).
+  - Sau khi ghi `repaymentSchedule`, kiểm tra: **kỳ đầu tiên (period &gt; 0)** có `dueDate` &lt; `disbursementDate` thì ghi **log ERROR** (CRITICAL CONSISTENCY) để admin biết.
+- **Cách sửa dữ liệu:** Chỉnh lại ngày giải ngân hoặc lịch trả nợ trên **Fineract**, sau đó chạy sync lại (hoặc đợi cron sync). Mongo không tự sửa dữ liệu gốc từ Fineract.
+
+### 2. Thanh toán chưa được gạch nợ (Payment not allocated) và lệch repaymentSchedule / totalOverdue
+
+**Vấn đề:** Khách đã đóng tiền (có trong `repaymentHistory` và giao dịch Fineract), nhưng trong `repaymentSchedule` các kỳ vẫn `principalPaid`/`interestPaid` = 0, dẫn tới totalOverdue và nhóm nợ (delinquency) bị tính sai.
+
+**Nguyên nhân thường gặp:**
+
+- Sync chạy **quá sớm** sau khi gọi API thanh toán: Fineract cần một chút thời gian để allocate khoản trả vào từng kỳ, nếu GET loan ngay lập tức có thể vẫn nhận schedule cũ.
+- GET loan thiếu association **collection**: Một số phiên bản Fineract trả về tổng quá hạn / delinquency chính xác hơn trong `collection`.
+- Thanh toán thực hiện **bên ngoài app** (Fineract UI, kênh khác): Mongo chỉ cập nhật khi có sync (thủ công hoặc cron).
+
+**Xử lý trong code:**
+
+- **GET loan:** Gọi `/loans/{id}?associations=...,summary,collection` để lấy cả `summary` và `collection`; khi sync ưu tiên `fl.summary`, fallback `fl.collection` cho totalOverdue, principalPaid, …
+- **Sau khi thanh toán theo kỳ** (`makeRepayment`) hoặc **tất toán** (`prepayLoan`):
+  - Ghi vào `repaymentHistory` (như hiện tại).
+  - **Chờ 2 giây** rồi **await** `syncLoanFromFineract(fineractLoanId)` để Fineract kịp allocate tiền vào schedule; sau đó Mongo nhận đúng `repaymentSchedule.periods[].principalPaid/interestPaid` và summary (totalOverdue, …). Nếu sync lỗi chỉ log warning, API thanh toán vẫn trả về thành công.
+- **Log debug:** Trong sync, log kỳ 1 `principalPaid`/`interestPaid` và `summary.totalRepayment`/`totalOverdue` để kiểm tra dữ liệu thực tế từ Fineract.
+
+**Nếu sau khi đã sync mà vẫn principalPaid = 0:**
+
+- Kiểm tra trên **Fineract** (giao dịch đã allocate vào kỳ nào chưa; cấu hình payment allocation strategy).
+- Chạy **sync thủ công** lại khoản vay (nút Làm mới / đồng bộ) hoặc đợi cron sync. Nguồn chân lý là Fineract; Mongo chỉ phản ánh dữ liệu sau khi sync.
+
+---
+
 *Schema Mongoose: `server_do_an_new/src/modules/loan/schemas/loan-application.schema.ts`.*
