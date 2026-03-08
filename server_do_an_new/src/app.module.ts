@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -17,7 +18,7 @@ import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { EkycModule } from './modules/ekyc/ekyc.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
-import { WebhooksModule } from './modules/webhooks/webhooks.module';
+
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -38,6 +39,7 @@ import { SmartCAModule } from './modules/digital-signature/smartca.module';
         uri: config.get<string>('database.uri'),
       }),
     }),
+    ScheduleModule.forRoot(),
     // Rate limiting configuration
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
@@ -61,7 +63,7 @@ import { SmartCAModule } from './modules/digital-signature/smartca.module';
     EkycModule,
     ActivityLogModule,
     SmartCAModule,
-    WebhooksModule,
+
   ],
 
   controllers: [AppController],

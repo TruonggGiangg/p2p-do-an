@@ -5,6 +5,7 @@ import { LoanProductDocumentType, LoanProductDocumentTypeSchema } from './schema
 import { LoanProductSnapshot, LoanProductSnapshotSchema } from './schemas/loan-product-snapshot.schema';
 import { SavingsProductSnapshot, SavingsProductSnapshotSchema } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
+import { LoanSyncRun, LoanSyncRunSchema } from './schemas/loan-sync-run.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { LoanSupportRequest, LoanSupportRequestSchema } from '../loan/schemas/loan-support-request.schema';
@@ -13,6 +14,8 @@ import { Notification, NotificationSchema } from '../loan/schemas/notification.s
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { LoanSyncScheduler } from './loan-sync.scheduler';
+import { ReminderScheduler } from './reminder.scheduler';
 import { FineractModule } from '../fineract/fineract.module';
 import { LoanModule } from '../loan/loan.module';
 import { EkycModule } from '../ekyc/ekyc.module';
@@ -32,6 +35,7 @@ import { CaslModule } from '../casl/casl.module';
       { name: LoanProductSnapshot.name, schema: LoanProductSnapshotSchema },
       { name: SavingsProductSnapshot.name, schema: SavingsProductSnapshotSchema },
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
+      { name: LoanSyncRun.name, schema: LoanSyncRunSchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
       { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
@@ -41,7 +45,7 @@ import { CaslModule } from '../casl/casl.module';
     ]),
   ],
   controllers: [AdminController],
-  providers: [AdminService],
+  providers: [AdminService, LoanSyncScheduler, ReminderScheduler],
   exports: [AdminService],
 })
 export class AdminModule { }

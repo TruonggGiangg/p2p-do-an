@@ -233,7 +233,7 @@ export interface NotificationListResponse {
 
 export interface LoanSupportRequestPayload {
   loanId: string;
-  requestType: 'WAIVE_PENALTY' | 'RESCHEDULE';
+  requestType: 'WAIVE_PENALTY' | 'RESCHEDULE' | 'WRITE_OFF' | 'WAIVE_INTEREST';
   reason: string;
   proposedRescheduleDate?: string;
 }
@@ -565,9 +565,14 @@ class LoanService {
 
   /**
    * Khách hàng gửi yêu cầu hỗ trợ (Xin xóa phạt hoặc Cơ cấu nợ)
+   * Server route: POST /api/loan/:loanId/support-request
    */
   async submitSupportRequest(payload: LoanSupportRequestPayload): Promise<LoanSupportRequestResult> {
-    const response = await api.post<LoanSupportRequestResult>('/api/loan/support-request', payload);
+    const { loanId, ...body } = payload;
+    const response = await api.post<LoanSupportRequestResult>(
+      `/api/loan/${loanId}/support-request`,
+      body,
+    );
     return response.data;
   }
 

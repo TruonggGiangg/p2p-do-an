@@ -16,6 +16,7 @@ import {
   TeamOutlined,
   IdcardOutlined,
   ToolOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { AbilityContext } from '../AbilityContext';
@@ -30,6 +31,7 @@ const menuItems = [
   { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
   { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
+  { key: '/overdue-loans', icon: <ExclamationCircleOutlined />, label: 'Khoản vay quá hạn' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },

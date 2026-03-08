@@ -32,6 +32,9 @@ interface OutstandingInfo {
     principalOutstanding: number;
     interestOutstanding: number;
     penaltyOutstanding?: number;
+    totalOverdue?: number;
+    delinquentDays?: number;
+    delinquencyClassification?: string | null;
 }
 
 interface ScheduleData {
@@ -78,6 +81,28 @@ const formatDate = (dateString?: any) => {
         return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
     }
     return new Date(dateString).toLocaleDateString('vi-VN');
+};
+
+/** Trạng thái từng kỳ (giống Mifos): paid | overdue | current | upcoming */
+const getInstallmentStatus = (period: any): 'paid' | 'overdue' | 'current' | 'upcoming' => {
+    const complete = period?.complete === true || (period?.obligationsMetOnDate != null && Array.isArray(period.obligationsMetOnDate));
+    if (complete) return 'paid';
+    const toYMD = (v: any): string | null => {
+        if (!v) return null;
+        if (Array.isArray(v) && v.length >= 3) {
+            const [y, m, d] = v;
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        if (typeof v === 'string') return v;
+        return null;
+    };
+    const today = new Date().toISOString().split('T')[0];
+    const dueStr = toYMD(period?.dueDate);
+    const fromStr = toYMD(period?.fromDate);
+    if (!dueStr) return 'upcoming';
+    if (dueStr < today) return 'overdue';
+    if (fromStr && fromStr <= today && today < dueStr) return 'current';
+    return 'upcoming';
 };
 
 const formatInputVND = (text: string) => {
@@ -216,6 +241,9 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         principalOutstanding: outData.principalOutstanding || 0,
                         interestOutstanding: outData.interestOutstanding || 0,
                         penaltyOutstanding: outData.penaltyOutstanding || 0,
+                        totalOverdue: outData.totalOverdue ?? 0,
+                        delinquentDays: outData.delinquentDays ?? 0,
+                        delinquencyClassification: outData.delinquencyClassification ?? null,
                     });
                 }
             } catch (outErr) {
@@ -408,6 +436,18 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             </View>
                         </View>
                     )}
+                    {(outstanding?.totalOverdue ?? 0) > 0 && (
+                        <View style={[styles.outstandingBox, { backgroundColor: colors.error + '22', borderColor: colors.error, marginTop: 12 }]}>
+                            <Text style={[styles.outstandingLabel, { color: colors.error }]}>NỢ QUÁ HẠN</Text>
+                            <Text style={[styles.outstandingValue, { color: colors.error, fontSize: 18 }]}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
+                            {(outstanding!.delinquentDays ?? 0) > 0 && (
+                                <Text style={[styles.outstandingDetailText, { color: colors.error, marginTop: 4 }]}>
+                                    Quá hạn {outstanding!.delinquentDays} ngày
+                                    {outstanding!.delinquencyClassification ? ` • ${outstanding!.delinquencyClassification}` : ''}
+                                </Text>
+                            )}
+                        </View>
+                    )}
                 </View>
 
                 {/* Overdue Alerts & Support Actions */}
@@ -460,31 +500,41 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     const renderScheduleTab = () => {
         const periods = schedule?.periods?.filter(p => p.period > 0) || [];
+        const statusConfig = {
+            paid: { label: 'Đã trả', color: colors.success, bg: colors.success + '18' },
+            overdue: { label: 'Quá hạn', color: colors.error, bg: colors.error + '18' },
+            current: { label: 'Đang đến hạn', color: colors.primary, bg: colors.primary + '18' },
+            upcoming: { label: 'Chưa đến hạn', color: colors.textMuted, bg: 'transparent' },
+        };
         return (
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>LỊCH TRẢ NỢ</Text>
-                {periods.length > 0 ? periods.map((p, i) => (
-                    <View key={i} style={[styles.scheduleItem, { borderBottomColor: colors.border }, p.complete && { opacity: 0.5 }]}>
-                        <View style={styles.scheduleLeft}>
-                            <View style={[styles.scheduleNumBadge, { backgroundColor: p.complete ? colors.success + '20' : colors.primary + '20' }]}>
-                                {p.complete
-                                    ? <Ionicons name="checkmark" size={12} color={colors.success} />
-                                    : <Text style={[styles.scheduleNumText, { color: colors.primary }]}>{p.period}</Text>
-                                }
+                {periods.length > 0 ? periods.map((p, i) => {
+                    const status = getInstallmentStatus(p);
+                    const cfg = statusConfig[status];
+                    return (
+                        <View key={i} style={[styles.scheduleItem, { borderBottomColor: colors.border, backgroundColor: cfg.bg }]}>
+                            <View style={styles.scheduleLeft}>
+                                <View style={[styles.scheduleNumBadge, { backgroundColor: cfg.color + '20' }]}>
+                                    {status === 'paid'
+                                        ? <Ionicons name="checkmark" size={12} color={colors.success} />
+                                        : <Text style={[styles.scheduleNumText, { color: cfg.color }]}>{p.period}</Text>
+                                    }
+                                </View>
+                                <View>
+                                    <Text style={[styles.schedulePeriod, { color: colors.text }]}>Kỳ {p.period}</Text>
+                                    <Text style={[styles.scheduleDate, { color: colors.textMuted }]}>{formatDate(p.dueDate)}</Text>
+                                    <Text style={[styles.schedulePaidTag, { color: cfg.color, marginTop: 2 }]}>{cfg.label}</Text>
+                                </View>
                             </View>
-                            <View>
-                                <Text style={[styles.schedulePeriod, { color: colors.text }]}>Kỳ {p.period}</Text>
-                                <Text style={[styles.scheduleDate, { color: colors.textMuted }]}>{formatDate(p.dueDate)}</Text>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={[styles.scheduleAmount, { color: status === 'paid' ? colors.success : colors.text }]}>
+                                    {formatMoney(p.totalDue)} đ
+                                </Text>
                             </View>
                         </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.scheduleAmount, { color: p.complete ? colors.success : colors.text }]}>
-                                {formatMoney(p.totalDue)} đ
-                            </Text>
-                            {p.complete && <Text style={[styles.schedulePaidTag, { color: colors.success }]}>Đã trả</Text>}
-                        </View>
-                    </View>
-                )) : (
+                    );
+                }) : (
                     <Text style={[styles.noDataText, { color: colors.textMuted }]}>Chưa có lịch trả nợ</Text>
                 )}
             </View>

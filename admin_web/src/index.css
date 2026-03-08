@@ -304,7 +304,7 @@ p {
 .ant-tag,
 .ant-alert,
 .ant-tabs-tab {
-  border-radius: 0 !important;
+
 }
 
 /* ── Card Enhancements ── */
@@ -446,7 +446,7 @@ p {
 }
 
 ::-webkit-scrollbar-thumb {
-  border-radius: 0;
+
   transition: background 0.2s ease;
 }
 

@@ -9,6 +9,7 @@ import { message } from 'antd';
 import { adminApi, LoanDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import { getInstallmentStatus } from '../utils/scheduleStatus';
 import { useTheme } from '../App';
 
 const { Text } = Typography;
@@ -784,13 +785,32 @@ export default function LoanApprovalsPage() {
                             label: 'Lịch trả nợ',
                             children: (
                                 <Table
-                                    dataSource={loanDetails.repaymentSchedule?.periods || []}
+                                    dataSource={
+                                        Array.isArray(loanDetails.repaymentSchedule)
+                                            ? loanDetails.repaymentSchedule
+                                            : (loanDetails.repaymentSchedule?.periods || [])
+                                    }
                                     pagination={false}
                                     size="small"
                                     scroll={{ y: 500, x: 1300 }}
                                     rowKey="period"
+                                    rowClassName={(record) => {
+                                        const s = getInstallmentStatus(record);
+                                        return `schedule-row-${s}`;
+                                    }}
                                     columns={[
                                         { title: '#', dataIndex: 'period', width: 60, fixed: 'left', align: 'center' },
+                                        {
+                                            title: 'Tình trạng',
+                                            key: 'status',
+                                            width: 120,
+                                            fixed: 'left',
+                                            render: (_: any, record: any) => {
+                                                const s = getInstallmentStatus(record);
+                                                const config = { paid: { color: 'success', label: 'Đã trả' }, overdue: { color: 'error', label: 'Quá hạn' }, current: { color: 'processing', label: 'Đang đến hạn' }, upcoming: { color: 'default', label: 'Chưa đến hạn' } };
+                                                return <Tag color={config[s].color}>{config[s].label}</Tag>;
+                                            },
+                                        },
                                         {
                                             title: 'Ngày đến hạn',
                                             dataIndex: 'dueDate',

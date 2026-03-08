@@ -76,6 +76,32 @@ export default function LoanSupportRequestsPage() {
         }
     };
 
+    const handleApproveWriteOff = async (id: string, note?: string) => {
+        try {
+            const token = localStorage.getItem('admin_access_token');
+            await axios.post(`http://localhost:3001/api/admin/loan-support-requests/${id}/approve-write-off`, { note: note || '' }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            message.success('Đã duyệt xóa nợ thành công');
+            fetchRequests();
+        } catch (error: any) {
+            message.error(error.response?.data?.message || 'Lỗi duyệt yêu cầu');
+        }
+    };
+
+    const handleApproveWaiveInterest = async (id: string, note?: string) => {
+        try {
+            const token = localStorage.getItem('admin_access_token');
+            await axios.post(`http://localhost:3001/api/admin/loan-support-requests/${id}/approve-waive-interest`, { note: note || '' }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            message.success('Đã duyệt xóa lãi thành công');
+            fetchRequests();
+        } catch (error: any) {
+            message.error(error.response?.data?.message || 'Lỗi duyệt yêu cầu');
+        }
+    };
+
     const openRescheduleModal = (req: any) => {
         setSelectedRequest(req);
         setAdminNote('');
@@ -111,12 +137,14 @@ export default function LoanSupportRequestsPage() {
             dataIndex: 'requestType',
             key: 'requestType',
             render: (val: string) => {
-                const isWaive = val === 'WAIVE_PENALTY';
-                return (
-                    <Tag color={isWaive ? 'blue' : 'purple'}>
-                        {isWaive ? 'Xóa Phạt' : 'Cơ Cấu Nợ'}
-                    </Tag>
-                );
+                const labels: Record<string, { label: string; color: string }> = {
+                    WAIVE_PENALTY: { label: 'Xóa Phạt', color: 'blue' },
+                    RESCHEDULE: { label: 'Cơ Cấu Nợ', color: 'purple' },
+                    WRITE_OFF: { label: 'Xóa Nợ', color: 'red' },
+                    WAIVE_INTEREST: { label: 'Xóa Lãi', color: 'orange' },
+                };
+                const t = labels[val] || { label: val, color: 'default' };
+                return <Tag color={t.color}>{t.label}</Tag>;
             }
         },
         {
@@ -175,6 +203,32 @@ export default function LoanSupportRequestsPage() {
                     );
                 }
 
+                if (record.requestType === 'WRITE_OFF') {
+                    return (
+                        <Popconfirm
+                            title="Xác nhận duyệt xóa nợ (write-off) trên Fineract? Khoản vay sẽ được đóng."
+                            onConfirm={() => handleApproveWriteOff(record._id)}
+                            cancelText="Hủy"
+                            okText="Duyệt"
+                        >
+                            <Button type="primary" danger size="small" icon={<CheckCircleOutlined />}>Duyệt Xóa Nợ</Button>
+                        </Popconfirm>
+                    );
+                }
+
+                if (record.requestType === 'WAIVE_INTEREST') {
+                    return (
+                        <Popconfirm
+                            title="Xác nhận duyệt xóa lãi trên Fineract?"
+                            onConfirm={() => handleApproveWaiveInterest(record._id)}
+                            cancelText="Hủy"
+                            okText="Duyệt"
+                        >
+                            <Button type="primary" size="small" icon={<CheckCircleOutlined />}>Duyệt Xóa Lãi</Button>
+                        </Popconfirm>
+                    );
+                }
+
                 return null;
             }
         }
@@ -210,6 +264,8 @@ export default function LoanSupportRequestsPage() {
                     <Option value="">Tất cả loại</Option>
                     <Option value="WAIVE_PENALTY">Xóa phạt</Option>
                     <Option value="RESCHEDULE">Cơ cấu nợ</Option>
+                    <Option value="WRITE_OFF">Xóa nợ</Option>
+                    <Option value="WAIVE_INTEREST">Xóa lãi</Option>
                 </Select>
             </div>
 

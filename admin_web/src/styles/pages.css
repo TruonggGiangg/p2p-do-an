@@ -2,7 +2,7 @@
 
 /* Loan Products Page */
 .loan-products-card {
-  border-radius: 0 !important;
+
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
@@ -23,7 +23,7 @@
 /* Customer Detail Page */
 .customer-detail-header {
   background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
-  border-radius: 0;
+
   padding: 32px;
   color: #FFFFFF;
   margin-bottom: 24px;
@@ -34,7 +34,7 @@
 }
 
 .customer-detail-card {
-  border-radius: 0 !important;
+
   margin-bottom: 24px;
 }
 
@@ -61,6 +61,29 @@
   font-size: 16px !important;
 }
 
+/* Lịch trả nợ: tình trạng từng kỳ (giống Mifos) */
+.ant-table-tbody tr.schedule-row-paid td {
+  background: #f6ffed !important;
+}
+[data-theme="dark"] .ant-table-tbody tr.schedule-row-paid td {
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+.ant-table-tbody tr.schedule-row-current td {
+  background: #e6f4ff !important;
+}
+[data-theme="dark"] .ant-table-tbody tr.schedule-row-current td {
+  background: rgba(59, 130, 246, 0.12) !important;
+}
+.ant-table-tbody tr.schedule-row-overdue td {
+  background: #fff2f0 !important;
+}
+[data-theme="dark"] .ant-table-tbody tr.schedule-row-overdue td {
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+.ant-table-tbody tr.schedule-row-upcoming td {
+  /* Chưa đến hạn: để mặc định hoặc xám nhạt */
+}
+
 /* Login Page */
 .login-container {
   min-height: 100vh;
@@ -78,7 +101,7 @@
 }
 
 .login-card {
-  border-radius: 0 !important;
+
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
   border: none !important;
   overflow: hidden;
@@ -95,7 +118,7 @@
 .login-logo {
   width: 64px;
   height: 64px;
-  border-radius: 0;
+
   background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
   display: flex;
   align-items: center;
@@ -139,7 +162,7 @@
 
 /* Sync Drift Page */
 .sync-drift-card {
-  border-radius: 0 !important;
+
 }
 
 [data-theme="light"] .sync-drift-card {
@@ -152,7 +175,7 @@
 
 .sync-drift-stat {
   padding: 24px;
-  border-radius: 0;
+
   margin-bottom: 16px;
 }
 
@@ -168,7 +191,7 @@
 
 /* Common Card Styles */
 .page-card {
-  border-radius: 0 !important;
+
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
@@ -205,7 +228,7 @@
 .section-icon {
   width: 40px;
   height: 40px;
-  border-radius: 0;
+
   background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
   display: flex;
   align-items: center;
@@ -237,7 +260,7 @@
   height: 44px !important;
   padding: 0 24px !important;
   font-weight: 600 !important;
-  border-radius: 0 !important;
+
   box-shadow: 0 4px 12px rgba(30, 64, 175, 0.25) !important;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
@@ -253,7 +276,7 @@
   align-items: flex-start;
   gap: 16px;
   padding: 20px;
-  border-radius: 0;
+
   margin-bottom: 16px;
 }
 
@@ -270,7 +293,7 @@
 .info-card-icon {
   width: 48px;
   height: 48px;
-  border-radius: 0;
+
   background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
   display: flex;
   align-items: center;
@@ -321,7 +344,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 0;
+
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
@@ -371,7 +394,7 @@
 .empty-state {
   text-align: center;
   padding: 64px 24px;
-  border-radius: 0;
+
 }
 
 [data-theme="light"] .empty-state {
@@ -418,7 +441,7 @@
 
 /* Loading States */
 .loading-card {
-  border-radius: 0 !important;
+
 }
 
 [data-theme="light"] .loading-card {

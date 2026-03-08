@@ -6,6 +6,7 @@ import { FineractLoanService } from '../fineract/services/fineract-loan.service'
 import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { LoanApplication } from './schemas/loan-application.schema';
+import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 
 /**
@@ -31,6 +32,7 @@ export class RepaymentService {
         private readonly walletsService: WalletsService,
         @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
         @InjectModel(User.name) private readonly userModel: Model<User>,
+        @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
     ) { }
 
     /**
@@ -107,6 +109,14 @@ export class RepaymentService {
             $push: { repaymentHistory: repaymentRecord },
             ...(newStatus !== loan.status ? { status: newStatus } : {}),
         });
+
+        await this.notificationModel.create({
+            userId: loan.userId,
+            title: 'Đã ghi nhận thanh toán',
+            message: `Thanh toán ${amount.toLocaleString('vi-VN')} ₫ cho khoản vay đã được ghi nhận (${date}).`,
+            type: 'repayment_received',
+            data: { loanId: loan._id.toString(), fineractLoanId, amount, date, transactionId: fineractResult.transactionId },
+        }).catch((err) => this.logger.warn(`[makeRepayment] Notification create failed: ${err?.message}`));
 
         this.logger.log(`[makeRepayment] SUCCESS | loanId=${loanId} amount=${amount}`);
 
@@ -207,6 +217,14 @@ export class RepaymentService {
             $push: { repaymentHistory: repaymentRecord },
         });
 
+        await this.notificationModel.create({
+            userId: loan.userId,
+            title: 'Tất toán hoàn tất',
+            message: `Khoản vay đã được tất toán. Số tiền: ${prepayInfo.amount.toLocaleString('vi-VN')} ₫ (${date}).`,
+            type: 'repayment_received',
+            data: { loanId: loan._id.toString(), fineractLoanId: loan.fineractLoanId, amount: prepayInfo.amount, date, transactionId: fineractResult.transactionId, prepayment: true },
+        }).catch((err) => this.logger.warn(`[prepayLoan] Notification create failed: ${err?.message}`));
+
         this.logger.log(`[prepayLoan] SUCCESS | loanId=${loanId} amount=${prepayInfo.amount}`);
 
         return {
@@ -286,6 +304,9 @@ export class RepaymentService {
             fineractLoanId: loan.fineractLoanId,
             capital: loan.capital,
             status: loan.status,
+            totalOverdue: loan.totalOverdue ?? 0,
+            delinquentDays: loan.delinquentDays ?? 0,
+            delinquencyClassification: loan.delinquencyClassification ?? null,
         };
     }
 

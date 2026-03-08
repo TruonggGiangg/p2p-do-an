@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
 import {
@@ -17,6 +17,7 @@ import {
 import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import { getInstallmentStatus } from '../utils/scheduleStatus';
 
 const { Title, Text } = Typography;
 
@@ -31,6 +32,7 @@ export default function CustomerDetailPage() {
     const { token } = theme.useToken();
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [detail, setDetail] = useState<CustomerDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -76,6 +78,9 @@ export default function CustomerDetailPage() {
             .catch(() => setError('Không thể tải thông tin khách hàng'))
             .finally(() => setLoading(false));
     }, [id]);
+
+    // Mở drawer chi tiết khoản vay khi vào từ trang "Khoản vay quá hạn" với ?viewLoan=...
+    const viewLoanParam = searchParams.get('viewLoan');
 
     // Load KYC document images when tab is KYC
     useEffect(() => {
@@ -125,6 +130,14 @@ export default function CustomerDetailPage() {
             setLoadingDocuments(false);
         }
     };
+
+    // Mở drawer chi tiết khoản vay khi vào từ trang "Khoản vay quá hạn" với ?viewLoan=...
+    useEffect(() => {
+        if (!id || !detail || !viewLoanParam) return;
+        const loanId = parseInt(viewLoanParam, 10);
+        if (!Number.isFinite(loanId)) return;
+        handleViewDetails(loanId);
+    }, [id, viewLoanParam, !!detail]);
 
     const handleSyncAllLoans = async () => {
         if (!id) return;
@@ -371,85 +384,83 @@ export default function CustomerDetailPage() {
             bordered={false}
             style={{
                 marginBottom: 24,
-                background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`,
-                color: '#fff',
-                borderRadius: 0,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+                backgroundColor: '#fff',
+                borderRadius: 8,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                padding: '24px'
             }}
+            bodyStyle={{ padding: 0 }}
         >
-            <Row gutter={[24, 16]} align="middle">
+            <Row gutter={[32, 24]} align="middle">
                 <Col flex="none">
                     <Avatar
-                        size={80}
+                        size={100}
                         icon={<UserOutlined />}
                         style={{
-                            background: 'rgba(255,255,255,0.25)',
-                            fontSize: 36,
-                            border: '3px solid rgba(255,255,255,0.5)'
+                            backgroundColor: token.colorPrimaryBg,
+                            color: token.colorPrimary,
+                            fontSize: 48,
+                            border: `4px solid ${token.colorBgContainer}`,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                         }}
                     />
                 </Col>
                 <Col flex="auto">
-                    <Title level={3} style={{ margin: 0, color: '#fff', fontWeight: 600 }}>
-                        {customer.displayName || customer.username}
-                    </Title>
-                    <div style={{ marginTop: 12, opacity: 0.95, fontSize: 14, lineHeight: 2 }}>
-                        <Row gutter={[32, 8]}>
-                            <Col>
-                                <Space><HomeOutlined /> <strong>Văn phòng:</strong> {customer.officeName || 'Head Office'}</Space>
-                            </Col>
-                            <Col>
-                                <Space><TeamOutlined /> <strong>Khách hàng:</strong> {customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</Space>
-                            </Col>
-                            <Col>
-                                <Space><IdcardOutlined /> <strong>ID bên ngoài:</strong> {customer.externalId || customer.username || '–'}</Space>
-                            </Col>
-                            <Col>
-                                <Space><UserOutlined /> <strong>Nhân viên:</strong> {customer.staffName || 'Chưa phân công'}</Space>
-                            </Col>
-                        </Row>
-                        <Row gutter={[32, 8]} style={{ marginTop: 4 }}>
-                            <Col>
-                                <Space><PhoneOutlined /> <strong>Số điện thoại:</strong> {customer.mobileNo || customer.username || '–'}</Space>
-                            </Col>
-                            <Col>
-                                <Space><MailOutlined /> <strong>Email:</strong> {customer.email || '–'}</Space>
-                            </Col>
-                        </Row>
+                    <div style={{ marginBottom: 16 }}>
+                        <Title level={2} style={{ margin: 0, fontWeight: 700, display: 'inline-block', marginRight: 16 }}>
+                            {customer.displayName || customer.username}
+                        </Title>
+                        <Space size={8} style={{ verticalAlign: 'middle', marginBottom: 8 }}>
+                            <FineractStatusBadge status={customer.fineractStatus} />
+                            {customer.kycStatus === 'VERIFIED' ? (
+                                <Tag color="success" icon={<CheckCircleOutlined />}>KYC Đã xác minh</Tag>
+                            ) : customer.kycStatus === 'PENDING' ? (
+                                <Tag color="warning" icon={<ExclamationCircleOutlined />}>KYC Chờ duyệt</Tag>
+                            ) : customer.kycStatus === 'REJECTED' ? (
+                                <Tag color="error" icon={<CloseCircleOutlined />}>KYC Từ chối</Tag>
+                            ) : (
+                                <Tag>Chưa KYC</Tag>
+                            )}
+                        </Space>
                     </div>
+
+                    <Descriptions column={{ xxl: 3, xl: 3, lg: 2, md: 1, sm: 1, xs: 1 }} size="small" colon={false}>
+                        <Descriptions.Item label={<Space><HomeOutlined /> <strong>Văn phòng</strong></Space>}>
+                            {customer.officeName || 'Head Office'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={<Space><TeamOutlined /> <strong>Khách hàng</strong></Space>}>
+                            <Text code>{customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label={<Space><IdcardOutlined /> <strong>ID bên ngoài</strong></Space>}>
+                            {customer.externalId || customer.username || '–'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={<Space><UserOutlined /> <strong>Nhân viên</strong></Space>}>
+                            {customer.staffName || <Text type="secondary">Chưa phân công</Text>}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={<Space><PhoneOutlined /> <strong>Số điện thoại</strong></Space>}>
+                            {customer.mobileNo || customer.username || '–'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={<Space><MailOutlined /> <strong>Email</strong></Space>}>
+                            {customer.email || '–'}
+                        </Descriptions.Item>
+                    </Descriptions>
                 </Col>
-                <Col flex="none" style={{ textAlign: 'right' }}>
-                    <div style={{ marginBottom: 12 }}>
-                        <FineractStatusBadge status={customer.fineractStatus} />
-                    </div>
-                    {customer.kycStatus === 'VERIFIED' && (
-                        <Tag color="success" icon={<CheckCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
-                            Đã xác minh KYC
-                        </Tag>
-                    )}
-                    {customer.kycStatus === 'PENDING' && (
-                        <Tag color="warning" icon={<ExclamationCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
-                            Có thông tin KYC và đang chờ phê duyệt
-                        </Tag>
-                    )}
-                    {customer.kycStatus === 'REJECTED' && (
-                        <Tag color="error" icon={<CloseCircleOutlined />} style={{ fontSize: 13, padding: '4px 12px' }}>
-                            Từ chối KYC
-                        </Tag>
-                    )}
-                    {(customer.kycStatus === 'NONE' || !customer.kycStatus) && (
-                        <Tag style={{ fontSize: 13, padding: '4px 12px' }}>
-                            Chưa KYC
-                        </Tag>
-                    )}
-                    <div style={{ marginTop: 16 }}>
+                <Col flex="none" style={{ textAlign: 'right', minWidth: 200 }}>
+                    <Statistic
+                        title="Tổng vốn vay"
+                        value={totalCapital}
+                        formatter={v => fmtVND(Number(v))}
+                        valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
+                    />
+                    <div style={{ marginTop: 24 }}>
                         <Button
                             icon={<ClockCircleOutlined />}
                             onClick={handleSyncAllLoans}
                             loading={syncingAll}
-                            style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff' }}
+                            type="primary"
+                            ghost
                         >
-                            Đồng bộ Fineract
+                            Làm mới thông tin
                         </Button>
                     </div>
                 </Col>
@@ -460,32 +471,45 @@ export default function CustomerDetailPage() {
     // Performance History Section
     const PerformanceSection = () => (
         <Card
-            title={<Space><InfoCircleOutlined /> Lịch sử hiệu suất</Space>}
+            title={<Space><InfoCircleOutlined /> Chỉ số hoạt động</Space>}
             bordered={false}
-            style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+            style={{ marginBottom: 24, borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
         >
             {summary ? (
-                <Row gutter={[48, 24]}>
-                    <Col span={12}>
+                <Row gutter={[32, 32]}>
+                    <Col xs={24} sm={12} lg={6}>
                         <Statistic
-                            title="Số chu kỳ vay"
+                            title="Chu kỳ vay"
                             value={summary.loanCycles}
-                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }}
+                            valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
                         />
-                        <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
-                            Số khoản vay đang hoạt động: <strong style={{ color: token.colorText }}>{summary.activeLoans}</strong><br />
-                            Số tiền vay cuối cùng: <strong style={{ color: token.colorText }}>{fmtVND(summary.lastLoanAmount)}</strong>
-                        </div>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} sm={12} lg={6}>
                         <Statistic
-                            title="Số tiết kiệm đang hoạt động"
-                            value={summary.activeSavings}
-                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }}
+                            title="Khoản vay hoạt động"
+                            value={summary.activeLoans}
+                            valueStyle={{ color: token.colorWarning, fontWeight: 700 }}
                         />
-                        <div style={{ marginTop: 16, lineHeight: 2, color: token.colorTextSecondary }}>
-                            Tổng tiết kiệm: <strong style={{ color: token.colorText, fontSize: 18 }}>{fmtVND(summary.totalSavings)}</strong>
-                        </div>
+                    </Col>
+                    <Col xs={24} sm={12} lg={6}>
+                        <Statistic
+                            title="Tiết kiệm hoạt động"
+                            value={summary.activeSavings}
+                            valueStyle={{ color: token.colorSuccess, fontWeight: 700 }}
+                        />
+                    </Col>
+                    <Col xs={24} sm={12} lg={6}>
+                        <Statistic
+                            title="Tổng tiết kiệm"
+                            value={summary.totalSavings}
+                            formatter={v => fmtVND(Number(v))}
+                            valueStyle={{ color: token.colorSuccess, fontWeight: 700 }}
+                        />
+                    </Col>
+                    <Divider style={{ margin: '8px 0' }} />
+                    <Col span={24}>
+                        <Text type="secondary">Khoản vay gần nhất: </Text>
+                        <Text strong>{fmtVND(summary.lastLoanAmount)}</Text>
                     </Col>
                 </Row>
             ) : (
@@ -499,37 +523,37 @@ export default function CustomerDetailPage() {
         <>
             <PerformanceSection />
 
-            {/* Quick Stats - 3 thẻ bằng nhau */}
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col flex="1 1 0" style={{ minWidth: 200 }}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorPrimaryBg, textAlign: 'center', height: '100%' }}>
+            {/* Quick Stats - 3 cards with stats */}
+            <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
+                <Col xs={24} md={8}>
+                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
                         <Statistic
-                            title="Khoản vay"
+                            title="Số lượng khoản vay"
                             value={loans.length}
                             prefix={<DollarOutlined />}
-                            valueStyle={{ color: token.colorPrimary, fontSize: 28 }}
+                            valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
                         />
                     </Card>
                 </Col>
-                <Col flex="1 1 0" style={{ minWidth: 200 }}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorSuccessBg, textAlign: 'center', height: '100%' }}>
+                <Col xs={24} md={8}>
+                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
                         <Statistic
-                            title="Tổng vốn"
-                            value={totalCapital}
+                            title="Tổng vốn giải ngân"
+                            value={loans.reduce((s, l) => s + (['disbursed', 'active', 'closed'].includes(String(l.status?.code || l.status).toLowerCase()) ? (l.capital || 0) : 0), 0)}
                             formatter={v => fmtVND(Number(v))}
-                            valueStyle={{ color: token.colorSuccess, fontSize: 28 }}
+                            valueStyle={{ color: token.colorSuccess, fontWeight: 700 }}
                         />
                     </Card>
                 </Col>
-                <Col flex="1 1 0" style={{ minWidth: 200 }}>
-                    <Card bordered={false} style={{ borderRadius: 0, background: token.colorWarningBg, textAlign: 'center', height: '100%' }}>
+                <Col xs={24} md={8}>
+                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
                         <Statistic
-                            title="Chờ duyệt"
+                            title="Đang chờ phê duyệt"
                             value={loans.filter(l => {
-                                const code = l.status && typeof l.status === 'object' ? l.status.code : l.status;
-                                return String(code || '').includes('pending');
+                                const code = String(l.status?.code || l.status).toLowerCase();
+                                return code.includes('pending') || code.includes('submitted');
                             }).length}
-                            valueStyle={{ color: token.colorWarning, fontSize: 28 }}
+                            valueStyle={{ color: token.colorWarning, fontWeight: 700 }}
                         />
                     </Card>
                 </Col>
@@ -995,7 +1019,7 @@ export default function CustomerDetailPage() {
                 styles={{ body: { padding: 0 } }}
                 extra={
                     <Space>
-                        <Button type="primary" icon={<ClockCircleOutlined />} onClick={() => handleViewDetails(viewLoanId!, true)}>Đồng bộ ngay</Button>
+                        <Button type="primary" icon={<ClockCircleOutlined />} onClick={() => handleViewDetails(viewLoanId!, true)}>Làm mới thông tin</Button>
                         <Button type="text" icon={<CloseOutlined />} onClick={() => { setIsModalOpen(false); setLoanDetails(null); setLoanDocuments([]); setViewLoanId(null); }} />
                     </Space>
                 }
@@ -1009,58 +1033,58 @@ export default function CustomerDetailPage() {
                             label: 'Chung',
                             children: (
                                 <div>
-                                    {/* Mifos Style Blue Header */}
+                                    {/* Clean Header for Loan Details */}
                                     <div style={{
-                                        background: '#0071b9',
+                                        background: '#f8f9fa',
                                         padding: '24px 32px',
-                                        color: '#fff',
+                                        borderBottom: '1px solid #eee',
                                         display: 'flex',
                                         justifyContent: 'space-between',
-                                        alignItems: 'flex-start',
-                                        position: 'relative'
+                                        alignItems: 'center'
                                     }}>
-                                        <div style={{ display: 'flex', gap: '32px' }}>
-                                            <div style={{
-                                                width: 120, height: 120, background: 'rgba(0,0,0,0.1)',
-                                                borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                            }}>
-                                                <DollarOutlined style={{ fontSize: 64, color: 'rgba(255,255,255,0.8)' }} />
-                                            </div>
-                                            <div style={{ lineHeight: 1.8 }}>
-                                                <div style={{ marginBottom: 8 }}>
-                                                    <Badge status="processing" color="red" />
-                                                    <span style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 8 }}>
-                                                        Sản phẩm vay : {loanDetails.loanProductName} {loanDetails.accountNo}
-                                                    </span>
+                                        <Space size={24}>
+                                            <Avatar
+                                                size={64}
+                                                icon={<DollarOutlined />}
+                                                style={{ backgroundColor: token.colorPrimaryBg, color: token.colorPrimary }}
+                                            />
+                                            <div>
+                                                <div style={{ marginBottom: 4 }}>
+                                                    <Text strong style={{ fontSize: 18 }}>
+                                                        {loanDetails.loanProductName}
+                                                    </Text>
+                                                    <Text type="secondary" style={{ marginLeft: 8 }}>
+                                                        #{loanDetails.accountNo}
+                                                    </Text>
                                                 </div>
-                                                <div style={{ opacity: 0.9 }}>
-                                                    Khách hàng: <strong style={{ color: '#fff' }}>{loanDetails.clientName} ({loanDetails.clientId})</strong><br />
-                                                    Nhóm nợ: <Tag color={loanDetails.delinquencyRange?.classification ? 'red' : 'green'}>
-                                                        {loanDetails.delinquencyRange?.classification || 'Nợ dủ tiêu chuẩn (Nhóm 1)'}
-                                                    </Tag><br />
-                                                    Số ngày quá hạn: <strong style={{ color: (loanDetails.delinquencyRange?.pastDueDays > 0) ? '#ff4d4f' : '#fff' }}>
-                                                        {loanDetails.delinquencyRange?.pastDueDays ?? 0} ngày
-                                                    </strong>
-                                                </div>
+                                                <Space>
+                                                    <Tag color={loanDetails.delinquencyRange?.classification ? 'red' : 'green'}>
+                                                        {loanDetails.delinquencyRange?.classification || 'Nợ đủ tiêu chuẩn'}
+                                                    </Tag>
+                                                    {loanDetails.delinquencyRange?.pastDueDays > 0 && (
+                                                        <Tag color="error">Quá hạn {loanDetails.delinquencyRange.pastDueDays} ngày</Tag>
+                                                    )}
+                                                </Space>
                                             </div>
-                                        </div>
-                                        <div style={{ textAlign: 'right', lineHeight: 2 }}>
-                                            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.2)' }}>Tổng quan tài khoản</div>
-                                            <Row gutter={16}>
-                                                <Col style={{ textAlign: 'left' }}>Số dư hiện tại</Col>
-                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold' }}>{fmtVND(loanDetails.summary?.totalOutstanding)}</Col>
-                                            </Row>
-                                            <Row gutter={16}>
-                                                <Col style={{ textAlign: 'left' }}>Tiền quá hạn</Col>
-                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold', color: '#ff4d4f' }}>{fmtVND(loanDetails.summary?.totalOverdue)}</Col>
-                                            </Row>
-                                            <Row gutter={16}>
-                                                <Col style={{ textAlign: 'left' }}>Quá hạn từ</Col>
-                                                <Col style={{ flex: 1, textAlign: 'right', fontWeight: 'bold' }}>
-                                                    {loanDetails.delinquencyRange?.delinquentDate ? [...loanDetails.delinquencyRange.delinquentDate].reverse().join('/') : '–'}
-                                                </Col>
-                                            </Row>
-                                        </div>
+                                        </Space>
+                                        <Row gutter={32}>
+                                            <Col>
+                                                <Statistic
+                                                    title="Dư nợ hiện tại"
+                                                    value={loanDetails.summary?.totalOutstanding}
+                                                    formatter={v => fmtVND(Number(v))}
+                                                    valueStyle={{ fontWeight: 700 }}
+                                                />
+                                            </Col>
+                                            <Col>
+                                                <Statistic
+                                                    title="Tiền quá hạn"
+                                                    value={loanDetails.summary?.totalOverdue}
+                                                    formatter={v => fmtVND(Number(v))}
+                                                    valueStyle={{ color: loanDetails.summary?.totalOverdue > 0 ? '#ff4d4f' : 'inherit', fontWeight: 700 }}
+                                                />
+                                            </Col>
+                                        </Row>
                                     </div>
 
                                     <div style={{ padding: '24px' }}>
@@ -1181,13 +1205,32 @@ export default function CustomerDetailPage() {
                             label: 'Lịch trả nợ',
                             children: (
                                 <Table
-                                    dataSource={loanDetails.repaymentSchedule?.periods || []}
+                                    dataSource={
+                                        Array.isArray(loanDetails.repaymentSchedule)
+                                            ? loanDetails.repaymentSchedule
+                                            : (loanDetails.repaymentSchedule?.periods || [])
+                                    }
                                     pagination={false}
                                     size="small"
                                     scroll={{ y: 600, x: 1800 }}
                                     rowKey="period"
+                                    rowClassName={(record) => {
+                                        const s = getInstallmentStatus(record);
+                                        return `schedule-row-${s}`;
+                                    }}
                                     columns={[
                                         { title: '#', dataIndex: 'period', width: 50, fixed: 'left' },
+                                        {
+                                            title: 'Tình trạng',
+                                            key: 'status',
+                                            width: 120,
+                                            fixed: 'left',
+                                            render: (_: any, record: any) => {
+                                                const s = getInstallmentStatus(record);
+                                                const config = { paid: { color: 'success', label: 'Đã trả' }, overdue: { color: 'error', label: 'Quá hạn' }, current: { color: 'processing', label: 'Đang đến hạn' }, upcoming: { color: 'default', label: 'Chưa đến hạn' } };
+                                                return <Tag color={config[s].color}>{config[s].label}</Tag>;
+                                            },
+                                        },
                                         { title: 'Ngày', dataIndex: 'dueDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
                                         { title: 'Ngày trả', dataIndex: 'obligationsMetOnDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
                                         { title: 'Dư nợ khoản vay', dataIndex: 'principalLoanBalanceOutstanding', align: 'right', width: 140, render: (v: any) => fmtVND(v) },
@@ -1200,41 +1243,112 @@ export default function CustomerDetailPage() {
                                         { title: 'Trước', dataIndex: 'totalPaidInAdvanceForPeriod', align: 'right', width: 110, render: (v: any) => fmtVND(v) },
                                         { title: 'Muộn', dataIndex: 'totalPaidLateForPeriod', align: 'right', width: 110, render: (v: any) => fmtVND(v) },
                                         { title: 'Chưa thanh toán', dataIndex: 'totalOutstandingForPeriod', align: 'right', width: 140, render: (v: any) => fmtVND(v) },
+                                        { title: 'Quá hạn', dataIndex: 'totalOverdue', align: 'right', width: 130, render: (v: any) => (v > 0 ? <Text type="danger">{fmtVND(v)}</Text> : fmtVND(v ?? 0)) },
                                     ]}
                                 />
                             )
                         },
                         {
                             key: 'delinquency',
-                            label: 'Thẻ nợ quá hạn',
+                            label: 'Quá hạn & Rủi ro',
                             children: (
                                 <div style={{ padding: '24px' }}>
-                                    <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Thẻ nợ quá hạn</div>
-                                    <Table
-                                        size="small"
-                                        pagination={false}
-                                        style={{ marginBottom: 32 }}
-                                        dataSource={loanDetails.delinquencyTags || []}
-                                        columns={[
-                                            { title: 'Phân loại nợ quá hạn', dataIndex: ['delinquencyRange', 'classification'] },
-                                            { title: 'Đã thêm vào', dataIndex: 'addedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
-                                            { title: 'Gỡ bỏ vào', dataIndex: 'liftedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
-                                        ]}
-                                    />
-                                    <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Thẻ kỳ trả nợ quá hạn</div>
-                                    <Table
-                                        size="small"
-                                        pagination={false}
-                                        dataSource={loanDetails.installmentLevelDelinquency || []}
-                                        columns={[
-                                            { title: 'Phân loại nợ quá hạn', dataIndex: 'classification' },
-                                            { title: 'Ngày', dataIndex: 'minimumAgeDays', render: (v: any) => v != null ? `${v}.00` : '–' },
-                                            { title: 'Số tiền', dataIndex: 'delinquentAmount', render: (v: any) => fmtVND(v) },
-                                        ]}
-                                    />
-                                    <div style={{ marginTop: 24, textAlign: 'right' }}>
-                                        <Button type="primary" icon={<PauseCircleOutlined />}>Tạm dừng phân loại nợ quá hạn</Button>
-                                    </div>
+                                    <Row gutter={[24, 24]}>
+                                        <Col span={24}>
+                                            <Alert
+                                                message={<Text strong style={{ fontSize: 16 }}>Thông tin nợ quá hạn hiện tại</Text>}
+                                                description={
+                                                    <Row gutter={48}>
+                                                        <Col>
+                                                            <Statistic
+                                                                title="Tổng tiền quá hạn"
+                                                                value={loanDetails.summary?.totalOverdue}
+                                                                formatter={v => fmtVND(Number(v))}
+                                                                valueStyle={{ color: '#ff4d4f', fontWeight: 700 }}
+                                                            />
+                                                        </Col>
+                                                        <Col>
+                                                            <Statistic
+                                                                title="Số ngày quá hạn"
+                                                                value={loanDetails.delinquencyRange?.pastDueDays ?? 0}
+                                                                suffix="ngày"
+                                                                valueStyle={{ color: (loanDetails.delinquencyRange?.pastDueDays > 0) ? '#ff4d4f' : 'inherit', fontWeight: 700 }}
+                                                            />
+                                                        </Col>
+                                                        <Col>
+                                                            <Statistic
+                                                                title="Phân loại hiện tại"
+                                                                value={loanDetails.delinquencyRange?.classification || 'Nhóm 1'}
+                                                                valueStyle={{ color: loanDetails.delinquencyRange?.classification ? '#ff4d4f' : '#52c41a', fontWeight: 700 }}
+                                                            />
+                                                        </Col>
+                                                    </Row>
+                                                }
+                                                type={loanDetails.summary?.totalOverdue > 0 ? "error" : "success"}
+                                                showIcon
+                                                icon={<ExclamationCircleOutlined />}
+                                                style={{ marginBottom: 24, borderRadius: 8 }}
+                                            />
+                                        </Col>
+
+                                        <Col span={24}>
+                                            <Card size="small" title={<Space><ClockCircleOutlined /> Lịch sử thẻ nợ (Delinquency Tags)</Space>} bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                                <Table
+                                                    size="small"
+                                                    pagination={false}
+                                                    dataSource={loanDetails.delinquencyTags || []}
+                                                    columns={[
+                                                        { title: 'Phân loại', dataIndex: ['delinquencyRange', 'classification'], render: (v) => <Tag color="red">{v}</Tag> },
+                                                        { title: 'Ngày bắt đầu', dataIndex: 'addedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : '–' },
+                                                        { title: 'Ngày kết thúc', dataIndex: 'liftedOnDate', render: (v: any) => v ? [...v].reverse().join('/') : <Text type="secondary">Đang áp dụng</Text> },
+                                                    ]}
+                                                    locale={{ emptyText: 'Chưa có lịch sử thẻ nợ' }}
+                                                />
+                                            </Card>
+                                        </Col>
+
+                                        <Col span={12}>
+                                            <Card size="small" title="Quá hạn theo kỳ trả nợ" bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                                                <Table
+                                                    size="small"
+                                                    pagination={false}
+                                                    dataSource={
+                                                        (loanDetails.periodDelinquency && loanDetails.periodDelinquency.length > 0)
+                                                            ? loanDetails.periodDelinquency
+                                                            : []
+                                                    }
+                                                    rowKey="period"
+                                                    columns={[
+                                                        { title: 'Kỳ', dataIndex: 'period', width: 50 },
+                                                        { title: 'Ngày đến hạn', dataIndex: 'dueDate' },
+                                                        { title: 'Nhóm', dataIndex: 'classification', render: (v: any) => <Tag color="orange">{v}</Tag> },
+                                                        { title: 'Tiền quá hạn', dataIndex: 'totalOverdue', align: 'right', render: (v: any) => <Text type="danger">{fmtVND(v)}</Text> },
+                                                    ]}
+                                                    locale={{ emptyText: 'Không có kỳ nào quá hạn' }}
+                                                />
+                                            </Card>
+                                        </Col>
+
+                                        <Col span={12}>
+                                            <Card size="small" title="Phân bổ tiền quá hạn (Phổ nợ)" bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                                                <Table
+                                                    size="small"
+                                                    pagination={false}
+                                                    dataSource={loanDetails.installmentLevelDelinquency || []}
+                                                    columns={[
+                                                        { title: 'Nhóm nợ', dataIndex: 'classification' },
+                                                        { title: 'Khoảng ngày', key: 'range', render: (_: any, r: any) => `${r.minimumAgeDays}–${r.maximumAgeDays} n` },
+                                                        { title: 'Số tiền', dataIndex: 'delinquentAmount', align: 'right', render: (v: any) => <Text strong>{fmtVND(v)}</Text> },
+                                                    ]}
+                                                    locale={{ emptyText: 'Chưa có phân bổ tiền quá hạn' }}
+                                                />
+                                            </Card>
+                                        </Col>
+
+                                        <Col span={24} style={{ textAlign: 'right', marginTop: 8 }}>
+                                            <Button type="default" icon={<PauseCircleOutlined />} danger>Tạm dừng phân loại nợ</Button>
+                                        </Col>
+                                    </Row>
                                 </div>
                             )
                         },
@@ -1318,44 +1432,6 @@ export default function CustomerDetailPage() {
                                 />
                             ),
                         },
-                        {
-                            key: 'transactions',
-                            label: 'Giao dịch',
-                            children: (
-                                <Table
-                                    dataSource={loanDetails.transactions || []}
-                                    pagination={false}
-                                    size="small"
-                                    scroll={{ y: 400 }}
-                                    rowKey="id"
-                                    columns={[
-                                        { title: 'ID', dataIndex: 'id', width: 80, align: 'center' },
-                                        {
-                                            title: 'Ngày',
-                                            dataIndex: 'date',
-                                            width: 150,
-                                            align: 'center',
-                                            render: (v: any) => v ? v.reverse().join('/') : '–'
-                                        },
-                                        { title: 'Loại giao dịch', dataIndex: 'type', render: (v: any) => v?.value },
-                                        {
-                                            title: 'Số tiền',
-                                            dataIndex: 'amount',
-                                            width: 180,
-                                            align: 'right',
-                                            render: (v: any) => <Text strong>{fmtVND(v)}</Text>
-                                        },
-                                        {
-                                            title: 'Trạng thái',
-                                            dataIndex: 'manuallyReversed',
-                                            width: 150,
-                                            align: 'center',
-                                            render: (v: any) => v ? <Tag color="error">Đã hủy</Tag> : <Tag color="success">Thành công</Tag>
-                                        },
-                                    ]}
-                                />
-                            )
-                        },
                     ]} />
                 )}
             </Drawer>
@@ -1389,7 +1465,7 @@ export default function CustomerDetailPage() {
                     background: transparent !important;
                     margin: 0 !important;
                     padding: 12px 20px !important;
-                    border-radius: 0 !important;
+
                 }
                 .mifos-tabs .ant-tabs-tab-active {
                     background: #fff !important;

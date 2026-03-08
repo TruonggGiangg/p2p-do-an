@@ -71,6 +71,10 @@ export class LoanApplication extends Document {
   @Prop({ required: false })
   fineractLoanId?: number;
 
+  /** Tên khách hàng trên Fineract (để hiển thị trong danh sách nợ quá hạn) */
+  @Prop({ required: false })
+  clientDisplayName?: string;
+
   @Prop({ required: false })
   lastSyncedAt?: Date;
 

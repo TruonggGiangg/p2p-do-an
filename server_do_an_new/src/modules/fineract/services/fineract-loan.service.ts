@@ -302,6 +302,34 @@ export class FineractLoanService extends FineractBaseService {
     }
 
     /**
+     * List all delinquency ranges from Fineract (for admin filter "nhóm quá hạn")
+     */
+    async getDelinquencyRanges(): Promise<any[]> {
+        try {
+            const response = await this.client.get('/delinquency/ranges');
+            const items = response.data?.pageItems ?? response.data ?? [];
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.logger.warn(`[getDelinquencyRanges] ${error?.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * List all delinquency buckets from Fineract
+     */
+    async getDelinquencyBuckets(): Promise<any[]> {
+        try {
+            const response = await this.client.get('/delinquency/buckets');
+            const items = response.data?.pageItems ?? response.data ?? [];
+            return Array.isArray(items) ? items : [];
+        } catch (error: any) {
+            this.logger.warn(`[getDelinquencyBuckets] ${error?.message}`);
+            return [];
+        }
+    }
+
+    /**
      * Lấy danh sách mục đích vay (CodeValues) từ Fineract - LoanPurpose
      */
     async getLoanPurposeCodeValues(): Promise<Array<{ id: number; name: string; position: number }>> {
@@ -775,6 +803,61 @@ export class FineractLoanService extends FineractBaseService {
             this.logger.error(`[rescheduleLoan] FAILED for loan ${loanId}: ${error.message}`);
             if (error.response?.data) this.logger.error(`[rescheduleLoan] Details: ${JSON.stringify(error.response.data)}`);
             this.handleError(error, `Failed to reschedule loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Write-off a loan (close as written off - nợ không thu được)
+     * POST /loans/{loanId}/transactions?command=writeoff
+     */
+    async writeOffLoan(loanId: number | string, note?: string): Promise<any> {
+        try {
+            const today = this.getTodayFormatted('iso');
+            const body: any = {
+                transactionDate: today,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+            };
+            if (note) body.note = note;
+            const response = await this.client.post(
+                `/loans/${loanId}/transactions?command=writeoff`,
+                body,
+            );
+            this.logger.log(`[writeOffLoan] SUCCESS | loanId=${loanId}`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`[writeOffLoan] FAILED for loan ${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to write off loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Waive interest on a loan.
+     * POST /loans/{loanId}/transactions?command=waiveInterest
+     * Optional transactionAmount to waive specific amount; omit to waive outstanding interest.
+     */
+    async waiveInterest(
+        loanId: number | string,
+        options?: { transactionAmount?: number; note?: string },
+    ): Promise<any> {
+        try {
+            const today = this.getTodayFormatted('iso');
+            const body: any = {
+                transactionDate: today,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+            };
+            if (options?.transactionAmount != null) body.transactionAmount = options.transactionAmount;
+            if (options?.note) body.note = options.note;
+            const response = await this.client.post(
+                `/loans/${loanId}/transactions?command=waiveInterest`,
+                body,
+            );
+            this.logger.log(`[waiveInterest] SUCCESS | loanId=${loanId}`);
+            return response.data;
+        } catch (error: any) {
+            this.logger.error(`[waiveInterest] FAILED for loan ${loanId}: ${error.message}`);
+            this.handleError(error, `Failed to waive interest for loan ${loanId}`);
         }
     }
 }

@@ -9,6 +9,7 @@ export type NotificationType =
   | 'contract_signed'
   | 'repayment_due'
   | 'repayment_received'
+  | 'overdue_reminder'
   | 'general';
 
 @Schema({ timestamps: true, collection: 'notifications' })

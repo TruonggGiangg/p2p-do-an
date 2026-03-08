@@ -13,6 +13,7 @@ import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
+import OverdueLoansPage from './pages/OverdueLoansPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
@@ -109,8 +110,8 @@ export default function App() {
             colorBorder: isDarkMode ? '#334155' : '#E2E8F0',
             colorText: isDarkMode ? '#F1F5F9' : '#0F172A',
             colorTextSecondary: isDarkMode ? '#94A3B8' : '#475569',
-            borderRadius: 0,
-            borderRadiusLG: 0,
+            borderRadius: 6,
+            borderRadiusLG: 12,
             fontFamily: "'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             fontSize: 14,
             controlHeight: 40,
@@ -131,30 +132,21 @@ export default function App() {
               itemMarginBlock: 4,
             },
             Card: {
-              borderRadiusLG: 0,
+              // Inherits borderRadiusLG (12px)
               boxShadowTertiary: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
             },
             Table: {
-              borderRadiusLG: 0,
+              // Inherits borderRadiusLG (12px)
               headerBg: isDarkMode ? '#1E293B' : '#F8FAFC',
               rowHoverBg: isDarkMode ? '#334155' : '#F1F5F9',
               fontSize: 13,
               cellPaddingBlock: 10,
               cellPaddingInline: 12,
             },
-            Button: {
-              borderRadius: 0,
-            },
-            Input: {
-              borderRadius: 0,
-              borderRadiusLG: 0,
-            },
-            Select: {
-              borderRadius: 0,
-            },
-            Tag: {
-              borderRadius: 0,
-            },
+            Button: {},
+            Input: {},
+            Select: {},
+            Tag: {},
           },
         }}
       >
@@ -179,6 +171,7 @@ export default function App() {
                     <LoanSupportRequestsPage />
                   </ProtectedRoute>
                 } />
+                <Route path="overdue-loans" element={<OverdueLoansPage />} />
                 <Route path="customers" element={<CustomersPage />} />
                 <Route path="customers/:id" element={<CustomerDetailPage />} />
                 <Route path="staff" element={

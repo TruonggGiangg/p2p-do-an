@@ -15,6 +15,7 @@ import {
   SAVINGS_SNAPSHOT_SCOPE,
 } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
+import { LoanSyncRun } from './schemas/loan-sync-run.schema';
 import {
   flattenLoanProduct,
   flattenSavingsProduct,
@@ -67,6 +68,7 @@ export class AdminService {
     @InjectModel(LoanProductSnapshot.name) private snapshotModel: Model<LoanProductSnapshot>,
     @InjectModel(SavingsProductSnapshot.name) private savingsSnapshotModel: Model<SavingsProductSnapshot>,
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
+    @InjectModel(LoanSyncRun.name) private loanSyncRunModel: Model<LoanSyncRun>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     @InjectModel(LoanSupportRequest.name) private supportRequestModel: Model<LoanSupportRequest>,
@@ -888,6 +890,57 @@ export class AdminService {
     };
   }
 
+  /**
+   * Tính từng kỳ trả nợ (có tiền quá hạn/còn nợ) rơi vào nhóm/thẻ quá hạn nào.
+   * Dựa trên ngày đến hạn kỳ vs ngày tham chiếu (lastSyncedAt hoặc hôm nay) → số ngày quá hạn → map vào delinquency ranges.
+   */
+  private async computePeriodDelinquency(
+    periods: any[],
+    referenceDate: Date,
+  ): Promise<Array<{ period: number; dueDate: string; daysOverdue: number; classification: string; totalOverdue: number; totalOutstandingForPeriod: number }>> {
+    const ranges = await this.fineractLoanService.getDelinquencyRanges();
+    const sorted = (ranges || [])
+      .filter((r: any) => r.minimumAgeDays != null)
+      .map((r: any) => ({
+        min: Number(r.minimumAgeDays),
+        max: r.maximumAgeDays != null ? Number(r.maximumAgeDays) : undefined,
+        classification: r.classification ?? r.name ?? String(r.id),
+      }))
+      .sort((a: any, b: any) => a.min - b.min);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].max == null) sorted[i].max = sorted[i + 1].min - 1;
+    }
+    if (sorted.length && sorted[sorted.length - 1].max == null) sorted[sorted.length - 1].max = 99999;
+
+    const result: Array<{ period: number; dueDate: string; daysOverdue: number; classification: string; totalOverdue: number; totalOutstandingForPeriod: number }> = [];
+    for (const p of periods) {
+      const periodNum = p.period;
+      if (periodNum == null) continue;
+      const totalOverdue = p.totalOverdue ?? 0;
+      const totalOutstanding = p.totalOutstandingForPeriod ?? 0;
+      if (totalOverdue <= 0 && totalOutstanding <= 0) continue;
+
+      const due = p.dueDate;
+      const dueDate = Array.isArray(due) && due.length >= 3
+        ? new Date(due[0], due[1] - 1, due[2])
+        : null;
+      const daysOverdue = dueDate
+        ? Math.max(0, Math.floor((referenceDate.getTime() - dueDate.getTime()) / 86400000))
+        : 0;
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : (Array.isArray(due) ? due.join('-') : '–');
+      const range = sorted.find((r: any) => daysOverdue >= r.min && daysOverdue <= (r.max ?? 99999));
+      result.push({
+        period: periodNum,
+        dueDate: dueDateStr,
+        daysOverdue,
+        classification: range?.classification ?? (daysOverdue > 0 ? `Quá hạn ${daysOverdue} ngày` : '–'),
+        totalOverdue,
+        totalOutstandingForPeriod: totalOutstanding,
+      });
+    }
+    return result;
+  }
+
   async getLoanDetails(fineractLoanId: number, sync = false) {
     this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId} sync=${sync}`);
     if (sync) {
@@ -896,15 +949,24 @@ export class AdminService {
     const fl = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
     const app = await this.loanApplicationModel.findOne({ fineractLoanId });
     if (app) {
+      const appObj = app.toObject() as any;
+      const periods = Array.isArray(appObj.repaymentSchedule)
+        ? appObj.repaymentSchedule
+        : (fl.repaymentSchedule?.periods || appObj.repaymentSchedule?.periods || []);
+      const referenceDate = app.lastSyncedAt ? new Date(app.lastSyncedAt) : new Date();
+      const periodDelinquency = await this.computePeriodDelinquency(periods, referenceDate);
       return {
         ...fl,
-        ...app.toObject(),
+        ...appObj,
+        clientName: app.clientDisplayName ?? fl.clientName ?? appObj.clientDisplayName,
+        repaymentSchedule: { periods },
         delinquentDays: app.delinquentDays,
         delinquencyClassification: app.delinquencyClassification,
         delinquencyRange: app.delinquencyRange || fl.delinquencyRange,
         delinquencyTags: app.delinquencyTags || [],
         installmentLevelDelinquency: app.installmentLevelDelinquency || [],
         delinquencyActions: app.delinquencyActions || [],
+        periodDelinquency,
       };
     }
     return fl;
@@ -931,10 +993,10 @@ export class AdminService {
     const summaryInfo = dData.summary || fl.summary || fl.collection || {};
     const summary = fl.summary || summaryInfo || {};
 
-    // 2. Map status
+    // 2. Map status (active = đã giải ngân -> disbursed để trang Khoản vay quá hạn lấy đúng)
     const fStatus = fl.status || {};
     let internalStatus: LoanApplicationStatus = 'pending';
-    if (fStatus.active) internalStatus = 'approved';
+    if (fStatus.active) internalStatus = 'disbursed';
     if (fStatus.closed) internalStatus = 'closed';
     if (fStatus.waitingForDisbursal) internalStatus = 'approved';
     if (fStatus.overpaid) internalStatus = 'closed';
@@ -1034,6 +1096,19 @@ export class AdminService {
     app.lastPaymentDate = summary.lastPaymentDate;
     app.lastPaymentAmount = summary.lastPaymentAmount;
 
+    // Tên khách hàng từ Fineract (để hiển thị đúng trong danh sách nợ quá hạn)
+    const clientId = fl.clientId ?? fl.client?.id;
+    if (clientId) {
+      try {
+        const client = await this.fineractClientService.getClientById(Number(clientId));
+        if (client) {
+          app.clientDisplayName = client.displayName ?? ([client.firstname, client.lastname].filter(Boolean).join(' ')?.trim() || null);
+        }
+      } catch {
+        // keep existing or leave unset
+      }
+    }
+
     app.lastSyncedAt = new Date();
 
     app.markModified('repaymentSchedule');
@@ -1080,6 +1155,226 @@ export class AdminService {
     }
 
     return { total: loans.length, processed: results };
+  }
+
+  /**
+   * Lấy tất cả khoản vay đã giải ngân từ Fineract (status 300 = Active) và sync vào Mongo.
+   * Tạo LoanApplication nếu chưa có (khi có user trùng fineractClientId), cập nhật totalOverdue/delinquentDays.
+   * Dùng cho cron và cho trang "Khoản vay quá hạn" để không bỏ sót khoản tạo trực tiếp trên Fineract.
+   * Mỗi lần chạy ghi log vào collection loan_sync_runs (xem trên Mongo).
+   * @param limit số khoản tối đa mỗi lần chạy
+   * @param options.trigger 'cron' | 'manual' để phân biệt chạy tự động hay từ API
+   */
+  async syncDisbursedLoansFromFineract(
+    limit = 300,
+    options?: { trigger?: 'cron' | 'manual' },
+  ): Promise<{ synced: number; errors: number; skipped: number }> {
+    const loans = await this.fineractLoanService.getLoansByStatus(300); // 300 = Active (disbursed)
+    const toSync = (loans || []).slice(0, limit).map((l: any) => l.id ?? l.loanId).filter((id: any) => id != null);
+    let synced = 0;
+    let errors = 0;
+    let skipped = 0;
+
+    for (const loanId of toSync) {
+      try {
+        await this.syncLoanFromFineract(Number(loanId));
+        synced++;
+      } catch (err: any) {
+        if (err instanceof BadRequestException && err?.message?.includes('No local user found')) {
+          skipped++;
+          this.logger.debug(`[syncDisbursedLoansFromFineract] Loan ${loanId} skipped (no user for client)`);
+        } else {
+          this.logger.warn(`[syncDisbursedLoansFromFineract] Loan ${loanId}: ${err?.message}`);
+          errors++;
+        }
+      }
+    }
+
+    this.logger.log(`[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`);
+
+    const trigger = options?.trigger ?? 'manual';
+    try {
+      await this.loanSyncRunModel.create({
+        ranAt: new Date(),
+        trigger,
+        totalFromFineract: toSync.length,
+        synced,
+        errorCount: errors,
+        skipped,
+      });
+    } catch (logErr: any) {
+      this.logger.warn(`[syncDisbursedLoansFromFineract] Failed to write loan_sync_runs: ${logErr?.message}`);
+    }
+
+    return { synced, errors, skipped };
+  }
+
+  /**
+   * Batch sync: sync all active (disbursed) loans from Fineract to MongoDB.
+   * Chỉ sync các khoản đã có trong Mongo. Để gồm cả khoản tạo trên Fineract, dùng syncDisbursedLoansFromFineract.
+   * @param limit max loans per run (default 200)
+   */
+  async syncAllActiveLoansFromFineract(limit = 200): Promise<{ synced: number; errors: number; details: any[] }> {
+    const apps = await this.loanApplicationModel
+      .find({ status: 'disbursed', fineractLoanId: { $exists: true, $ne: null } })
+      .select('fineractLoanId')
+      .limit(limit)
+      .lean()
+      .exec();
+
+    const details: any[] = [];
+    let errors = 0;
+
+    for (const app of apps) {
+      try {
+        await this.syncLoanFromFineract(app.fineractLoanId!);
+        details.push({ fineractLoanId: app.fineractLoanId, status: 'success' });
+      } catch (err: any) {
+        this.logger.warn(`[syncAllActiveLoansFromFineract] Loan ${app.fineractLoanId}: ${err?.message}`);
+        details.push({ fineractLoanId: app.fineractLoanId, status: 'error', message: err?.message });
+        errors++;
+      }
+    }
+
+    this.logger.log(`[syncAllActiveLoansFromFineract] Done. synced=${apps.length - errors} errors=${errors}`);
+    return { synced: apps.length - errors, errors, details };
+  }
+
+  /**
+   * Lấy danh sách nhóm quá hạn (delinquency ranges) từ Fineract để dùng cho filter.
+   * Fallback: distinct classification từ Mongo nếu Fineract lỗi.
+   */
+  async getDelinquencyRangesForFilter(): Promise<Array<{ id: number; classification: string; minimumAgeDays?: number }>> {
+    const fromFineract = await this.fineractLoanService.getDelinquencyRanges();
+    if (fromFineract?.length) {
+      return fromFineract.map((r: any) => ({
+        id: r.id,
+        classification: r.classification ?? r.name ?? String(r.id),
+        minimumAgeDays: r.minimumAgeDays,
+      }));
+    }
+    const distinct = await this.loanApplicationModel
+      .distinct('delinquencyClassification', {
+        status: 'disbursed',
+        totalOverdue: { $gt: 0 },
+        delinquencyClassification: { $exists: true, $nin: [null, ''] },
+      })
+      .exec();
+    return (distinct as string[])
+      .filter(Boolean)
+      .map((classification, i) => ({ id: i + 1, classification }));
+  }
+
+  /**
+   * Lọc khoản vay quá hạn chi tiết: nhóm quá hạn, khoản quá hạn (từ–đến), số ngày quá hạn (từ–đến).
+   * Data từ Mongo (đã sync từ Fineract hằng ngày).
+   */
+  async getOverdueLoans(filters?: {
+    classification?: string;
+    minOverdueAmount?: number;
+    maxOverdueAmount?: number;
+    delinquentDaysMin?: number;
+    delinquentDaysMax?: number;
+  }): Promise<{
+    total: number;
+    items: Array<{
+      _id: string;
+      fineractLoanId: number;
+      userId: string;
+      customerName: string;
+      customerUsername: string;
+      fineractClientId?: string;
+      capital: number;
+      totalOverdue: number;
+      delinquentDays: number;
+      delinquencyClassification: string | null;
+      lastSyncedAt: Date | null;
+    }>;
+  }> {
+    const query: any = {
+      status: 'disbursed',
+      fineractLoanId: { $exists: true, $ne: null },
+    };
+
+    // Khoản quá hạn (tổng tiền): luôn > 0, có thể thêm min/max
+    query.totalOverdue = { $gt: 0 };
+    if (filters?.minOverdueAmount != null && filters.minOverdueAmount > 0) {
+      query.totalOverdue.$gte = filters.minOverdueAmount;
+    }
+    if (filters?.maxOverdueAmount != null && filters.maxOverdueAmount >= 0) {
+      query.totalOverdue.$lte = filters.maxOverdueAmount;
+    }
+
+    // Số ngày quá hạn (kỳ quá hạn): từ – đến
+    if (filters?.delinquentDaysMin != null && filters.delinquentDaysMin >= 0) {
+      query.delinquentDays = query.delinquentDays ?? {};
+      query.delinquentDays.$gte = filters.delinquentDaysMin;
+    }
+    if (filters?.delinquentDaysMax != null && filters.delinquentDaysMax >= 0) {
+      query.delinquentDays = query.delinquentDays ?? {};
+      query.delinquentDays.$lte = filters.delinquentDaysMax;
+    }
+
+    if (filters?.classification) {
+      query.delinquencyClassification = filters.classification;
+    }
+
+    const apps = await this.loanApplicationModel
+      .find(query)
+      .sort({ totalOverdue: -1, delinquentDays: -1 })
+      .populate('userId', 'username profile fineractClientId')
+      .lean()
+      .exec();
+
+    const items = (apps as any[]).map(app => {
+      const user = app.userId as any;
+      const profile = user?.profile ?? {};
+      const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
+      // Ưu tiên tên trên Fineract (clientDisplayName); chỉ dùng fallback khi chưa có
+      return {
+        _id: app._id.toString(),
+        fineractLoanId: app.fineractLoanId,
+        userId: app.userId?._id?.toString() ?? '',
+        customerName: app.clientDisplayName ?? fallbackName,
+        customerUsername: user?.username ?? '–',
+        fineractClientId: user?.fineractClientId,
+        capital: app.capital ?? 0,
+        totalOverdue: app.totalOverdue ?? 0,
+        delinquentDays: app.delinquentDays ?? 0,
+        delinquencyClassification: app.delinquencyClassification ?? null,
+        lastSyncedAt: app.lastSyncedAt ?? null,
+      };
+    });
+
+    // Khi clientDisplayName trống (sync cũ hoặc lỗi), lấy tên từ Fineract để luôn hiện đúng tên khoản vay
+    const needFineractName = (apps as any[]).map((app, idx) => ({ app, idx })).filter(({ app }) => !app.clientDisplayName);
+    if (needFineractName.length > 0) {
+      const results = await Promise.all(
+        needFineractName.map(async ({ app, idx }) => {
+          try {
+            const fl = await this.fineractLoanService.getLoanDetails(String(app.fineractLoanId));
+            const clientId = fl?.clientId ?? fl?.client?.id;
+            if (clientId == null) return { idx, name: null, appId: app._id };
+            const client = await this.fineractClientService.getClientById(Number(clientId));
+            const name =
+              client?.displayName ??
+              ([client?.firstname, client?.lastname].filter(Boolean).join(' ').trim() || null);
+            return { idx, name, appId: app._id };
+          } catch {
+            return { idx, name: null, appId: app._id };
+          }
+        }),
+      );
+      results.forEach(({ idx, name, appId }) => {
+        if (name) {
+          items[idx].customerName = name;
+          // Lưu vào Mongo để lần sau không cần gọi Fineract
+          this.loanApplicationModel.updateOne({ _id: appId }, { $set: { clientDisplayName: name } }).exec().catch(() => {});
+        }
+      });
+    }
+
+    return { total: items.length, items };
   }
 
   async getLoanDocuments(fineractLoanId: number) {
@@ -1970,6 +2265,51 @@ export class AdminService {
     request.resolvedBy = new Types.ObjectId(adminId);
     request.resolvedAt = new Date();
     request.adminNote = adminNote || 'Approved Reschedule';
+    await request.save();
+
+    return request;
+  }
+
+  async approveWriteOff(requestId: string, adminId: string, adminNote?: string) {
+    const request = await this.supportRequestModel.findById(requestId);
+    if (!request || request.requestType !== 'WRITE_OFF' || request.status !== 'PENDING') {
+      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
+    }
+
+    await this.fineractLoanService.writeOffLoan(
+      request.fineractLoanId,
+      adminNote || request.reason,
+    );
+
+    request.status = 'APPROVED';
+    request.resolvedBy = new Types.ObjectId(adminId);
+    request.resolvedAt = new Date();
+    request.adminNote = adminNote || 'Approved Write-off';
+    await request.save();
+
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId: request.fineractLoanId });
+    if (app) {
+      app.status = 'closed' as any;
+      await app.save();
+    }
+
+    return request;
+  }
+
+  async approveWaiveInterest(requestId: string, adminId: string, adminNote?: string) {
+    const request = await this.supportRequestModel.findById(requestId);
+    if (!request || request.requestType !== 'WAIVE_INTEREST' || request.status !== 'PENDING') {
+      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
+    }
+
+    await this.fineractLoanService.waiveInterest(request.fineractLoanId, {
+      note: adminNote || request.reason,
+    });
+
+    request.status = 'APPROVED';
+    request.resolvedBy = new Types.ObjectId(adminId);
+    request.resolvedAt = new Date();
+    request.adminNote = adminNote || 'Approved Interest Waiver';
     await request.save();
 
     return request;

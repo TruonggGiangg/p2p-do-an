@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-export type SupportRequestType = 'WAIVE_PENALTY' | 'RESCHEDULE';
+export type SupportRequestType = 'WAIVE_PENALTY' | 'RESCHEDULE' | 'WRITE_OFF' | 'WAIVE_INTEREST';
 export type SupportRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 @Schema({ timestamps: true, collection: 'loan_support_requests' })
@@ -15,7 +15,7 @@ export class LoanSupportRequest extends Document {
     @Prop({ required: true })
     fineractLoanId: number;
 
-    @Prop({ required: true, enum: ['WAIVE_PENALTY', 'RESCHEDULE'] })
+    @Prop({ required: true, enum: ['WAIVE_PENALTY', 'RESCHEDULE', 'WRITE_OFF', 'WAIVE_INTEREST'] })
     requestType: SupportRequestType;
 
     @Prop({ required: true })

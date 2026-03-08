@@ -287,7 +287,7 @@ export default function StaffPage() {
             onFilter: (value, record) => record.status === value,
             render: (_, r) => {
                 if (r.isDeleted) {
-                    return <Tag color="error" style={{ padding: '4px 12px', borderRadius: 0, fontWeight: 500, border: 'none' }}>Đã khóa</Tag>;
+                    return <Tag color="error" style={{ padding: '4px 12px', fontWeight: 500, border: 'none' }}>Đã khóa</Tag>;
                 }
                 const statusMap: Record<string, { color: string; text: string }> = {
                     'active': { color: 'success', text: 'Hoạt động' },
@@ -296,7 +296,7 @@ export default function StaffPage() {
                 };
                 const s = statusMap[r.status] || { color: 'default', text: r.status };
                 if (viewMode === 'deleted') {
-                    return <Tag color={s.color} style={{ padding: '4px 12px', borderRadius: 0, fontWeight: 500, border: 'none' }}>{s.text}</Tag>;
+                    return <Tag color={s.color} style={{ padding: '4px 12px', fontWeight: 500, border: 'none' }}>{s.text}</Tag>;
                 }
                 return (
                     <Select
@@ -411,7 +411,7 @@ export default function StaffPage() {
                                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>Tổng nhân viên</Text>
                                 <Title level={2} style={{ margin: 0, color: '#FFFFFF', fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em' }}>{stats.total}</Title>
                             </div>
-                            <div style={{ width: 56, height: 56, borderRadius: 0, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <TeamOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
                             </div>
                         </div>
@@ -424,7 +424,7 @@ export default function StaffPage() {
                                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>Đang hoạt động</Text>
                                 <Title level={2} style={{ margin: 0, color: '#FFFFFF', fontSize: 36, fontWeight: 700 }}>{stats.active}</Title>
                             </div>
-                            <div style={{ width: 56, height: 56, borderRadius: 0, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <CheckCircleOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
                             </div>
                         </div>
@@ -437,7 +437,7 @@ export default function StaffPage() {
                                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>Không hoạt động</Text>
                                 <Title level={2} style={{ margin: 0, color: '#FFFFFF', fontSize: 36, fontWeight: 700 }}>{stats.inactive}</Title>
                             </div>
-                            <div style={{ width: 56, height: 56, borderRadius: 0, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <StopOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
                             </div>
                         </div>
@@ -450,7 +450,7 @@ export default function StaffPage() {
                                 <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>Đã khóa</Text>
                                 <Title level={2} style={{ margin: 0, color: '#FFFFFF', fontSize: 36, fontWeight: 700 }}>{stats.deleted}</Title>
                             </div>
-                            <div style={{ width: 56, height: 56, borderRadius: 0, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <LockOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
                             </div>
                         </div>

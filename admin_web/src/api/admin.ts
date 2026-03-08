@@ -461,6 +461,47 @@ export const adminApi = {
       .get<{ data: { loans: LoanDto[] } }>("/api/admin/loans/pending")
       .then((r) => r.data.data.loans),
 
+  /** Danh sách khoản vay quá hạn (lọc chi tiết: nhóm, khoản quá hạn từ–đến, số ngày quá hạn từ–đến). Data sync từ Fineract hằng ngày. */
+  getOverdueLoans: (params?: {
+    classification?: string;
+    minOverdueAmount?: number;
+    maxOverdueAmount?: number;
+    delinquentDaysMin?: number;
+    delinquentDaysMax?: number;
+  }) =>
+    api
+      .get<{
+        data: {
+          total: number;
+          items: Array<{
+            _id: string;
+            fineractLoanId: number;
+            userId: string;
+            customerName: string;
+            customerUsername: string;
+            fineractClientId?: string;
+            capital: number;
+            totalOverdue: number;
+            delinquentDays: number;
+            delinquencyClassification: string | null;
+            lastSyncedAt: string | null;
+          }>;
+        };
+      }>("/api/admin/overdue-loans", { params })
+      .then((r) => r.data.data),
+
+  /** Danh sách nhóm quá hạn (delinquency ranges) từ Fineract để lọc. */
+  getDelinquencyRanges: () =>
+    api
+      .get<{ data: Array<{ id: number; classification: string; minimumAgeDays?: number }> }>("/api/admin/delinquency-ranges")
+      .then((r) => r.data.data),
+
+  /** Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo (để trang Khoản vay quá hạn có dữ liệu). */
+  syncDisbursedLoans: (limit?: number) =>
+    api
+      .post<{ data: { synced: number; errors: number; skipped: number } }>("/api/admin/sync-disbursed-loans", {}, { params: limit != null ? { limit } : {} })
+      .then((r) => r.data.data),
+
   approveLoan: (fineractLoanId: number) =>
     api
       .post<{
