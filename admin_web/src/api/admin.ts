@@ -295,6 +295,24 @@ export interface ActivityLogDto {
   createdAt: string;
 }
 
+// ═══════════════════ RBAC DTOs ══════════════════════════
+export interface RoleDto {
+  _id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PermissionDto {
+  _id: string;
+  roleId: string;
+  action: string;
+  subject: string;
+  allowed: boolean;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     api.post<{
@@ -522,19 +540,38 @@ export const adminApi = {
   /** Danh sách nhóm quá hạn (delinquency ranges) từ Fineract để lọc. */
   getDelinquencyRanges: () =>
     api
-      .get<{ data: Array<{ id: number; classification: string; minimumAgeDays?: number }> }>("/api/admin/delinquency-ranges")
+      .get<{
+        data: Array<{
+          id: number;
+          classification: string;
+          minimumAgeDays?: number;
+        }>;
+      }>("/api/admin/delinquency-ranges")
       .then((r) => r.data.data),
 
   /** Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi lưu vào loan_sync_runs. */
   syncDisbursedLoans: (limit?: number) =>
     api
-      .post<{ data: { synced: number; errors: number; skipped: number; runId?: string } }>("/api/admin/sync-disbursed-loans", {}, { params: limit != null ? { limit } : {} })
+      .post<{
+        data: {
+          synced: number;
+          errors: number;
+          skipped: number;
+          runId?: string;
+        };
+      }>(
+        "/api/admin/sync-disbursed-loans",
+        {},
+        { params: limit != null ? { limit } : {} },
+      )
       .then((r) => r.data.data),
 
   /** Lịch sử chạy đồng bộ khoản vay (truy vết từng thay đổi). */
   getLoanSyncRuns: (limit = 30) =>
     api
-      .get<{ data: LoanSyncRunDto[] }>(`/api/admin/loan-sync-runs?limit=${limit}`)
+      .get<{
+        data: LoanSyncRunDto[];
+      }>(`/api/admin/loan-sync-runs?limit=${limit}`)
       .then((r) => r.data.data),
 
   approveLoan: (fineractLoanId: number) =>
@@ -577,8 +614,8 @@ export const adminApi = {
   getLoanDetails: (fineractLoanId: number | { id?: number }, sync = false) => {
     const id =
       typeof fineractLoanId === "object" &&
-        fineractLoanId != null &&
-        "id" in fineractLoanId
+      fineractLoanId != null &&
+      "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);
@@ -602,8 +639,8 @@ export const adminApi = {
   getLoanDocuments: (fineractLoanId: number | { id?: number }) => {
     const id =
       typeof fineractLoanId === "object" &&
-        fineractLoanId != null &&
-        "id" in fineractLoanId
+      fineractLoanId != null &&
+      "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);
@@ -620,8 +657,8 @@ export const adminApi = {
   ) => {
     const id =
       typeof fineractLoanId === "object" &&
-        fineractLoanId != null &&
-        "id" in fineractLoanId
+      fineractLoanId != null &&
+      "id" in fineractLoanId
         ? fineractLoanId.id
         : fineractLoanId;
     const num = Number(id);
@@ -830,4 +867,69 @@ export const adminApi = {
       }>(`/api/admin/activity-logs/user/${userId}?${params.toString()}`)
       .then((r) => r.data.data);
   },
+
+  // ═══════════════════ RBAC ═══════════════════════════════════════════════════
+
+  getRbacMetadata: () =>
+    api
+      .get<{
+        data: { actions: string[]; subjects: string[] };
+      }>("/api/admin/rbac/metadata")
+      .then((r) => r.data.data),
+
+  getRoles: () =>
+    api
+      .get<{ data: RoleDto[] }>("/api/admin/rbac/roles")
+      .then((r) => r.data.data),
+
+  createRole: (body: { name: string; description?: string }) =>
+    api
+      .post<{ data: RoleDto }>("/api/admin/rbac/roles", body)
+      .then((r) => r.data.data),
+
+  updateRole: (
+    id: string,
+    body: { name?: string; description?: string; isActive?: boolean },
+  ) =>
+    api
+      .put<{ data: RoleDto }>(`/api/admin/rbac/roles/${id}`, body)
+      .then((r) => r.data.data),
+
+  deleteRole: (id: string) =>
+    api
+      .delete<{ data: { deleted: boolean } }>(`/api/admin/rbac/roles/${id}`)
+      .then((r) => r.data.data),
+
+  getRolePermissions: (roleId: string) =>
+    api
+      .get<{
+        data: PermissionDto[];
+      }>(`/api/admin/rbac/roles/${roleId}/permissions`)
+      .then((r) => r.data.data),
+
+  setRolePermissions: (
+    roleId: string,
+    permissions: { action: string; subject: string; allowed: boolean }[],
+  ) =>
+    api
+      .put<{
+        data: PermissionDto[];
+      }>(`/api/admin/rbac/roles/${roleId}/permissions`, { permissions })
+      .then((r) => r.data.data),
+
+  togglePermission: (
+    roleId: string,
+    action: string,
+    subject: string,
+    allowed: boolean,
+  ) =>
+    api
+      .post<{
+        data: PermissionDto;
+      }>(`/api/admin/rbac/roles/${roleId}/permissions/toggle`, {
+        action,
+        subject,
+        allowed,
+      })
+      .then((r) => r.data.data),
 };

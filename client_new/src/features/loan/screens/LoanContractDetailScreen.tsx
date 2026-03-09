@@ -74,6 +74,7 @@ export default function LoanContractDetailScreen() {
 
     const contractIdParam: string = route.params?.contractId;
     const loanIdParam: string | undefined = route.params?.loanId;
+    const fineractLoanIdParam: number | undefined = route.params?.fineractLoanId;
 
     const [contract, setContract] = useState<LoanContract | null>(null);
     const [contractHTML, setContractHTML] = useState<string>('');
@@ -95,6 +96,10 @@ export default function LoanContractDetailScreen() {
             } else if (loanIdParam) {
                 c = await loanService.getContractByLoanId(loanIdParam);
             }
+            // Fallback: try by fineractLoanId if loanId lookup returned null
+            if (!c && fineractLoanIdParam) {
+                c = await loanService.getContractByLoanId(String(fineractLoanIdParam));
+            }
             setContract(c);
 
             // Also fetch HTML
@@ -112,17 +117,20 @@ export default function LoanContractDetailScreen() {
         } finally {
             setLoading(false);
         }
-    }, [contractIdParam, loanIdParam]);
+    }, [contractIdParam, loanIdParam, fineractLoanIdParam]);
 
     useEffect(() => {
         fetchContract();
     }, [fetchContract]);
 
-    // Sign handler — dùng legacy (SmartCA tạm comment)
+    // Sign handler — mở modal SmartCA
     const handleSign = () => {
-        handleSignLegacy();
+        setShowSignConfirm(false);
+        setShowSmartCA(true);
     };
 
+
+    // Không áp dụng chữ ký số vào vì đang test
     // Legacy sign handler (fallback khi SmartCA không dùng được)
     const handleSignLegacy = async () => {
         if (!contract) return;
@@ -431,7 +439,7 @@ export default function LoanContractDetailScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.confirmSignBtn}
-                                onPress={handleSign}
+                                onPress={handleSignLegacy}
                             >
                                 <MaterialCommunityIcons name="draw-pen" size={18} color="#181A20" />
                                 <Text style={styles.confirmSignText}>Ký xác nhận</Text>
@@ -441,13 +449,13 @@ export default function LoanContractDetailScreen() {
                 </View>
             </Modal>
 
-            {/* SmartCA Digital Signing Modal — tạm comment, chưa đăng ký */}
-            {/* <SmartCASigningModal
+            {/* SmartCA Digital Signing Modal */}
+            <SmartCASigningModal
                 visible={showSmartCA}
                 contractId={contract.contractId || contract._id}
                 onClose={() => setShowSmartCA(false)}
                 onSigningComplete={handleSmartCAComplete}
-            /> */}
+            />
         </View>
     );
 }

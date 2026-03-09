@@ -19,11 +19,11 @@ import { EkycModule } from './modules/ekyc/ekyc.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
 
-
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
 import { validate } from './config/validation';
 import { SmartCAModule } from './modules/digital-signature/smartca.module';
+import { RbacModule } from './modules/rbac/rbac.module';
 
 @Module({
   imports: [
@@ -63,7 +63,7 @@ import { SmartCAModule } from './modules/digital-signature/smartca.module';
     EkycModule,
     ActivityLogModule,
     SmartCAModule,
-
+    RbacModule,
   ],
 
   controllers: [AppController],
@@ -85,4 +85,4 @@ import { SmartCAModule } from './modules/digital-signature/smartca.module';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}
