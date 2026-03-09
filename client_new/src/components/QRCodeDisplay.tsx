@@ -4,6 +4,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { CommonCard } from './common/CommonCard';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface QRCodeDisplayProps {
     phone: string;
@@ -13,6 +14,8 @@ interface QRCodeDisplayProps {
 
 export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClose }) => {
     const { theme } = useTheme();
+    const insets = useSafeAreaInsets();
+
     // Generate QR data as JSON for better parsing
     const qrData = phone ? JSON.stringify({
         phone: phone,
@@ -38,8 +41,8 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
     return (
         <View style={styles.container}>
             {onClose && (
-                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                    <Ionicons name="close" size={24} color="#fff" />
+                <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { top: Math.max(insets.top + 10, 20), backgroundColor: theme.colors.surface, borderColor: theme.colors.border, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 3 }]}>
+                    <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
                 </TouchableOpacity>
             )}
 
@@ -58,12 +61,12 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClo
                 <View style={styles.infoContainer}>
                     <View style={styles.infoRow}>
                         <Ionicons name="person-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={styles.infoLabel}>Tên:</Text>
+                        <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>Tên:</Text>
                         <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{name || 'Người dùng'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Ionicons name="call-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={styles.infoLabel}>SĐT:</Text>
+                        <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>SĐT:</Text>
                         <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{phone}</Text>
                     </View>
                 </View>
@@ -81,17 +84,14 @@ const styles = StyleSheet.create({
     },
     closeBtn: {
         position: 'absolute',
-        top: 50,
         right: 20,
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
     },
     closeButton: {
         marginTop: 24,

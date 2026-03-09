@@ -151,7 +151,7 @@ export default function HomeScreen() {
                                     }
                                 }}
                             >
-                                <View style={[styles.quickIconWrap, { backgroundColor: '#FFF5E0', borderColor: '#FFE4B5' }]}>
+                                <View style={[styles.quickIconWrap, { backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFF5E0', borderColor: theme.mode === 'dark' ? theme.colors.border : '#FFE4B5' }]}>
                                     <MaterialCommunityIcons name={item.icon} size={24} color="#F0B90B" />
                                 </View>
                                 <Text style={[styles.quickLabel, { color: c.textPrimary }]}>{item.label}</Text>

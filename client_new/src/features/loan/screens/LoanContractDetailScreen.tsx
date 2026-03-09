@@ -364,7 +364,7 @@ export default function LoanContractDetailScreen() {
             {/* Full Contract WebView Modal */}
             <Modal visible={showContract} animationType="slide" presentationStyle="fullScreen">
                 <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-                    <View style={[styles.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+                    <View style={[styles.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}>
                         <TouchableOpacity onPress={() => setShowContract(false)} style={styles.modalCloseBtn}>
                             <Ionicons name="close" size={24} color={colors.textPrimary} />
                         </TouchableOpacity>

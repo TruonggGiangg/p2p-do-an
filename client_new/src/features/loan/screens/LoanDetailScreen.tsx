@@ -268,10 +268,17 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     useEffect(() => {
         if (autoOpenRepay && isActive && !loading && outstanding && !hasAutoOpenedRef.current) {
             hasAutoOpenedRef.current = true;
-            setRepaymentAmount(formatMoney(loan.monthlyPay));
+            let amount = loan.monthlyPay || 0;
+            if (amount === 0 && schedule?.periods) {
+                const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
+                if (firstUnpaid) {
+                    amount = firstUnpaid.totalDue || 0;
+                }
+            }
+            setRepaymentAmount(formatMoney(amount));
             setShowRepayModal(true);
         }
-    }, [autoOpenRepay, isActive, loading, outstanding]);
+    }, [autoOpenRepay, isActive, loading, outstanding, schedule]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -427,21 +434,21 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     </View>
 
                     {outstanding && (
-                        <View style={[styles.outstandingBox, { backgroundColor: colors.errorGlass, borderColor: colors.errorBorder }]}>
-                            <Text style={[styles.outstandingLabel, { color: colors.error }]}>DƯ NỢ CÒN LẠI</Text>
-                            <Text style={[styles.outstandingValue, { color: colors.error }]}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
+                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderColor: '#FECACA' }]}>
+                            <Text style={[styles.outstandingLabel, { color: '#EF4444' }]}>DƯ NỢ CÒN LẠI</Text>
+                            <Text style={[styles.outstandingValue, { color: '#EF4444' }]}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
                             <View style={styles.outstandingDetail}>
-                                <Text style={[styles.outstandingDetailText, { color: colors.error }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
-                                <Text style={[styles.outstandingDetailText, { color: colors.error }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
+                                <Text style={[styles.outstandingDetailText, { color: '#EF4444' }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
+                                <Text style={[styles.outstandingDetailText, { color: '#EF4444' }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
                             </View>
                         </View>
                     )}
                     {(outstanding?.totalOverdue ?? 0) > 0 && (
-                        <View style={[styles.outstandingBox, { backgroundColor: colors.error + '22', borderColor: colors.error, marginTop: 12 }]}>
-                            <Text style={[styles.outstandingLabel, { color: colors.error }]}>NỢ QUÁ HẠN</Text>
-                            <Text style={[styles.outstandingValue, { color: colors.error, fontSize: 18 }]}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
+                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderColor: '#EF4444', marginTop: 12 }]}>
+                            <Text style={[styles.outstandingLabel, { color: '#EF4444' }]}>NỢ QUÁ HẠN</Text>
+                            <Text style={[styles.outstandingValue, { color: '#EF4444', fontSize: 18 }]}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
                             {(outstanding!.delinquentDays ?? 0) > 0 && (
-                                <Text style={[styles.outstandingDetailText, { color: colors.error, marginTop: 4 }]}>
+                                <Text style={[styles.outstandingDetailText, { color: '#EF4444', marginTop: 4 }]}>
                                     Quá hạn {outstanding!.delinquentDays} ngày
                                     {outstanding!.delinquencyClassification ? ` • ${outstanding!.delinquencyClassification}` : ''}
                                 </Text>
@@ -501,34 +508,31 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const renderScheduleTab = () => {
         const periods = schedule?.periods?.filter(p => p.period > 0) || [];
         const statusConfig = {
-            paid: { label: 'Đã trả', color: colors.success, bg: colors.success + '18' },
-            overdue: { label: 'Quá hạn', color: colors.error, bg: colors.error + '18' },
-            current: { label: 'Đang đến hạn', color: colors.primary, bg: colors.primary + '18' },
-            upcoming: { label: 'Chưa đến hạn', color: colors.textMuted, bg: 'transparent' },
+            paid: { label: 'Đã trả', color: colors.success, bg: colors.success + '10' },
+            overdue: { label: 'Quá hạn', color: '#EF4444', bg: '#FFF0F0' },
+            current: { label: 'Đang đến hạn', color: '#F0B90B', bg: '#FFF9E6' },
+            upcoming: { label: 'Chưa đến hạn', color: '#9CA3AF', bg: '#F9FAFB' },
         };
         return (
-            <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>LỊCH TRẢ NỢ</Text>
+            <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 0, overflow: 'hidden' }]}>
+                <Text style={[styles.cardTitle, { color: colors.textSecondary, padding: 16, paddingBottom: 0 }]}>LỊCH TRẢ NỢ</Text>
                 {periods.length > 0 ? periods.map((p, i) => {
                     const status = getInstallmentStatus(p);
                     const cfg = statusConfig[status];
                     return (
-                        <View key={i} style={[styles.scheduleItem, { borderBottomColor: colors.border, backgroundColor: cfg.bg }]}>
+                        <View key={i} style={[styles.scheduleItem, { borderBottomColor: '#F3F4F6', backgroundColor: cfg.bg }]}>
                             <View style={styles.scheduleLeft}>
-                                <View style={[styles.scheduleNumBadge, { backgroundColor: cfg.color + '20' }]}>
-                                    {status === 'paid'
-                                        ? <Ionicons name="checkmark" size={12} color={colors.success} />
-                                        : <Text style={[styles.scheduleNumText, { color: cfg.color }]}>{p.period}</Text>
-                                    }
+                                <View style={[styles.scheduleNumBadge, { backgroundColor: status === 'overdue' ? '#FECACA' : status === 'paid' ? '#D1FAE5' : '#E5E7EB' }]}>
+                                    <Text style={[styles.scheduleNumText, { color: status === 'overdue' ? '#EF4444' : status === 'paid' ? '#10B981' : '#6B7280' }]}>{p.period}</Text>
                                 </View>
                                 <View>
-                                    <Text style={[styles.schedulePeriod, { color: colors.text }]}>Kỳ {p.period}</Text>
-                                    <Text style={[styles.scheduleDate, { color: colors.textMuted }]}>{formatDate(p.dueDate)}</Text>
+                                    <Text style={[styles.schedulePeriod, { color: '#111827' }]}>Kỳ {p.period}</Text>
+                                    <Text style={[styles.scheduleDate, { color: '#6B7280' }]}>{formatDate(p.dueDate)}</Text>
                                     <Text style={[styles.schedulePaidTag, { color: cfg.color, marginTop: 2 }]}>{cfg.label}</Text>
                                 </View>
                             </View>
                             <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={[styles.scheduleAmount, { color: status === 'paid' ? colors.success : colors.text }]}>
+                                <Text style={[styles.scheduleAmount, { color: '#111827' }]}>
                                     {formatMoney(p.totalDue)} đ
                                 </Text>
                             </View>
@@ -581,13 +585,13 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             />
 
             {/* Amount Hero */}
-            <View style={[styles.heroCard, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '30' }]}>
-                <Text style={[styles.heroLabel, { color: colors.textSecondary }]}>Số tiền vay</Text>
-                <Text style={[styles.heroAmount, { color: colors.text }]}>{formatMoney(loan.capital)} <Text style={{ fontSize: 18 }}>đ</Text></Text>
+            <View style={[styles.heroCard, { backgroundColor: '#FFF9E6', borderColor: '#F0B90B20' }]}>
+                <Text style={[styles.heroLabel, { color: '#6B7280' }]}>Số tiền vay</Text>
+                <Text style={[styles.heroAmount, { color: '#111827' }]}>{formatMoney(loan.capital)} <Text style={{ fontSize: 18, fontWeight: '700' }}>đ</Text></Text>
                 {outstanding && isActive && (
                     <View style={styles.heroSub}>
-                        <MaterialCommunityIcons name="alert-circle-outline" size={14} color={colors.error} />
-                        <Text style={[styles.heroSubText, { color: colors.error }]}>Còn lại: {formatMoney(outstanding.totalOutstanding)} đ</Text>
+                        <Ionicons name="alert-circle-outline" size={14} color="#EF4444" />
+                        <Text style={[styles.heroSubText, { color: '#EF4444' }]}>Còn lại: {formatMoney(outstanding.totalOutstanding)} đ</Text>
                     </View>
                 )}
             </View>
@@ -597,10 +601,10 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
-                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: colors.primary }]]}
+                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#F0B90B' }]]}
                         onPress={() => setActiveTab(tab.key)}
                     >
-                        <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === tab.key && { color: colors.primary, fontWeight: '700' }]}>
+                        <Text style={[styles.tabText, { color: '#6B7280' }, activeTab === tab.key && { color: '#F0B90B', fontWeight: '700' }]}>
                             {tab.label}
                         </Text>
                     </TouchableOpacity>
@@ -630,20 +634,27 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
             {/* Footer Actions */}
             {isActive && (
-                <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+                <View style={[styles.footer, { backgroundColor: '#FFF', borderTopColor: '#F3F4F6' }]}>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnOutline, { borderColor: colors.primary }]}
+                        style={[styles.actionBtn, styles.btnOutline, { borderColor: '#F0B90B' }]}
                         onPress={() => {
-                            setRepaymentAmount(formatMoney(loan.monthlyPay));
+                            let amount = loan.monthlyPay || 0;
+                            if (amount === 0 && schedule?.periods) {
+                                const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
+                                if (firstUnpaid) {
+                                    amount = firstUnpaid.totalDue || 0;
+                                }
+                            }
+                            setRepaymentAmount(formatMoney(amount));
                             setShowRepayModal(true);
                         }}
                         disabled={paymentLoading}
                     >
-                        <Ionicons name="cash-outline" size={18} color={colors.primary} />
-                        <Text style={[styles.btnOutlineText, { color: colors.primary }]}>TRẢ MỘT PHẦN</Text>
+                        <Ionicons name="cash-outline" size={18} color="#F0B90B" />
+                        <Text style={[styles.btnOutlineText, { color: '#F0B90B' }]}>TRẢ MỘT PHẦN</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: colors.primary }]}
+                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#F0B90B' }]}
                         onPress={handlePrepayment}
                         disabled={paymentLoading}
                     >
@@ -681,11 +692,19 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 <Text style={[styles.currencySuffix, { color: colors.textSecondary }]}>VNĐ</Text>
                             </View>
 
-                            {/* Quick chips */}
                             <View style={styles.quickOptions}>
                                 <TouchableOpacity
                                     style={[styles.chip, { borderColor: colors.primary, backgroundColor: colors.primary + '15' }]}
-                                    onPress={() => setRepaymentAmount(formatMoney(loan.monthlyPay))}
+                                    onPress={() => {
+                                        let amount = loan.monthlyPay || 0;
+                                        if (amount === 0 && schedule?.periods) {
+                                            const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
+                                            if (firstUnpaid) {
+                                                amount = firstUnpaid.totalDue || 0;
+                                            }
+                                        }
+                                        setRepaymentAmount(formatMoney(amount));
+                                    }}
                                 >
                                     <Text style={[styles.chipText, { color: colors.primary }]}>1 Kỳ hạn</Text>
                                 </TouchableOpacity>
@@ -826,14 +845,14 @@ const styles = StyleSheet.create({
     outstandingDetailText: { fontSize: 12, opacity: 0.9 },
 
     // Schedule
-    scheduleItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
-    scheduleLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    scheduleNumBadge: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-    scheduleNumText: { fontSize: 12, fontWeight: '700' },
-    schedulePeriod: { fontSize: 14, fontWeight: '600' },
-    scheduleDate: { fontSize: 12, marginTop: 2 },
-    scheduleAmount: { fontSize: 14, fontWeight: '600' },
-    schedulePaidTag: { fontSize: 11, marginTop: 2 },
+    scheduleItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
+    scheduleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    scheduleNumBadge: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    scheduleNumText: { fontSize: 13, fontWeight: '700' },
+    schedulePeriod: { fontSize: 15, fontWeight: '600' },
+    scheduleDate: { fontSize: 12, marginTop: 4 },
+    scheduleAmount: { fontSize: 15, fontWeight: '600' },
+    schedulePaidTag: { fontSize: 12, marginTop: 4 },
     noDataText: { textAlign: 'center', paddingVertical: 24, fontSize: 14 },
 
     // Transactions
