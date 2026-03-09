@@ -1,13 +1,22 @@
 import { Module } from '@nestjs/common';
-import { SmartCAService } from './smartca.service';
-import { SmartCAController } from './smartca.controller';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
+import { SmartCAService } from './smartca.service';
+import { DigitalSignatureController } from './smartca.controller';
+import { DigitalSignature, DigitalSignatureSchema } from './schemas/digital-signature.schema';
+import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import smartcaConfig from 'src/config/smartca.config';
 
 @Module({
-  imports: [ConfigModule.forFeature(smartcaConfig)],
+  imports: [
+    ConfigModule.forFeature(smartcaConfig),
+    MongooseModule.forFeature([
+      { name: DigitalSignature.name, schema: DigitalSignatureSchema },
+      { name: LoanContract.name, schema: LoanContractSchema },
+    ]),
+  ],
   providers: [SmartCAService],
-  controllers: [SmartCAController],
+  controllers: [DigitalSignatureController],
   exports: [SmartCAService],
 })
 export class SmartCAModule {}

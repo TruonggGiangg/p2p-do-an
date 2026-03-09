@@ -118,9 +118,10 @@ export default function LoanContractDetailScreen() {
         fetchContract();
     }, [fetchContract]);
 
-    // Sign handler — dùng legacy (SmartCA tạm comment)
+    // Sign handler — mở modal SmartCA
     const handleSign = () => {
-        handleSignLegacy();
+        setShowSignConfirm(false);
+        setShowSmartCA(true);
     };
 
     // Legacy sign handler (fallback khi SmartCA không dùng được)
@@ -441,13 +442,13 @@ export default function LoanContractDetailScreen() {
                 </View>
             </Modal>
 
-            {/* SmartCA Digital Signing Modal — tạm comment, chưa đăng ký */}
-            {/* <SmartCASigningModal
+            {/* SmartCA Digital Signing Modal */}
+            <SmartCASigningModal
                 visible={showSmartCA}
                 contractId={contract.contractId || contract._id}
                 onClose={() => setShowSmartCA(false)}
                 onSigningComplete={handleSmartCAComplete}
-            /> */}
+            />
         </View>
     );
 }

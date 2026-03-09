@@ -233,7 +233,7 @@ export interface NotificationListResponse {
 
 export interface LoanSupportRequestPayload {
   loanId: string;
-  requestType: 'WAIVE_PENALTY' | 'RESCHEDULE' | 'WRITE_OFF' | 'WAIVE_INTEREST';
+  requestType: "WAIVE_PENALTY" | "RESCHEDULE" | "WRITE_OFF" | "WAIVE_INTEREST";
   reason: string;
   proposedRescheduleDate?: string;
 }
@@ -254,6 +254,7 @@ export interface SmartCaSigningSession {
   signingSessionId: string;
   credentialId: string;
   expiresAt: string;
+  flow?: "v1" | "v2";
 }
 
 export interface SmartCaSignResult {
@@ -276,6 +277,7 @@ export interface SmartCaConfirmResult {
   status: string;
   completedAt?: string;
   signedFileUrl?: string;
+  error?: string;
 }
 
 export interface SmartCaStatusResult {
@@ -283,6 +285,24 @@ export interface SmartCaStatusResult {
   transactionId?: string;
   completedAt?: string;
   signedFileUrl?: string;
+}
+
+export interface SmartCaV2SignResult {
+  signatureId: string;
+  transactionId: string;
+  status: "signed" | "failed";
+  completedAt?: string;
+  error?: string;
+}
+
+export interface SmartCaCertificate {
+  serialNumber: string;
+  status: string;
+  statusCode: string;
+  subject?: string;
+  issuer?: string;
+  validFrom?: string;
+  validTo?: string;
 }
 
 export interface DigitalSignatureInfo {
@@ -567,7 +587,9 @@ class LoanService {
    * Khách hàng gửi yêu cầu hỗ trợ (Xin xóa phạt hoặc Cơ cấu nợ)
    * Server route: POST /api/loan/:loanId/support-request
    */
-  async submitSupportRequest(payload: LoanSupportRequestPayload): Promise<LoanSupportRequestResult> {
+  async submitSupportRequest(
+    payload: LoanSupportRequestPayload,
+  ): Promise<LoanSupportRequestResult> {
     const { loanId, ...body } = payload;
     const response = await api.post<LoanSupportRequestResult>(
       `/api/loan/${loanId}/support-request`,
@@ -726,6 +748,33 @@ class LoanService {
       data: SignatureVerifyResult;
     }>(`/api/digital-signature/${signatureId}/verify`);
     return response.data.data;
+  }
+
+  /**
+   * Ký số trực tiếp v2 (password + OTP) - không cần mở app SmartCA
+   * Đây là luồng chính dùng cho P2P: user nhập mật khẩu SmartCA + OTP TOTP
+   */
+  async signWithPasswordOTP(
+    contractId: string,
+    password: string,
+    otp: string,
+  ): Promise<SmartCaV2SignResult> {
+    const response = await api.post<{
+      success: boolean;
+      data: SmartCaV2SignResult;
+    }>("/api/digital-signature/sign-v2", { contractId, password, otp });
+    return response.data.data;
+  }
+
+  /**
+   * Lấy danh sách chứng thư số của user
+   */
+  async getCertificates(): Promise<SmartCaCertificate[]> {
+    const response = await api.get<{
+      success: boolean;
+      data: { certificates: SmartCaCertificate[]; selectedSerial?: string };
+    }>("/api/digital-signature/certificates");
+    return response.data.data.certificates ?? [];
   }
 
   // =============================================
