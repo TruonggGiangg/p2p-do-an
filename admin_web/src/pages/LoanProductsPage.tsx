@@ -21,11 +21,15 @@ import { adminApi, type LoanProductDto, type DocumentTypeDto } from '../api/admi
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import { ProductDetailTable } from '../utils/productDetailTable';
 import { translateValue } from '../utils/vi';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Text } = Typography;
 
 export default function LoanProductsPage() {
   const { token } = theme.useToken();
+  const ability = useAbility(AbilityContext);
   const actionRef = useRef<ActionType>();
   const [configProductId, setConfigProductId] = useState<number | null>(null);
   const [configProductName, setConfigProductName] = useState<string>('');
@@ -149,14 +153,16 @@ export default function LoanProductsPage() {
       onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
       render: (_, record) => (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
-          <Button
-            size="small"
-            icon={<SettingOutlined />}
-            onClick={() => openConfig(record)}
-            style={{ fontSize: 12 }}
-          >
-            Cấu hình tài liệu
-          </Button>
+          {ability.can(Action.Manage, 'LoanProduct') && (
+            <Button
+              size="small"
+              icon={<SettingOutlined />}
+              onClick={() => openConfig(record)}
+              style={{ fontSize: 12 }}
+            >
+              Cấu hình tài liệu
+            </Button>
+          )}
           <Button
             size="small"
             type="primary"

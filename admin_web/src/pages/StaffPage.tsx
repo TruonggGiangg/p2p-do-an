@@ -16,6 +16,9 @@ import {
 } from '@ant-design/icons';
 import { adminApi, StaffDto, ActivityLogDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
@@ -26,6 +29,7 @@ export default function StaffPage() {
     const { token } = theme.useToken();
     const { message: messageApi, modal } = App.useApp();
     const navigate = useNavigate();
+    const ability = useAbility(AbilityContext);
     const actionRef = useRef<ActionType>();
     const [viewMode, setViewMode] = useState<ViewMode>('all');
     const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -298,6 +302,9 @@ export default function StaffPage() {
                 if (viewMode === 'deleted') {
                     return <Tag color={s.color} style={{ padding: '4px 12px', fontWeight: 500, border: 'none' }}>{s.text}</Tag>;
                 }
+                if (!ability.can(Action.Update, 'Staff')) {
+                    return <Tag color={s.color} style={{ padding: '4px 12px', fontWeight: 500, border: 'none' }}>{s.text}</Tag>;
+                }
                 return (
                     <Select
                         value={r.status}
@@ -331,9 +338,11 @@ export default function StaffPage() {
                             <Tooltip title="Lịch sử hoạt động">
                                 <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
                             </Tooltip>
-                            <Popconfirm title="Khôi phục nhân viên?" description="Tài khoản sẽ được kích hoạt lại" okText="Khôi phục" cancelText="Hủy" onConfirm={() => handleRestore(r)} onPopupClick={(e) => e.stopPropagation()}>
-                                <Button type="primary" ghost icon={<UndoOutlined />} onClick={(e) => e.stopPropagation()} style={{ borderRadius: 0, fontSize: 12 }}>Khôi phục</Button>
-                            </Popconfirm>
+                            {ability.can(Action.Update, 'Staff') && (
+                                <Popconfirm title="Khôi phục nhân viên?" description="Tài khoản sẽ được kích hoạt lại" okText="Khôi phục" cancelText="Hủy" onConfirm={() => handleRestore(r)} onPopupClick={(e) => e.stopPropagation()}>
+                                    <Button type="primary" ghost icon={<UndoOutlined />} onClick={(e) => e.stopPropagation()} style={{ borderRadius: 0, fontSize: 12 }}>Khôi phục</Button>
+                                </Popconfirm>
+                            )}
                         </Space>
                     );
                 }
@@ -342,15 +351,19 @@ export default function StaffPage() {
                         <Tooltip title="Xem chi tiết">
                             <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 0, fontSize: 12 }}>Chi tiết</Button>
                         </Tooltip>
-                        <Tooltip title="Sửa">
-                            <Button icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
-                        </Tooltip>
+                        {ability.can(Action.Update, 'Staff') && (
+                            <Tooltip title="Sửa">
+                                <Button icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                            </Tooltip>
+                        )}
                         <Tooltip title="Lịch sử hoạt động">
                             <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
                         </Tooltip>
-                        <Tooltip title="Khóa tài khoản">
-                            <Button danger icon={<LockOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
-                        </Tooltip>
+                        {ability.can(Action.Delete, 'Staff') && (
+                            <Tooltip title="Khóa tài khoản">
+                                <Button danger icon={<LockOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                            </Tooltip>
+                        )}
                     </Space>
                 );
             },
@@ -473,7 +486,7 @@ export default function StaffPage() {
                 pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} nhân viên` }}
                 search={false}
                 toolBarRender={() => [
-                    viewMode !== 'deleted' && (
+                    viewMode !== 'deleted' && ability.can(Action.Create, 'Staff') && (
                         <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)} style={{ fontWeight: 500 }}>Thêm nhân viên</Button>
                     ),
                     <Button key="refresh" icon={<ReloadOutlined />} onClick={() => { fetchGlobalStats(); actionRef.current?.reload(); }}>Làm mới</Button>,

@@ -11,12 +11,16 @@ import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import { getInstallmentStatus } from '../utils/scheduleStatus';
 import { useTheme } from '../App';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Text } = Typography;
 
 export default function LoanApprovalsPage() {
     const { token } = theme.useToken();
     const { isDarkMode } = useTheme();
+    const ability = useAbility(AbilityContext);
     const actionRef = useRef<ActionType>();
     const [loans, setLoans] = useState<LoanDto[]>([]);
     const [approving, setApproving] = useState<Set<number>>(new Set());
@@ -281,28 +285,32 @@ export default function LoanApprovalsPage() {
                 if (!r.fineractLoanId) return <Tag color="red">Chưa có Fineract ID</Tag>;
                 return (
                     <Space size={4} style={{ flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
-                        <Popconfirm
-                            title={`Phê duyệt #${r.fineractLoanId} (${fmtVND(r.capital)})?`}
-                            onConfirm={() => handleApprove(r)}
-                            okText="Duyệt" cancelText="Hủy"
-                            okButtonProps={{ type: 'primary', style: { background: token.colorSuccess, borderColor: token.colorSuccess } }}
-                        >
-                            <Button size="small" icon={<CheckOutlined />} loading={approving.has(r.fineractLoanId)}
-                                style={{ background: token.colorSuccess, borderColor: token.colorSuccess, color: '#fff', fontSize: 12 }}>
-                                Duyệt
-                            </Button>
-                        </Popconfirm>
-                        <Popconfirm
-                            title={`Giải ngân #${r.fineractLoanId} (${fmtVND(r.capital)})?`}
-                            onConfirm={() => handleDisburse(r)}
-                            okText="Giải ngân" cancelText="Hủy"
-                            okButtonProps={{ danger: true }}
-                        >
-                            <Button size="small" icon={<SendOutlined />} loading={disbursing.has(r.fineractLoanId)} danger
-                                style={{ fontSize: 12 }}>
-                                Giải ngân
-                            </Button>
-                        </Popconfirm>
+                        {ability.can(Action.Approve, 'Loan') && (
+                            <Popconfirm
+                                title={`Phê duyệt #${r.fineractLoanId} (${fmtVND(r.capital)})?`}
+                                onConfirm={() => handleApprove(r)}
+                                okText="Duyệt" cancelText="Hủy"
+                                okButtonProps={{ type: 'primary', style: { background: token.colorSuccess, borderColor: token.colorSuccess } }}
+                            >
+                                <Button size="small" icon={<CheckOutlined />} loading={approving.has(r.fineractLoanId)}
+                                    style={{ background: token.colorSuccess, borderColor: token.colorSuccess, color: '#fff', fontSize: 12 }}>
+                                    Duyệt
+                                </Button>
+                            </Popconfirm>
+                        )}
+                        {ability.can(Action.Disburse, 'Loan') && (
+                            <Popconfirm
+                                title={`Giải ngân #${r.fineractLoanId} (${fmtVND(r.capital)})?`}
+                                onConfirm={() => handleDisburse(r)}
+                                okText="Giải ngân" cancelText="Hủy"
+                                okButtonProps={{ danger: true }}
+                            >
+                                <Button size="small" icon={<SendOutlined />} loading={disbursing.has(r.fineractLoanId)} danger
+                                    style={{ fontSize: 12 }}>
+                                    Giải ngân
+                                </Button>
+                            </Popconfirm>
+                        )}
                     </Space>
                 );
             },
@@ -623,7 +631,7 @@ export default function LoanApprovalsPage() {
 
                                                 {viewLoanId && (
                                                     <Space>
-                                                        {canApprove ? (
+                                                        {ability.can(Action.Approve, 'Loan') && (canApprove ? (
                                                             <Popconfirm
                                                                 title="Phê duyệt khoản vay"
                                                                 description={`Xác nhận phê duyệt khoản vay #${viewLoanId}?`}
@@ -641,8 +649,8 @@ export default function LoanApprovalsPage() {
                                                                     Duyệt khoản vay
                                                                 </Button>
                                                             </Tooltip>
-                                                        )}
-                                                        {contractStatus?.hasContract && contractStatus.contractStatus === 'signed' ? (
+                                                        ))}
+                                                        {ability.can(Action.Disburse, 'Loan') && (contractStatus?.hasContract && contractStatus.contractStatus === 'signed' ? (
                                                             <Popconfirm
                                                                 title="Giải ngân khoản vay"
                                                                 description="Xác nhận giải ngân ngay bây giờ?"
@@ -666,7 +674,7 @@ export default function LoanApprovalsPage() {
                                                                     Giải ngân
                                                                 </Button>
                                                             </Tooltip>
-                                                        )}
+                                                        ))}
                                                     </Space>
                                                 )}
                                             </Flex>
@@ -944,7 +952,7 @@ export default function LoanApprovalsPage() {
                                                         >
                                                             Xem
                                                         </Button>
-                                                        {r.reviewStatus !== 'approved' && (
+                                                        {ability.can(Action.Approve, 'LoanDocument') && r.reviewStatus !== 'approved' && (
                                                             <Button
                                                                 type="link"
                                                                 size="small"
@@ -956,7 +964,7 @@ export default function LoanApprovalsPage() {
                                                                 Duyệt
                                                             </Button>
                                                         )}
-                                                        {r.reviewStatus !== 'rejected' && (
+                                                        {ability.can(Action.Approve, 'LoanDocument') && r.reviewStatus !== 'rejected' && (
                                                             <Button
                                                                 type="link"
                                                                 size="small"

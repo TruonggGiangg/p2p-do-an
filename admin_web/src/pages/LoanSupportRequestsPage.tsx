@@ -3,6 +3,9 @@ import { Table, Tag, Button, Typography, Popconfirm, Select, Input, Modal, messa
 import { CheckCircleOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -10,6 +13,7 @@ const { Option } = Select;
 export default function LoanSupportRequestsPage() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const ability = useAbility(AbilityContext);
     const [statusFilter, setStatusFilter] = useState<string>('PENDING');
     const [typeFilter, setTypeFilter] = useState<string>('');
     const [page, setPage] = useState(1);
@@ -176,6 +180,7 @@ export default function LoanSupportRequestsPage() {
             key: 'actions',
             render: (_: any, record: any) => {
                 if (record.status !== 'PENDING') return <Text type="secondary">Đã xử lý</Text>;
+                if (!ability.can(Action.Update, 'LoanApplication')) return <Text type="secondary">Đã xử lý</Text>;
 
                 if (record.requestType === 'WAIVE_PENALTY') {
                     return (

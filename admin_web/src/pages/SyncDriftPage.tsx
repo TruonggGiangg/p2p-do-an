@@ -17,6 +17,9 @@ import {
 import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, BankOutlined, FileTextOutlined } from '@ant-design/icons';
 import { adminApi, type SyncDriftLogDto, type ProductDiffItemDto, type LoanSyncRunDto, type LoanSyncRunDetailDto } from '../api/admin';
 import { translateValue } from '../utils/vi';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Title, Text } = Typography;
 
@@ -202,6 +205,7 @@ function SyncLogList({ logs, token }: { logs: SyncDriftLogDto[]; token: any }) {
 
 export default function SyncDriftPage() {
   const { token } = theme.useToken();
+  const ability = useAbility(AbilityContext);
   const [logs, setLogs] = useState<SyncDriftLogDto[]>([]);
   const [savingsLogs, setSavingsLogs] = useState<SyncDriftLogDto[]>([]);
   const [loanSyncRuns, setLoanSyncRuns] = useState<LoanSyncRunDto[]>([]);
@@ -316,14 +320,16 @@ export default function SyncDriftPage() {
             children: (
               <Card loading={loading}>
                 <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    type="primary"
-                    icon={<SyncOutlined spin={syncing} />}
-                    onClick={runSyncLoan}
-                    loading={syncing}
-                  >
-                    Chạy so sánh sản phẩm vay
-                  </Button>
+                  {ability.can(Action.Manage, 'SyncDrift') && (
+                    <Button
+                      type="primary"
+                      icon={<SyncOutlined spin={syncing} />}
+                      onClick={runSyncLoan}
+                      loading={syncing}
+                    >
+                      Chạy so sánh sản phẩm vay
+                    </Button>
+                  )}
                 </div>
                 <SyncLogList logs={logs} token={token} />
               </Card>
@@ -335,14 +341,16 @@ export default function SyncDriftPage() {
             children: (
               <Card loading={loading}>
                 <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    type="primary"
-                    icon={<SyncOutlined spin={syncing} />}
-                    onClick={runSyncSavings}
-                    loading={syncing}
-                  >
-                    Chạy so sánh sản phẩm tiết kiệm
-                  </Button>
+                  {ability.can(Action.Manage, 'SyncDrift') && (
+                    <Button
+                      type="primary"
+                      icon={<SyncOutlined spin={syncing} />}
+                      onClick={runSyncSavings}
+                      loading={syncing}
+                    >
+                      Chạy so sánh sản phẩm tiết kiệm
+                    </Button>
+                  )}
                 </div>
                 <SyncLogList logs={savingsLogs} token={token} />
               </Card>
@@ -354,14 +362,16 @@ export default function SyncDriftPage() {
             children: (
               <Card loading={loadingLoans}>
                 <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    type="primary"
-                    icon={<SyncOutlined spin={syncingLoans} />}
-                    onClick={runSyncDisbursedLoans}
-                    loading={syncingLoans}
-                  >
-                    Chạy đồng bộ khoản vay
-                  </Button>
+                  {ability.can(Action.Manage, 'SyncDrift') && (
+                    <Button
+                      type="primary"
+                      icon={<SyncOutlined spin={syncingLoans} />}
+                      onClick={runSyncDisbursedLoans}
+                      loading={syncingLoans}
+                    >
+                      Chạy đồng bộ khoản vay
+                    </Button>
+                  )}
                 </div>
                 <LoanSyncRunsList runs={loanSyncRuns} token={token} />
               </Card>

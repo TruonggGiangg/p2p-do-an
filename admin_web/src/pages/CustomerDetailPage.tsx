@@ -18,6 +18,9 @@ import { adminApi, LoanDto, CustomerDetailDto, KycDetailDto } from '../api/admin
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import { getInstallmentStatus } from '../utils/scheduleStatus';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Title, Text } = Typography;
 
@@ -32,6 +35,7 @@ export default function CustomerDetailPage() {
     const { token } = theme.useToken();
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const ability = useAbility(AbilityContext);
     const [searchParams] = useSearchParams();
     const [detail, setDetail] = useState<CustomerDetailDto | null>(null);
     const [loading, setLoading] = useState(true);
@@ -453,15 +457,17 @@ export default function CustomerDetailPage() {
                         valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
                     />
                     <div style={{ marginTop: 24 }}>
-                        <Button
-                            icon={<ClockCircleOutlined />}
-                            onClick={handleSyncAllLoans}
-                            loading={syncingAll}
-                            type="primary"
-                            ghost
-                        >
-                            Làm mới thông tin
-                        </Button>
+                        {ability.can(Action.Update, 'Customer') && (
+                            <Button
+                                icon={<ClockCircleOutlined />}
+                                onClick={handleSyncAllLoans}
+                                loading={syncingAll}
+                                type="primary"
+                                ghost
+                            >
+                                Làm mới thông tin
+                            </Button>
+                        )}
                     </div>
                 </Col>
             </Row>
@@ -603,31 +609,33 @@ export default function CustomerDetailPage() {
                     showIcon
                     icon={<ExclamationCircleOutlined />}
                     action={
-                        <Space>
-                            <Popconfirm
-                                title="Kích hoạt tài khoản"
-                                description={isDirectKyc ? 'Xác nhận đã xác minh trực tiếp và kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.' : 'Xác nhận kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.'}
-                                onConfirm={handleApproveKyc}
-                                okText="Kích hoạt"
-                                cancelText="Hủy"
-                            >
-                                <Button type="primary" icon={<CheckOutlined />} loading={kycApproving}>
-                                    Kích hoạt tài khoản
-                                </Button>
-                            </Popconfirm>
-                            <Popconfirm
-                                title="Từ chối kích hoạt"
-                                description={isDirectKyc ? 'Xác nhận từ chối? Khách hàng sẽ cần nộp hồ sơ eKYC để thử lại.' : 'Xác nhận từ chối hồ sơ định danh này?'}
-                                onConfirm={handleRejectKyc}
-                                okText="Từ chối"
-                                cancelText="Hủy"
-                                okButtonProps={{ danger: true }}
-                            >
-                                <Button danger icon={<CloseOutlined />} loading={kycRejecting}>
-                                    Từ chối
-                                </Button>
-                            </Popconfirm>
-                        </Space>
+                        ability.can(Action.Approve, 'Kyc') ? (
+                            <Space>
+                                <Popconfirm
+                                    title="Kích hoạt tài khoản"
+                                    description={isDirectKyc ? 'Xác nhận đã xác minh trực tiếp và kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.' : 'Xác nhận kích hoạt tài khoản? Trạng thái sẽ được cập nhật trên Fineract.'}
+                                    onConfirm={handleApproveKyc}
+                                    okText="Kích hoạt"
+                                    cancelText="Hủy"
+                                >
+                                    <Button type="primary" icon={<CheckOutlined />} loading={kycApproving}>
+                                        Kích hoạt tài khoản
+                                    </Button>
+                                </Popconfirm>
+                                <Popconfirm
+                                    title="Từ chối kích hoạt"
+                                    description={isDirectKyc ? 'Xác nhận từ chối? Khách hàng sẽ cần nộp hồ sơ eKYC để thử lại.' : 'Xác nhận từ chối hồ sơ định danh này?'}
+                                    onConfirm={handleRejectKyc}
+                                    okText="Từ chối"
+                                    cancelText="Hủy"
+                                    okButtonProps={{ danger: true }}
+                                >
+                                    <Button danger icon={<CloseOutlined />} loading={kycRejecting}>
+                                        Từ chối
+                                    </Button>
+                                </Popconfirm>
+                            </Space>
+                        ) : undefined
                     }
                 />
             </Card>
@@ -716,7 +724,7 @@ export default function CustomerDetailPage() {
         const { ocr, metadata, documents } = kyc;
         const ocrData = extractOcrFront(staffFrontOcr);
         const backData = extractOcrBack(staffBackOcr);
-        const showUploadCard = canApproveKyc;
+        const showUploadCard = canApproveKyc && ability.can(Action.Create, 'Kyc');
 
         return (
             <>

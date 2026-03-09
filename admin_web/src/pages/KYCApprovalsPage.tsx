@@ -8,11 +8,15 @@ import {
   IdcardOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { adminApi, KycPendingUserDto, KycDetailDto } from '../api/admin';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Text } = Typography;
 
 export default function KYCApprovalsPage() {
   const { token } = theme.useToken();
+  const ability = useAbility(AbilityContext);
   const [users, setUsers] = useState<KycPendingUserDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewUserId, setViewUserId] = useState<string | null>(null);
@@ -229,7 +233,7 @@ export default function KYCApprovalsPage() {
         width={Math.min(720, window.innerWidth * 0.9)}
         destroyOnClose
         extra={
-          viewUserId && detail && (
+          viewUserId && detail && ability.can(Action.Approve, 'Kyc') && (
             <Space>
               <Popconfirm
                 title="Kích hoạt tài khoản"

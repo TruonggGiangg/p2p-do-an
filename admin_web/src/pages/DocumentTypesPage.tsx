@@ -12,6 +12,9 @@ import { Button, Popconfirm, message, Space, Typography, Tag, Divider, theme } f
 import { PlusOutlined, EditOutlined, DeleteOutlined, FileImageOutlined, FilePdfOutlined, FileOutlined, FileTextOutlined, CloseOutlined } from '@ant-design/icons';
 import { adminApi, type DocumentTypeDto, type FileFormat } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import { useAbility } from '@casl/react';
+import { AbilityContext } from '../AbilityContext';
+import { Action } from '../ability';
 
 const { Text } = Typography;
 
@@ -35,6 +38,7 @@ const FILE_FORMAT_ICONS: Record<FileFormat, React.ReactNode> = {
 
 export default function DocumentTypesPage() {
   const { token } = theme.useToken();
+  const ability = useAbility(AbilityContext);
   const actionRef = useRef<ActionType>();
   const [modalVisible, setModalVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<DocumentTypeDto | null>(null);
@@ -128,28 +132,32 @@ export default function DocumentTypesPage() {
       onCell: () => ({ style: { paddingLeft: 12, paddingRight: 12, whiteSpace: 'nowrap' } }),
       render: (_, record) => (
         <Space>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            onClick={() => {
-              setCurrentRow(record);
-              setModalVisible(true);
-            }}
-          >
-            Sửa
-          </Button>
-          <Popconfirm
-            title="Xóa loại tài liệu này?"
-            description="Lưu ý: Hành động này không thể hoàn tác."
-            onConfirm={() => handleRemove(record._id)}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />}>
-              Xóa
+          {ability.can(Action.Update, 'DocumentType') && (
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setCurrentRow(record);
+                setModalVisible(true);
+              }}
+            >
+              Sửa
             </Button>
-          </Popconfirm>
+          )}
+          {ability.can(Action.Delete, 'DocumentType') && (
+            <Popconfirm
+              title="Xóa loại tài liệu này?"
+              description="Lưu ý: Hành động này không thể hoàn tác."
+              onConfirm={() => handleRemove(record._id)}
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />}>
+                Xóa
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -182,7 +190,7 @@ export default function DocumentTypesPage() {
         drawerProps={{
           destroyOnClose: true,
           extra: (
-            <Button 
+            <Button
               onClick={() => {
                 setModalVisible(false);
                 setCurrentRow(null);
@@ -195,7 +203,7 @@ export default function DocumentTypesPage() {
         }}
       >
         <Divider style={{ margin: '0 0 24px 0' }} />
-        
+
         <ProFormText
           name="name"
           label={<span style={{ fontWeight: 600, fontSize: 15 }}>Tên loại tài liệu <span style={{ color: token.colorError }}>*</span></span>}
@@ -208,7 +216,7 @@ export default function DocumentTypesPage() {
           name="description"
           label={<span style={{ fontWeight: 600, fontSize: 15 }}>Mô tả</span>}
           placeholder="Mô tả ngắn gọn về loại tài liệu này (không bắt buộc)"
-          fieldProps={{ 
+          fieldProps={{
             autoSize: { minRows: 3, maxRows: 6 },
             size: 'large',
             style: { resize: 'vertical' },
@@ -228,15 +236,15 @@ export default function DocumentTypesPage() {
           fieldProps={{ size: 'large' }}
         />
 
-        <div style={{ 
-          padding: '16px', 
-          background: token.colorFillAlter, 
-          borderRadius: 0, 
+        <div style={{
+          padding: '16px',
+          background: token.colorFillAlter,
+          borderRadius: 0,
           border: `1px solid ${token.colorBorderSecondary}`,
           marginTop: 8,
         }}>
-          <ProFormCheckbox 
-            name="required" 
+          <ProFormCheckbox
+            name="required"
             label={<span style={{ fontWeight: 600, fontSize: 15 }}>Đánh dấu là bắt buộc nộp</span>}
           />
           <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 4 }}>
@@ -285,7 +293,7 @@ export default function DocumentTypesPage() {
         }}
         postData={(data: DocumentTypeDto[]) => (data || []).filter((r: DocumentTypeDto) => r && r._id != null)}
         toolBarRender={() => [
-          <Button
+          ability.can(Action.Create, 'DocumentType') && <Button
             key="button"
             icon={<PlusOutlined />}
             onClick={() => {
@@ -294,8 +302,8 @@ export default function DocumentTypesPage() {
             }}
             type="primary"
             size="large"
-            style={{ 
-              height: 44, 
+            style={{
+              height: 44,
               padding: '0 24px',
               fontWeight: 600,
               boxShadow: `0 4px 12px ${token.colorPrimary}40`,
@@ -305,21 +313,21 @@ export default function DocumentTypesPage() {
           </Button>,
         ]}
         columns={columns}
-        pagination={{ 
-          pageSize: 10, 
-          showSizeChanger: true, 
+        pagination={{
+          pageSize: 10,
+          showSizeChanger: true,
           showTotal: (t) => `Tổng ${t} loại tài liệu`,
           showQuickJumper: true,
         }}
-        options={{ 
-          reload: true, 
-          density: true, 
-          fullScreen: true, 
+        options={{
+          reload: true,
+          density: true,
+          fullScreen: true,
           setting: true,
           search: true,
         }}
-        columnsState={{ 
-          persistenceKey: 'document-types-table', 
+        columnsState={{
+          persistenceKey: 'document-types-table',
           persistenceType: 'localStorage',
         }}
         scroll={{ x: 900 }}
