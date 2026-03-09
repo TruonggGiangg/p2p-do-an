@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext, useEffect } from 'react';
+import React, { useState, createContext, useContext, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import viVN from 'antd/locale/vi_VN';
@@ -79,14 +79,27 @@ export default function App() {
     return buildEmptyAbility();
   });
 
-  // Fetch real permissions from server on mount (page refresh)
-  useEffect(() => {
+  // Fetch real permissions and update ability (triggers re-render via @casl/react subscription)
+  const refreshPermissions = useCallback(() => {
     const token = localStorage.getItem('admin_access_token');
     if (!token) return;
     adminApi.getMyPermissions()
       .then(res => ability.update(res.rules))
       .catch(() => { /* keep fallback */ });
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ability]);
+
+  // Expose refreshPermissions on window so any module can trigger it without prop-drilling
+  const refreshRef = useRef(refreshPermissions);
+  refreshRef.current = refreshPermissions;
+  useEffect(() => {
+    (window as any).__refreshAdminPermissions = () => refreshRef.current();
+    return () => { delete (window as any).__refreshAdminPermissions; };
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    refreshPermissions();
+  }, [refreshPermissions]);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('admin_theme');

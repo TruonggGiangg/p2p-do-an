@@ -156,13 +156,32 @@ export default function RolesPermissionsPage() {
     };
 
     const handleToggle = (action: string, subject: string, checked: boolean) => {
+        const availableActions = SUBJECT_AVAILABLE_ACTIONS[subject] ?? ['manage', 'read'];
         setPendingChanges(prev => {
             const next = new Map(prev);
             next.set(`${action}::${subject}`, { action, subject, allowed: checked });
-            if (action === 'manage' && checked) {
-                metadata.actions
+
+            if (action === 'manage') {
+                // manage ON  → bật tất cả action con
+                // manage OFF → tắt tất cả action con
+                availableActions
                     .filter(a => a !== 'manage')
-                    .forEach(a => next.set(`${a}::${subject}`, { action: a, subject, allowed: true }));
+                    .forEach(a => next.set(`${a}::${subject}`, { action: a, subject, allowed: checked }));
+            } else if (!checked) {
+                // Bất kỳ action con tắt → toàn quyền cũng tắt
+                next.set(`manage::${subject}`, { action: 'manage', subject, allowed: false });
+            } else {
+                // Action con bật → nếu tất cả con đều ON thì tự động bật manage
+                const childActions = availableActions.filter(a => a !== 'manage');
+                const allChildrenOn = childActions.every(a => {
+                    const pending = next.get(`${a}::${subject}`);
+                    if (pending !== undefined) return pending.allowed;
+                    const existing = permissions.find(p => p.action === a && p.subject === subject);
+                    return existing ? existing.allowed : false;
+                });
+                if (allChildrenOn) {
+                    next.set(`manage::${subject}`, { action: 'manage', subject, allowed: true });
+                }
             }
             return next;
         });
@@ -186,6 +205,8 @@ export default function RolesPermissionsPage() {
             await adminApi.setRolePermissions(selectedRole._id, Array.from(currentMap.values()));
             message.success('Cập nhật quyền thành công!');
             await loadPermissions(selectedRole._id);
+            // Refresh quyền của người dùng hiện tại ngay lập tức (không cần reload trang)
+            (window as any).__refreshAdminPermissions?.();
         } catch (err: any) {
             message.error(err?.response?.data?.message || 'Lỗi khi cập nhật quyền');
         } finally {
