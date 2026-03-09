@@ -41,7 +41,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly activityLogService: ActivityLogService,
-  ) { }
+  ) {}
 
   /**
    * Returns the raw CASL rules for the current user so the
@@ -51,7 +51,7 @@ export class AdminController {
   @ApiOperation({ summary: 'Lấy danh sách quyền của user hiện tại (cho frontend CASL)' })
   @ApiResponse({ status: 200 })
   async getMyPermissions(@Req() req: any) {
-    const ability = this.caslAbilityFactory.createForUser(req.user);
+    const ability = await this.caslAbilityFactory.createForUser(req.user);
     return {
       statusCode: 200,
       message: 'OK',
@@ -310,7 +310,10 @@ export class AdminController {
 
   @Get('overdue-loans')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
-  @ApiOperation({ summary: 'Danh sách khoản vay quá hạn (lọc chi tiết: nhóm, khoản quá hạn từ–đến, số ngày quá hạn từ–đến). Data sync từ Fineract hằng ngày.' })
+  @ApiOperation({
+    summary:
+      'Danh sách khoản vay quá hạn (lọc chi tiết: nhóm, khoản quá hạn từ–đến, số ngày quá hạn từ–đến). Data sync từ Fineract hằng ngày.',
+  })
   @ApiResponse({ status: 200 })
   async getOverdueLoans(
     @Query('classification') classification?: string,
@@ -350,7 +353,10 @@ export class AdminController {
 
   @Post('sync-disbursed-loans')
   @CheckPolicies(ability => ability.can(Action.Update, 'Loan'))
-  @ApiOperation({ summary: 'Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi và lưu vào loan_sync_runs' })
+  @ApiOperation({
+    summary:
+      'Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi và lưu vào loan_sync_runs',
+  })
   @ApiResponse({ status: 200 })
   async syncDisbursedLoans(@Query('limit') limit?: string) {
     const max = limit != null ? Math.min(parseInt(limit, 10) || 300, 500) : 300;
@@ -399,10 +405,7 @@ export class AdminController {
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Chi tiết khoản vay từ Fineract (bao gồm lịch trả nợ)' })
   @ApiResponse({ status: 200 })
-  async getLoanDetails(
-    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
-    @Query('sync') sync?: string,
-  ) {
+  async getLoanDetails(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number, @Query('sync') sync?: string) {
     const details = await this.adminService.getLoanDetails(fineractLoanId, sync === 'true');
     return { statusCode: 200, message: 'OK', data: details };
   }
@@ -735,11 +738,7 @@ export class AdminController {
   @CheckPolicies(ability => ability.can(Action.Update, 'LoanApplication'))
   @ApiOperation({ summary: 'Phê duyệt yêu cầu cơ cấu lại nợ' })
   @ApiResponse({ status: 200 })
-  async approveReschedule(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body('note') note?: string
-  ) {
+  async approveReschedule(@Req() req: any, @Param('id') id: string, @Body('note') note?: string) {
     const adminId = req.user?._id ?? req.user?.sub;
     const result = await this.adminService.approveReschedule(id, adminId, note);
     return { statusCode: 200, message: 'Cơ cấu nợ thành công', data: result };
@@ -749,11 +748,7 @@ export class AdminController {
   @CheckPolicies(ability => ability.can(Action.Update, 'LoanApplication'))
   @ApiOperation({ summary: 'Phê duyệt yêu cầu xóa nợ (write-off)' })
   @ApiResponse({ status: 200 })
-  async approveWriteOff(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body('note') note?: string
-  ) {
+  async approveWriteOff(@Req() req: any, @Param('id') id: string, @Body('note') note?: string) {
     const adminId = req.user?._id ?? req.user?.sub;
     const result = await this.adminService.approveWriteOff(id, adminId, note);
     return { statusCode: 200, message: 'Xóa nợ thành công', data: result };
@@ -763,11 +758,7 @@ export class AdminController {
   @CheckPolicies(ability => ability.can(Action.Update, 'LoanApplication'))
   @ApiOperation({ summary: 'Phê duyệt yêu cầu xóa lãi' })
   @ApiResponse({ status: 200 })
-  async approveWaiveInterest(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body('note') note?: string
-  ) {
+  async approveWaiveInterest(@Req() req: any, @Param('id') id: string, @Body('note') note?: string) {
     const adminId = req.user?._id ?? req.user?.sub;
     const result = await this.adminService.approveWaiveInterest(id, adminId, note);
     return { statusCode: 200, message: 'Xóa lãi thành công', data: result };

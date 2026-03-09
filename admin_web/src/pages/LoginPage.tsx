@@ -30,8 +30,15 @@ export default function LoginPage() {
       }
       localStorage.setItem('admin_access_token', res.data.accessToken);
       localStorage.setItem('admin_user', JSON.stringify(data));
-      // Update CASL ability with user roles
-      ability.update(buildAbilityForRole(roles).rules);
+
+      // Fetch real permissions from server, fallback to role-based
+      try {
+        const permRes = await adminApi.getMyPermissions();
+        ability.update(permRes.rules);
+      } catch {
+        ability.update(buildAbilityForRole(roles).rules);
+      }
+
       navigate('/', { replace: true });
     } catch (err: any) {
       const isNetworkError = err.message === 'Network Error' || err.code === 'ERR_NETWORK' || !err.response;

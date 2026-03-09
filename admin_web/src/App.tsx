@@ -17,9 +17,11 @@ import OverdueLoansPage from './pages/OverdueLoansPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
+import RolesPermissionsPage from './pages/RolesPermissionsPage';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from './AbilityContext';
 import { Action, Subject, AppAbility, buildAbilityForRole, buildEmptyAbility } from './ability';
+import { adminApi } from './api/admin';
 
 // Professional fintech color palette - Deep Blue/Slate
 const LIGHT_PALETTE = {
@@ -76,6 +78,15 @@ export default function App() {
     } catch { /* ignore */ }
     return buildEmptyAbility();
   });
+
+  // Fetch real permissions from server on mount (page refresh)
+  useEffect(() => {
+    const token = localStorage.getItem('admin_access_token');
+    if (!token) return;
+    adminApi.getMyPermissions()
+      .then(res => ability.update(res.rules))
+      .catch(() => { /* keep fallback */ });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('admin_theme');
@@ -182,6 +193,11 @@ export default function App() {
                 <Route path="staff/:id" element={
                   <ProtectedRoute action={Action.Read} subject="Staff">
                     <StaffDetailPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="roles-permissions" element={
+                  <ProtectedRoute action={Action.Manage} subject="all">
+                    <RolesPermissionsPage />
                   </ProtectedRoute>
                 } />
                 <Route path="profile" element={<StaffProfilePage />} />
