@@ -25,6 +25,7 @@ const NOTIF_CONFIG: Record<string, { icon: string; color: string; bg: string }> 
     contract_ready: { icon: 'file-document-outline', color: '#F59E0B', bg: '#F59E0B15' },
     contract_signed: { icon: 'file-sign', color: '#8B5CF6', bg: '#8B5CF615' },
     repayment_due: { icon: 'calendar-alert', color: '#F59E0B', bg: '#F59E0B15' },
+    overdue_reminder: { icon: 'alert-circle-outline', color: '#EF4444', bg: '#EF444415' },
     repayment_received: { icon: 'cash-plus', color: '#10B981', bg: '#10B98115' },
     general: { icon: 'bell-outline', color: '#6B7280', bg: '#6B728015' },
 };
@@ -156,29 +157,24 @@ export default function NotificationScreen() {
                     <View style={styles.notificationInner}>
                         <View style={[styles.iconContainer, { backgroundColor: isIncome ? '#0ECB8115' : '#F6465D15' }]}>
                             <MaterialCommunityIcons
-                                name={isIncome ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                size={22}
+                                name={isIncome ? 'arrow-down' : 'arrow-up'}
+                                size={20}
                                 color={isIncome ? '#0ECB81' : '#F6465D'}
                             />
                         </View>
                         <View style={styles.contentContainer}>
                             <View style={styles.headerRow}>
-                                <Text
-                                    style={[styles.title, { color: c.textPrimary }]}
-                                    numberOfLines={1}
-                                >
+                                <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>
                                     {item.description || item.type || 'Giao dịch'}
                                 </Text>
                                 <Text style={[styles.amount, { color: isIncome ? '#0ECB81' : '#F6465D' }]}>
                                     {isIncome ? '+' : ''}{formatCurrency(Math.abs(item.amount))}
                                 </Text>
                             </View>
-                            <Text
-                                style={[styles.description, { color: c.textSecondary }]}
-                                numberOfLines={1}
-                            >
-                                {timeStr} • {dateStr}
+                            <Text style={[styles.description, { color: c.textSecondary }]} numberOfLines={1}>
+                                {item.type || 'Ví điện tử'}
                             </Text>
+                            <Text style={[styles.time, { color: c.textDim }]}>{timeStr} • {dateStr}</Text>
                         </View>
                     </View>
                 </CommonCard>
@@ -201,10 +197,13 @@ export default function NotificationScreen() {
                     if (!item.read) loanService.markNotificationRead(item._id).catch(() => { });
                 }}
             >
-                <CommonCard style={[styles.notificationCard, !item.read && { borderLeftWidth: 3, borderLeftColor: c.primary }]}>
+                <CommonCard style={[
+                    styles.notificationCard,
+                    !item.read && { borderLeftWidth: 3, borderLeftColor: c.primary }
+                ]}>
                     <View style={styles.notificationInner}>
                         <View style={[styles.iconContainer, { backgroundColor: cfg.bg }]}>
-                            <MaterialCommunityIcons name={cfg.icon as any} size={22} color={cfg.color} />
+                            <MaterialCommunityIcons name={cfg.icon as any} size={20} color={cfg.color} />
                         </View>
                         <View style={styles.contentContainer}>
                             <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>
@@ -258,24 +257,32 @@ export default function NotificationScreen() {
                     <ActivityIndicator size="large" color={c.primary} />
                 </View>
             ) : activeTab === 'system' ? (
-                <FlatList
-                    data={notifications}
-                    keyExtractor={(item) => item._id}
-                    renderItem={renderNotificationItem}
-                    contentContainerStyle={styles.listContent}
-                    onEndReached={handleLoadMoreNoti}
-                    onEndReachedThreshold={0.3}
-                    refreshing={notiRefreshing}
+                <FintechPullToRefresh
                     onRefresh={onRefreshNoti}
-                    ListFooterComponent={
-                        notiLoadingMore ? <ActivityIndicator color={c.primary} style={{ padding: 16 }} /> : null
-                    }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <MaterialCommunityIcons name="bell-check-outline" size={64} color={c.textDim} />
-                            <Text style={[styles.emptyText, { color: c.textDim }]}>Không có thông báo nào</Text>
-                        </View>
-                    }
+                    refreshing={notiRefreshing}
+                    renderScrollComponent={(props: any) => (
+                        <Animated.FlatList
+                            {...props}
+                            data={notifications}
+                            keyExtractor={(item: AppNotification) => item._id}
+                            renderItem={renderNotificationItem}
+                            contentContainerStyle={styles.listContent}
+                            onEndReached={handleLoadMoreNoti}
+                            onEndReachedThreshold={0.3}
+                            ListFooterComponent={
+                                notiLoadingMore ? <ActivityIndicator color={c.primary} style={{ padding: 16 }} /> : null
+                            }
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
+                                        <MaterialCommunityIcons name="bell-off-outline" size={48} color={c.textDim} />
+                                    </View>
+                                    <Text style={[styles.emptyText, { color: c.textPrimary }]}>Không có thông báo mới</Text>
+                                    <Text style={[styles.emptySubText, { color: c.textDim }]}>Chúng tôi sẽ thông báo cho bạn khi có tin mới.</Text>
+                                </View>
+                            }
+                        />
+                    )}
                 />
             ) : (
                 <FintechPullToRefresh
@@ -291,14 +298,15 @@ export default function NotificationScreen() {
                             onEndReached={handleLoadMoreTx}
                             onEndReachedThreshold={0.2}
                             ListFooterComponent={
-                                <View style={{ padding: 16 }}>
-                                    {txLoadingMore && <ActivityIndicator color={c.primary} />}
-                                </View>
+                                txLoadingMore ? <ActivityIndicator color={c.primary} style={{ padding: 16 }} /> : null
                             }
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer}>
-                                    <MaterialCommunityIcons name="swap-horizontal" size={64} color={c.textDim} />
-                                    <Text style={[styles.emptyText, { color: c.textDim }]}>Không có giao dịch nào</Text>
+                                    <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
+                                        <MaterialCommunityIcons name="swap-horizontal" size={48} color={c.textDim} />
+                                    </View>
+                                    <Text style={[styles.emptyText, { color: c.textPrimary }]}>Chưa có giao dịch nào</Text>
+                                    <Text style={[styles.emptySubText, { color: c.textDim }]}>Thực hiện giao dịch đầu tiên ngay hôm nay.</Text>
                                 </View>
                             }
                         />
@@ -427,11 +435,27 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 100,
+        marginTop: 120,
+        paddingHorizontal: 40,
+    },
+    emptyIconWrap: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
     },
     emptyText: {
-        marginTop: 16,
-        fontSize: 14,
+        fontSize: 16,
+        fontFamily: 'Poppins_600SemiBold',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    emptySubText: {
+        fontSize: 13,
         fontFamily: 'Poppins_400Regular',
+        textAlign: 'center',
+        lineHeight: 20,
     },
 });

@@ -6,6 +6,7 @@ import {
     ActivityIndicator,
     TouchableOpacity,
     Alert,
+    Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
@@ -87,6 +88,7 @@ export const WalletsScreen = () => {
                 refreshing={refreshing}
                 onRefresh={onRefresh}
                 contentContainerStyle={styles.scrollContent}
+                topOffset={Platform.OS === 'ios' ? -15 : 0}
             >
                 {/* Balance Summary Section (Binance Style) */}
                 <View style={styles.headerSection}>
@@ -130,7 +132,14 @@ export const WalletsScreen = () => {
                     </View>
 
                     {loading && !refreshing ? (
-                        <VentoUltimateLoading size={200} style={styles.loader} />
+                        <VentoUltimateLoading
+                            size={200}
+                            style={{
+                                ...styles.loader,
+                                marginTop: Platform.OS === 'ios' ? -10 : 100,
+                                marginVertical: Platform.OS === 'ios' ? 20 : 0
+                            }}
+                        />
                     ) : wallets.length > 0 ? (
                         wallets.map((wallet) => (
                             <WalletCard
@@ -213,7 +222,7 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_600SemiBold',
     },
     loader: {
-        marginTop: 40,
+        marginTop: Platform.OS === 'ios' ? 60 : 100,
     },
     emptyContainer: {
         flex: 1,

@@ -339,8 +339,8 @@ export default function BNPLScreen() {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <BinanceHeader title="Ví Trả Sau (BNPL)" />
-                <View style={{ marginTop: 100, alignItems: 'center' }}>
-                    <VentoUltimateLoading size={110} />
+                <View style={{ marginTop: Platform.OS === 'ios' ? 50 : 100, alignItems: 'center' }}>
+                    <VentoUltimateLoading size={200} />
                 </View>
             </View>
         );
@@ -690,6 +690,7 @@ export default function BNPLScreen() {
                     onRefresh={onRefresh}
                     refreshing={refreshing}
                     contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + insets.bottom + 32 }]}
+                    topOffset={Platform.OS === 'ios' ? -15 : 0}
                 >
                     {/* ── Wallet Info Card ── */}
                     {wallet && (

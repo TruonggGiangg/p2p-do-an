@@ -167,7 +167,7 @@ export default function LoanScreen() {
                 {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
                         <VentoUltimateLoading
-                            size={110}
+                            size={200}
                             primaryColor="#F0B90B"
                             glowColor="rgba(240, 185, 11, 0.3)"
                         />

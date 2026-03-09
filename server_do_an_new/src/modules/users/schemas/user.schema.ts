@@ -138,6 +138,8 @@ export class User extends Document {
     secret?: string;
     enabledAt?: Date;
   };
+  @Prop({ type: String, required: false })
+  pushToken?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

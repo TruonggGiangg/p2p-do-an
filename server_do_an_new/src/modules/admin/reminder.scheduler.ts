@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { Notification } from '../loan/schemas/notification.schema';
+import { User } from '../users/schemas/user.schema';
+import { PushNotificationService } from '../loan/services/push-notification.service';
 
 /** Parse Fineract dueDate (array [y,m,d] or string) to ISO date string yyyy-MM-dd */
 function parseDueDate(val: any): string | null {
@@ -25,17 +29,31 @@ function formatMoney(amount: number): string {
   }).format(amount);
 }
 
-/**
- * Cron jobs: payment reminder (repayment_due) and overdue reminder (overdue_reminder).
- */
 @Injectable()
-export class ReminderScheduler {
+export class ReminderScheduler implements OnApplicationBootstrap {
   private readonly logger = new Logger(ReminderScheduler.name);
 
   constructor(
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
-  ) {}
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly pushService: PushNotificationService,
+  ) { }
+
+  private writeLog(msg: string) {
+    const logPath = path.join(process.cwd(), 'debug_reminder.log');
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(logPath, `[${timestamp}] ${msg}\n`);
+    this.logger.log(msg);
+  }
+
+  async onApplicationBootstrap() {
+    this.writeLog('Application bootstrap: Running reminder cron jobs immediately...');
+    await Promise.all([
+      this.handleRepaymentDueReminders(),
+      this.handleOverdueReminders(),
+    ]);
+  }
 
   /** Remind users of upcoming installments (1 and 3 days before due). Runs daily at 8:00 AM. */
   @Cron('0 8 * * *')
@@ -57,6 +75,7 @@ export class ReminderScheduler {
         repaymentSchedule: { $exists: true, $ne: [] },
       })
       .select('userId repaymentSchedule _id fineractLoanId')
+      .populate('userId', 'pushToken')
       .lean()
       .exec();
 
@@ -98,6 +117,18 @@ export class ReminderScheduler {
             amount: totalDue,
           },
         });
+
+        // Send Push Notification
+        const user = loan.userId as any;
+        if (user?.pushToken) {
+          await this.pushService.sendPushNotification(
+            user.pushToken,
+            `Nhắc thanh toán kỳ ${period.period}`,
+            `Kỳ trả nợ ${period.period} (${dueStr}) đến hạn trong ${daysUntil} ngày. Số tiền: ${formatMoney(totalDue)} ₫.`,
+            { loanId: loan._id.toString(), type: 'repayment_due' }
+          );
+        }
+
         created++;
       }
     }
@@ -108,46 +139,76 @@ export class ReminderScheduler {
   /** Remind users with overdue loans. Runs daily at 3:30 AM (after sync at 2 AM). */
   @Cron('30 3 * * *')
   async handleOverdueReminders() {
-    this.logger.log('[handleOverdueReminders] Starting');
+    this.writeLog('[handleOverdueReminders] Starting');
 
     const loans = await this.loanApplicationModel
       .find({
         status: 'disbursed',
-        totalOverdue: { $gt: 0 },
+        // totalOverdue: { $gt: 0 }, // For debugging, find all disbursed
       })
       .select('userId _id fineractLoanId totalOverdue delinquentDays delinquencyClassification')
+      .populate('userId', 'pushToken username')
       .lean()
       .exec();
+
+    this.writeLog(`[handleOverdueReminders] Found ${loans.length} disbursed loans to check`);
 
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
     let created = 0;
     for (const loan of loans) {
+      const userId = (loan.userId as any)._id || loan.userId;
+      this.writeLog(`Checking loan ${loan.fineractLoanId || loan._id}: totalOverdue=${loan.totalOverdue}, days=${loan.delinquentDays}, userId=${userId}`);
+
+      const totalOverdue = loan.totalOverdue ?? 0;
+      if (!(totalOverdue > 0)) {
+        this.writeLog(`Skipping loan ${loan.fineractLoanId}: totalOverdue is 0 or undefined`);
+        continue;
+      }
       const existing = await this.notificationModel.findOne({
-        userId: loan.userId,
+        userId,
         type: 'overdue_reminder',
         'data.loanId': loan._id.toString(),
         createdAt: { $gte: oneDayAgo },
       });
 
-      if (existing) continue;
+      if (existing) {
+        this.writeLog(`Skipping loan ${loan.fineractLoanId}: notification already exists (ID: ${existing._id})`);
+        continue;
+      }
 
       const days = loan.delinquentDays ?? 0;
       const classification = loan.delinquencyClassification || 'Nợ quá hạn';
       await this.notificationModel.create({
-        userId: loan.userId,
-        title: 'Nhắc nợ quá hạn',
-        message: `Khoản vay của bạn đang quá hạn ${days} ngày (${classification}). Số tiền quá hạn: ${formatMoney(loan.totalOverdue ?? 0)} ₫. Vui lòng thanh toán sớm hoặc liên hệ hỗ trợ.`,
+        userId,
         type: 'overdue_reminder',
+        title: '📣 Nhắc nợ quá hạn',
+        message: `Khoản vay #${loan.fineractLoanId} của bạn đã quá hạn ${days} ngày. Tổng tiền cần thanh toán: ${totalOverdue.toLocaleString('vi-VN')} đ.`,
         data: {
           loanId: loan._id.toString(),
           fineractLoanId: loan.fineractLoanId,
-          totalOverdue: loan.totalOverdue,
+          type: 'overdue',
+          totalOverdue: loan.totalOverdue, // Keep original data fields for consistency if not explicitly removed
           delinquentDays: days,
           delinquencyClassification: classification,
         },
       });
+
+      this.writeLog(`Created overdue_reminder for loan ${loan.fineractLoanId}`);
+      created++;
+
+      // Send Push Notification
+      const user = loan.userId as any;
+      if (user?.pushToken) {
+        await this.pushService.sendPushNotification(
+          user.pushToken,
+          'Nhắc nợ quá hạn',
+          `Khoản vay của bạn đang quá hạn ${days} ngày. Số tiền: ${formatMoney(loan.totalOverdue ?? 0)} ₫.`,
+          { loanId: loan._id.toString(), type: 'overdue_reminder' }
+        );
+      }
+
       created++;
     }
 

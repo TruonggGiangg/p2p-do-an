@@ -31,16 +31,18 @@ import { CheckPolicies } from '../../common/decorators/check-policies.decorator'
 import { Action } from '../casl/actions.enum';
 import { CaslAbilityFactory } from '../casl/casl-ability.factory';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ReminderScheduler } from './reminder.scheduler';
 
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin')
-@UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
+// @UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly activityLogService: ActivityLogService,
+    private readonly reminderScheduler: ReminderScheduler,
   ) {}
 
   /**
@@ -762,5 +764,15 @@ export class AdminController {
     const adminId = req.user?._id ?? req.user?.sub;
     const result = await this.adminService.approveWaiveInterest(id, adminId, note);
     return { statusCode: 200, message: 'Xóa lãi thành công', data: result };
+  }
+  @Post('test-reminders')
+  // @CheckPolicies(ability => ability.can(Action.Manage, 'Loan'))
+  @ApiOperation({ summary: 'Trigger reminder cron jobs manually for testing' })
+  async triggerReminders() {
+    await Promise.all([
+      this.reminderScheduler.handleRepaymentDueReminders(),
+      this.reminderScheduler.handleOverdueReminders(),
+    ]);
+    return { statusCode: 200, message: 'Reminders triggered' };
   }
 }

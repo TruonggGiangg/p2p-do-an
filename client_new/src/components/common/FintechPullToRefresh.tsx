@@ -30,6 +30,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 const REFRESH_THRESHOLD = 55;
 const HEADER_HEIGHT = 160;
 const REFRESH_TRIGGER = 100;
+const VERTICAL_OFFSET = 36; // Lower the whole indicator down
 
 // Vùng cho phép kéo: scrollY <= này mới nhận pull. Đủ lớn để lần kéo thứ 2+ vẫn hoạt động
 const PULL_ZONE_THRESHOLD = 80;
@@ -355,7 +356,12 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         const p = pullProgress.value;
         const scale = interpolate(t, [0, REFRESH_THRESHOLD], [0.65, 1.15], Extrapolate.CLAMP);
         const transY = interpolate(t, [0, REFRESH_THRESHOLD], [-55, 0], Extrapolate.CLAMP);
-        const baseOffset = Platform.OS === 'ios' ? safeTop : 0;
+
+        // iOS: Remove safeTop as it's already handled by the header/root container
+        // This prevents the logo from falling "too deep"
+        const baseOffset = 0;
+        const osOffset = Platform.OS === 'ios' ? -25 : 0;
+
         // Góc xoay nhẹ khi kéo - cảm giác "nghiêng" theo lực
         const rotateZ = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [0, 1.5, 0], Extrapolate.CLAMP);
         // Glow pulse khi gần đạt ngưỡng
@@ -363,7 +369,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 
         return {
             transform: [
-                { translateY: t - HEADER_HEIGHT + transY + topOffset + baseOffset },
+                { translateY: t - HEADER_HEIGHT + transY + topOffset + baseOffset + VERTICAL_OFFSET + osOffset },
                 { scale: scale * glowScale },
                 { rotateZ: `${rotateZ}deg` },
             ],

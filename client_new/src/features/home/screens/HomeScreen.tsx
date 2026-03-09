@@ -23,13 +23,11 @@ const SHORTCUTS = [
     { icon: 'card-account-details-outline' as const, label: 'BNPL', nav: 'BNPL', isParent: false },
     { icon: 'send-outline' as const, label: 'Chuyển tiền', nav: 'Transfer', isParent: true },
     { icon: 'wallet-outline' as const, label: 'Ví', nav: 'Wallets', isParent: true },
-    { icon: 'history' as const, label: 'Lịch sử', nav: 'Notifications', isParent: false },
-];
-
-const INSIGHTS = [
-    { icon: 'chart-line' as const, color: '#F0B90B', badge: 'P2P', title: 'Cho vay P2P', desc: 'Lãi suất lên đến 12%/năm với chương trình cho vay ngang hàng', action: 'Tìm hiểu' },
-    { icon: 'shield-check-outline' as const, color: '#0ECB81', badge: 'Mới', title: 'Điểm tín dụng', desc: 'Kiểm tra và cải thiện điểm tín dụng để nâng hạng thành viên', action: 'Kiểm tra' },
-    { icon: 'piggy-bank-outline' as const, color: '#F0B90B', badge: 'Mục tiêu', title: 'Tiết kiệm thông minh', desc: 'Đặt mục tiêu tài chính và nhận gợi ý tiết kiệm cá nhân hóa', action: 'Bắt đầu' },
+    { icon: 'history' as const, label: 'Lịch sử', nav: 'Notifications', isParent: false }, // Hoặc LoanHistory
+    { icon: 'hand-coin-outline' as const, label: 'Vay P2P', nav: 'Loan', isParent: false }, // Tab Vay vốn
+    { icon: 'check-decagram-outline' as const, label: 'Xác thực', nav: 'KYCIntro', isParent: true },
+    { icon: 'file-document-outline' as const, label: 'Hợp đồng', nav: 'LoanContractList', isParent: true },
+    { icon: 'qrcode-scan' as const, label: 'Quét QR', nav: 'QR', isParent: false }, // Xử lý mở Modal
 ];
 
 export default function HomeScreen() {
@@ -88,7 +86,7 @@ export default function HomeScreen() {
             />
 
             {walletsLoading && !refreshing ? (
-                <View style={styles.loadingWrap}>
+                <View style={[styles.loadingWrap, { marginTop: Platform.OS === 'ios' ? 50 : 100 }]}>
                     <VentoUltimateLoading size={200} />
                 </View>
             ) : (
@@ -110,7 +108,7 @@ export default function HomeScreen() {
                             </View>
                             <View style={styles.balanceRow}>
                                 <Text style={[styles.balanceAmount, { color: c.textPrimary }]}>
-                                    {balanceVisible ? formatCurrency(totalBalance) : '*** *** VND'}
+                                    {balanceVisible ? formatCurrency(totalBalance) : '*** *** \u20AB'}
                                 </Text>
                                 <View style={[styles.changeBadge, { backgroundColor: '#0ECB8115' }]}>
                                     <MaterialCommunityIcons name="trending-up" size={12} color="#0ECB81" />
@@ -119,20 +117,20 @@ export default function HomeScreen() {
                             </View>
                             <View style={[styles.divider, { backgroundColor: c.border }]} />
                             <View style={styles.actionRow}>
-                                <CommonButton
-                                    title="Nạp tiền"
-                                    variant="primary"
-                                    style={styles.actionBtn}
-                                    textStyle={{ fontSize: 13, fontWeight: '700', color: '#000' }}
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, { backgroundColor: '#F0B90B' }]}
                                     onPress={() => { }}
-                                />
-                                <CommonButton
-                                    title="Rút tiền"
-                                    variant="secondary"
-                                    style={{ flex: 1, height: 44, backgroundColor: c.surfaceLight }}
-                                    textStyle={{ fontSize: 13, color: c.textPrimary }}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.actionBtnTextPrimary}>Nạp tiền</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.actionBtn, { backgroundColor: 'transparent' }]}
                                     onPress={() => { }}
-                                />
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={[styles.actionBtnTextSecondary, { color: c.textPrimary }]}>Rút tiền</Text>
+                                </TouchableOpacity>
                             </View>
                         </CommonCard>
                     </View>
@@ -143,49 +141,25 @@ export default function HomeScreen() {
                             <TouchableOpacity
                                 key={idx}
                                 style={styles.quickItem}
-                                onPress={() => item.isParent
-                                    ? (navigation as any).getParent()?.navigate(item.nav)
-                                    : (navigation as any).navigate(item.nav)
-                                }
+                                onPress={() => {
+                                    if (item.nav === 'QR') {
+                                        setQrCodeVisible(true);
+                                    } else {
+                                        item.isParent
+                                            ? (navigation as any).getParent()?.navigate(item.nav)
+                                            : (navigation as any).navigate(item.nav);
+                                    }
+                                }}
                             >
-                                <View style={[styles.quickIconWrap, { backgroundColor: c.primaryGlass, borderWidth: 1, borderColor: c.primaryBorder }]}>
-                                    <MaterialCommunityIcons name={item.icon} size={22} color={c.primary} />
+                                <View style={[styles.quickIconWrap, { backgroundColor: '#FFF5E0', borderColor: '#FFE4B5' }]}>
+                                    <MaterialCommunityIcons name={item.icon} size={24} color="#F0B90B" />
                                 </View>
                                 <Text style={[styles.quickLabel, { color: c.textPrimary }]}>{item.label}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
 
-                    {/* Financial Insights */}
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Insights tài chính</Text>
-                            <MaterialCommunityIcons name="trending-up" size={18} color={c.primary} />
-                        </View>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled contentContainerStyle={styles.insightListContent}>
-                            {INSIGHTS.map((ins, idx) => (
-                                <TouchableOpacity key={idx} activeOpacity={0.85}>
-                                    <CommonCard style={[styles.insightCard, { borderWidth: 1, borderColor: c.border }]}>
-                                        <View>
-                                            <View style={styles.insightTop}>
-                                                <View style={[styles.insightIconWrap, { backgroundColor: ins.color + '18' }]}>
-                                                    <MaterialCommunityIcons name={ins.icon} size={22} color={ins.color} />
-                                                </View>
-                                                <View style={[styles.insightBadge, { backgroundColor: c.primaryGlass }]}>
-                                                    <Text style={[styles.insightBadgeText, { color: c.primary }]}>{ins.badge}</Text>
-                                                </View>
-                                            </View>
-                                            <Text style={[styles.insightTitle, { color: c.textPrimary }]}>{ins.title}</Text>
-                                            <Text style={[styles.insightDesc, { color: c.textSecondary }]} numberOfLines={3}>{ins.desc}</Text>
-                                        </View>
-                                        <TouchableOpacity style={[styles.insightBtn, { backgroundColor: c.primary }]}>
-                                            <Text style={styles.insightBtnText}>{ins.action}</Text>
-                                        </TouchableOpacity>
-                                    </CommonCard>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    </View>
+
 
                 </FintechPullToRefresh>
             )}
@@ -207,39 +181,26 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    loadingWrap: { marginTop: 100, alignItems: 'center' },
+    loadingWrap: { marginTop: Platform.OS === 'ios' ? 60 : 100, alignItems: 'center' },
     scrollContent: { paddingTop: 4 },
-    section: { paddingHorizontal: 16, marginTop: 20 },
-    portfolioCard: { padding: 20 },
-    portfolioHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-    portfolioLabel: { fontSize: 12, fontWeight: '500' },
-    balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 },
-    balanceAmount: { fontSize: 30, fontWeight: '700' },
-    changeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+    section: { paddingHorizontal: 16, marginTop: 24 },
+    portfolioCard: { padding: 20, paddingBottom: 16, borderRadius: 16, elevation: 1 },
+    portfolioHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+    portfolioLabel: { fontSize: 13, fontWeight: '500' },
+    balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+    balanceAmount: { fontSize: 32, fontWeight: '700', letterSpacing: -0.5 },
+    changeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
     changeText: { fontSize: 11, fontWeight: '700' },
     divider: { height: 1, marginBottom: 16 },
     actionRow: { flexDirection: 'row', gap: 12 },
-    actionBtn: { flex: 1, height: 44 },
-    quickGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-    quickItem: { alignItems: 'center', gap: 8, flex: 1 },
-    quickIconWrap: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    actionBtn: { flex: 1, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    actionBtnTextPrimary: { fontSize: 14, fontWeight: '700', color: '#000' },
+    actionBtnTextSecondary: { fontSize: 14, fontWeight: '500' },
+    quickGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 20 },
+    quickItem: { width: '23%', alignItems: 'center', marginBottom: 20, gap: 8 },
+    quickIconWrap: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
     quickLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-    sectionTitle: { fontSize: 17, fontWeight: '700' },
-    insightListContent: { paddingRight: 16 },
-    insightCard: { width: 220, marginRight: 12, padding: 18, height: 210, justifyContent: 'space-between' },
-    insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    insightIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    insightBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    insightBadgeText: { fontSize: 10, fontWeight: '700' },
-    insightTitle: { fontSize: 14, fontWeight: '700', marginBottom: 6 },
-    insightDesc: { fontSize: 12, lineHeight: 17, marginBottom: 14 },
-    insightBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-    insightBtnText: { fontSize: 12, fontWeight: '700', color: '#000' },
-    txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
-    txIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    txInfo: { flex: 1 },
-    txDesc: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
-    txDate: { fontSize: 11 },
-    txAmt: { fontSize: 14, fontWeight: '700' },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    sectionTitle: { fontSize: 18, fontWeight: '700' },
+
 });

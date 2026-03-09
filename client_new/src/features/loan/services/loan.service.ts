@@ -199,11 +199,14 @@ export interface LoanContract {
 
 export type NotificationType =
   | "loan_approved"
+  | "loan_rejected"
+  | "loan_disbursed"
   | "contract_ready"
   | "contract_signed"
-  | "loan_disbursed"
-  | "repayment_reminder"
-  | "repayment_success"
+  | "repayment_due"
+  | "repayment_received"
+  | "overdue_reminder"
+  | "general"
   | "loan_overdue"
   | "system";
 
@@ -807,6 +810,13 @@ class LoanService {
    */
   async markAllNotificationsRead(): Promise<void> {
     await api.post("/api/loan/notifications/read-all");
+  }
+
+  /**
+   * Cập nhật Expo Push Token lên server
+   */
+  async updatePushToken(pushToken: string): Promise<void> {
+    await api.post("/api/users/push-token", { pushToken });
   }
 }
 
