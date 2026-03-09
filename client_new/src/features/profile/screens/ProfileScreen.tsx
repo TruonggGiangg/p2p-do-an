@@ -86,11 +86,12 @@ export default function ProfileScreen() {
                 showsVerticalScrollIndicator={false}
                 primaryColor={theme.colors.primary}
                 glowColor={theme.colors.primaryLight}
+                topOffset={Platform.OS === 'ios' ? -15 : 0}
             >
                 {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
                         <VentoUltimateLoading
-                            size={110}
+                            size={200}
                             primaryColor="#F0B90B"
                             glowColor="rgba(240, 185, 11, 0.3)"
                         />
@@ -272,7 +273,7 @@ const styles = StyleSheet.create({
         paddingBottom: 80,
     },
     loadingContainer: {
-        marginTop: 100,
+        marginTop: Platform.OS === 'ios' ? 50 : 100,
         alignItems: 'center',
     },
     userInfoSection: {

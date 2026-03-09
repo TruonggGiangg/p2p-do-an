@@ -270,7 +270,7 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     return (
         <View style={[styles.container, customStyle]} collapsable={false}>
             <Animated.View style={animatedContainerStyle}>
-                <Svg width={width} height={height} viewBox={`0 20 ${viewBoxWidth} ${viewBoxHeight}`}>
+                <Svg width={width} height={height} viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}>
                     <Defs>
                         <LinearGradient id="fireGradient" x1="0" y1="0" x2="1" y2="0">
                             <Stop offset="0" stopColor={activePrimary} stopOpacity="1" />

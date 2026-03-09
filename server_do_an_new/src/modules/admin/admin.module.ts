@@ -21,6 +21,8 @@ import { LoanModule } from '../loan/loan.module';
 import { EkycModule } from '../ekyc/ekyc.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { CaslModule } from '../casl/casl.module';
+import { PushNotificationService } from '../loan/services/push-notification.service';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { CaslModule } from '../casl/casl.module';
     AuthModule,
     EkycModule,
     CaslModule,
+    UsersModule,
     forwardRef(() => LoanModule),
     MongooseModule.forFeature([
       { name: DocumentType.name, schema: DocumentTypeSchema },
@@ -45,7 +48,7 @@ import { CaslModule } from '../casl/casl.module';
     ]),
   ],
   controllers: [AdminController],
-  providers: [AdminService, LoanSyncScheduler, ReminderScheduler],
+  providers: [AdminService, LoanSyncScheduler, ReminderScheduler, PushNotificationService],
   exports: [AdminService],
 })
 export class AdminModule { }

@@ -4,14 +4,18 @@ import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { usePushNotifications } from './src/shared/hooks/usePushNotifications';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { PinProvider } from './src/contexts/PinContext';
 import { ThemeTransitionStyles } from './src/components/ThemeTransitionStyles';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function AppContent() {
-  const { isLoading } = useAuth();
+  const { isLoading, user } = useAuth();
   const { theme } = useTheme();
+
+  // Initialize push notifications
+  usePushNotifications(user?._id);
 
   if (isLoading) {
     return (
