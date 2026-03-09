@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
 import {
   loanService,
@@ -69,17 +70,20 @@ export default function SmartCASigningModal({
   const [session, setSession] = useState<SmartCaSigningSession | null>(null);
   const [countdown, setCountdown] = useState(0);
 
+  const insets = useSafeAreaInsets();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const successAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const maxCountdownRef = useRef<number>(300);
 
   // ========= v2: Sign with password + OTP ==========
   const handleSignV2 = useCallback(async () => {
     if (!password.trim()) {
-      setError('Vui long nhap mat khau SmartCA');
+      setError('Vui lòng nhập mật khẩu SmartCA');
       return;
     }
     if (!otp.trim()) {
-      setError('Vui long nhap ma OTP');
+      setError('Vui lòng nhập mã OTP');
       return;
     }
 
@@ -94,7 +98,7 @@ export default function SmartCASigningModal({
         Animated.spring(successAnim, { toValue: 1, useNativeDriver: true, friction: 6 }).start();
         setTimeout(() => onSigningComplete('signed'), 1500);
       } else {
-        setError(result.error || 'Ky so khong thanh cong');
+        setError(result.error || 'Ký số không thành công');
         setPhase('error');
       }
     } catch (err: any) {
@@ -102,7 +106,7 @@ export default function SmartCASigningModal({
         err?.response?.data?.data?.error ||
         err?.response?.data?.message ||
         err?.message ||
-        'Ky so that bai. Vui long kiem tra mat khau va OTP.';
+        'Ký số thất bại. Vui lòng kiểm tra mật khẩu và OTP.';
       setError(msg);
       setPhase('error');
     }
@@ -119,9 +123,11 @@ export default function SmartCASigningModal({
       setPhase('waiting_user');
 
       const expiresMs = new Date(signingSession.expiresAt).getTime() - Date.now();
-      setCountdown(Math.max(0, Math.floor(expiresMs / 1000)));
+      const initialCountdown = Math.max(1, Math.floor(expiresMs / 1000));
+      maxCountdownRef.current = initialCountdown;
+      setCountdown(initialCountdown);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Khong the khoi tao phien ky so';
+      const msg = err?.response?.data?.message || err?.message || 'Không thể khởi tạo phiên ký số. Vui lòng thử lại.';
       setError(msg);
       setPhase('error');
     }
@@ -143,8 +149,8 @@ export default function SmartCASigningModal({
           clearInterval(pollIntervalRef.current!);
           setError(
             result.status === 'rejected'
-              ? 'Ban da tu choi ky hop dong'
-              : 'Phien ky da het han hoac that bai',
+              ? 'Bạn đã từ chối ký số'
+              : 'Phiên ký đã kết thúc với trạng thái: ' + result.status,
           );
           setPhase('error');
           onSigningComplete(result.status === 'rejected' ? 'rejected' : 'failed');
@@ -168,7 +174,7 @@ export default function SmartCASigningModal({
         if (prev <= 1) {
           clearInterval(timer);
           setPhase('error');
-          setError('Phien ky da het thoi gian');
+          setError('Phiên ký đã hết thời gian');
           return 0;
         }
         return prev - 1;
@@ -177,6 +183,22 @@ export default function SmartCASigningModal({
 
     return () => clearInterval(timer);
   }, [phase, countdown]);
+
+  // ========= v1: Pulse animation while waiting ==========
+  useEffect(() => {
+    if (phase !== 'waiting_user') {
+      pulseAnim.setValue(1);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.18, duration: 950, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 950, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [phase]);
 
   // ========= Reset on visibility change ==========
   useEffect(() => {
@@ -220,12 +242,12 @@ export default function SmartCASigningModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={[styles.modal, { backgroundColor: colors.surface }]}>
+        <View style={[styles.modal, { backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, 8) }]}>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <MaterialCommunityIcons name="shield-check" size={24} color={colors.primary} />
             <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              Ky so VNPT SmartCA
+              Ký số VNPT SmartCA
             </Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Ionicons name="close" size={24} color={colors.textDim} />
@@ -240,7 +262,7 @@ export default function SmartCASigningModal({
                 onPress={() => handleTabSwitch('v2')}
               >
                 <Text style={[styles.tabText, { color: activeTab === 'v2' ? colors.primary : colors.textDim }]}>
-                  Mat khau + OTP
+                  Mật khẩu + OTP
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -248,7 +270,7 @@ export default function SmartCASigningModal({
                 onPress={() => handleTabSwitch('v1')}
               >
                 <Text style={[styles.tabText, { color: activeTab === 'v1' ? colors.primary : colors.textDim }]}>
-                  Xac nhan tren App
+                  Xác nhận trên App
                 </Text>
               </TouchableOpacity>
             </View>
@@ -262,19 +284,19 @@ export default function SmartCASigningModal({
                   <MaterialCommunityIcons name="key-variant" size={40} color={colors.primary} />
                 </View>
                 <Text style={[styles.phaseTitle, { color: colors.textPrimary }]}>
-                  Nhap thong tin ky so
+                  Nhập mật khẩu TOTP
                 </Text>
                 <Text style={[styles.phaseDescription, { color: colors.textSecondary }]}>
-                  Nhap mat khau ung dung VNPT SmartCA va ma OTP (TOTP) gan voi chung thu so.
+                  Nhập mật khẩu ứng dụng VNPT SmartCA và mã OTP (TOTP) gắn với chứng thư số.
                 </Text>
 
                 {/* Password Input */}
                 <View style={[styles.inputGroup, { borderColor: colors.border }]}>
-                  <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Mat khau SmartCA</Text>
+                  <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Mật khẩu SmartCA</Text>
                   <View style={styles.passwordRow}>
                     <TextInput
                       style={[styles.textInput, { color: colors.textPrimary, flex: 1 }]}
-                      placeholder="Nhap mat khau..."
+                      placeholder="Nhập mật khẩu..."
                       placeholderTextColor={colors.textDim}
                       secureTextEntry={!showPassword}
                       value={password}
@@ -292,7 +314,7 @@ export default function SmartCASigningModal({
                   <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Ma OTP (TOTP)</Text>
                   <TextInput
                     style={[styles.textInput, { color: colors.textPrimary }]}
-                    placeholder="Nhap 6 so OTP..."
+                    placeholder="Nhập 6 số OTP..."
                     placeholderTextColor={colors.textDim}
                     keyboardType="number-pad"
                     maxLength={6}
@@ -311,7 +333,7 @@ export default function SmartCASigningModal({
                   disabled={!password.trim() || !otp.trim()}
                 >
                   <MaterialCommunityIcons name="draw-pen" size={20} color="white" />
-                  <Text style={styles.signButtonText}>Ky hop dong</Text>
+                  <Text style={styles.signButtonText}>Ký hợp đồng</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -323,10 +345,10 @@ export default function SmartCASigningModal({
                   <MaterialCommunityIcons name="cellphone-check" size={40} color={colors.primary} />
                 </View>
                 <Text style={[styles.phaseTitle, { color: colors.textPrimary }]}>
-                  Xac nhan tren App SmartCA
+                  Xác nhận trên App SmartCA
                 </Text>
                 <Text style={[styles.phaseDescription, { color: colors.textSecondary }]}>
-                  He thong se gui yeu cau ky den ung dung VNPT SmartCA tren dien thoai cua ban. Ban can mo app de xac nhan.
+                  Hệ thống sẽ gửi yêu cầu ký đến ứng dụng VNPT SmartCA trên điện thoại của bạn. Bạn cần mở app để xác nhận.
                 </Text>
 
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -336,7 +358,7 @@ export default function SmartCASigningModal({
                   onPress={initiateV1Signing}
                 >
                   <Ionicons name="send" size={18} color="white" />
-                  <Text style={styles.signButtonText}>Gui yeu cau ky</Text>
+                  <Text style={styles.signButtonText}>Gửi yêu cầu ký</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -346,7 +368,7 @@ export default function SmartCASigningModal({
               <View style={styles.phaseContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={[styles.phaseText, { color: colors.textSecondary }]}>
-                  Dang ky so... Vui long doi.
+                  Đang ký số... Vui lòng đợi.
                 </Text>
               </View>
             )}
@@ -356,7 +378,7 @@ export default function SmartCASigningModal({
               <View style={styles.phaseContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={[styles.phaseText, { color: colors.textSecondary }]}>
-                  Dang khoi tao phien ky so...
+                  Đang khởi tạo phiên ký số...
                 </Text>
               </View>
             )}
@@ -364,28 +386,50 @@ export default function SmartCASigningModal({
             {/* ======== Waiting for user (v1) ======== */}
             {phase === 'waiting_user' && (
               <View style={styles.phaseContainer}>
-                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
-                  <MaterialCommunityIcons name="draw-pen" size={48} color={colors.primary} />
+                {/* Pulsing icon */}
+                <View style={styles.pulseWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      { borderColor: colors.primary + '35', transform: [{ scale: pulseAnim }] },
+                    ]}
+                  />
+                  <View style={[styles.iconCircleWaiting, { backgroundColor: colors.primary + '18' }]}>
+                    <MaterialCommunityIcons name="cellphone-check" size={38} color={colors.primary} />
+                  </View>
                 </View>
+
                 <Text style={[styles.phaseTitle, { color: colors.textPrimary }]}>
-                  Cho xac nhan ky
+                  Đang chờ xác nhận...
                 </Text>
                 <Text style={[styles.phaseDescription, { color: colors.textSecondary }]}>
-                  Vui long mo ung dung VNPT SmartCA va xac nhan ky bang PIN hoac van tay.
+                  Mở ứng dụng VNPT SmartCA trên điện thoại và xác nhận ký bằng PIN hoặc vân tay.
                 </Text>
 
-                <View style={[styles.countdownBox, { backgroundColor: colors.background }]}>
-                  <Ionicons name="time-outline" size={16} color={colors.textDim} />
-                  <Text style={[styles.countdownText, { color: colors.textDim }]}>
-                    Thoi gian con lai: {formatCountdown(countdown)}
+                {/* Spinner + countdown */}
+                <View style={[styles.waitingRow, { backgroundColor: colors.background }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={[styles.waitingCountdown, { color: colors.textPrimary }]}>
+                    {formatCountdown(countdown)}
                   </Text>
                 </View>
 
-                {session && (
-                  <Text style={[styles.txInfo, { color: colors.textDim }]}>
-                    Ma giao dich: {session.transactionId}
-                  </Text>
-                )}
+                {/* Progress bar */}
+                <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        backgroundColor: colors.primary,
+                        width: `${Math.max(2, (countdown / maxCountdownRef.current) * 100)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+
+                <TouchableOpacity onPress={onClose} style={styles.cancelLink}>
+                  <Text style={[styles.cancelLinkText, { color: colors.textDim }]}>Hủy yêu cầu</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -400,9 +444,9 @@ export default function SmartCASigningModal({
                 >
                   <Ionicons name="checkmark" size={48} color="white" />
                 </Animated.View>
-                <Text style={[styles.phaseTitle, { color: '#10B981' }]}>Ky so thanh cong!</Text>
+                <Text style={[styles.phaseTitle, { color: '#10B981' }]}>Ký số thành công!</Text>
                 <Text style={[styles.phaseDescription, { color: colors.textSecondary }]}>
-                  Hop dong da duoc ky so bang chung thu VNPT SmartCA.
+                  Hợp đồng đã được ký số bằng chứng thư VNPT SmartCA.
                 </Text>
               </View>
             )}
@@ -413,7 +457,7 @@ export default function SmartCASigningModal({
                 <View style={[styles.iconCircle, { backgroundColor: '#EF444415' }]}>
                   <MaterialCommunityIcons name="alert-circle" size={48} color="#EF4444" />
                 </View>
-                <Text style={[styles.phaseTitle, { color: '#EF4444' }]}>Khong the ky</Text>
+                <Text style={[styles.phaseTitle, { color: '#EF4444' }]}>Không thể ký</Text>
                 <Text style={[styles.phaseDescription, { color: colors.textSecondary }]}>{error}</Text>
 
                 <TouchableOpacity
@@ -421,7 +465,7 @@ export default function SmartCASigningModal({
                   onPress={handleRetry}
                 >
                   <Ionicons name="refresh" size={18} color="white" />
-                  <Text style={styles.retryButtonText}>Thu lai</Text>
+                  <Text style={styles.retryButtonText}>Thử lại</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -585,5 +629,62 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Waiting phase
+  pulseWrapper: {
+    width: 96,
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+  },
+  iconCircleWaiting: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waitingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    marginTop: 4,
+  },
+  waitingCountdown: {
+    fontSize: 18,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  cancelLink: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  cancelLinkText: {
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });

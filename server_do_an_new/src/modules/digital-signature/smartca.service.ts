@@ -5,11 +5,14 @@ import * as crypto from 'crypto';
 import smartcaConfig from 'src/config/smartca.config';
 
 /**
- * SmartCAService - VNPT SmartCA Digital Signature Integration
+ * SmartCAService - VNPT SmartCA Digital Signature Integration (Production)
  *
- * Two flows:
- *  v1: Send sign request -> User confirms on VNPT SmartCA app -> Poll status
- *  v2: Send sign request with (password + OTP) -> Get transaction_id/tran_code/sad -> Confirm
+ * Authentication: sp_id + sp_password in request body (same as test env)
+ * Host: gwsca.vnpt.vn (production) vs rmgateway.vnptit.vn (test)
+ *
+ * Two sign flows:
+ *   v1: Send sign request → User confirms on VNPT SmartCA app → Poll status
+ *   v2: Send sign request with (password + OTP) → Get transaction_id/tran_code/sad → Confirm
  */
 
 function utcTimestamp(): string {
@@ -61,7 +64,7 @@ export class SmartCAService {
   ) {}
 
   // ================================================================
-  // 1. Get certificates (API lay thong tin chung thu so)
+  // 1. Get certificates
   // ================================================================
   async getCertificates(userId?: string): Promise<{
     success: boolean;
@@ -71,7 +74,7 @@ export class SmartCAService {
   }> {
     const user_id = userId || this.config.defaultUserId;
     if (!user_id) {
-      throw new BadRequestException('Thieu user_id (so CCCD)');
+      throw new BadRequestException('Thiếu user_id (số CCCD)');
     }
 
     const url = `${this.config.apiUrl}${this.config.certPath}`;
@@ -110,7 +113,7 @@ export class SmartCAService {
     }));
 
     const active = certificates.find(
-      (c) =>
+      c =>
         c.statusCode?.toUpperCase() === 'VALID' ||
         c.status?.toUpperCase().includes('ACTIVE') ||
         c.status?.includes('hoat dong'),
@@ -132,7 +135,7 @@ export class SmartCAService {
     transactionId?: string;
   }): Promise<SignResult> {
     const user_id = options.userId || this.config.defaultUserId;
-    const transaction_id = options.transactionId || `SP_CA_${Date.now()}`;
+    const transaction_id = options.transactionId || `CA_${Date.now()}`;
     const doc_id = options.docId || `doc-${Date.now()}`;
 
     const url = `${this.config.apiUrl}${this.config.signV1Path}`;
@@ -144,12 +147,14 @@ export class SmartCAService {
       transaction_desc: 'Ky hop dong vay P2P',
       time_stamp: utcTimestamp(),
       serial_number: options.serialNumber,
-      sign_files: [{
-        doc_id,
-        file_type: 'pdf',
-        sign_type: 'hash',
-        data_to_be_signed: options.documentHash,
-      }],
+      sign_files: [
+        {
+          doc_id,
+          file_type: 'pdf',
+          sign_type: 'hash',
+          data_to_be_signed: options.documentHash,
+        },
+      ],
     };
 
     this.logger.log(`[requestSignV1] POST ${url} | txn=${transaction_id}`);
@@ -186,7 +191,7 @@ export class SmartCAService {
     transactionId?: string;
   }): Promise<SignResult> {
     const user_id = options.userId || this.config.defaultUserId;
-    const transaction_id = options.transactionId || `SP_CA_${Date.now()}`;
+    const transaction_id = options.transactionId || `CA_${Date.now()}`;
     const doc_id = options.docId || `doc-${Date.now()}`;
 
     const url = `${this.config.apiUrl}${this.config.signV2Path}`;
@@ -198,12 +203,14 @@ export class SmartCAService {
       otp: options.otp,
       transaction_id,
       serial_number: options.serialNumber,
-      sign_files: [{
-        doc_id,
-        file_type: 'pdf',
-        sign_type: 'hash',
-        data_to_be_signed: options.documentHash,
-      }],
+      sign_files: [
+        {
+          doc_id,
+          file_type: 'pdf',
+          sign_type: 'hash',
+          data_to_be_signed: options.documentHash,
+        },
+      ],
     };
 
     this.logger.log(`[requestSignV2] POST ${url} | txn=${transaction_id}`);
@@ -234,7 +241,7 @@ export class SmartCAService {
   }
 
   // ================================================================
-  // 4. Confirm sign v2 (xac nhan ky so)
+  // 4. Confirm sign v2
   // ================================================================
   async confirmSignV2(options: {
     userId?: string;
@@ -279,7 +286,7 @@ export class SmartCAService {
   }
 
   // ================================================================
-  // 5. Check sign status (tra cuu trang thai giao dich)
+  // 5. Check sign status
   // ================================================================
   async checkSignStatus(transactionId: string): Promise<{
     status: 'pending' | 'signed' | 'failed' | 'expired' | 'rejected';
@@ -291,7 +298,8 @@ export class SmartCAService {
 
     this.logger.log(`[checkSignStatus] POST ${url}`);
 
-    const res = await axios.post(url, undefined, {
+    const statusPayload = { sp_id: this.config.spId, sp_password: this.config.spPassword };
+    const res = await axios.post(url, statusPayload, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 30000,
       validateStatus: () => true,
@@ -358,16 +366,16 @@ export class SmartCAService {
         return { success: false, error: 'Het thoi gian cho ky', transactionId };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      await new Promise(resolve => setTimeout(resolve, interval));
     }
   }
 
   // ================================================================
-  // 7. Hash document content (SHA-256)
+  // 7. Hash document content (SHA-256, base64-encoded for SmartCA API)
   // ================================================================
   hashDocument(data: Buffer | string): string {
     const buffer = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-    return crypto.createHash('sha256').update(buffer).digest('hex');
+    return crypto.createHash('sha256').update(buffer).digest('base64');
   }
 
   // ================================================================
@@ -384,7 +392,7 @@ export class SmartCAService {
     }
 
     const documentHash = this.hashDocument(options.documentData);
-    const transactionId = `SP_CA_${Date.now()}`;
+    const transactionId = `CA_${Date.now()}`;
     const docId = options.contractId ? `doc-${options.contractId}` : `doc-${Date.now()}`;
 
     const signResult = await this.requestSignV1({
@@ -428,7 +436,7 @@ export class SmartCAService {
     }
 
     const documentHash = this.hashDocument(options.documentData);
-    const transactionId = `SP_CA_${Date.now()}`;
+    const transactionId = `CA_${Date.now()}`;
     const docId = options.contractId ? `doc-${options.contractId}` : `doc-${Date.now()}`;
 
     const signResult = await this.requestSignV2({

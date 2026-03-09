@@ -3,13 +3,14 @@ import { registerAs } from '@nestjs/config';
 export default registerAs('smartCA', () => ({
   // VNPT SmartCA API base URL
   // Test: https://rmgateway.vnptit.vn  |  Prod: https://gwsca.vnpt.vn
-  apiUrl: process.env.SMARTCA_API_URL || 'https://rmgateway.vnptit.vn',
+  apiUrl: process.env.SMARTCA_API_URL || 'https://gwsca.vnpt.vn',
 
-  // sp_id & sp_password (cặp credentials xác định service partner)
+  // Service Partner credentials (sent in request body as sp_id / sp_password)
   spId: process.env.SMARTCA_SP_ID || '',
   spPassword: process.env.SMARTCA_SP_PASSWORD || '',
+  mobileCode: process.env.SMARTCA_MOBILE_CODE || '',
 
-  // Default user_id (CCCD) - for testing; in production taken from user's KYC
+  // Default user_id (CCCD) - taken from user's KYC in production
   defaultUserId: process.env.SMARTCA_DEFAULT_USER_ID || '',
 
   // API paths
