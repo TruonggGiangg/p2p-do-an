@@ -12,7 +12,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
+import { BinanceHeader, CommonCard, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
 import { loanService, LoanProduct, LoanHistoryItem } from '../services/loan.service';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
@@ -166,11 +166,7 @@ export default function LoanScreen() {
 
                 {loading && !refreshing ? (
                     <View style={styles.loadingContainer}>
-                        <VentoUltimateLoading
-                            size={200}
-                            primaryColor="#F0B90B"
-                            glowColor="rgba(240, 185, 11, 0.3)"
-                        />
+                        <FintechScreenSkeleton variant="loan" />
                     </View>
                 ) : (
                     <FlatList
@@ -246,7 +242,7 @@ const styles = StyleSheet.create({
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
     sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
     sectionSubtitle: { fontSize: 14 },
-    loadingContainer: { marginTop: 100, alignItems: 'center' },
+    loadingContainer: { marginTop: 28 },
     productItem: { marginBottom: 16 },
     card: { padding: 16 },
     cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },

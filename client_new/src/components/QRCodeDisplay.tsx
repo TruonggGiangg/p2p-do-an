@@ -1,157 +1,181 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { CommonCard } from './common/CommonCard';
 import { useTheme } from '../contexts/ThemeContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface QRCodeDisplayProps {
     phone: string;
     name?: string;
+    accountNo?: string;
+    walletName?: string;
     onClose?: () => void;
 }
 
-export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, onClose }) => {
+export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ phone, name, accountNo, walletName, onClose }) => {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
+    const isDark = theme.mode === 'dark';
+    const c = theme.colors;
 
     // Generate QR data as JSON for better parsing
     const qrData = phone ? JSON.stringify({
         phone: phone,
+        accountNo: accountNo,
+        walletName: walletName,
         type: 'transfer',
     }) : '';
 
-    if (!phone) {
-        return (
-            <View style={styles.container}>
-                <CommonCard style={styles.card}>
-                    <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Lỗi</Text>
-                    <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Không có số điện thoại để tạo QR code</Text>
-                    {onClose && (
-                        <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}>
-                            <Text style={styles.closeButtonText}>Đóng</Text>
-                        </TouchableOpacity>
-                    )}
-                </CommonCard>
+    const renderInfoRow = (icon: any, label: string, value: string) => (
+        <View style={styles.infoRow}>
+            <View style={[styles.infoIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
+                <MaterialCommunityIcons name={icon} size={18} color={c.textSecondary} />
             </View>
-        );
-    }
+            <View style={styles.infoText}>
+                <Text style={[styles.infoLabel, { color: c.textDim }]}>{label}</Text>
+                <Text style={[styles.infoValue, { color: c.textPrimary }]} numberOfLines={1}>{value}</Text>
+            </View>
+        </View>
+    );
 
     return (
-        <View style={styles.container}>
-            {onClose && (
-                <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { top: Math.max(insets.top + 10, 20), backgroundColor: theme.colors.surface, borderColor: theme.colors.border, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 3 }]}>
-                    <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
-            )}
+        <View style={styles.card}>
+            <View style={styles.cardHeader}>
+                <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Mã QR của tôi</Text>
+                <Text style={[styles.cardSubtitle, { color: c.textDim }]}>Quét mã này để chuyển tiền nhanh</Text>
+            </View>
 
-            <CommonCard style={styles.card}>
-                <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Mã QR của tôi</Text>
-                <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Quét mã này để nhận tiền</Text>
-
-                <View style={styles.qrContainer}>
+            <View style={styles.qrWrapper}>
+                <View style={styles.qrInner}>
                     {qrData ? (
-                        <QRCode value={qrData} size={200} backgroundColor="white" color="black" />
+                        <QRCode
+                            value={qrData}
+                            size={SCREEN_WIDTH * 0.55}
+                            backgroundColor="white"
+                            color="black"
+                            quietZone={10}
+                        />
                     ) : (
-                        <Text style={styles.errorText}>Không thể tạo QR code</Text>
+                        <View style={styles.qrError}>
+                            <MaterialCommunityIcons name="qrcode-remove" size={48} color={c.error} />
+                            <Text style={[styles.errorText, { color: c.error }]}>Không thể tạo mã</Text>
+                        </View>
                     )}
                 </View>
+            </View>
 
-                <View style={styles.infoContainer}>
-                    <View style={styles.infoRow}>
-                        <Ionicons name="person-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>Tên:</Text>
-                        <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{name || 'Người dùng'}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                        <Ionicons name="call-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>SĐT:</Text>
-                        <Text style={[styles.infoValue, { color: theme.colors.textPrimary }]}>{phone}</Text>
-                    </View>
+            <View style={styles.infoSection}>
+                {renderInfoRow('account-outline', 'Chủ tài khoản', name || 'Người dùng')}
+                {accountNo && renderInfoRow('wallet-outline', 'Số tài khoản', accountNo)}
+                {walletName && renderInfoRow('bank-outline', 'Ví nhận tiền', walletName)}
+                <View style={[styles.divider, { backgroundColor: c.border, opacity: 0.5 }]} />
+                <View style={styles.footerNote}>
+                    <MaterialCommunityIcons name="shield-check-outline" size={14} color={c.primary} />
+                    <Text style={[styles.footerText, { color: c.textDim }]}>Giao dịch p2p an toàn & bảo mật</Text>
                 </View>
-            </CommonCard>
+            </View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
+    card: {
+        paddingVertical: 24,
         alignItems: 'center',
-        padding: 24,
     },
-    closeBtn: {
-        position: 'absolute',
-        right: 20,
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
+    cardHeader: {
         alignItems: 'center',
-        zIndex: 10,
-        borderWidth: 1,
+        marginBottom: 32,
     },
-    closeButton: {
-        marginTop: 24,
-        paddingVertical: 16,
-        paddingHorizontal: 32,
-        backgroundColor: '#8b5cf6',
+    cardTitle: {
+        fontSize: 22,
+        fontWeight: '900',
+        marginBottom: 6,
+    },
+    cardSubtitle: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    qrWrapper: {
+        padding: 12,
+        backgroundColor: '#fff',
+        borderRadius: 24,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.05,
+                shadowRadius: 10,
+            },
+            android: {
+                elevation: 2,
+            },
+        }),
+    },
+    qrInner: {
         borderRadius: 12,
+        overflow: 'hidden',
     },
-    closeButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-        textAlign: 'center',
+    qrError: {
+        width: SCREEN_WIDTH * 0.55,
+        height: SCREEN_WIDTH * 0.55,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     errorText: {
-        color: '#ef4444',
-        fontSize: 14,
-        textAlign: 'center',
-    },
-    card: {
-        alignItems: 'center',
-        padding: 32,
-        width: '100%',
-        maxWidth: 350,
-    },
-    title: {
-        fontSize: 24,
+        fontSize: 12,
         fontWeight: '700',
-        color: '#fff',
-        marginBottom: 4,
+        marginTop: 8,
     },
-    subtitle: {
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.7)',
-        marginBottom: 32,
-    },
-    qrContainer: {
-        backgroundColor: 'white',
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 32,
-    },
-    infoContainer: {
+    infoSection: {
         width: '100%',
-        gap: 16,
+        marginTop: 32,
     },
     infoRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        marginBottom: 16,
+    },
+    infoIconWrap: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 14,
+    },
+    infoText: {
+        flex: 1,
     },
     infoLabel: {
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 2,
     },
     infoValue: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
-        color: '#fff',
-        flex: 1,
+    },
+    divider: {
+        height: 1,
+        width: '100%',
+        marginVertical: 16,
+    },
+    footerNote: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    footerText: {
+        fontSize: 11,
+        fontWeight: '500',
     },
 });
 

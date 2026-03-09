@@ -186,16 +186,16 @@ export const TwoFactorSection: React.FC = () => {
               </View>
               <View style={styles.titleContainer}>
                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                  Two-Factor (2FA)
+                  Bảo mật 2 lớp (2FA)
                 </Text>
                 <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {isEnabled ? 'Authenticated by Google' : 'Additional security layer'}
+                  {isEnabled ? 'Xác thực bởi Google' : 'Lớp bảo mật bổ sung'}
                 </Text>
               </View>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: isEnabled ? theme.colors.success + '15' : theme.colors.textMuted + '15' }]}>
               <Text style={[styles.statusText, { color: isEnabled ? theme.colors.success : theme.colors.textMuted }]}>
-                {isEnabled ? 'ON' : 'OFF'}
+                {isEnabled ? 'Bật' : 'Tắt'}
               </Text>
             </View>
             <View style={styles.expandButton}>
@@ -225,14 +225,14 @@ export const TwoFactorSection: React.FC = () => {
                     />
                   </View>
                   <Text style={[styles.stateText, { color: theme.colors.textPrimary }]}>
-                    2FA is Enabled
+                    2FA đã bật
                   </Text>
                   <Text style={[styles.stateSubtext, { color: theme.colors.textMuted }]}>
-                    Your account is now protected with 2FA. We will ask for a verification code when you log in or perform sensitive actions.
+                    Tài khoản của bạn đã được bảo vệ bằng 2FA. Chúng tôi sẽ yêu cầu mã xác minh khi đăng nhập hoặc thực hiện thao tác nhạy cảm.
                   </Text>
                   <View style={styles.actions}>
                     <CommonButton
-                      title="TEST 2FA"
+                      title="Kiểm tra 2FA"
                       onPress={() => setShowTestModal(true)}
                       variant="outline"
                       size="sm"
@@ -241,7 +241,7 @@ export const TwoFactorSection: React.FC = () => {
                       style={styles.testBtn}
                     />
                     <CommonButton
-                      title="DISABLE 2FA"
+                      title="Tắt 2FA"
                       onPress={handleDisable}
                       variant="outline"
                       size="sm"
@@ -262,13 +262,13 @@ export const TwoFactorSection: React.FC = () => {
                     />
                   </View>
                   <Text style={[styles.stateText, { color: theme.colors.textPrimary }]}>
-                    2FA is Disabled
+                    2FA chưa bật
                   </Text>
                   <Text style={[styles.stateSubtext, { color: theme.colors.textMuted }]}>
-                    Enable two-factor authentication to secure your account.
+                    Bật xác thực 2 yếu tố để bảo vệ tài khoản của bạn.
                   </Text>
                   <CommonButton
-                    title="ACTIVATE 2FA"
+                    title="Bật 2FA"
                     onPress={handleGetSecret}
                     icon="shield-plus-outline"
                     style={styles.enableBtn}
@@ -341,7 +341,7 @@ export const TwoFactorSection: React.FC = () => {
                   {/* Manual Setup Key */}
                   <View style={styles.manualSetupContainer}>
                     <Text style={[styles.manualSetupLabel, { color: theme.colors.textSecondary }]}>
-                      Setup Key (Manual entry)
+                      Mã thiết lập (nhập thủ công)
                     </Text>
                     <View style={[styles.secretBox, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
                       <Text style={[styles.secretText, { color: theme.colors.primary }]}>
@@ -352,8 +352,8 @@ export const TwoFactorSection: React.FC = () => {
 
                   {/* Simple Instructions */}
                   <Text style={[styles.simpleInstructions, { color: theme.colors.textMuted }]}>
-                    1. Scan the QR code with Google Authenticator.{"\n"}
-                    2. Enter the 6-digit code provided by the app below.
+                    1. Quét mã QR bằng Google Authenticator.{"\n"}
+                    2. Nhập mã 6 số do ứng dụng cung cấp bên dưới.
                   </Text>
 
                   {/* OTP Input */}
@@ -403,14 +403,14 @@ export const TwoFactorSection: React.FC = () => {
                   {/* Action Buttons */}
                   <View style={styles.modalActions}>
                     <CommonButton
-                      title="OPEN GOOGLE AUTHENTICATOR"
+                      title="Mở Google Authenticator"
                       onPress={openGoogleAuthenticator}
                       variant="secondary"
                       icon="open-in-app"
                       style={styles.modalButton}
                     />
                     <CommonButton
-                      title="ENABLE 2FA"
+                      title="Bật 2FA"
                       onPress={handleConfirmEnable}
                       loading={isLoading}
                       disabled={otpCode.length !== 6}
@@ -418,7 +418,7 @@ export const TwoFactorSection: React.FC = () => {
                       style={styles.modalButton}
                     />
                     <CommonButton
-                      title="CANCEL"
+                      title="Hủy"
                       onPress={() => {
                         setShowQRModal(false);
                         setOpenedGA(false);
@@ -546,7 +546,7 @@ export const TwoFactorSection: React.FC = () => {
                 {/* Action Buttons */}
                 <View style={styles.modalActions}>
                   <CommonButton
-                    title="VERIFY"
+                    title="Xác minh"
                     onPress={async () => {
                       if (!testOtpCode || testOtpCode.length !== 6) {
                         Alert.alert('Lỗi', 'Vui lòng nhập mã OTP 6 số');
@@ -557,8 +557,8 @@ export const TwoFactorSection: React.FC = () => {
                       const isValid = await verifyToken(testOtpCode);
                       if (isValid) {
                         Alert.alert(
-                          '✅ Success',
-                          '2FA working correctly!',
+                          'Thành công',
+                          '2FA hoạt động chính xác!',
                           [
                             {
                               text: 'OK',
@@ -571,7 +571,7 @@ export const TwoFactorSection: React.FC = () => {
                           ],
                         );
                       } else {
-                        Alert.alert('❌ Error', error || 'Invalid OTP code.');
+                        Alert.alert('Lỗi', error || 'Mã OTP không hợp lệ.');
                         setTestOtpCode('');
                       }
                     }}
@@ -581,7 +581,7 @@ export const TwoFactorSection: React.FC = () => {
                     style={styles.modalButton}
                   />
                   <CommonButton
-                    title="CANCEL"
+                    title="Hủy"
                     onPress={() => {
                       setShowTestModal(false);
                       setTestOtpCode('');

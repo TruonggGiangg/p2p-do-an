@@ -77,7 +77,7 @@ export default function MainNavigator() {
                     );
                 },
                 tabBarActiveTintColor: theme.colors.primary,
-                tabBarInactiveTintColor: theme.colors.textSecondary,
+                tabBarInactiveTintColor: theme.mode === 'dark' ? '#848E9C' : '#474D57', // Darker gray for light mode
                 tabBarLabelStyle: {
                     fontSize: 11,
                     fontFamily: 'Poppins_600SemiBold',
@@ -102,7 +102,7 @@ export default function MainNavigator() {
             <Tab.Screen
                 name="Home"
                 component={HomeScreen}
-                options={{ tabBarLabel: 'Home' }}
+                options={{ tabBarLabel: 'Trang chủ' }}
             />
             <Tab.Screen
                 name="Loan"
@@ -112,12 +112,12 @@ export default function MainNavigator() {
             <Tab.Screen
                 name="BNPL"
                 component={PinGatedBNPLScreen}
-                options={{ tabBarLabel: 'BNPL' }}
+                options={{ tabBarLabel: 'Trả góp' }}
             />
             <Tab.Screen
                 name="Profile"
                 component={ProfileScreen}
-                options={{ tabBarLabel: 'Profile' }}
+                options={{ tabBarLabel: 'Tài khoản' }}
             />
         </Tab.Navigator>
     );

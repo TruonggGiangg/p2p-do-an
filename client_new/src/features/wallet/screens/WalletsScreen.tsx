@@ -80,7 +80,7 @@ export const WalletsScreen = () => {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <BinanceHeader
                 mode="standard"
-                title="Funding Wallets"
+                title="Ví của tôi"
                 showBack={true}
             />
 
@@ -93,32 +93,32 @@ export const WalletsScreen = () => {
                 {/* Balance Summary Section (Binance Style) */}
                 <View style={styles.headerSection}>
                     <CommonCard>
-                        <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Total Equity (VND)</Text>
+                        <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Tổng tài sản ước tính (VND)</Text>
                         <Text style={[styles.totalAmount, { color: theme.colors.textPrimary }]}>
                             {new Intl.NumberFormat('vi-VN').format(totalBalance)}
                         </Text>
 
                         <View style={styles.actionButtons}>
                             <CommonButton
-                                title="Deposit"
+                                title="Nạp tiền"
                                 variant="primary"
                                 style={{ flex: 1, height: 40 }}
                                 textStyle={{ fontSize: 13, color: '#000' }}
                                 onPress={() => { }}
                             />
                             <CommonButton
-                                title="Withdraw"
+                                title="Rút tiền"
                                 variant="secondary"
                                 style={{ flex: 1, height: 40 }}
                                 textStyle={{ fontSize: 13 }}
                                 onPress={() => { }}
                             />
                             <CommonButton
-                                title="Transfer"
+                                title="Chuyển khoản"
                                 variant="secondary"
                                 style={{ flex: 1, height: 40 }}
                                 textStyle={{ fontSize: 13 }}
-                                onPress={() => { }}
+                                onPress={() => navigation.navigate('Transfer' as never)}
                             />
                         </View>
                     </CommonCard>
@@ -127,7 +127,7 @@ export const WalletsScreen = () => {
                 {/* Wallets List Section */}
                 <View style={styles.listSection}>
                     <View style={styles.listHeader}>
-                        <Text style={[styles.listTitle, { color: theme.colors.textPrimary }]}>Assets</Text>
+                        <Text style={[styles.listTitle, { color: theme.colors.textPrimary }]}>Danh sách ví</Text>
                         <MaterialCommunityIcons name="sort-variant" size={20} color={theme.colors.textDim} />
                     </View>
 
@@ -152,10 +152,10 @@ export const WalletsScreen = () => {
                         <View style={styles.emptyContainer}>
                             <MaterialCommunityIcons name="wallet-outline" size={64} color={theme.colors.textDim} />
                             <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                                No wallets found.
+                                Không tìm thấy ví nào.
                             </Text>
                             <Text style={[styles.emptySubText, { color: theme.colors.textDim }]}>
-                                Pull down to sync from Fineract.
+                                Vui lòng kéo xuống để đồng bộ từ hệ thống.
                             </Text>
                         </View>
                     )}

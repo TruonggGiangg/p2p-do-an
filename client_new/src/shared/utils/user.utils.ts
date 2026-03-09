@@ -11,9 +11,9 @@ export const getUserDisplayName = (user: User | null): string => {
     if (!user) return 'Người dùng';
     
     // Priority: name > firstName + lastName > username
-    if (user.name) return user.name;
+    if (user.name) return user.name.trim().replace(/\s+/g, ' ');
     
-    const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim();
+    const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim().replace(/\s+/g, ' ');
     if (fullName) return fullName;
     
     return user.username || 'Người dùng';

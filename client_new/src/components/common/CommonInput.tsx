@@ -24,6 +24,9 @@ interface CommonInputProps {
     containerStyle?: ViewStyle;
     inputStyle?: TextStyle;
     editable?: boolean;
+    multiline?: boolean;
+    numberOfLines?: number;
+    textAlignVertical?: 'auto' | 'top' | 'bottom' | 'center';
 }
 
 export const CommonInput: React.FC<CommonInputProps> = ({
@@ -39,6 +42,9 @@ export const CommonInput: React.FC<CommonInputProps> = ({
     containerStyle,
     inputStyle,
     editable = true,
+    multiline = false,
+    numberOfLines,
+    textAlignVertical,
 }) => {
     const { theme } = useTheme();
     const [isFocused, setIsFocused] = useState(false);
@@ -96,6 +102,9 @@ export const CommonInput: React.FC<CommonInputProps> = ({
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
                     editable={editable}
+                    multiline={multiline}
+                    numberOfLines={numberOfLines}
+                    textAlignVertical={textAlignVertical}
                 />
                 {secureTextEntry && (
                     <TouchableOpacity

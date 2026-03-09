@@ -17,7 +17,7 @@ const getRoleConfig = (role: string): { color: string; bgColor: string; label: s
         return { color: '#10b981', bgColor: '#064e3b', label: 'Nhà đầu tư', iconName: 'cash' };
     }
     if (lowerRole.includes('borrower')) {
-        return { color: '#3b82f6', bgColor: '#1e3a5f', label: 'Người vay', iconName: 'handshake-outline' };
+        return { color: '#b8860b', bgColor: 'rgba(240, 185, 11, 0.2)', label: 'Người vay', iconName: 'handshake-outline' };
     }
     // Default user role
     return { color: '#6b7280', bgColor: '#374151', label: role, iconName: 'account-circle' };

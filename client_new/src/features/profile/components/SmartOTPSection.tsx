@@ -22,6 +22,7 @@ export const SmartOTPSection: React.FC = () => {
   } = useSmartOTP();
 
   const [expanded, setExpanded] = useState(false);
+  const [devicesExpanded, setDevicesExpanded] = useState(false);
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authCode, setAuthCode] = useState('');
@@ -89,20 +90,20 @@ export const SmartOTPSection: React.FC = () => {
 
   const handleRevoke = (deviceId: string, deviceName: string) => {
     Alert.alert(
-      'Thu hồi thiết bị',
-      `Bạn có chắc muốn thu hồi thiết bị "${deviceName}"?`,
+      'Xóa thiết bị',
+      `Bạn có chắc chắn muốn xóa thiết bị "${deviceName}"?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: 'Thu hồi',
+          text: 'Xóa',
           style: 'destructive',
           onPress: async () => {
             const success = await revokeDevice(deviceId);
             if (success) {
-              Alert.alert('Thành công', 'Thiết bị đã được thu hồi');
+              Alert.alert('Thành công', 'Thiết bị đã được xóa');
               await fetchDevices();
             } else {
-              Alert.alert('Lỗi', error || 'Không thể thu hồi thiết bị');
+              Alert.alert('Lỗi', error || 'Không thể xóa thiết bị');
             }
           },
         },
@@ -128,7 +129,7 @@ export const SmartOTPSection: React.FC = () => {
             </View>
             <View style={styles.titleContainer}>
               <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-                Smart OTP
+                Mã OTP thông minh
               </Text>
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
                 {isRegistered
@@ -155,27 +156,44 @@ export const SmartOTPSection: React.FC = () => {
 
             {isRegistered ? (
               <>
-                {/* Current OTP Display */}
-                <View style={[styles.otpBox, { backgroundColor: theme.colors.primary + '10' }]}>
-                  <Text style={[styles.otpLabel, { color: theme.colors.textMuted }]}>
-                    CURRENT OTP CODE
+                {/* Current OTP Display - nền tối, chữ sáng để tăng độ tương phản */}
+                <View style={[styles.otpBox, { backgroundColor: theme.mode === 'dark' ? theme.colors.backgroundTertiary || '#1a1f2e' : '#1a1f2e' }]}>
+                  <Text style={[styles.otpLabel, { color: 'rgba(255,255,255,0.7)' }]}>
+                    Mã OTP hiện tại
                   </Text>
-                  <Text style={[styles.otpCode, { color: theme.colors.primary }]}>
+                  <Text style={[styles.otpCode, { color: '#FFFFFF' }]}>
                     {otp || '--- ---'}
                   </Text>
                   <View style={styles.timerWrapper}>
-                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.textDim} />
-                    <Text style={[styles.otpTimer, { color: theme.colors.textMuted }]}>
-                      Expires in: {timeRemaining}s
+                    <MaterialCommunityIcons name="clock-outline" size={14} color="rgba(255,255,255,0.6)" />
+                    <Text style={[styles.otpTimer, { color: 'rgba(255,255,255,0.7)' }]}>
+                      Hiệu lực: {timeRemaining}s
                     </Text>
                   </View>
                 </View>
 
-                {/* Devices List */}
-                <View style={styles.devicesSection}>
-                  <Text style={[styles.devicesTitle, { color: theme.colors.textPrimary }]}>
-                    Registered Devices
-                  </Text>
+                {/* Devices List - thu gọn, bấm mới mở */}
+                <View style={[styles.devicesSection, { backgroundColor: theme.colors.backgroundSecondary, borderRadius: 12, padding: 14, marginBottom: 16 }]}>
+                  <TouchableOpacity
+                    style={styles.devicesHeaderRow}
+                    onPress={() => setDevicesExpanded(!devicesExpanded)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.devicesTitle, { color: theme.colors.textPrimary }]}>
+                      Thiết bị đã đăng ký ({devices.length})
+                    </Text>
+                    <View style={styles.devicesHeaderRight}>
+                      <TouchableOpacity onPress={(e) => { e.stopPropagation(); fetchDevices(); }} style={styles.refreshIconBtn} disabled={isLoading}>
+                        <MaterialCommunityIcons name="refresh" size={20} color={theme.colors.primary} />
+                      </TouchableOpacity>
+                      <MaterialCommunityIcons
+                        name={devicesExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={20}
+                        color={theme.colors.textDim}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  {devicesExpanded && (
                   <ScrollView style={styles.devicesList}>
                     {devices.map((device: DeviceBindingInfo) => (
                       <View
@@ -192,14 +210,14 @@ export const SmartOTPSection: React.FC = () => {
                           </View>
                           <View style={styles.deviceDetails}>
                             <Text style={[styles.deviceName, { color: theme.colors.textPrimary }]}>
-                              {device.deviceName || 'Unknown Device'}
+                              {device.deviceName || 'Thiết bị không xác định'}
                             </Text>
                             <Text
                               style={[styles.deviceMeta, { color: theme.colors.textMuted }]}
                             >
-                              {device.fingerprint?.os || 'Unknown OS'} • {device.registeredAt
+                              {device.fingerprint?.os || 'Hệ điều hành không xác định'} • {device.registeredAt
                                 ? new Date(device.registeredAt).toLocaleDateString('vi-VN')
-                                : 'N/A'}
+                                : '—'}
                             </Text>
                           </View>
                         </View>
@@ -210,12 +228,13 @@ export const SmartOTPSection: React.FC = () => {
                           <MaterialCommunityIcons
                             name="delete-outline"
                             size={20}
-                            color={theme.colors.error}
+                            color={theme.colors.textDim}
                           />
                         </TouchableOpacity>
                       </View>
                     ))}
                   </ScrollView>
+                  )}
                 </View>
               </>
             ) : (
@@ -228,32 +247,23 @@ export const SmartOTPSection: React.FC = () => {
                   />
                 </View>
                 <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>
-                  Smart OTP Disabled
+                  Smart OTP chưa bật
                 </Text>
                 <Text style={[styles.emptySubtext, { color: theme.colors.textMuted }]}>
-                  Register this device to receive automatic OTP codes for secure transactions.
+                  Đăng ký thiết bị này để nhận mã OTP tự động cho các giao dịch bảo mật.
                 </Text>
               </View>
             )}
 
             {/* Action Buttons */}
             <View style={styles.actions}>
-              {!isRegistered ? (
+              {!isRegistered && (
                 <CommonButton
-                  title="REGISTER THIS DEVICE"
+                  title="Đăng ký thiết bị này"
                   onPress={handleRegister}
                   loading={isLoading}
                   icon="cellphone-check"
                   style={styles.registerBtn}
-                />
-              ) : (
-                <CommonButton
-                  title="REFRESH DEVICES"
-                  onPress={fetchDevices}
-                  loading={isLoading}
-                  variant="outline"
-                  icon="refresh"
-                  style={styles.refreshBtn}
                 />
               )}
             </View>
@@ -300,13 +310,13 @@ export const SmartOTPSection: React.FC = () => {
 
               <View style={styles.modalFooter}>
                 <CommonButton
-                  title="CANCEL"
+                  title="Hủy"
                   onPress={() => setShowAuthModal(false)}
                   variant="ghost"
                   style={{ flex: 1 }}
                 />
                 <CommonButton
-                  title="CONFIRM"
+                  title="Xác nhận"
                   onPress={() => {
                     const registerWithToken = async (token?: string) => {
                       const success = await registerDevice(token);
@@ -417,7 +427,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
   },
   devicesSection: {
-    marginBottom: 20,
+    marginBottom: 4,
+  },
+  devicesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  devicesHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  refreshIconBtn: {
+    padding: 6,
   },
   devicesTitle: {
     fontSize: 15,
@@ -426,7 +450,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   devicesList: {
-    maxHeight: 240,
+    maxHeight: 180,
   },
   deviceItem: {
     flexDirection: 'row',
