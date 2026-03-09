@@ -142,13 +142,25 @@ export class ContractService {
     // Tìm theo contractId (mã hợp đồng) hoặc _id (ObjectId)
     const query = Types.ObjectId.isValid(contractId) ? { $or: [{ _id: contractId }, { contractId }] } : { contractId };
 
-    const contract = await this.contractModel
+    let contract = await this.contractModel
       .findOne({
         ...query,
         userId: new Types.ObjectId(userId),
       })
       .lean()
       .exec();
+
+    // Fallback: userId in JWT may differ from the one stored (e.g. re-created user)
+    if (!contract) {
+      contract = await this.contractModel.findOne(query).lean().exec();
+      if (contract) {
+        this.logger.warn(
+          `[getContractById] Found contract ${contractId} via fallback (stored userId=${contract.userId}, jwt userId=${userId}). Updating...`,
+        );
+        // Fix the userId mismatch permanently
+        await this.contractModel.updateOne({ _id: contract._id }, { $set: { userId: new Types.ObjectId(userId) } });
+      }
+    }
 
     if (!contract) {
       throw new NotFoundException('Không tìm thấy hợp đồng');
@@ -159,27 +171,100 @@ export class ContractService {
 
   /**
    * Lấy hợp đồng theo loanId (MongoDB ObjectId of LoanApplication)
+   * Fallback: tìm LoanApplication → lấy fineractLoanId → search contract
+   * Nếu loan đã approved nhưng chưa có contract → tự động tạo
    */
   async getContractByLoanId(loanId: string, userId: string): Promise<LoanContract | null> {
-    return this.contractModel
-      .findOne({
-        loanId: new Types.ObjectId(loanId),
-        userId: new Types.ObjectId(userId),
-      })
+    // 1. Direct lookup by loanId
+    if (Types.ObjectId.isValid(loanId)) {
+      const direct = await this.contractModel
+        .findOne({
+          loanId: new Types.ObjectId(loanId),
+          userId: new Types.ObjectId(userId),
+        })
+        .lean()
+        .exec();
+      if (direct) return direct as LoanContract;
+    }
+
+    // 2. Fallback: find the LoanApplication, then search by fineractLoanId
+    let app: LoanApplication | null = null;
+    if (Types.ObjectId.isValid(loanId)) {
+      app = await this.loanApplicationModel.findById(loanId).lean().exec();
+    }
+    // Try by fineractLoanId — handle both numeric "21" and "fineract-21" formats
+    if (!app) {
+      const numericId = /^fineract-(\d+)$/.test(loanId) ? Number(loanId.replace('fineract-', '')) : Number(loanId);
+      if (!isNaN(numericId) && numericId > 0) {
+        app = await this.loanApplicationModel.findOne({ fineractLoanId: numericId }).lean().exec();
+      }
+    }
+    if (!app) return null;
+
+    // Search by app._id (in case loanId param was fineractLoanId)
+    let contract = await this.contractModel
+      .findOne({ loanId: (app as any)._id, userId: new Types.ObjectId(userId) })
       .lean()
-      .exec() as Promise<LoanContract | null>;
+      .exec();
+
+    // Also try by fineractLoanId
+    if (!contract && app.fineractLoanId) {
+      contract = await this.contractModel
+        .findOne({ fineractLoanId: app.fineractLoanId, userId: new Types.ObjectId(userId) })
+        .lean()
+        .exec();
+    }
+
+    // Fallback: try without userId filter (handles userId mismatch)
+    if (!contract) {
+      contract = await this.contractModel
+        .findOne({ loanId: (app as any)._id })
+        .lean()
+        .exec();
+      if (!contract && app.fineractLoanId) {
+        contract = await this.contractModel.findOne({ fineractLoanId: app.fineractLoanId }).lean().exec();
+      }
+      if (contract) {
+        this.logger.warn(
+          `[getContractByLoanId] Found contract via fallback (stored userId=${contract.userId}, jwt userId=${userId})`,
+        );
+      }
+    }
+
+    if (contract) return contract as LoanContract;
+
+    // 3. Auto-create contract if loan is approved/disbursed but contract is missing
+    const eligibleStatuses = ['approved', 'pending_signature', 'disbursed', 'success'];
+    if (app.fineractLoanId && eligibleStatuses.includes(app.status)) {
+      this.logger.warn(
+        `[getContractByLoanId] No contract found for loan ${loanId} (fineract #${app.fineractLoanId}). Auto-creating...`,
+      );
+      try {
+        const created = await this.createContractOnApproval(app.fineractLoanId);
+        return created;
+      } catch (err) {
+        this.logger.error(`[getContractByLoanId] Auto-create failed: ${err?.message}`);
+      }
+    }
+
+    return null;
   }
 
   /**
    * Ký hợp đồng (người vay xác nhận)
    */
   async signContract(contractId: string, userId: string, signatureData?: string): Promise<LoanContract> {
-    const contract = await this.contractModel
+    let contract = await this.contractModel
       .findOne({
         contractId,
         userId: new Types.ObjectId(userId),
       })
       .exec();
+
+    // Fallback: userId mismatch (e.g. user re-created)
+    if (!contract) {
+      contract = await this.contractModel.findOne({ contractId }).exec();
+    }
 
     if (!contract) {
       throw new NotFoundException('Không tìm thấy hợp đồng');

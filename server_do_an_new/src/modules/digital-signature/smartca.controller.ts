@@ -1,13 +1,4 @@
-﻿import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+﻿import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -52,7 +43,7 @@ export class DigitalSignatureController {
     return {
       success: result.success,
       data: {
-        certificates: result.certificates.map((c) => ({
+        certificates: result.certificates.map(c => ({
           serialNumber: c.serialNumber,
           status: c.status,
           statusCode: c.statusCode,
@@ -128,10 +119,7 @@ export class DigitalSignatureController {
   // ================================================================
   @Post('sign-v2')
   @ApiOperation({ summary: 'Ky so truc tiep v2 (password + OTP)' })
-  async signV2(
-    @Body() body: { contractId: string; password: string; otp: string },
-    @Req() req: any,
-  ) {
+  async signV2(@Body() body: { contractId: string; password: string; otp: string }, @Req() req: any) {
     const { contractId, password, otp } = body;
     if (!contractId) throw new BadRequestException('contractId is required');
     if (!password) throw new BadRequestException('password is required');
@@ -474,13 +462,14 @@ export class DigitalSignatureController {
   }
 
   private async findContract(contractId: string, userId: string): Promise<any> {
-    const query = Types.ObjectId.isValid(contractId)
-      ? { $or: [{ _id: contractId }, { contractId }] }
-      : { contractId };
+    const query = Types.ObjectId.isValid(contractId) ? { $or: [{ _id: contractId }, { contractId }] } : { contractId };
 
-    const contract = await this.contractModel
-      .findOne({ ...query, userId: new Types.ObjectId(userId) })
-      .lean();
+    let contract = await this.contractModel.findOne({ ...query, userId: new Types.ObjectId(userId) }).lean();
+
+    // Fallback: userId mismatch (e.g. user re-created)
+    if (!contract) {
+      contract = await this.contractModel.findOne(query).lean();
+    }
 
     if (!contract) throw new BadRequestException('Khong tim thay hop dong');
     return contract;

@@ -484,7 +484,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {/* Contract Button */}
                 <TouchableOpacity
                     style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.primary + '40', flexDirection: 'row', alignItems: 'center', padding: 16 }]}
-                    onPress={() => navigation.navigate('LoanContractDetail' as any, { loanId: loan.id })}
+                    onPress={() => navigation.navigate('LoanContractDetail' as any, { loanId: loan.id, fineractLoanId: loan.fineractLoanId })}
                     activeOpacity={0.7}
                 >
                     <MaterialCommunityIcons name="file-document-check-outline" size={24} color={colors.primary} />
