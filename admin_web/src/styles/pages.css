@@ -65,23 +65,118 @@
 .ant-table-tbody tr.schedule-row-paid td {
   background: #f6ffed !important;
 }
+
 [data-theme="dark"] .ant-table-tbody tr.schedule-row-paid td {
   background: rgba(16, 185, 129, 0.12) !important;
 }
+
 .ant-table-tbody tr.schedule-row-current td {
   background: #e6f4ff !important;
 }
+
 [data-theme="dark"] .ant-table-tbody tr.schedule-row-current td {
   background: rgba(59, 130, 246, 0.12) !important;
 }
+
 .ant-table-tbody tr.schedule-row-overdue td {
   background: #fff2f0 !important;
 }
+
 [data-theme="dark"] .ant-table-tbody tr.schedule-row-overdue td {
   background: rgba(239, 68, 68, 0.12) !important;
 }
+
 .ant-table-tbody tr.schedule-row-upcoming td {
   /* Chưa đến hạn: để mặc định hoặc xám nhạt */
+}
+
+/* ── Roles & Permissions Page ── */
+
+/* Permission card items */
+.perm-card-item {
+  transition: all 0.2s ease !important;
+}
+
+.perm-card-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .perm-card-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Collapse sections */
+.rp-perm-collapse {
+  background: transparent !important;
+  border: none !important;
+}
+
+[data-theme="light"] .rp-perm-collapse .ant-collapse-item {
+  border: 1.5px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  margin-bottom: 12px !important;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+[data-theme="dark"] .rp-perm-collapse .ant-collapse-item {
+  border: 1.5px solid #334155 !important;
+  border-radius: 10px !important;
+  margin-bottom: 12px !important;
+  overflow: hidden;
+  background: #1e293b;
+}
+
+.rp-perm-collapse .ant-collapse-item:last-child {
+  margin-bottom: 12px !important;
+}
+
+[data-theme="light"] .rp-perm-collapse .ant-collapse-header {
+  padding: 14px 16px !important;
+  align-items: center !important;
+  border-bottom: 1px solid transparent !important;
+  background: #f8fafc !important;
+}
+
+[data-theme="dark"] .rp-perm-collapse .ant-collapse-header {
+  padding: 14px 16px !important;
+  align-items: center !important;
+  border-bottom: 1px solid transparent !important;
+  background: #0f172a !important;
+}
+
+[data-theme="light"] .rp-perm-collapse .ant-collapse-item-active .ant-collapse-header {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="dark"] .rp-perm-collapse .ant-collapse-item-active .ant-collapse-header {
+  border-bottom: 1px solid #334155 !important;
+}
+
+.rp-perm-collapse .ant-collapse-content-box {
+  padding: 12px 16px 16px !important;
+}
+
+.rp-perm-collapse .ant-collapse-expand-icon {
+  padding-inline-end: 8px !important;
+}
+
+/* Role table selected row */
+[data-theme="light"] .rp-role-row-selected td {
+  background: #eff6ff !important;
+}
+
+[data-theme="dark"] .rp-role-row-selected td {
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+[data-theme="light"] .ant-table-tbody>tr.rp-role-row-selected:hover>td {
+  background: #dbeafe !important;
+}
+
+[data-theme="dark"] .ant-table-tbody>tr.rp-role-row-selected:hover>td {
+  background: rgba(59, 130, 246, 0.14) !important;
 }
 
 /* Login Page */
@@ -161,9 +256,7 @@
 }
 
 /* Sync Drift Page */
-.sync-drift-card {
-
-}
+.sync-drift-card {}
 
 [data-theme="light"] .sync-drift-card {
   border: 1px solid #E2E8F0 !important;
@@ -440,9 +533,7 @@
 }
 
 /* Loading States */
-.loading-card {
-
-}
+.loading-card {}
 
 [data-theme="light"] .loading-card {
   border: 1px solid #E2E8F0 !important;
@@ -460,13 +551,13 @@
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .info-card {
     flex-direction: column;
     align-items: center;
     text-align: center;
   }
-  
+
   .login-card .ant-card-body {
     padding: 32px 24px !important;
   }

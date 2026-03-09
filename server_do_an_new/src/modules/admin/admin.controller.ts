@@ -36,7 +36,7 @@ import { ReminderScheduler } from './reminder.scheduler';
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin')
-// @UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
@@ -766,7 +766,7 @@ export class AdminController {
     return { statusCode: 200, message: 'Xóa lãi thành công', data: result };
   }
   @Post('test-reminders')
-  // @CheckPolicies(ability => ability.can(Action.Manage, 'Loan'))
+  @CheckPolicies(ability => ability.can(Action.Manage, 'Loan'))
   @ApiOperation({ summary: 'Trigger reminder cron jobs manually for testing' })
   async triggerReminders() {
     await Promise.all([

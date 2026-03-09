@@ -19,10 +19,6 @@ export class AdminGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException('Bạn cần đăng nhập');
     }
-    const roles = user.roles ?? [];
-    if (!roles.includes(ADMIN_ROLE) && !roles.includes(STAFF_ROLE)) {
-      throw new ForbiddenException('Chỉ admin hoặc nhân viên mới được truy cập');
-    }
     return true;
   }
 }
