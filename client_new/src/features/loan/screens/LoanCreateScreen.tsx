@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult } from '../services/loan.service';
@@ -41,6 +42,12 @@ const QUICK_AMOUNTS = [
 const SLIDER_MIN = 5000000;
 const SLIDER_MAX = 100000000;
 const SLIDER_STEP = 1000000;
+const PRIMARY = '#F0B90B';
+const PRIMARY_SOFT = '#F0B90B18';
+const PERIOD_COLOR = '#7C6DFF';
+const PERIOD_SOFT = '#7C6DFF14';
+const RATE_COLOR = '#0ACF83';
+const RATE_SOFT = '#0ACF8314';
 
 // ── Custom Amount Slider ─────────────────────────────────────────────────────
 function AmountSlider({
@@ -118,52 +125,64 @@ function AmountSlider({
             }}
             {...panResponder.panHandlers}
         >
+            {/* Track background */}
             <View style={[sliderStyles.track, { backgroundColor: trackColor }]}>
                 <Animated.View
-                    style={[
-                        sliderStyles.trackFill,
-                        { backgroundColor: primaryColor, width: panX },
-                    ]}
-                />
+                    style={[sliderStyles.trackFill, { width: panX }]}
+                >
+                    <LinearGradient
+                        colors={[primaryColor + 'CC', primaryColor]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={StyleSheet.absoluteFill}
+                    />
+                </Animated.View>
             </View>
+            {/* Thumb */}
             <Animated.View
                 style={[
                     sliderStyles.thumb,
-                    {
-                        borderColor: primaryColor,
-                        transform: [{ translateX: Animated.subtract(panX, 11) }],
-                    },
+                    { transform: [{ translateX: Animated.subtract(panX, 13) }] },
                 ]}
             >
-                <View style={[sliderStyles.thumbDot, { backgroundColor: primaryColor }]} />
+                <LinearGradient
+                    colors={[primaryColor, primaryColor + 'DD']}
+                    style={sliderStyles.thumbGradient}
+                />
+                <View style={sliderStyles.thumbInner} />
             </Animated.View>
         </View>
     );
 }
 
 const sliderStyles = StyleSheet.create({
-    container: { height: 36, justifyContent: 'center', marginTop: 2 },
-    track: { height: 4, borderRadius: 2, overflow: 'hidden' },
-    trackFill: { height: '100%', borderRadius: 2 },
+    container: { height: 44, justifyContent: 'center', marginTop: 4 },
+    track: { height: 6, borderRadius: 3, overflow: 'visible' },
+    trackFill: { height: '100%', borderRadius: 3, overflow: 'hidden' },
     thumb: {
         position: 'absolute',
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        borderWidth: 3,
-        backgroundColor: '#fff',
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.12,
-        shadowRadius: 3,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        elevation: 6,
+        shadowColor: PRIMARY,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.4,
+        shadowRadius: 6,
         justifyContent: 'center',
         alignItems: 'center',
+        overflow: 'hidden',
     },
-    thumbDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+    thumbGradient: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 13,
+    },
+    thumbInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#fff',
+        opacity: 0.9,
     },
 });
 
@@ -173,51 +192,82 @@ type LoanCreateNav = NativeStackNavigationProp<RootStackParamList, 'LoanCreate'>
 // ── Step indicator ───────────────────────────────────────────────────────────
 function StepIndicator({ current, theme }: { current: number; theme: any }) {
     const c = theme.colors;
+    const labels = ['Nhập thông tin vay', 'Xác nhận & gửi đơn'];
     return (
-        <View style={stepStyles.container}>
-            <View style={stepStyles.stepsRow}>
-                {[0, 1].map((i) => (
-                    <React.Fragment key={i}>
-                        <View style={[
-                            stepStyles.dot,
-                            i <= current
-                                ? { backgroundColor: c.primary }
-                                : { backgroundColor: c.border + '60' },
-                        ]}>
-                            {i < current ? (
-                                <MaterialCommunityIcons name="check" size={11} color="#fff" />
-                            ) : (
-                                <Text style={[stepStyles.dotText, i <= current && { color: '#000' }]}>{i + 1}</Text>
+        <View style={stepStyles.wrapper}>
+            <View style={stepStyles.row}>
+                {[0, 1].map((i) => {
+                    const done = i < current;
+                    const active = i === current;
+                    return (
+                        <React.Fragment key={i}>
+                            <View style={stepStyles.stepCol}>
+                                <View style={[
+                                    stepStyles.dot,
+                                    done && { backgroundColor: PRIMARY },
+                                    active && { borderWidth: 0 },
+                                    !done && !active && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: c.border + '50' },
+                                ]}>
+                                    {active ? (
+                                        <LinearGradient
+                                            colors={[PRIMARY + 'EE', PRIMARY]}
+                                            style={StyleSheet.absoluteFill}
+                                        />
+                                    ) : null}
+                                    {done ? (
+                                        <MaterialCommunityIcons name="check" size={12} color="#000" />
+                                    ) : (
+                                        <Text style={[stepStyles.dotNum, { color: active ? '#000' : c.border + '80' }]}>{i + 1}</Text>
+                                    )}
+                                </View>
+                                <Text style={[stepStyles.stepLabel, {
+                                    color: active ? c.textPrimary : done ? PRIMARY : c.textDim,
+                                    fontWeight: active ? '600' : '400',
+                                }]}>
+                                    {labels[i]}
+                                </Text>
+                            </View>
+                            {i < 1 && (
+                                <View style={stepStyles.lineWrap}>
+                                    {done ? (
+                                        <LinearGradient
+                                            colors={[PRIMARY, PRIMARY + 'AA']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                            style={stepStyles.lineGrad}
+                                        />
+                                    ) : (
+                                        <View style={[stepStyles.lineBlank, { backgroundColor: c.border + '30' }]} />
+                                    )}
+                                </View>
                             )}
-                        </View>
-                        {i < 1 && (
-                            <View style={[
-                                stepStyles.connector,
-                                i < current
-                                    ? { backgroundColor: c.primary }
-                                    : { backgroundColor: c.border + '40' },
-                            ]} />
-                        )}
-                    </React.Fragment>
-                ))}
+                        </React.Fragment>
+                    );
+                })}
             </View>
-            <Text style={[stepStyles.label, { color: c.textPrimary }]}>
-                {current === 0 ? 'Nhập thông tin vay' : 'Xác nhận & gửi đơn'}
-            </Text>
         </View>
     );
 }
 
 const stepStyles = StyleSheet.create({
-    container: { paddingHorizontal: 20, paddingVertical: 14, gap: 6 },
-    stepsRow: { flexDirection: 'row', alignItems: 'center' },
+    wrapper: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
+    row: { flexDirection: 'row', alignItems: 'flex-start' },
+    stepCol: { alignItems: 'center', gap: 6, width: 72 },
     dot: {
-        width: 24, height: 24, borderRadius: 12,
+        width: 28, height: 28, borderRadius: 14,
         justifyContent: 'center', alignItems: 'center',
+        overflow: 'hidden',
+        elevation: 2,
+        shadowColor: PRIMARY,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
     },
-    dotText: { fontSize: 11, fontWeight: '700', color: '#999' },
-    connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
-    label: { fontSize: 15, fontWeight: '600', marginTop: 2 },
+    dotNum: { fontSize: 12, fontWeight: '700' },
+    stepLabel: { fontSize: 10, textAlign: 'center', lineHeight: 13 },
+    lineWrap: { flex: 1, marginTop: 13, paddingHorizontal: 4 },
+    lineGrad: { height: 2, borderRadius: 1 },
+    lineBlank: { height: 2, borderRadius: 1 },
 });
 
 // ── Period Stepper ───────────────────────────────────────────────────────────
@@ -281,44 +331,47 @@ function PeriodStepper({
 
     return (
         <Animated.View style={{ transform: [{ scale: pressAnim }] }}>
+            {/* Quick chips */}
             {quickChips.length > 0 && (
                 <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={periodStepperStyles.chipRow}
-                    style={{ marginBottom: 16 }}
+                    contentContainerStyle={periodStyles.chipRow}
+                    style={{ marginBottom: 18 }}
                 >
                     {quickChips.map((p) => {
                         const active = value === p;
                         return (
                             <TouchableOpacity
                                 key={p}
-                                style={[
-                                    periodStepperStyles.chip,
-                                    { borderColor: active ? primaryColor : borderColor + '50' },
-                                    active && { backgroundColor: primaryColor + '10' },
-                                ]}
                                 onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                                activeOpacity={0.7}
+                                activeOpacity={0.75}
+                                style={periodStyles.chipOuter}
                             >
-                                <Text style={[
-                                    periodStepperStyles.chipText,
-                                    { color: active ? primaryColor : dimColor },
-                                ]}>
-                                    {p} tháng
-                                </Text>
+                                {active ? (
+                                    <LinearGradient
+                                        colors={[PERIOD_COLOR + 'DD', PERIOD_COLOR]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={periodStyles.chipGradient}
+                                    >
+                                        <Text style={[periodStyles.chipText, { color: '#fff' }]}>{p} tháng</Text>
+                                    </LinearGradient>
+                                ) : (
+                                    <View style={[periodStyles.chipInactive, { borderColor: borderColor + '40' }]}>
+                                        <Text style={[periodStyles.chipText, { color: dimColor }]}>{p} tháng</Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
                 </ScrollView>
             )}
 
-            <View style={[periodStepperStyles.row, { borderColor: borderColor + '30' }]}>
+            {/* Stepper row */}
+            <View style={[periodStyles.stepperRow, { backgroundColor: PERIOD_SOFT, borderColor: PERIOD_COLOR + '30' }]}>
                 <TouchableOpacity
-                    style={[
-                        periodStepperStyles.btn,
-                        { backgroundColor: value <= min ? dimColor + '08' : primaryColor + '10' },
-                    ]}
+                    style={[periodStyles.stepBtn, value <= min && periodStyles.stepBtnDisabled]}
                     onPress={decrement}
                     disabled={value <= min}
                     activeOpacity={0.6}
@@ -326,26 +379,23 @@ function PeriodStepper({
                     <MaterialCommunityIcons
                         name="minus"
                         size={22}
-                        color={value <= min ? dimColor + '40' : primaryColor}
+                        color={value <= min ? dimColor + '35' : PERIOD_COLOR}
                     />
                 </TouchableOpacity>
 
-                <View style={periodStepperStyles.center}>
+                <View style={periodStyles.stepCenter}>
                     <TextInput
-                        style={[periodStepperStyles.input, { color: primaryColor }]}
+                        style={[periodStyles.stepInput, { color: PERIOD_COLOR }]}
                         value={inputText}
                         onChangeText={handleTextChange}
                         keyboardType="number-pad"
                         selectTextOnFocus
                     />
-                    <Text style={[periodStepperStyles.unit, { color: dimColor }]}>tháng</Text>
+                    <Text style={[periodStyles.stepUnit, { color: dimColor }]}>tháng</Text>
                 </View>
 
                 <TouchableOpacity
-                    style={[
-                        periodStepperStyles.btn,
-                        { backgroundColor: value >= max ? dimColor + '08' : primaryColor + '10' },
-                    ]}
+                    style={[periodStyles.stepBtn, value >= max && periodStyles.stepBtnDisabled]}
                     onPress={increment}
                     disabled={value >= max}
                     activeOpacity={0.6}
@@ -353,36 +403,69 @@ function PeriodStepper({
                     <MaterialCommunityIcons
                         name="plus"
                         size={22}
-                        color={value >= max ? dimColor + '40' : primaryColor}
+                        color={value >= max ? dimColor + '35' : PERIOD_COLOR}
                     />
                 </TouchableOpacity>
             </View>
-            <Text style={[periodStepperStyles.rangeHint, { color: dimColor }]}>
+
+            <Text style={[periodStyles.rangeHint, { color: dimColor }]}>
                 Khoảng: {min} – {max} tháng
             </Text>
         </Animated.View>
     );
 }
 
-const periodStepperStyles = StyleSheet.create({
-    chipRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 2 },
-    chip: {
-        paddingHorizontal: 20, paddingVertical: 9,
-        borderRadius: 24, borderWidth: 1.2,
-    },
+const periodStyles = StyleSheet.create({
+    chipRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 2, paddingVertical: 2 },
+    chipOuter: { borderRadius: 24, overflow: 'hidden' },
+    chipGradient: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 24 },
+    chipInactive: { paddingHorizontal: 22, paddingVertical: 9, borderRadius: 24, borderWidth: 1.2 },
     chipText: { fontSize: 13, fontWeight: '600' },
-    row: {
-        flexDirection: 'row', alignItems: 'center',
-        borderWidth: 1.2, borderRadius: 16, overflow: 'hidden',
+    stepperRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1.2,
+        borderRadius: 18,
+        overflow: 'hidden',
     },
-    btn: {
-        width: 54, height: 54,
+    stepBtn: {
+        width: 58, height: 58,
         justifyContent: 'center', alignItems: 'center',
     },
-    center: { flex: 1, alignItems: 'center', paddingVertical: 8 },
-    input: { fontSize: 26, fontWeight: '800', textAlign: 'center', minWidth: 50 },
-    unit: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-    rangeHint: { fontSize: 11, marginTop: 8, textAlign: 'center' },
+    stepBtnDisabled: { opacity: 0.4 },
+    stepCenter: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+    stepInput: { fontSize: 28, fontWeight: '800', textAlign: 'center', minWidth: 60 },
+    stepUnit: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+    rangeHint: { fontSize: 11, marginTop: 10, textAlign: 'center', opacity: 0.6 },
+});
+
+// ── Card Connector ───────────────────────────────────────────────────────────
+function CardConnector({ color, surfaceColor }: { color: string; surfaceColor: string }) {
+    return (
+        <View style={connStyles.wrapper}>
+            <View style={[connStyles.lineTop, { backgroundColor: color + '35' }]} />
+            <View style={[connStyles.badge, { backgroundColor: surfaceColor, borderColor: color + '45' }]}>
+                <MaterialCommunityIcons name="chevron-down" size={13} color={color + 'BB'} />
+            </View>
+            <View style={[connStyles.lineBot, { backgroundColor: color + '35' }]} />
+        </View>
+    );
+}
+
+const connStyles = StyleSheet.create({
+    wrapper: { alignItems: 'center', marginVertical: 2 },
+    lineTop: { width: 1.5, height: 14, borderRadius: 1 },
+    badge: {
+        width: 28, height: 28, borderRadius: 14,
+        borderWidth: 1.5,
+        justifyContent: 'center', alignItems: 'center',
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+    },
+    lineBot: { width: 1.5, height: 14, borderRadius: 1 },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
@@ -483,7 +566,6 @@ export default function LoanCreateScreen() {
     }
 
     const canProceed = !!schedule && capitalNum >= 100000 && effectivePeriod >= 1;
-
     const formatCurrency = (n: number) => n.toLocaleString('vi-VN');
 
     return (
@@ -492,111 +574,148 @@ export default function LoanCreateScreen() {
             <StepIndicator current={0} theme={theme} />
 
             <KeyboardAvoidingView
-                style={styles.keyboardContainer}
+                style={styles.flex}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
             >
                 <ScrollView
-                    style={styles.scrollContainer}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* ── Section 1: Số tiền vay ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
-                        <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: theme.colors.primary + '12' }]}>
-                                <MaterialCommunityIcons name="cash-fast" size={18} color={theme.colors.primary} />
-                            </View>
-                            <View style={styles.sectionHeaderText}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Số tiền vay</Text>
+                    {/* ── Card 1: Số tiền vay ── */}
+                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
+                        <LinearGradient
+                            colors={[PRIMARY + 'AA', PRIMARY + '10']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.cardTopBar}
+                        />
+                        {/* Card title bar */}
+                        <View style={styles.cardTitleRow}>
+                            <LinearGradient
+                                colors={[PRIMARY + 'CC', PRIMARY]}
+                                style={styles.cardIconWrap}
+                            >
+                                <MaterialCommunityIcons name="cash-fast" size={17} color="#111" />
+                            </LinearGradient>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Số tiền vay</Text>
                                 {product?.minPrincipal != null && (
-                                    <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
+                                    <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>
                                         {formatCurrency(product.minPrincipal)} – {formatCurrency(product.maxPrincipal!)} đ
                                     </Text>
                                 )}
                             </View>
+                            {capitalNum >= 100000 && (
+                                <View style={[styles.badgeValid, { backgroundColor: PRIMARY + '18' }]}>
+                                    <MaterialCommunityIcons name="check-circle" size={13} color={PRIMARY} />
+                                </View>
+                            )}
                         </View>
 
-                        <View style={[styles.amountInputWrapper, { borderColor: theme.colors.border + '40' }]}>
+                        {/* Big amount display */}
+                        <View style={[styles.amountBox, { borderColor: capitalNum >= 100000 ? PRIMARY + '50' : theme.colors.border + '30' }]}>
                             <TextInput
                                 style={[styles.amountInput, { color: theme.colors.textPrimary }]}
                                 placeholder="0"
-                                placeholderTextColor={theme.colors.textDim + '40'}
-                                value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                                placeholderTextColor={theme.colors.textDim + '30'}
+                                value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
                                 onChangeText={(t) => setCapital(t.replace(/\D/g, ''))}
                                 keyboardType="number-pad"
                             />
-                            <Text style={[styles.amountCurrency, { color: theme.colors.textDim }]}>VND</Text>
+                            <View style={[styles.currencyTag, { backgroundColor: PRIMARY + '12' }]}>
+                                <Text style={[styles.currencyText, { color: PRIMARY }]}>VND</Text>
+                            </View>
                         </View>
 
+                        {/* Slider */}
                         <AmountSlider
                             value={capitalNum || SLIDER_MIN}
                             onChange={(v) => setCapital(String(v))}
                             min={SLIDER_MIN}
                             max={SLIDER_MAX}
-                            primaryColor={theme.colors.primary}
-                            trackColor={theme.colors.border + '40'}
+                            primaryColor={PRIMARY}
+                            trackColor={theme.colors.border + '35'}
                         />
                         <View style={styles.sliderLabels}>
-                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>5 triệu</Text>
-                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>100 triệu</Text>
+                            <Text style={[styles.sliderLabel, { color: theme.colors.textDim }]}>5 triệu</Text>
+                            <Text style={[styles.sliderLabel, { color: theme.colors.textDim }]}>100 triệu</Text>
                         </View>
 
+                        {/* Quick amount chips */}
                         <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.quickAmountScroll}
-                            style={{ marginTop: 10 }}
+                            contentContainerStyle={styles.chipScroll}
+                            style={{ marginTop: 16 }}
                         >
                             {QUICK_AMOUNTS.map((qa) => {
-                                const isSelected = capitalNum === qa.value;
+                                const active = capitalNum === qa.value;
                                 return (
                                     <TouchableOpacity
                                         key={qa.value}
-                                        style={[
-                                            styles.quickChip,
-                                            { borderColor: isSelected ? theme.colors.primary : theme.colors.border + '50' },
-                                            isSelected && { backgroundColor: theme.colors.primary + '10' },
-                                        ]}
                                         onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                                        activeOpacity={0.7}
+                                        activeOpacity={0.75}
+                                        style={styles.chipOuter}
                                     >
-                                        <Text style={[
-                                            styles.quickChipText,
-                                            { color: isSelected ? theme.colors.primary : theme.colors.textSecondary },
-                                        ]}>
-                                            {qa.label}
-                                        </Text>
+                                        {active ? (
+                                            <LinearGradient
+                                                colors={[PRIMARY + 'DD', PRIMARY]}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 1 }}
+                                                style={styles.chipActive}
+                                            >
+                                                <Text style={styles.chipTextActive}>{qa.label}</Text>
+                                            </LinearGradient>
+                                        ) : (
+                                            <View style={[styles.chipInactive, { borderColor: theme.colors.border + '40' }]}>
+                                                <Text style={[styles.chipTextInactive, { color: theme.colors.textSecondary }]}>{qa.label}</Text>
+                                            </View>
+                                        )}
                                     </TouchableOpacity>
                                 );
                             })}
                         </ScrollView>
                     </View>
 
-                    {/* ── Section 2: Kỳ hạn ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
-                        <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: '#6C5CE7' + '12' }]}>
-                                <MaterialCommunityIcons name="calendar-clock" size={18} color="#6C5CE7" />
-                            </View>
-                            <View style={styles.sectionHeaderText}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Kỳ hạn vay</Text>
-                                <Text style={[styles.sectionHint, { color: theme.colors.textDim }]}>
+                    <CardConnector color={PERIOD_COLOR} surfaceColor={theme.colors.surface} />
+
+                    {/* ── Card 2: Kỳ hạn ── */}
+                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
+                        <LinearGradient
+                            colors={[PERIOD_COLOR + 'AA', PERIOD_COLOR + '10']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.cardTopBar}
+                        />
+                        <View style={styles.cardTitleRow}>
+                            <LinearGradient
+                                colors={[PERIOD_COLOR + 'BB', PERIOD_COLOR]}
+                                style={styles.cardIconWrap}
+                            >
+                                <MaterialCommunityIcons name="calendar-clock" size={17} color="#fff" />
+                            </LinearGradient>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Kỳ hạn vay</Text>
+                                <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>
                                     {minRep} – {maxRep} tháng
                                 </Text>
                             </View>
                         </View>
 
                         {loadingConfig ? (
-                            <ActivityIndicator color={theme.colors.primary} size="small" />
+                            <View style={styles.loadingRow}>
+                                <ActivityIndicator color={PERIOD_COLOR} size="small" />
+                                <Text style={[styles.loadingText, { color: theme.colors.textDim }]}>Đang tải...</Text>
+                            </View>
                         ) : (
                             <PeriodStepper
                                 value={effectivePeriod}
                                 onChange={(v) => { setPeriodMonth(v); setCustomPeriod(''); }}
                                 min={minRep}
                                 max={maxRep}
-                                primaryColor={theme.colors.primary}
+                                primaryColor={PERIOD_COLOR}
                                 textColor={theme.colors.textPrimary}
                                 borderColor={theme.colors.border}
                                 dimColor={theme.colors.textDim}
@@ -604,246 +723,315 @@ export default function LoanCreateScreen() {
                         )}
                     </View>
 
-                    {/* ── Section 3: Lãi suất ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
-                        <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: '#00B894' + '12' }]}>
-                                <MaterialCommunityIcons name="percent-outline" size={18} color="#00B894" />
-                            </View>
-                            <View style={styles.sectionHeaderText}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
+                    <CardConnector color={RATE_COLOR} surfaceColor={theme.colors.surface} />
+
+                    {/* ── Card 3: Lãi suất ── */}
+                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
+                        <LinearGradient
+                            colors={[RATE_COLOR + 'AA', RATE_COLOR + '10']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.cardTopBar}
+                        />
+                        <View style={styles.cardTitleRow}>
+                            <LinearGradient
+                                colors={[RATE_COLOR + 'BB', RATE_COLOR]}
+                                style={styles.cardIconWrap}
+                            >
+                                <MaterialCommunityIcons name="percent-outline" size={17} color="#fff" />
+                            </LinearGradient>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
                             </View>
                         </View>
 
                         {loadingConfig ? (
-                            <ActivityIndicator color={theme.colors.primary} size="small" />
-                        ) : config && (
-                            <View style={[styles.rateCard, { backgroundColor: '#00B894' + '06', borderColor: '#00B894' + '18' }]}>
-                                <View style={styles.rateCardTop}>
-                                    <View style={{ alignItems: 'center', flex: 1 }}>
-                                        <Text style={[styles.rateMainValue, { color: '#00B894' }]}>
-                                            {+config.monthlyRate.toFixed(2)}%
-                                        </Text>
-                                        <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi tháng</Text>
-                                    </View>
-                                    <View style={[styles.rateDividerV, { backgroundColor: theme.colors.border + '30' }]} />
-                                    <View style={{ alignItems: 'center', flex: 1 }}>
-                                        <Text style={[styles.rateSubValue, { color: theme.colors.textSecondary }]}>
-                                            ≈ {+config.annualRate.toFixed(2)}%
-                                        </Text>
-                                        <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi năm</Text>
-                                    </View>
+                            <View style={styles.loadingRow}>
+                                <ActivityIndicator color={RATE_COLOR} size="small" />
+                            </View>
+                        ) : config ? (
+                            <View style={[styles.rateBody, { backgroundColor: RATE_SOFT, borderColor: RATE_COLOR + '25' }]}>
+                                <View style={styles.rateMain}>
+                                    <Text style={[styles.rateMainValue, { color: RATE_COLOR }]}>
+                                        {+config.monthlyRate.toFixed(2)}%
+                                    </Text>
+                                    <Text style={[styles.rateMainUnit, { color: theme.colors.textDim }]}>/ tháng</Text>
+                                </View>
+                                <View style={[styles.rateDivider, { backgroundColor: RATE_COLOR + '25' }]} />
+                                <View style={styles.rateSub}>
+                                    <Text style={[styles.rateSubValue, { color: RATE_COLOR + 'BB' }]}>
+                                        ≈ {+config.annualRate.toFixed(2)}%
+                                    </Text>
+                                    <Text style={[styles.rateSubUnit, { color: theme.colors.textDim }]}>/ năm</Text>
                                 </View>
                             </View>
-                        )}
+                        ) : null}
                     </View>
 
                     {/* ── Preview kết quả ── */}
-                    {loadingPreview ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
-                            <ActivityIndicator size="small" color={theme.colors.primary} />
-                            <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
-                        </View>
-                    ) : schedule && capitalNum >= 100000 ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
-                            <View style={styles.previewRow}>
-                                <View style={styles.previewItem}>
-                                    <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
-                                    <Text style={[styles.previewItemValue, { color: theme.colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>
-                                        {formatCurrency(schedule.monthlyPay)} đ
-                                    </Text>
-                                </View>
-                                <View style={[styles.previewDivider, { backgroundColor: theme.colors.border + '30' }]} />
-                                <View style={styles.previewItem}>
-                                    <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
-                                    <Text style={[styles.previewTotalValue, { color: theme.colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
-                                        {formatCurrency(schedule.entirelyPay)} đ
-                                    </Text>
-                                </View>
+                    {(loadingPreview || (schedule && capitalNum >= 100000)) && (
+                        <CardConnector color={PRIMARY} surfaceColor={theme.colors.surface} />
+                    )}
+                    {(loadingPreview || (schedule && capitalNum >= 100000)) && (
+                        <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
+                            {/* Gold top bar */}
+                            <LinearGradient
+                                colors={[PRIMARY + 'AA', PRIMARY + '10']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.cardTopBar}
+                            />
+                            <View style={styles.cardTitleRow}>
+                                <LinearGradient
+                                    colors={[PRIMARY + 'BB', PRIMARY]}
+                                    style={styles.cardIconWrap}
+                                >
+                                    <MaterialCommunityIcons name="calculator-variant-outline" size={17} color="#111" />
+                                </LinearGradient>
+                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Dự tính khoản trả</Text>
                             </View>
-                            <View style={[styles.previewInterest, { backgroundColor: theme.colors.surfaceLight }]}>
-                                <MaterialCommunityIcons name="information-outline" size={13} color={theme.colors.textDim} />
-                                <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
-                                    Tổng lãi: {formatCurrency(schedule.entirelyPay - capitalNum)} đ
-                                </Text>
-                            </View>
-                        </View>
-                    ) : null}
 
-                    <View style={{ height: 100 }} />
+                            {loadingPreview ? (
+                                <View style={styles.loadingRow}>
+                                    <ActivityIndicator color={PRIMARY} size="small" />
+                                    <Text style={[styles.loadingText, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
+                                </View>
+                            ) : schedule ? (
+                                <>
+                                    <View style={styles.previewRow}>
+                                        <View style={styles.previewCol}>
+                                            <Text style={[styles.previewLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
+                                            <Text style={[styles.previewBigValue, { color: PRIMARY }]} numberOfLines={1} adjustsFontSizeToFit>
+                                                {formatCurrency(schedule.monthlyPay)}
+                                            </Text>
+                                            <Text style={[styles.previewUnit, { color: theme.colors.textDim }]}>đồng</Text>
+                                        </View>
+                                        <View style={[styles.previewVDivider, { backgroundColor: theme.colors.border + '30' }]} />
+                                        <View style={styles.previewCol}>
+                                            <Text style={[styles.previewLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
+                                            <Text style={[styles.previewMidValue, { color: theme.colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
+                                                {formatCurrency(schedule.entirelyPay)}
+                                            </Text>
+                                            <Text style={[styles.previewUnit, { color: theme.colors.textDim }]}>đồng</Text>
+                                        </View>
+                                    </View>
+                                    <View style={[styles.previewInterestRow, { backgroundColor: theme.colors.background }]}>
+                                        <MaterialCommunityIcons name="trending-up" size={14} color={theme.colors.textDim} />
+                                        <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
+                                            Tổng lãi: <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{formatCurrency(schedule.entirelyPay - capitalNum)} đ</Text>
+                                        </Text>
+                                    </View>
+                                </>
+                            ) : null}
+                        </View>
+                    )}
+
+                    <View style={{ height: 110 }} />
                 </ScrollView>
 
                 {/* ── Sticky Bottom Bar ── */}
-                <View style={[styles.stickyBar, {
+                <View style={[styles.bottomBar, {
                     backgroundColor: theme.colors.surface,
                     borderTopColor: theme.colors.border + '20',
-                    paddingBottom: Math.max(insets.bottom, 12),
+                    paddingBottom: Math.max(insets.bottom, 14),
                 }]}>
-                    {schedule && capitalNum >= 100000 ? (
-                        <View style={styles.stickyBarInfo}>
-                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
-                            <Text style={[styles.stickyValue, { color: theme.colors.primary }]}>
-                                {formatCurrency(schedule.monthlyPay)} đ
+                    <View style={styles.bottomInfo}>
+                        {schedule && capitalNum >= 100000 ? (
+                            <>
+                                <Text style={[styles.bottomLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
+                                <Text style={[styles.bottomValue, { color: PRIMARY }]} numberOfLines={1}>
+                                    {formatCurrency(schedule.monthlyPay)} đ
+                                </Text>
+                            </>
+                        ) : (
+                            <Text style={[styles.bottomHint, { color: theme.colors.textDim }]}>
+                                {capitalNum > 0 && capitalNum < 100000
+                                    ? 'Tối thiểu 100.000 đ'
+                                    : 'Nhập số tiền để tính toán'}
                             </Text>
-                        </View>
-                    ) : (
-                        <View style={styles.stickyBarInfo}>
-                            <Text style={[styles.stickyLabel, { color: theme.colors.textDim }]}>
-                                {capitalNum < 100000 ? 'Nhập số tiền tối thiểu 100.000 đ' : 'Đang tính toán...'}
-                            </Text>
-                        </View>
-                    )}
+                        )}
+                    </View>
+
                     <TouchableOpacity
-                        style={[
-                            styles.nextBtn,
-                            { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border + '40' },
-                        ]}
                         onPress={handleNext}
                         disabled={!canProceed}
-                        activeOpacity={0.8}
+                        activeOpacity={0.85}
+                        style={styles.nextBtnOuter}
                     >
-                        <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
-                        <MaterialCommunityIcons name="arrow-right" size={16} color={canProceed ? '#000' : theme.colors.textDim} />
+                        {canProceed ? (
+                            <LinearGradient
+                                colors={[PRIMARY + 'EE', PRIMARY]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.nextBtnGradient}
+                            >
+                                <Text style={styles.nextBtnText}>Tiếp tục</Text>
+                                <MaterialCommunityIcons name="arrow-right" size={17} color="#111" />
+                            </LinearGradient>
+                        ) : (
+                            <View style={[styles.nextBtnDisabled, { backgroundColor: theme.colors.border + '35' }]}>
+                                <Text style={[styles.nextBtnTextDisabled, { color: theme.colors.textDim }]}>Tiếp tục</Text>
+                                <MaterialCommunityIcons name="arrow-right" size={17} color={theme.colors.textDim} />
+                            </View>
+                        )}
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-
-        </View >
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    keyboardContainer: { flex: 1 },
-    scrollContainer: { flex: 1 },
     flex: { flex: 1 },
-    scroll: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 24, gap: 14 },
+    scrollContent: { padding: 14, paddingTop: 8, paddingBottom: 20, gap: 0 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    // Section cards
-    section: {
+    // Card
+    card: {
+        borderRadius: 20,
         padding: 20,
-        borderRadius: 22,
-        borderWidth: 1,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.07,
+        shadowRadius: 8,
     },
-    sectionHeader: {
+    cardTitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        marginBottom: 18,
+        marginBottom: 20,
     },
-    sectionIcon: {
-        width: 38,
-        height: 38,
-        borderRadius: 12,
+    cardIconWrap: {
+        width: 36,
+        height: 36,
+        borderRadius: 11,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    sectionHeaderText: { flex: 1 },
-    sectionTitle: { fontSize: 15, fontWeight: '600' },
-    sectionHint: { fontSize: 11, marginTop: 2, opacity: 0.7 },
+    cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.1 },
+    cardSubtitle: { fontSize: 11, marginTop: 2, opacity: 0.65 },
+    badgeValid: {
+        width: 26, height: 26, borderRadius: 13,
+        justifyContent: 'center', alignItems: 'center',
+    },
 
-    // Amount
-    amountInputWrapper: {
+    // Amount input
+    amountBox: {
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1.5,
-        borderRadius: 14,
+        borderRadius: 16,
         paddingHorizontal: 16,
-        marginBottom: 12,
+        marginBottom: 14,
+        minHeight: 60,
     },
     amountInput: {
         flex: 1,
-        fontSize: 26,
-        fontWeight: '700',
-        paddingVertical: 12,
-        letterSpacing: 0.3,
+        fontSize: 28,
+        fontWeight: '800',
+        paddingVertical: 10,
+        letterSpacing: 0.5,
     },
-    amountCurrency: {
-        fontSize: 13,
-        fontWeight: '600',
-        opacity: 0.4,
+    currencyTag: {
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
         marginLeft: 8,
     },
+    currencyText: { fontSize: 12, fontWeight: '700' },
+
+    // Slider labels
     sliderLabels: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginTop: 2,
-    },
-    sliderLabelText: { fontSize: 11, fontWeight: '500' },
-    quickAmountScroll: {
-        flexDirection: 'row',
-        gap: 8,
+        marginTop: 4,
         paddingHorizontal: 2,
     },
-    quickChip: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 9,
-        borderRadius: 24,
-        borderWidth: 1.2,
-    },
-    quickChipText: { fontSize: 12, fontWeight: '600' },
+    sliderLabel: { fontSize: 11, fontWeight: '500', opacity: 0.6 },
 
-    // Rate
-    rateCard: {
+    // Quick chips
+    chipScroll: { flexDirection: 'row', gap: 9, paddingHorizontal: 2, paddingVertical: 2 },
+    chipOuter: { borderRadius: 22, overflow: 'hidden' },
+    chipActive: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 22 },
+    chipInactive: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 22, borderWidth: 1.2 },
+    chipTextActive: { fontSize: 12, fontWeight: '700', color: '#111' },
+    chipTextInactive: { fontSize: 12, fontWeight: '600' },
+
+    // Rate card
+    rateBody: {
+        flexDirection: 'row',
+        alignItems: 'center',
         borderRadius: 14,
         borderWidth: 1,
         padding: 16,
+        gap: 12,
     },
-    rateCardTop: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 16,
-        paddingVertical: 2,
-    },
-    rateMainValue: { fontSize: 26, fontWeight: '800' },
-    rateMainLabel: { fontSize: 11, marginTop: 2, opacity: 0.7 },
-    rateSubValue: { fontSize: 17, fontWeight: '700' },
-    rateDividerV: { width: 1, height: 32 },
+    rateMain: { flex: 1, alignItems: 'center' },
+    rateMainValue: { fontSize: 28, fontWeight: '800' },
+    rateMainUnit: { fontSize: 11, marginTop: 2, opacity: 0.65 },
+    rateDivider: { width: 1, height: 34 },
+    rateSub: { flex: 1, alignItems: 'center' },
+    rateSubValue: { fontSize: 18, fontWeight: '700' },
+    rateSubUnit: { fontSize: 11, marginTop: 2, opacity: 0.65 },
 
-    // Preview
-    previewCard: {
-        borderRadius: 22,
-        borderWidth: 1,
-        padding: 20,
-    },
-    previewLoading: { textAlign: 'center', marginTop: 8, fontSize: 13 },
-    previewRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    previewItem: { flex: 1, alignItems: 'center' },
-    previewItemLabel: { fontSize: 12, marginBottom: 4 },
-    previewItemValue: { fontSize: 18, fontWeight: '800', minWidth: 60 },
-    previewTotalValue: { fontSize: 15, fontWeight: '700', minWidth: 60 },
-    previewDivider: { width: 1, height: 36, marginHorizontal: 10 },
-    previewInterest: {
+    // Card accent bar (top of each card)
+    cardTopBar: { height: 3, borderRadius: 2, marginBottom: 16, marginHorizontal: -20, marginTop: -20 },
+    previewRow: { flexDirection: 'row', alignItems: 'center' },
+    previewCol: { flex: 1, alignItems: 'center', paddingVertical: 4 },
+    previewLabel: { fontSize: 11, marginBottom: 4, fontWeight: '500' },
+    previewBigValue: { fontSize: 20, fontWeight: '800' },
+    previewMidValue: { fontSize: 16, fontWeight: '700' },
+    previewUnit: { fontSize: 11, marginTop: 3, opacity: 0.55 },
+    previewVDivider: { width: 1, height: 44, marginHorizontal: 8 },
+    previewInterestRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
         marginTop: 14,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 12,
     },
-    previewInterestText: { fontSize: 12, fontWeight: '500' },
+    previewInterestText: { fontSize: 12 },
 
-    // Sticky bottom bar
-    stickyBar: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 12,
-        borderTopWidth: 1, gap: 12,
+    // Loading
+    loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+    loadingText: { fontSize: 13 },
+
+    // Bottom bar
+    bottomBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        gap: 14,
     },
-    stickyBarInfo: { flex: 1 },
-    stickyLabel: { fontSize: 12, marginBottom: 2 },
-    stickyValue: { fontSize: 16, fontWeight: '700' },
-    nextBtn: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingVertical: 13, paddingHorizontal: 26, borderRadius: 14,
+    bottomInfo: { flex: 1 },
+    bottomLabel: { fontSize: 11, marginBottom: 3 },
+    bottomValue: { fontSize: 18, fontWeight: '800' },
+    bottomHint: { fontSize: 12, lineHeight: 18 },
+
+    // Next button
+    nextBtnOuter: { borderRadius: 16, overflow: 'hidden' },
+    nextBtnGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 14,
+        paddingHorizontal: 28,
+        borderRadius: 16,
     },
-    nextBtnText: { fontSize: 14, fontWeight: '700' },
+    nextBtnDisabled: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 14,
+        paddingHorizontal: 28,
+        borderRadius: 16,
+    },
+    nextBtnText: { fontSize: 15, fontWeight: '700', color: '#111' },
+    nextBtnTextDisabled: { fontSize: 15, fontWeight: '700' },
 });
