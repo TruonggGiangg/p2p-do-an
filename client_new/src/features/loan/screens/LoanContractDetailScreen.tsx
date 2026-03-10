@@ -83,9 +83,13 @@ export default function LoanContractDetailScreen() {
     const [showContract, setShowContract] = useState(false);
     const [showSignConfirm, setShowSignConfirm] = useState(false);
     const [showSmartCA, setShowSmartCA] = useState(false);
+    const [showSignSuccess, setShowSignSuccess] = useState(false);
 
     // Success animation
     const successAnim = useRef(new Animated.Value(0)).current;
+    const successPageAnim = useRef(new Animated.Value(0)).current;
+    const successCheckAnim = useRef(new Animated.Value(0)).current;
+    const successSlideAnim = useRef(new Animated.Value(40)).current;
 
     const fetchContract = useCallback(async () => {
         try {
@@ -157,12 +161,18 @@ export default function LoanContractDetailScreen() {
     const handleSmartCAComplete = (status: 'signed' | 'failed' | 'rejected') => {
         setShowSmartCA(false);
         if (status === 'signed') {
-            fetchContract(); // Reload contract to get updated status
-            Alert.alert(
-                'Ký số thành công',
-                'Hợp đồng đã được ký số bằng chứng thư VNPT SmartCA. Khoản vay sẽ được giải ngân sớm.',
-                [{ text: 'OK' }],
-            );
+            fetchContract();
+            successPageAnim.setValue(0);
+            successCheckAnim.setValue(0);
+            successSlideAnim.setValue(40);
+            setShowSignSuccess(true);
+            Animated.sequence([
+                Animated.timing(successPageAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+                Animated.parallel([
+                    Animated.spring(successCheckAnim, { toValue: 1, friction: 5, tension: 60, useNativeDriver: true }),
+                    Animated.timing(successSlideAnim, { toValue: 0, duration: 350, useNativeDriver: true }),
+                ]),
+            ]).start();
         } else if (status === 'rejected') {
             Alert.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng. Bạn có thể ký lại bất kỳ lúc nào.');
         }
@@ -456,6 +466,67 @@ export default function LoanContractDetailScreen() {
                 onClose={() => setShowSmartCA(false)}
                 onSigningComplete={handleSmartCAComplete}
             />
+
+            {/* ── Ký số thành công – Full page overlay ── */}
+            <Modal visible={showSignSuccess} transparent animationType="none" statusBarTranslucent>
+                <Animated.View style={[styles.successPage, { opacity: successPageAnim }]}>
+                    {/* Background gradient-like circles */}
+                    <View style={styles.successBgCircle1} />
+                    <View style={styles.successBgCircle2} />
+
+                    <Animated.View style={[
+                        styles.successBody,
+                        {
+                            transform: [{ translateY: successSlideAnim }],
+                            opacity: successPageAnim,
+                        },
+                    ]}>
+                        {/* Check circle */}
+                        <Animated.View style={[
+                            styles.successCheckWrap,
+                            { transform: [{ scale: successCheckAnim }] },
+                        ]}>
+                            <View style={styles.successCheckRing} />
+                            <View style={styles.successCheckCircle}>
+                                <Ionicons name="checkmark" size={52} color="#fff" />
+                            </View>
+                        </Animated.View>
+
+                        <Text style={styles.successTitle}>Ký số thành công!</Text>
+                        <Text style={styles.successSubtitle}>
+                            Hợp đồng <Text style={styles.successHighlight}>{contract.contractId}</Text> đã được ký số
+                        </Text>
+
+                        {/* Info card */}
+                        <View style={styles.successCard}>
+                            <View style={styles.successCardRow}>
+                                <MaterialCommunityIcons name="shield-check" size={18} color="#10B981" />
+                                <Text style={styles.successCardText}>Chứng thư số VNPT SmartCA</Text>
+                            </View>
+                            <View style={[styles.successCardDivider]} />
+                            <View style={styles.successCardRow}>
+                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#6B7280" />
+                                <Text style={styles.successCardTextDim}>
+                                    Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}
+                                </Text>
+                            </View>
+                            <View style={[styles.successCardDivider]} />
+                            <View style={styles.successCardRow}>
+                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#8B5CF6" />
+                                <Text style={styles.successCardText}>Khoản vay sẽ được giải ngân sớm</Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.successBtn}
+                            onPress={() => setShowSignSuccess(false)}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={styles.successBtnText}>Xem hợp đồng</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </Animated.View>
+            </Modal>
         </View>
     );
 }
@@ -678,6 +749,129 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     confirmSignText: { fontSize: 15, fontWeight: '700', color: '#181A20' },
+
+    // Sign success page
+    successPage: {
+        flex: 1,
+        backgroundColor: '#0A0F1E',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 28,
+        overflow: 'hidden',
+    },
+    successBgCircle1: {
+        position: 'absolute',
+        width: 340,
+        height: 340,
+        borderRadius: 170,
+        backgroundColor: '#10B98112',
+        top: -80,
+        right: -80,
+    },
+    successBgCircle2: {
+        position: 'absolute',
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: '#6366F110',
+        bottom: -60,
+        left: -60,
+    },
+    successBody: {
+        width: '100%',
+        alignItems: 'center',
+        gap: 16,
+    },
+    successCheckWrap: {
+        marginBottom: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    successCheckRing: {
+        position: 'absolute',
+        width: 112,
+        height: 112,
+        borderRadius: 56,
+        borderWidth: 2,
+        borderColor: '#10B98130',
+    },
+    successCheckCircle: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        backgroundColor: '#10B981',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+        elevation: 12,
+    },
+    successTitle: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        textAlign: 'center',
+    },
+    successSubtitle: {
+        fontSize: 14,
+        color: '#9CA3AF',
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    successHighlight: {
+        color: '#F0B90B',
+        fontWeight: '700',
+    },
+    successCard: {
+        width: '100%',
+        backgroundColor: '#FFFFFF0D',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#FFFFFF10',
+        padding: 20,
+        gap: 12,
+        marginTop: 8,
+    },
+    successCardRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    successCardText: {
+        fontSize: 14,
+        color: '#E5E7EB',
+        fontWeight: '500',
+        flex: 1,
+    },
+    successCardTextDim: {
+        fontSize: 13,
+        color: '#9CA3AF',
+        flex: 1,
+    },
+    successCardDivider: {
+        height: 1,
+        backgroundColor: '#FFFFFF0F',
+    },
+    successBtn: {
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 16,
+        backgroundColor: '#10B981',
+        alignItems: 'center',
+        marginTop: 8,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    successBtnText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#FFFFFF',
+    },
 
     // Empty
     emptyContainer: {

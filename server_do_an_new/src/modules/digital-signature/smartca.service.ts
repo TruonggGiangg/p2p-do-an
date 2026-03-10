@@ -5,10 +5,13 @@ import * as crypto from 'crypto';
 import smartcaConfig from 'src/config/smartca.config';
 
 /**
- * SmartCAService - VNPT SmartCA Digital Signature Integration (Production)
+ * SmartCAService - VNPT SmartCA Digital Signature Integration
  *
- * Authentication: sp_id + sp_password in request body (same as test env)
- * Host: gwsca.vnpt.vn (production) vs rmgateway.vnptit.vn (test)
+ * Supports two environments via SMARTCA_ENV:
+ *   - production: gwsca.vnpt.vn (SMARTCA_* vars)
+ *   - test: rmgateway.vnptit.vn (SMARTCA_TEST_* vars)
+ *
+ * Authentication: sp_id + sp_password in request body (same for both envs)
  *
  * Two sign flows:
  *   v1: Send sign request → User confirms on VNPT SmartCA app → Poll status
@@ -61,7 +64,9 @@ export class SmartCAService {
   constructor(
     @Inject(smartcaConfig.KEY)
     private readonly config: ConfigType<typeof smartcaConfig>,
-  ) {}
+  ) {
+    this.logger.log(`SmartCA environment: ${this.config.environment} | API: ${this.config.apiUrl}`);
+  }
 
   // ================================================================
   // 1. Get certificates
@@ -371,11 +376,11 @@ export class SmartCAService {
   }
 
   // ================================================================
-  // 7. Hash document content (SHA-256, base64-encoded for SmartCA API)
+  // 7. Hash document content (SHA-256 hex — required by SmartCA API)
   // ================================================================
   hashDocument(data: Buffer | string): string {
     const buffer = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-    return crypto.createHash('sha256').update(buffer).digest('base64');
+    return crypto.createHash('sha256').update(buffer).digest('hex');
   }
 
   // ================================================================
