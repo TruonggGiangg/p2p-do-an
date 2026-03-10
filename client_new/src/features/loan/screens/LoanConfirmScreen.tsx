@@ -51,24 +51,54 @@ type RouteParams = {
 
 type LoanConfirmNav = NativeStackNavigationProp<RootStackParamList, 'LoanConfirm'>;
 
-// ── Step indicator: Bước 2/2 ─────────────────────────────────────────────────
+// ── Step indicator: đồng bộ với LoanCreateScreen ────────────────────────────
 function StepIndicator({ current, theme }: { current: number; theme: any }) {
     const c = theme.colors;
     return (
-        <View style={[stepStyles.container, { backgroundColor: c.surfaceLight }]}>
-            <View style={[stepStyles.pill, { backgroundColor: c.primary }]}>
-                <Text style={stepStyles.pillText}>Bước 2/2</Text>
+        <View style={stepStyles.container}>
+            <View style={stepStyles.stepsRow}>
+                {[0, 1].map((i) => (
+                    <React.Fragment key={i}>
+                        <View style={[
+                            stepStyles.dot,
+                            i <= current
+                                ? { backgroundColor: c.primary }
+                                : { backgroundColor: c.border + '60' },
+                        ]}>
+                            {i < current ? (
+                                <MaterialCommunityIcons name="check" size={11} color="#fff" />
+                            ) : (
+                                <Text style={[stepStyles.dotText, i <= current && { color: '#000' }]}>{i + 1}</Text>
+                            )}
+                        </View>
+                        {i < 1 && (
+                            <View style={[
+                                stepStyles.connector,
+                                i < current
+                                    ? { backgroundColor: c.primary }
+                                    : { backgroundColor: c.border + '40' },
+                            ]} />
+                        )}
+                    </React.Fragment>
+                ))}
             </View>
-            <Text style={[stepStyles.sub, { color: c.textSecondary }]}>Xác nhận & gửi đơn</Text>
+            <Text style={[stepStyles.label, { color: c.textPrimary }]}>
+                {current === 0 ? 'Nhập thông tin vay' : 'Xác nhận & gửi đơn'}
+            </Text>
         </View>
     );
 }
 
 const stepStyles = StyleSheet.create({
-    container: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
-    pill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-    pillText: { fontSize: 13, fontWeight: '700', color: '#000' },
-    sub: { fontSize: 13 },
+    container: { paddingHorizontal: 20, paddingVertical: 14, gap: 6 },
+    stepsRow: { flexDirection: 'row', alignItems: 'center' },
+    dot: {
+        width: 24, height: 24, borderRadius: 12,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    dotText: { fontSize: 11, fontWeight: '700', color: '#999' },
+    connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
+    label: { fontSize: 15, fontWeight: '600', marginTop: 2 },
 });
 
 export default function LoanConfirmScreen() {

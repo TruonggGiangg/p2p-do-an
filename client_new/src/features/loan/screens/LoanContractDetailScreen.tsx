@@ -439,7 +439,7 @@ export default function LoanContractDetailScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.confirmSignBtn}
-                                onPress={handleSignLegacy}
+                                onPress={handleSign}
                             >
                                 <MaterialCommunityIcons name="draw-pen" size={18} color="#181A20" />
                                 <Text style={styles.confirmSignText}>Ký xác nhận</Text>

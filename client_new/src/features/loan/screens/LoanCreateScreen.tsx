@@ -109,8 +109,6 @@ function AmountSlider({
         })
     ).current;
 
-    const fraction = Animated.divide(panX, trackWidth.current || 1);
-
     return (
         <View
             style={sliderStyles.container}
@@ -132,50 +130,51 @@ function AmountSlider({
                 style={[
                     sliderStyles.thumb,
                     {
-                        backgroundColor: primaryColor,
-                        transform: [{ translateX: Animated.subtract(panX, 14) }],
+                        borderColor: primaryColor,
+                        transform: [{ translateX: Animated.subtract(panX, 11) }],
                     },
                 ]}
             >
-                <View style={sliderStyles.thumbInner} />
+                <View style={[sliderStyles.thumbDot, { backgroundColor: primaryColor }]} />
             </Animated.View>
         </View>
     );
 }
 
 const sliderStyles = StyleSheet.create({
-    container: { height: 40, justifyContent: 'center', marginTop: 4 },
-    track: { height: 6, borderRadius: 3, overflow: 'hidden' },
-    trackFill: { height: '100%', borderRadius: 3 },
+    container: { height: 36, justifyContent: 'center', marginTop: 2 },
+    track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+    trackFill: { height: '100%', borderRadius: 2 },
     thumb: {
         position: 'absolute',
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        elevation: 4,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 3,
+        backgroundColor: '#fff',
+        elevation: 3,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.18,
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.12,
+        shadowRadius: 3,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    thumbInner: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
-        backgroundColor: '#fff',
+    thumbDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
     },
 });
 
 type RouteParams = { product: LoanProduct; willing?: string };
 type LoanCreateNav = NativeStackNavigationProp<RootStackParamList, 'LoanCreate'>;
 
-// ── Step indicator: đơn giản Bước 1/2 ───────────────────────────────────────
+// ── Step indicator ───────────────────────────────────────────────────────────
 function StepIndicator({ current, theme }: { current: number; theme: any }) {
     const c = theme.colors;
     return (
-        <View style={[stepStyles.container, { backgroundColor: c.surfaceLight }]}>
+        <View style={stepStyles.container}>
             <View style={stepStyles.stepsRow}>
                 {[0, 1].map((i) => (
                     <React.Fragment key={i}>
@@ -183,10 +182,10 @@ function StepIndicator({ current, theme }: { current: number; theme: any }) {
                             stepStyles.dot,
                             i <= current
                                 ? { backgroundColor: c.primary }
-                                : { backgroundColor: c.border },
+                                : { backgroundColor: c.border + '60' },
                         ]}>
                             {i < current ? (
-                                <MaterialCommunityIcons name="check" size={12} color="#000" />
+                                <MaterialCommunityIcons name="check" size={11} color="#fff" />
                             ) : (
                                 <Text style={[stepStyles.dotText, i <= current && { color: '#000' }]}>{i + 1}</Text>
                             )}
@@ -196,7 +195,7 @@ function StepIndicator({ current, theme }: { current: number; theme: any }) {
                                 stepStyles.connector,
                                 i < current
                                     ? { backgroundColor: c.primary }
-                                    : { backgroundColor: c.border },
+                                    : { backgroundColor: c.border + '40' },
                             ]} />
                         )}
                     </React.Fragment>
@@ -210,18 +209,18 @@ function StepIndicator({ current, theme }: { current: number; theme: any }) {
 }
 
 const stepStyles = StyleSheet.create({
-    container: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+    container: { paddingHorizontal: 20, paddingVertical: 14, gap: 6 },
     stepsRow: { flexDirection: 'row', alignItems: 'center' },
     dot: {
-        width: 26, height: 26, borderRadius: 13,
+        width: 24, height: 24, borderRadius: 12,
         justifyContent: 'center', alignItems: 'center',
     },
-    dotText: { fontSize: 12, fontWeight: '700', color: '#888' },
-    connector: { height: 2, flex: 1, marginHorizontal: 6, borderRadius: 1 },
-    label: { fontSize: 14, fontWeight: '600' },
+    dotText: { fontSize: 11, fontWeight: '700', color: '#999' },
+    connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
+    label: { fontSize: 15, fontWeight: '600', marginTop: 2 },
 });
 
-// ── Period Stepper ───────────────────────────────────────────────────────────────────────
+// ── Period Stepper ───────────────────────────────────────────────────────────
 const PERIOD_QUICK_OPTIONS = [3, 6, 12, 24];
 
 function PeriodStepper({
@@ -252,25 +251,24 @@ function PeriodStepper({
 
     const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v)));
 
+    const animateBounce = () => {
+        Animated.sequence([
+            Animated.timing(pressAnim, { toValue: 0.96, duration: 50, useNativeDriver: true }),
+            Animated.timing(pressAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
+        ]).start();
+    };
+
     const decrement = () => {
         if (value <= min) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const next = clamp(value - 1);
-        onChange(next);
-        Animated.sequence([
-            Animated.timing(pressAnim, { toValue: 0.94, duration: 60, useNativeDriver: true }),
-            Animated.timing(pressAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
-        ]).start();
+        onChange(clamp(value - 1));
+        animateBounce();
     };
     const increment = () => {
         if (value >= max) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const next = clamp(value + 1);
-        onChange(next);
-        Animated.sequence([
-            Animated.timing(pressAnim, { toValue: 0.94, duration: 60, useNativeDriver: true }),
-            Animated.timing(pressAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
-        ]).start();
+        onChange(clamp(value + 1));
+        animateBounce();
     };
 
     const handleTextChange = (t: string) => {
@@ -283,50 +281,53 @@ function PeriodStepper({
 
     return (
         <Animated.View style={{ transform: [{ scale: pressAnim }] }}>
-            {/* Quick chips — horizontal scroll */}
             {quickChips.length > 0 && (
                 <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={periodStepperStyles.chipRow}
-                    style={{ marginBottom: 14 }}
+                    style={{ marginBottom: 16 }}
                 >
-                    {quickChips.map((p) => (
-                        <TouchableOpacity
-                            key={p}
-                            style={[
-                                periodStepperStyles.chip,
-                                { borderColor: value === p ? primaryColor : borderColor },
-                                value === p && { backgroundColor: primaryColor + '18' },
-                            ]}
-                            onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                        >
-                            <Text style={[periodStepperStyles.chipText, { color: value === p ? primaryColor : dimColor }]}>
-                                {p} tháng
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+                    {quickChips.map((p) => {
+                        const active = value === p;
+                        return (
+                            <TouchableOpacity
+                                key={p}
+                                style={[
+                                    periodStepperStyles.chip,
+                                    { borderColor: active ? primaryColor : borderColor + '50' },
+                                    active && { backgroundColor: primaryColor + '10' },
+                                ]}
+                                onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[
+                                    periodStepperStyles.chipText,
+                                    { color: active ? primaryColor : dimColor },
+                                ]}>
+                                    {p} tháng
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </ScrollView>
             )}
 
-            {/* Stepper: nhập số tháng tùy chọn trong khoảng min-max */}
-            <View style={[periodStepperStyles.row, { borderColor: primaryColor + '30', backgroundColor: primaryColor + '06' }]}>
+            <View style={[periodStepperStyles.row, { borderColor: borderColor + '30' }]}>
                 <TouchableOpacity
                     style={[
                         periodStepperStyles.btn,
-                        { backgroundColor: value <= min ? dimColor + '15' : primaryColor + '15' },
-                        value <= min && periodStepperStyles.btnDisabled,
+                        { backgroundColor: value <= min ? dimColor + '08' : primaryColor + '10' },
                     ]}
                     onPress={decrement}
                     disabled={value <= min}
-                    activeOpacity={0.7}
+                    activeOpacity={0.6}
                 >
-                    <View style={[
-                        periodStepperStyles.btnCircle,
-                        { backgroundColor: value <= min ? dimColor + '20' : primaryColor + '25' },
-                    ]}>
-                        <MaterialCommunityIcons name="minus" size={20} color={value <= min ? dimColor : primaryColor} />
-                    </View>
+                    <MaterialCommunityIcons
+                        name="minus"
+                        size={22}
+                        color={value <= min ? dimColor + '40' : primaryColor}
+                    />
                 </TouchableOpacity>
 
                 <View style={periodStepperStyles.center}>
@@ -343,19 +344,17 @@ function PeriodStepper({
                 <TouchableOpacity
                     style={[
                         periodStepperStyles.btn,
-                        { backgroundColor: value >= max ? dimColor + '15' : primaryColor + '15' },
-                        value >= max && periodStepperStyles.btnDisabled,
+                        { backgroundColor: value >= max ? dimColor + '08' : primaryColor + '10' },
                     ]}
                     onPress={increment}
                     disabled={value >= max}
-                    activeOpacity={0.7}
+                    activeOpacity={0.6}
                 >
-                    <View style={[
-                        periodStepperStyles.btnCircle,
-                        { backgroundColor: value >= max ? dimColor + '20' : primaryColor + '25' },
-                    ]}>
-                        <MaterialCommunityIcons name="plus" size={20} color={value >= max ? dimColor : primaryColor} />
-                    </View>
+                    <MaterialCommunityIcons
+                        name="plus"
+                        size={22}
+                        color={value >= max ? dimColor + '40' : primaryColor}
+                    />
                 </TouchableOpacity>
             </View>
             <Text style={[periodStepperStyles.rangeHint, { color: dimColor }]}>
@@ -366,17 +365,24 @@ function PeriodStepper({
 }
 
 const periodStepperStyles = StyleSheet.create({
-    chipRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 2 },
-    chip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5 },
-    chipText: { fontSize: 13, fontWeight: '700' },
-    row: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 18, overflow: 'hidden' },
-    btn: { width: 60, height: 60, justifyContent: 'center', alignItems: 'center' },
-    btnCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-    btnDisabled: { opacity: 0.5 },
-    center: { flex: 1, alignItems: 'center', paddingVertical: 10 },
-    input: { fontSize: 28, fontWeight: '800', textAlign: 'center', minWidth: 50 },
-    unit: { fontSize: 13, fontWeight: '500', marginTop: 2 },
-    rangeHint: { fontSize: 11, marginTop: 6, textAlign: 'center' },
+    chipRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 2 },
+    chip: {
+        paddingHorizontal: 20, paddingVertical: 9,
+        borderRadius: 24, borderWidth: 1.2,
+    },
+    chipText: { fontSize: 13, fontWeight: '600' },
+    row: {
+        flexDirection: 'row', alignItems: 'center',
+        borderWidth: 1.2, borderRadius: 16, overflow: 'hidden',
+    },
+    btn: {
+        width: 54, height: 54,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    center: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+    input: { fontSize: 26, fontWeight: '800', textAlign: 'center', minWidth: 50 },
+    unit: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+    rangeHint: { fontSize: 11, marginTop: 8, textAlign: 'center' },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
@@ -497,10 +503,10 @@ export default function LoanCreateScreen() {
                     showsVerticalScrollIndicator={false}
                 >
                     {/* ── Section 1: Số tiền vay ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
                         <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: theme.colors.primary + '15' }]}>
-                                <MaterialCommunityIcons name="cash-fast" size={20} color={theme.colors.primary} />
+                            <View style={[styles.sectionIcon, { backgroundColor: theme.colors.primary + '12' }]}>
+                                <MaterialCommunityIcons name="cash-fast" size={18} color={theme.colors.primary} />
                             </View>
                             <View style={styles.sectionHeaderText}>
                                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Số tiền vay</Text>
@@ -512,11 +518,11 @@ export default function LoanCreateScreen() {
                             </View>
                         </View>
 
-                        <View style={[styles.amountInputWrapper, { borderColor: theme.colors.primary + '40' }]}>
+                        <View style={[styles.amountInputWrapper, { borderColor: theme.colors.border + '40' }]}>
                             <TextInput
                                 style={[styles.amountInput, { color: theme.colors.textPrimary }]}
                                 placeholder="0"
-                                placeholderTextColor={theme.colors.textDim + '60'}
+                                placeholderTextColor={theme.colors.textDim + '40'}
                                 value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
                                 onChangeText={(t) => setCapital(t.replace(/\D/g, ''))}
                                 keyboardType="number-pad"
@@ -524,30 +530,24 @@ export default function LoanCreateScreen() {
                             <Text style={[styles.amountCurrency, { color: theme.colors.textDim }]}>VND</Text>
                         </View>
 
-                        {/* Amount Slider */}
                         <AmountSlider
                             value={capitalNum || SLIDER_MIN}
                             onChange={(v) => setCapital(String(v))}
                             min={SLIDER_MIN}
                             max={SLIDER_MAX}
                             primaryColor={theme.colors.primary}
-                            trackColor={theme.colors.border + '60'}
+                            trackColor={theme.colors.border + '40'}
                         />
                         <View style={styles.sliderLabels}>
-                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
-                                5 triệu
-                            </Text>
-                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>
-                                100 triệu
-                            </Text>
+                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>5 triệu</Text>
+                            <Text style={[styles.sliderLabelText, { color: theme.colors.textDim }]}>100 triệu</Text>
                         </View>
 
-                        {/* Quick amount chips — horizontal scroll */}
                         <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
                             contentContainerStyle={styles.quickAmountScroll}
-                            style={{ marginTop: 8 }}
+                            style={{ marginTop: 10 }}
                         >
                             {QUICK_AMOUNTS.map((qa) => {
                                 const isSelected = capitalNum === qa.value;
@@ -556,8 +556,8 @@ export default function LoanCreateScreen() {
                                         key={qa.value}
                                         style={[
                                             styles.quickChip,
-                                            { borderColor: isSelected ? theme.colors.primary : theme.colors.border + '80' },
-                                            isSelected && { backgroundColor: theme.colors.primary + '12' },
+                                            { borderColor: isSelected ? theme.colors.primary : theme.colors.border + '50' },
+                                            isSelected && { backgroundColor: theme.colors.primary + '10' },
                                         ]}
                                         onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                                         activeOpacity={0.7}
@@ -575,10 +575,10 @@ export default function LoanCreateScreen() {
                     </View>
 
                     {/* ── Section 2: Kỳ hạn ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
                         <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: '#6C5CE7' + '15' }]}>
-                                <MaterialCommunityIcons name="calendar-clock" size={20} color="#6C5CE7" />
+                            <View style={[styles.sectionIcon, { backgroundColor: '#6C5CE7' + '12' }]}>
+                                <MaterialCommunityIcons name="calendar-clock" size={18} color="#6C5CE7" />
                             </View>
                             <View style={styles.sectionHeaderText}>
                                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Kỳ hạn vay</Text>
@@ -604,11 +604,11 @@ export default function LoanCreateScreen() {
                         )}
                     </View>
 
-                    {/* ── Section 3: Lãi suất (cố định theo sản phẩm Fineract) ── */}
-                    <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+                    {/* ── Section 3: Lãi suất ── */}
+                    <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
                         <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: '#00B894' + '15' }]}>
-                                <MaterialCommunityIcons name="percent-outline" size={20} color="#00B894" />
+                            <View style={[styles.sectionIcon, { backgroundColor: '#00B894' + '12' }]}>
+                                <MaterialCommunityIcons name="percent-outline" size={18} color="#00B894" />
                             </View>
                             <View style={styles.sectionHeaderText}>
                                 <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
@@ -618,7 +618,7 @@ export default function LoanCreateScreen() {
                         {loadingConfig ? (
                             <ActivityIndicator color={theme.colors.primary} size="small" />
                         ) : config && (
-                            <View style={[styles.rateCard, { backgroundColor: '#00B894' + '08', borderColor: '#00B894' + '20' }]}>
+                            <View style={[styles.rateCard, { backgroundColor: '#00B894' + '06', borderColor: '#00B894' + '18' }]}>
                                 <View style={styles.rateCardTop}>
                                     <View style={{ alignItems: 'center', flex: 1 }}>
                                         <Text style={[styles.rateMainValue, { color: '#00B894' }]}>
@@ -626,7 +626,7 @@ export default function LoanCreateScreen() {
                                         </Text>
                                         <Text style={[styles.rateMainLabel, { color: theme.colors.textDim }]}>mỗi tháng</Text>
                                     </View>
-                                    <View style={[styles.rateDividerV, { backgroundColor: theme.colors.border }]} />
+                                    <View style={[styles.rateDividerV, { backgroundColor: theme.colors.border + '30' }]} />
                                     <View style={{ alignItems: 'center', flex: 1 }}>
                                         <Text style={[styles.rateSubValue, { color: theme.colors.textSecondary }]}>
                                             ≈ {+config.annualRate.toFixed(2)}%
@@ -640,12 +640,12 @@ export default function LoanCreateScreen() {
 
                     {/* ── Preview kết quả ── */}
                     {loadingPreview ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
                             <ActivityIndicator size="small" color={theme.colors.primary} />
                             <Text style={[styles.previewLoading, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
                         </View>
                     ) : schedule && capitalNum >= 100000 ? (
-                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
+                        <View style={[styles.previewCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border + '25' }]}>
                             <View style={styles.previewRow}>
                                 <View style={styles.previewItem}>
                                     <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
@@ -653,7 +653,7 @@ export default function LoanCreateScreen() {
                                         {formatCurrency(schedule.monthlyPay)} đ
                                     </Text>
                                 </View>
-                                <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
+                                <View style={[styles.previewDivider, { backgroundColor: theme.colors.border + '30' }]} />
                                 <View style={styles.previewItem}>
                                     <Text style={[styles.previewItemLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
                                     <Text style={[styles.previewTotalValue, { color: theme.colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
@@ -662,7 +662,7 @@ export default function LoanCreateScreen() {
                                 </View>
                             </View>
                             <View style={[styles.previewInterest, { backgroundColor: theme.colors.surfaceLight }]}>
-                                <MaterialCommunityIcons name="information-outline" size={14} color={theme.colors.textDim} />
+                                <MaterialCommunityIcons name="information-outline" size={13} color={theme.colors.textDim} />
                                 <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
                                     Tổng lãi: {formatCurrency(schedule.entirelyPay - capitalNum)} đ
                                 </Text>
@@ -676,7 +676,7 @@ export default function LoanCreateScreen() {
                 {/* ── Sticky Bottom Bar ── */}
                 <View style={[styles.stickyBar, {
                     backgroundColor: theme.colors.surface,
-                    borderTopColor: theme.colors.border,
+                    borderTopColor: theme.colors.border + '20',
                     paddingBottom: Math.max(insets.bottom, 12),
                 }]}>
                     {schedule && capitalNum >= 100000 ? (
@@ -694,13 +694,16 @@ export default function LoanCreateScreen() {
                         </View>
                     )}
                     <TouchableOpacity
-                        style={[styles.nextBtn, { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border }]}
+                        style={[
+                            styles.nextBtn,
+                            { backgroundColor: canProceed ? theme.colors.primary : theme.colors.border + '40' },
+                        ]}
                         onPress={handleNext}
                         disabled={!canProceed}
-                        activeOpacity={0.85}
+                        activeOpacity={0.8}
                     >
                         <Text style={[styles.nextBtnText, { color: canProceed ? '#000' : theme.colors.textDim }]}>Tiếp tục</Text>
-                        <MaterialCommunityIcons name="arrow-right" size={18} color={canProceed ? '#000' : theme.colors.textDim} />
+                        <MaterialCommunityIcons name="arrow-right" size={16} color={canProceed ? '#000' : theme.colors.textDim} />
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
@@ -715,56 +718,52 @@ const styles = StyleSheet.create({
     scrollContainer: { flex: 1 },
     flex: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 24, gap: 12 },
+    scrollContent: { padding: 16, paddingBottom: 24, gap: 14 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
     // Section cards
     section: {
         padding: 20,
-        borderRadius: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        elevation: 2,
+        borderRadius: 22,
+        borderWidth: 1,
     },
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        marginBottom: 16,
+        marginBottom: 18,
     },
     sectionIcon: {
-        width: 42,
-        height: 42,
-        borderRadius: 14,
+        width: 38,
+        height: 38,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
     },
     sectionHeaderText: { flex: 1 },
-    sectionTitle: { fontSize: 16, fontWeight: '700' },
-    sectionHint: { fontSize: 12, marginTop: 2 },
+    sectionTitle: { fontSize: 15, fontWeight: '600' },
+    sectionHint: { fontSize: 11, marginTop: 2, opacity: 0.7 },
 
     // Amount
     amountInputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderWidth: 2,
-        borderRadius: 16,
+        borderWidth: 1.5,
+        borderRadius: 14,
         paddingHorizontal: 16,
-        marginBottom: 14,
+        marginBottom: 12,
     },
     amountInput: {
         flex: 1,
-        fontSize: 28,
-        fontWeight: '800',
-        paddingVertical: 14,
-        letterSpacing: 0.5,
+        fontSize: 26,
+        fontWeight: '700',
+        paddingVertical: 12,
+        letterSpacing: 0.3,
     },
     amountCurrency: {
-        fontSize: 14,
-        fontWeight: '700',
-        opacity: 0.5,
+        fontSize: 13,
+        fontWeight: '600',
+        opacity: 0.4,
         marginLeft: 8,
     },
     sliderLabels: {
@@ -782,15 +781,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 20,
-        borderWidth: 1.5,
+        paddingVertical: 9,
+        borderRadius: 24,
+        borderWidth: 1.2,
     },
-    quickChipText: { fontSize: 12, fontWeight: '700' },
+    quickChipText: { fontSize: 12, fontWeight: '600' },
 
     // Rate
     rateCard: {
-        borderRadius: 16,
+        borderRadius: 14,
         borderWidth: 1,
         padding: 16,
     },
@@ -798,23 +797,19 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 20,
-        paddingVertical: 4,
+        gap: 16,
+        paddingVertical: 2,
     },
-    rateMainValue: { fontSize: 28, fontWeight: '800' },
-    rateMainLabel: { fontSize: 11, marginTop: 2 },
-    rateSubValue: { fontSize: 18, fontWeight: '700' },
-    rateDividerV: { width: 1, height: 36 },
+    rateMainValue: { fontSize: 26, fontWeight: '800' },
+    rateMainLabel: { fontSize: 11, marginTop: 2, opacity: 0.7 },
+    rateSubValue: { fontSize: 17, fontWeight: '700' },
+    rateDividerV: { width: 1, height: 32 },
 
     // Preview
     previewCard: {
-        borderRadius: 20,
+        borderRadius: 22,
+        borderWidth: 1,
         padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        elevation: 3,
     },
     previewLoading: { textAlign: 'center', marginTop: 8, fontSize: 13 },
     previewRow: {
@@ -823,9 +818,9 @@ const styles = StyleSheet.create({
     },
     previewItem: { flex: 1, alignItems: 'center' },
     previewItemLabel: { fontSize: 12, marginBottom: 4 },
-    previewItemValue: { fontSize: 20, fontWeight: '800', minWidth: 60 },
-    previewTotalValue: { fontSize: 16, fontWeight: '700', minWidth: 60 },
-    previewDivider: { width: 1, height: 40, marginHorizontal: 12 },
+    previewItemValue: { fontSize: 18, fontWeight: '800', minWidth: 60 },
+    previewTotalValue: { fontSize: 15, fontWeight: '700', minWidth: 60 },
+    previewDivider: { width: 1, height: 36, marginHorizontal: 10 },
     previewInterest: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -842,15 +837,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 16, paddingVertical: 12,
         borderTopWidth: 1, gap: 12,
-        shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.06, shadowRadius: 6, elevation: 8,
     },
     stickyBarInfo: { flex: 1 },
     stickyLabel: { fontSize: 12, marginBottom: 2 },
-    stickyValue: { fontSize: 17, fontWeight: '800' },
+    stickyValue: { fontSize: 16, fontWeight: '700' },
     nextBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingVertical: 14, paddingHorizontal: 28, borderRadius: 14,
+        paddingVertical: 13, paddingHorizontal: 26, borderRadius: 14,
     },
-    nextBtnText: { fontSize: 15, fontWeight: '700' },
+    nextBtnText: { fontSize: 14, fontWeight: '700' },
 });
