@@ -23,7 +23,7 @@ import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
@@ -339,8 +339,8 @@ export default function BNPLScreen() {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <BinanceHeader title="Ví Trả Sau (BNPL)" />
-                <View style={{ marginTop: Platform.OS === 'ios' ? 50 : 100, alignItems: 'center' }}>
-                    <VentoUltimateLoading size={200} />
+                <View style={{ marginTop: Platform.OS === 'ios' ? 28 : 40 }}>
+                    <FintechScreenSkeleton variant="bnpl" style={{ paddingHorizontal: 20 }} />
                 </View>
             </View>
         );

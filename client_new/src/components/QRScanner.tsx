@@ -1,10 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal } from 'react-native';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    Alert,
+    ActivityIndicator,
+    Modal,
+    Animated,
+    Easing,
+    Dimensions
+} from 'react-native';
 import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
-import { View as SafeAreaView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { CommonCard } from './common/CommonCard';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import VentoUltimateLoading from './common/VentoSVGLoading';
+
+const { width, height } = Dimensions.get('window');
+const SCAN_SIZE = width * 0.65;
 
 interface QRScannerProps {
     visible: boolean;
@@ -16,66 +31,87 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
     const { theme } = useTheme();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
-    const cameraRef = useRef<CameraView>(null);
+    const [torch, setTorch] = useState(false);
+    const laserAnim = useRef(new Animated.Value(0)).current;
+    const cornerAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         if (visible) {
             setScanned(false);
+            startAnimations();
         }
     }, [visible]);
+
+    const startAnimations = () => {
+        // Laser animation
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(laserAnim, {
+                    toValue: 1,
+                    duration: 2500,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(laserAnim, {
+                    toValue: 0,
+                    duration: 2500,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+            ])
+        ).start();
+
+        // Corner pulse animation
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(cornerAnim, {
+                    toValue: 1,
+                    duration: 1000,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(cornerAnim, {
+                    toValue: 0,
+                    duration: 1000,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+            ])
+        ).start();
+    };
 
     const handleBarCodeScanned = ({ data }: { data: string }) => {
         if (scanned) return;
         setScanned(true);
 
-        if (__DEV__) {
-            console.log('[QRScanner] Scanned data:', data);
-        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // Parse QR data - expect format: account number, phone number or JSON with data
         let scannedValue: string | null = null;
-
         try {
-            // Try to parse as JSON first
             const parsed = JSON.parse(data);
             scannedValue = parsed.accountNo || parsed.phoneNumber || parsed.phone || parsed.recipientPhone;
-
             if (!scannedValue && parsed.type === 'transfer' && (parsed.accountNo || parsed.phone)) {
                 scannedValue = parsed.accountNo || parsed.phone;
             }
         } catch {
-            // Not JSON, treat as plain string (clean digits)
             scannedValue = data.trim();
         }
 
-        // Validate scanned value
         if (scannedValue) {
-            if (__DEV__) {
-                console.log('[QRScanner] Valid data scanned:', scannedValue);
-            }
             onScan(scannedValue);
             onClose();
         } else {
-            Alert.alert('Lỗi', 'QR code không hợp lệ. Vui lòng quét mã QR chứa số tài khoản hoặc số điện thoại.');
-            setScanned(false);
+            Alert.alert('Lỗi', 'Mã QR không hợp lệ.', [{ text: 'OK', onPress: () => setScanned(false) }]);
         }
     };
 
-    // Don't render if not visible
-    if (!visible) {
-        return null;
-    }
+    if (!visible) return null;
 
     if (!permission) {
         return (
-            <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-                <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                    <SafeAreaView style={styles.container}>
-                        <View style={styles.permissionContainer}>
-                            <ActivityIndicator size="large" color={theme.colors.primary} />
-                            <Text style={styles.permissionText}>Đang kiểm tra quyền camera...</Text>
-                        </View>
-                    </SafeAreaView>
+            <Modal visible={visible} transparent animationType="fade">
+                <View style={styles.loadingContainer}>
+                    <VentoUltimateLoading />
                 </View>
             </Modal>
         );
@@ -83,77 +119,91 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
 
     if (!permission.granted) {
         return (
-            <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-                <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                    <SafeAreaView style={styles.container}>
-                        <View style={styles.header}>
-                            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                                <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
-                            </TouchableOpacity>
-                            <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Quét QR</Text>
-                            <View style={{ width: 40 }} />
+            <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+                <BlurView intensity={80} tint="dark" style={styles.permissionContainer}>
+                    <View style={styles.permissionContent}>
+                        <View style={styles.iconCircle}>
+                            <Ionicons name="camera" size={40} color="#FCD535" />
                         </View>
-
-                        <View style={styles.permissionContainer}>
-                            <Ionicons name="camera-outline" size={64} color={theme.colors.textMuted} />
-                            <Text style={[styles.permissionTitle, { color: theme.colors.textPrimary }]}>Cần quyền truy cập camera</Text>
-                            <Text style={[styles.permissionText, { color: theme.colors.textSecondary }]}>
-                                Ứng dụng cần quyền truy cập camera để quét mã QR chuyển tiền
-                            </Text>
-                            <TouchableOpacity
-                                style={[styles.permissionButton, { backgroundColor: theme.colors.primary }]}
-                                onPress={requestPermission}
-                            >
-                                <Text style={styles.permissionButtonText}>Cấp quyền</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </SafeAreaView>
-                </View>
+                        <Text style={styles.permissionTitle}>Quyền Truy Cập Camera</Text>
+                        <Text style={styles.permissionDesc}>
+                            Chúng tôi cần camera để nhận diện mã QR giao dịch một cách nhanh chóng và chính xác.
+                        </Text>
+                        <TouchableOpacity
+                            style={styles.primaryButton}
+                            onPress={requestPermission}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.buttonText}>Cho Phép Truy Cập</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.textButton} onPress={onClose}>
+                            <Text style={styles.textButtonLabel}>Hủy bỏ</Text>
+                        </TouchableOpacity>
+                    </View>
+                </BlurView>
             </Modal>
         );
     }
 
-    return (
-        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <SafeAreaView style={styles.container}>
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                            <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
-                        </TouchableOpacity>
-                        <Text style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Quét mã QR</Text>
-                        <View style={{ width: 40 }} />
-                    </View>
+    const translateY = laserAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, SCAN_SIZE],
+    });
 
-                    <View style={styles.cameraContainer}>
-                        <CameraView
-                            ref={cameraRef}
-                            style={styles.camera}
-                            facing="back"
-                            barcodeScannerSettings={{
-                                barcodeTypes: ['qr'],
-                            }}
-                            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-                        >
-                            <View style={styles.overlay}>
-                                <View style={styles.scanArea}>
-                                    <View style={styles.corner} />
-                                    <View style={[styles.corner, styles.topRight]} />
-                                    <View style={[styles.corner, styles.bottomLeft]} />
-                                    <View style={[styles.corner, styles.bottomRight]} />
-                                </View>
-                                <CommonCard style={styles.hintCard}>
-                                    <Text style={[styles.hintText, { color: theme.colors.textPrimary }]}>
-                                        Đưa mã QR vào khung để quét
-                                    </Text>
-                                    <Text style={[styles.hintSubtext, { color: theme.colors.textSecondary }]}>
-                                        Mã QR chứa số tài khoản hoặc số điện thoại người nhận
-                                    </Text>
-                                </CommonCard>
-                            </View>
-                        </CameraView>
+    const scale = cornerAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 1.05],
+    });
+
+    return (
+        <Modal visible={visible} animationType="fade" presentationStyle="fullScreen" transparent>
+            <View style={styles.container}>
+                <CameraView
+                    style={StyleSheet.absoluteFill}
+                    facing="back"
+                    enableTorch={torch}
+                    barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                    onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                />
+
+                {/* Overlay with Cutout */}
+                <View style={styles.fullOverlay}>
+                    <View style={styles.overlayTop} />
+                    <View style={styles.overlayMiddle}>
+                        <View style={styles.overlaySide} />
+                        <View style={styles.scanRoot}>
+                            <Animated.View style={[styles.scanFrame, { transform: [{ scale }] }]}>
+                                {/* Animated Laser */}
+                                <Animated.View style={[styles.laser, { transform: [{ translateY }] }]} />
+
+                                {/* Corners */}
+                                <View style={[styles.corner, styles.topLeft]} />
+                                <View style={[styles.corner, styles.topRight]} />
+                                <View style={[styles.corner, styles.bottomLeft]} />
+                                <View style={[styles.corner, styles.bottomRight]} />
+                            </Animated.View>
+                        </View>
+                        <View style={styles.overlaySide} />
                     </View>
-                </SafeAreaView>
+                    <View style={styles.overlayBottom}>
+                        <Text style={styles.hintText}>Đưa mã QR vào giữa khung hình</Text>
+                    </View>
+                </View>
+
+                {/* Controls */}
+                <View style={styles.topBar}>
+                    <TouchableOpacity onPress={onClose} style={styles.ctrlBtn}>
+                        <Ionicons name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.barTitle}>Quét mã QR</Text>
+                    <TouchableOpacity onPress={() => setTorch(!torch)} style={styles.ctrlBtn}>
+                        <MaterialCommunityIcons
+                            name={torch ? "flashlight" : "flashlight-off"}
+                            size={24}
+                            color={torch ? "#FCD535" : "#fff"}
+                        />
+                    </TouchableOpacity>
+                </View>
             </View>
         </Modal>
     );
@@ -162,119 +212,175 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: '#000',
     },
-    header: {
+    loadingContainer: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    topBar: {
+        position: 'absolute',
+        top: 50,
+        left: 0,
+        right: 0,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 16,
-        paddingTop: 10,
+        paddingHorizontal: 20,
     },
-    closeBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: '600',
+    barTitle: {
+        fontSize: 18,
+        fontWeight: '700',
         color: '#fff',
+        letterSpacing: 0.5,
     },
-    cameraContainer: {
-        flex: 1,
-        margin: 16,
-        borderRadius: 16,
-        overflow: 'hidden',
-    },
-    camera: {
-        flex: 1,
-    },
-    overlay: {
-        flex: 1,
+    ctrlBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.4)',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    fullOverlay: {
+        flex: 1,
+    },
+    overlayTop: {
+        flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
     },
-    scanArea: {
-        width: 250,
-        height: 250,
+    overlayMiddle: {
+        flexDirection: 'row',
+        height: SCAN_SIZE,
+    },
+    overlaySide: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    overlayBottom: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        alignItems: 'center',
+        paddingTop: 40,
+    },
+    scanRoot: {
+        width: SCAN_SIZE,
+        height: SCAN_SIZE,
+        backgroundColor: 'transparent',
+    },
+    scanFrame: {
+        width: '100%',
+        height: '100%',
         position: 'relative',
+    },
+    laser: {
+        width: '100%',
+        height: 3,
+        backgroundColor: '#FCD535',
+        shadowColor: '#FCD535',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+        elevation: 10,
+        position: 'absolute',
     },
     corner: {
         position: 'absolute',
-        width: 30,
-        height: 30,
-        borderColor: '#8b5cf6',
-        borderWidth: 3,
+        width: 24,
+        height: 24,
+        borderColor: '#FCD535',
+        borderWidth: 4,
+    },
+    topLeft: {
+        top: 0,
+        left: 0,
         borderRightWidth: 0,
         borderBottomWidth: 0,
     },
     topRight: {
         top: 0,
         right: 0,
-        borderRightWidth: 3,
         borderLeftWidth: 0,
         borderBottomWidth: 0,
     },
     bottomLeft: {
         bottom: 0,
         left: 0,
-        borderTopWidth: 0,
         borderRightWidth: 0,
+        borderTopWidth: 0,
     },
     bottomRight: {
         bottom: 0,
         right: 0,
-        borderTopWidth: 0,
         borderLeftWidth: 0,
-        borderRightWidth: 3,
-    },
-    hintCard: {
-        marginTop: 32,
-        padding: 16,
+        borderTopWidth: 0,
     },
     hintText: {
-        color: 'rgba(255, 255, 255, 0.7)',
-        fontSize: 14,
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '600',
         textAlign: 'center',
-        marginBottom: 4,
-    },
-    hintSubtext: {
-        color: 'rgba(255, 255, 255, 0.5)',
-        fontSize: 12,
-        textAlign: 'center',
+        opacity: 0.9,
     },
     permissionContainer: {
         flex: 1,
         justifyContent: 'center',
-        alignItems: 'center',
+        padding: 30,
+    },
+    permissionContent: {
+        backgroundColor: 'rgba(30, 32, 38, 0.95)',
+        borderRadius: 24,
         padding: 32,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    iconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(252, 213, 53, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 24,
     },
     permissionTitle: {
-        fontSize: 20,
-        fontWeight: '600',
+        fontSize: 22,
+        fontWeight: '700',
         color: '#fff',
-        marginTop: 24,
-        marginBottom: 16,
-    },
-    permissionText: {
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.7)',
+        marginBottom: 12,
         textAlign: 'center',
+    },
+    permissionDesc: {
+        fontSize: 15,
+        color: 'rgba(255,255,255,0.6)',
+        textAlign: 'center',
+        lineHeight: 22,
         marginBottom: 32,
     },
-    permissionButton: {
-        backgroundColor: '#8b5cf6',
-        paddingHorizontal: 32,
+    primaryButton: {
+        backgroundColor: '#FCD535',
+        width: '100%',
         paddingVertical: 16,
-        borderRadius: 12,
+        borderRadius: 14,
+        alignItems: 'center',
+        marginBottom: 16,
     },
-    permissionButtonText: {
-        color: '#fff',
+    buttonText: {
+        color: '#000',
         fontSize: 16,
+        fontWeight: '700',
+    },
+    textButton: {
+        paddingVertical: 8,
+    },
+    textButtonLabel: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 14,
         fontWeight: '600',
     },
 });

@@ -18,4 +18,5 @@ export { OTPVerifyModal } from "./common/OTPVerifyModal";
 export { OTPProtectedAction } from "./common/OTPProtectedAction";
 export { PinVerifyModal } from "./common/PinVerifyModal";
 export { default as VentoUltimateLoading } from "./common/VentoSVGLoading";
+export { default as FintechScreenSkeleton } from "./common/FintechScreenSkeleton";
 export * from "./WalletCard";

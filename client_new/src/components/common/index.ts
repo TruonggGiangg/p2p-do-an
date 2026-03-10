@@ -5,3 +5,4 @@ export * from './CommonCard';
 export * from './CommonTabs';
 export { default as FintechPullToRefresh } from './FintechPullToRefresh';
 export { default as VentoUltimateLoading } from './VentoSVGLoading';
+export { default as FintechScreenSkeleton } from './FintechScreenSkeleton';

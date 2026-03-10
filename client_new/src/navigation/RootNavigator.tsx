@@ -52,6 +52,7 @@ export type RootStackParamList = {
     BNPLEarlyRepay: { loan: BnplLoan };
     KYCUpdate: undefined;
     KYCIntro: undefined;
+    MyQR: { wallet?: any };
     FaceDetection: {
         onVerify?: (result: { images: { uri: string }[] }) => Promise<any>;
         onComplete?: (result: any) => void;
@@ -93,6 +94,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="BNPLEarlyRepay" component={BNPLEarlyRepayScreen} />
                     <Stack.Screen name="KYCUpdate" component={KYCUpdate} />
                     <Stack.Screen name="KYCIntro" component={KYCIntro} />
+                    <Stack.Screen name="MyQR" component={require('../features/wallet/screens/MyQRScreen').default} />
                     <Stack.Screen name="FaceDetection" component={FaceDetection} />
                 </>
             )}

@@ -57,14 +57,14 @@ export const PinSection: React.FC = () => {
                         <View style={styles.actions}>
                             {!hasPin ? (
                                 <CommonButton
-                                    title="THIẾT LẬP MÃ PIN"
+                                    title="Thiết lập mã PIN"
                                     onPress={() => (navigation as any).getParent()?.navigate('PinSetup')}
                                     icon="lock-plus"
                                     style={styles.actionBtn}
                                 />
                             ) : (
                                 <CommonButton
-                                    title="ĐỔI MÃ PIN"
+                                    title="Đổi mã PIN"
                                     onPress={() => (navigation as any).getParent()?.navigate('PinChange')}
                                     variant="outline"
                                     icon="lock-reset"
