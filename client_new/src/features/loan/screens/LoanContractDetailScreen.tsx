@@ -213,7 +213,10 @@ export default function LoanContractDetailScreen() {
 
             <ScrollView
                 style={styles.scrollView}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: isPending ? 100 : 32 }]}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: isPending ? 100 + (Platform.OS === 'ios' ? insets.bottom : 0) : 32 },
+                ]}
                 showsVerticalScrollIndicator={false}
             >
                 {/* Contract Header Card */}
@@ -358,9 +361,17 @@ export default function LoanContractDetailScreen() {
                 ) : null}
             </ScrollView>
 
-            {/* Bottom Sign Button */}
+            {/* Bottom Sign Button - zIndex để hiển thị trên iOS */}
             {isPending && (
-                <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, backgroundColor: colors.background, borderTopColor: colors.border }]}>
+                <View style={[
+                    styles.bottomBar,
+                    {
+                        paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) + 12 : insets.bottom + 12,
+                        backgroundColor: colors.background,
+                        borderTopColor: colors.border,
+                        zIndex: 1000,
+                    },
+                ]}>
                     <TouchableOpacity
                         style={[styles.signBtn, signing && styles.signBtnDisabled]}
                         onPress={() => setShowSignConfirm(true)}
@@ -652,7 +663,7 @@ const styles = StyleSheet.create({
     },
     viewContractText: { fontSize: 15, fontWeight: '600' },
 
-    // Bottom Bar
+    // Bottom Bar - cố định dưới màn hình, hỗ trợ safe area iOS
     bottomBar: {
         position: 'absolute',
         bottom: 0,
@@ -661,6 +672,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 12,
         borderTopWidth: 1,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: -2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 8,
+            },
+            android: { elevation: 10 },
+        }),
     },
     signBtn: {
         flexDirection: 'row',

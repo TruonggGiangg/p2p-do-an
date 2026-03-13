@@ -777,14 +777,30 @@ export class AdminService {
       throw new BadRequestException(`Chưa upload đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
     }
 
-    // Fineract requires: approvedOnDate <= expectedDisbursementDate
-    // Use the loan's disbursementDate so approval works even for past-dated loans
-    const disbursementDate = app?.disbursementDate; // format: yyyy-MM-dd
+    // Fineract requires: approvedOnDate >= submittedOnDate AND approvedOnDate <= expectedDisbursementDate
     const today = new Date().toISOString().split('T')[0];
-    // Use disbursementDate if it exists and is earlier than today (i.e. past-dated)
-    let approvedOnDate: string | undefined;
-    if (disbursementDate) {
-      approvedOnDate = disbursementDate < today ? disbursementDate : today;
+    let approvedOnDate: string = today;
+
+    try {
+      const loanDetails = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+      const submittedOnDate = parseFineractDate(loanDetails?.timeline?.submittedOnDate);
+      const expectedDisbursementDate = parseFineractDate(loanDetails?.timeline?.expectedDisbursementDate) || parseFineractDate(loanDetails?.expectedDisbursementDate);
+      const disbursementDate = app?.disbursementDate;
+
+      // Candidate: use disbursementDate if past-dated, else today
+      let candidate = today;
+      if (disbursementDate && disbursementDate < today) {
+        candidate = disbursementDate;
+      }
+
+      // approvedOnDate must be >= submittedOnDate (Fineract: cannot approve before submittal)
+      // approvedOnDate must be <= expectedDisbursementDate
+      const upperBound = expectedDisbursementDate || today;
+      const clamped = candidate > upperBound ? upperBound : candidate;
+      approvedOnDate = submittedOnDate && clamped < submittedOnDate ? submittedOnDate : clamped;
+      this.logger.log(`[approveLoan] Dates: submitted=${submittedOnDate} expectedDisb=${expectedDisbursementDate} candidate=${candidate} -> approvedOnDate=${approvedOnDate}`);
+    } catch (err) {
+      this.logger.warn(`[approveLoan] Could not fetch loan details, using today: ${(err as Error).message}`);
     }
 
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
@@ -1487,6 +1503,336 @@ export class AdminService {
     }
 
     return { total: items.length, items };
+  }
+
+  /**
+   * Danh sách khoản vay thống nhất với filter đầy đủ.
+   * Kết hợp Mongo (disbursed/closed) + Fineract (pending/approved).
+   */
+  async getLoans(filters: {
+    page?: number;
+    limit?: number;
+    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+    productId?: number;
+    classification?: string;
+    keyword?: string;
+    delinquentDaysMin?: number;
+    delinquentDaysMax?: number;
+    minOverdueAmount?: number;
+    maxOverdueAmount?: number;
+    disbursementDateFrom?: string;
+    disbursementDateTo?: string;
+  }): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    items: Array<{
+      _id: string;
+      fineractLoanId: number;
+      userId: string;
+      customerName: string;
+      customerUsername: string;
+      fineractClientId?: string;
+      productId: number;
+      productName: string;
+      capital: number;
+      periodMonth: number;
+      status: string;
+      statusCode?: string;
+      delinquencyClassification: string | null;
+      totalOverdue: number;
+      delinquentDays: number;
+      disbursementDate: string | null;
+      lastSyncedAt: Date | null;
+    }>;
+  }> {
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
+    const status = filters.status ?? 'all';
+    const paginate = <T>(items: T[]) => {
+      const start = (page - 1) * limit;
+      return items.slice(start, start + limit);
+    };
+
+    const mapAppToItem = (app: any): any => {
+      const user = app.userId as any;
+      const profile = user?.profile ?? {};
+      const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
+      const totalOverdue = Number(app.totalOverdue ?? 0);
+      const normalizedStatus = app.status === 'disbursed' && totalOverdue > 0 ? 'overdue' : (app.status ?? 'disbursed');
+      return {
+        _id: app._id.toString(),
+        fineractLoanId: app.fineractLoanId,
+        userId: app.userId?._id?.toString() ?? '',
+        customerName: app.clientDisplayName ?? fallbackName,
+        customerUsername: user?.username ?? '–',
+        fineractClientId: user?.fineractClientId,
+        productId: app.productId ?? 0,
+        productName: app.productName ?? String(app.productId),
+        capital: app.capital ?? 0,
+        periodMonth: app.periodMonth ?? 0,
+        status: normalizedStatus,
+        statusCode: app.fineractStatusString,
+        delinquencyClassification: app.delinquencyClassification ?? null,
+        totalOverdue,
+        delinquentDays: app.delinquentDays ?? 0,
+        disbursementDate: app.disbursementDate ?? null,
+        lastSyncedAt: app.lastSyncedAt ?? null,
+      };
+    };
+
+    const applyKeywordFilter = (items: any[]) => {
+      if (!filters.keyword?.trim()) return items;
+      const search = filters.keyword.toLowerCase().trim();
+      return items.filter(
+        (i) =>
+          i.customerName?.toLowerCase().includes(search) ||
+          i.customerUsername?.toLowerCase().includes(search) ||
+          String(i.fineractLoanId).includes(search),
+      );
+    };
+
+    const applyProductFilter = (items: any[]) => {
+      if (filters.productId == null) return items;
+      return items.filter((i) => i.productId === filters.productId);
+    };
+
+    const getPendingItems = async () => {
+      const pending = await this.getAllPendingLoans();
+      let items = pending.map((fl) => ({
+        _id: fl._id,
+        fineractLoanId: fl.fineractLoanId,
+        userId: fl.userId ?? '',
+        customerName: fl.clientName ?? '–',
+        customerUsername: '–',
+        productId: fl.productId,
+        productName: fl.productName ?? '',
+        capital: fl.capital ?? 0,
+        periodMonth: fl.periodMonth ?? 0,
+        status: 'pending',
+        statusCode: 'loanStatusType.pendingApproval',
+        delinquencyClassification: null,
+        totalOverdue: 0,
+        delinquentDays: 0,
+        disbursementDate: null,
+        lastSyncedAt: null,
+      }));
+      items = applyProductFilter(applyKeywordFilter(items));
+      return items;
+    };
+
+    const getApprovedItems = async () => {
+      const approvedLoans = await this.fineractLoanService.getLoansByStatus(200).catch(() => []);
+      const products = await this.fineractLoanService.getLoanProducts();
+      const productMap = new Map(products.map((p: any) => [p.id, p]));
+      const fineractClientIds = approvedLoans.map((fl) => String(fl.clientId));
+      const mongoUsers = await this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean();
+      const userMap = new Map(mongoUsers.map((u: any) => [u.fineractClientId, u]));
+      let items = approvedLoans.map((fl) => {
+        const p = productMap.get(fl.productId || fl.loanProductId) ?? {};
+        const u = userMap.get(String(fl.clientId));
+        return {
+          _id: `FL_${fl.id}`,
+          fineractLoanId: fl.id,
+          userId: u?._id?.toString() ?? '',
+          customerName: fl.clientName ?? u?.username ?? '–',
+          customerUsername: u?.username ?? '–',
+          productId: fl.productId || fl.loanProductId,
+          productName: p.name ?? '',
+          capital: fl.principal ?? 0,
+          periodMonth: fl.numberOfRepayments ?? 0,
+          status: 'approved',
+          statusCode: 'loanStatusType.approved',
+          delinquencyClassification: null,
+          totalOverdue: 0,
+          delinquentDays: 0,
+          disbursementDate: null,
+          lastSyncedAt: null,
+        };
+      });
+      items = applyProductFilter(applyKeywordFilter(items));
+      return items;
+    };
+
+    // Pending: Fineract status 100
+    if (status === 'pending') {
+      const items = await getPendingItems();
+      const total = items.length;
+      return { total, page, limit, items: paginate(items) };
+    }
+
+    // Approved: Fineract status 200 (waiting for disbursal)
+    if (status === 'approved') {
+      const items = await getApprovedItems();
+      const total = items.length;
+      return { total, page, limit, items: paginate(items) };
+    }
+
+    // disbursed, overdue, closed, all: query Mongo
+    const query: any = { fineractLoanId: { $exists: true, $ne: null } };
+
+    if (status === 'disbursed') {
+      query.status = 'disbursed';
+      query.$or = [{ totalOverdue: { $exists: false } }, { totalOverdue: null }, { totalOverdue: 0 }];
+    } else if (status === 'overdue') {
+      query.status = 'disbursed';
+      query.totalOverdue = { $gt: 0 };
+    } else if (status === 'closed') {
+      query.status = 'closed';
+    } else {
+      query.status = { $in: ['disbursed', 'closed'] };
+    }
+
+    if (filters.productId != null) query.productId = filters.productId;
+    if (filters.classification) query.delinquencyClassification = filters.classification;
+
+    if (filters.keyword?.trim()) {
+      const search = filters.keyword.trim();
+      const keywordOr: any[] = [
+        { clientDisplayName: { $regex: search, $options: 'i' } },
+      ];
+      const loanIdNum = Number(search);
+      if (!isNaN(loanIdNum)) keywordOr.push({ fineractLoanId: loanIdNum });
+      const matchingUsers = await this.userModel
+        .find({
+          $or: [
+            { username: { $regex: search, $options: 'i' } },
+            { 'profile.firstName': { $regex: search, $options: 'i' } },
+            { 'profile.lastName': { $regex: search, $options: 'i' } },
+          ],
+        })
+        .select('_id')
+        .lean();
+      if (matchingUsers.length > 0) {
+        keywordOr.push({ userId: { $in: matchingUsers.map((u: any) => u._id) } });
+      }
+      query.$and = query.$and ?? [];
+      query.$and.push({ $or: keywordOr });
+    }
+
+    if (filters.minOverdueAmount != null && filters.minOverdueAmount > 0) {
+      query.totalOverdue = query.totalOverdue ?? { $gt: 0 };
+      if (typeof query.totalOverdue === 'object') {
+        (query.totalOverdue as any).$gte = filters.minOverdueAmount;
+      }
+    }
+    if (filters.maxOverdueAmount != null && filters.maxOverdueAmount >= 0) {
+      query.totalOverdue = query.totalOverdue ?? { $gt: 0 };
+      if (typeof query.totalOverdue === 'object') {
+        (query.totalOverdue as any).$lte = filters.maxOverdueAmount;
+      }
+    }
+    if (filters.delinquentDaysMin != null && filters.delinquentDaysMin >= 0) {
+      query.delinquentDays = query.delinquentDays ?? {};
+      query.delinquentDays.$gte = filters.delinquentDaysMin;
+    }
+    if (filters.delinquentDaysMax != null && filters.delinquentDaysMax >= 0) {
+      query.delinquentDays = query.delinquentDays ?? {};
+      query.delinquentDays.$lte = filters.delinquentDaysMax;
+    }
+    if (filters.disbursementDateFrom || filters.disbursementDateTo) {
+      query.disbursementDate = {};
+      if (filters.disbursementDateFrom) query.disbursementDate.$gte = filters.disbursementDateFrom;
+      if (filters.disbursementDateTo) query.disbursementDate.$lte = filters.disbursementDateTo;
+    }
+
+    const mongoQuery = this.loanApplicationModel
+      .find(query)
+      .sort({ totalOverdue: -1, delinquentDays: -1, lastSyncedAt: -1 })
+      .populate('userId', 'username profile fineractClientId')
+      .lean();
+
+    if (status !== 'all') {
+      mongoQuery.skip((page - 1) * limit).limit(limit);
+    }
+
+    const apps = await mongoQuery.exec();
+
+    const count = status === 'all' ? 0 : await this.loanApplicationModel.countDocuments(query);
+
+    const products = await this.fineractLoanService.getLoanProducts();
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+    const mongoItems = (apps as any[]).map((app) => {
+      const item = mapAppToItem(app);
+      const p = productMap.get(app.productId);
+      if (p) item.productName = p.name ?? item.productName;
+      return item;
+    });
+
+    if (status === 'all') {
+      const [pendingItems, approvedItems] = await Promise.all([
+        getPendingItems(),
+        getApprovedItems(),
+      ]);
+      const allItems = [...pendingItems, ...approvedItems, ...mongoItems]
+        .sort((a, b) => Number(b.fineractLoanId ?? 0) - Number(a.fineractLoanId ?? 0));
+      return {
+        total: allItems.length,
+        page,
+        limit,
+        items: paginate(allItems),
+      };
+    }
+
+    return { total: count, page, limit, items: mongoItems };
+  }
+
+  /**
+   * Thống kê nhanh khoản vay theo trạng thái.
+   */
+  async getLoansStats(): Promise<{
+    total: number;
+    pending: number;
+    approved: number;
+    disbursed: number;
+    overdue: number;
+    closed: number;
+  }> {
+    const [mongoCounts, pendingCount, approvedCount] = await Promise.all([
+      this.loanApplicationModel.aggregate([
+        { $match: { fineractLoanId: { $exists: true, $ne: null } } },
+        {
+          $group: {
+            _id: null,
+            disbursed: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'disbursed'] }, { $lte: [{ $ifNull: ['$totalOverdue', 0] }, 0] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            overdue: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'disbursed'] }, { $gt: [{ $ifNull: ['$totalOverdue', 0] }, 0] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            closed: { $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] } },
+          },
+        },
+      ]),
+      this.fineractLoanService.getLoansByStatus(100).then((r) => r.length),
+      this.fineractLoanService.getLoansByStatus(200).then((r) => r.length),
+    ]);
+
+    const agg = mongoCounts[0] ?? {};
+    const disbursed = agg.disbursed ?? 0;
+    const overdue = agg.overdue ?? 0;
+    const closed = agg.closed ?? 0;
+
+    return {
+      total: disbursed + overdue + closed + pendingCount + approvedCount,
+      pending: pendingCount,
+      approved: approvedCount,
+      disbursed,
+      overdue,
+      closed,
+    };
   }
 
   async getLoanDocuments(fineractLoanId: number) {

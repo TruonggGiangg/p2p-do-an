@@ -94,10 +94,11 @@ async function setupDelinquencyRanges(client: AxiosInstance) {
     const existing: any[] = existingRes.data || [];
 
     const rangesToCreate = [
-        { classification: 'Nhóm 1 (1-30 ngày)', minimumAgeDays: 1, maximumAgeDays: 30 },
-        { classification: 'Nhóm 2 (31-60 ngày)', minimumAgeDays: 31, maximumAgeDays: 60 },
-        { classification: 'Nhóm 3 (61-90 ngày)', minimumAgeDays: 61, maximumAgeDays: 90 },
-        { classification: 'Nhóm quá hạn (>90 ngày)', minimumAgeDays: 91, maximumAgeDays: null },
+        { classification: 'Nhóm 1 – Nợ đủ tiêu chuẩn', minimumAgeDays: 1, maximumAgeDays: 9 },
+        { classification: 'Nhóm 2 – Nợ cần chú ý', minimumAgeDays: 10, maximumAgeDays: 29 },
+        { classification: 'Nhóm 3 – Nợ dưới tiêu chuẩn', minimumAgeDays: 30, maximumAgeDays: 89 },
+        { classification: 'Nhóm 4 – Nợ nghi ngờ', minimumAgeDays: 90, maximumAgeDays: 179 },
+        { classification: 'Nhóm 5 – Nợ có khả năng mất vốn', minimumAgeDays: 180, maximumAgeDays: null },
     ];
 
     const rangeIds: any[] = [];

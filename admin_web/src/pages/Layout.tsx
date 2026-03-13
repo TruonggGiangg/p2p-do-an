@@ -18,6 +18,7 @@ import {
   ToolOutlined,
   ExclamationCircleOutlined,
   SafetyCertificateOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { AbilityContext } from '../AbilityContext';
@@ -30,9 +31,9 @@ const menuItems = [
   { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
   { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
+  { key: '/loans', icon: <DollarOutlined />, label: 'Quản lý khoản vay' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
   { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
-  { key: '/overdue-loans', icon: <ExclamationCircleOutlined />, label: 'Khoản vay quá hạn' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/roles-permissions', icon: <SafetyCertificateOutlined />, label: 'Vai trò & Phân quyền' },

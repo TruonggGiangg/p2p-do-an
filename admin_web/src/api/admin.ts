@@ -502,6 +502,55 @@ export const adminApi = {
       }>(`/api/admin/customers/${userId}/loans`)
       .then((r) => r.data.data.loans),
 
+  // ── Loan Management ──────────────────────────────────────────────────────────
+  getLoansStats: () =>
+    api
+      .get<{ data: { total: number; pending: number; approved: number; disbursed: number; overdue: number; closed: number } }>(
+        '/api/admin/loans/stats',
+      )
+      .then((r) => r.data.data),
+
+  getLoans: (params?: {
+    page?: number;
+    limit?: number;
+    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+    productId?: number;
+    classification?: string;
+    keyword?: string;
+    delinquentDaysMin?: number;
+    delinquentDaysMax?: number;
+    minOverdueAmount?: number;
+    maxOverdueAmount?: number;
+    disbursementDateFrom?: string;
+    disbursementDateTo?: string;
+  }) =>
+    api
+      .get<{
+        data: {
+          total: number;
+          page: number;
+          limit: number;
+          items: Array<{
+            _id: string;
+            fineractLoanId: number;
+            userId: string;
+            customerName: string;
+            customerUsername: string;
+            productId: number;
+            productName: string;
+            capital: number;
+            periodMonth: number;
+            status: string;
+            delinquencyClassification: string | null;
+            totalOverdue: number;
+            delinquentDays: number;
+            disbursementDate: string | null;
+            lastSyncedAt: string | null;
+          }>;
+        };
+      }>('/api/admin/loans', { params })
+      .then((r) => r.data.data),
+
   // ── Loan Approvals ──────────────────────────────────────────────────────────
   getPendingLoans: () =>
     api

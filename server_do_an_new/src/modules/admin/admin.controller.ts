@@ -299,7 +299,52 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: { loans } };
   }
 
-  // ── Loan Approvals ──────────────────────────────────────────────────────────
+  // ── Loan Management ──────────────────────────────────────────────────────────
+
+  @Get('loans/stats')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
+  @ApiOperation({ summary: 'Thống kê khoản vay theo trạng thái' })
+  @ApiResponse({ status: 200 })
+  async getLoansStats() {
+    const stats = await this.adminService.getLoansStats();
+    return { statusCode: 200, message: 'OK', data: stats };
+  }
+
+  @Get('loans')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
+  @ApiOperation({ summary: 'Danh sách khoản vay thống nhất với filter' })
+  @ApiResponse({ status: 200 })
+  async getLoans(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('productId') productId?: string,
+    @Query('classification') classification?: string,
+    @Query('keyword') keyword?: string,
+    @Query('delinquentDaysMin') delinquentDaysMin?: string,
+    @Query('delinquentDaysMax') delinquentDaysMax?: string,
+    @Query('minOverdueAmount') minOverdueAmount?: string,
+    @Query('maxOverdueAmount') maxOverdueAmount?: string,
+    @Query('disbursementDateFrom') disbursementDateFrom?: string,
+    @Query('disbursementDateTo') disbursementDateTo?: string,
+  ) {
+    const filters: any = {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status: status as any,
+      classification: classification || undefined,
+      keyword: keyword?.trim() || undefined,
+      disbursementDateFrom: disbursementDateFrom || undefined,
+      disbursementDateTo: disbursementDateTo || undefined,
+    };
+    if (productId) filters.productId = parseInt(productId, 10);
+    if (delinquentDaysMin != null) filters.delinquentDaysMin = parseInt(delinquentDaysMin, 10);
+    if (delinquentDaysMax != null) filters.delinquentDaysMax = parseInt(delinquentDaysMax, 10);
+    if (minOverdueAmount != null) filters.minOverdueAmount = parseFloat(minOverdueAmount);
+    if (maxOverdueAmount != null) filters.maxOverdueAmount = parseFloat(maxOverdueAmount);
+    const result = await this.adminService.getLoans(filters);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
 
   @Get('loans/pending')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))

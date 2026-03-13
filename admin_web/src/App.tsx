@@ -13,7 +13,7 @@ import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
-import OverdueLoansPage from './pages/OverdueLoansPage';
+import LoansPage from './pages/LoansPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
@@ -189,13 +189,14 @@ export default function App() {
                 <Route index element={<DocumentTypesPage />} />
                 <Route path="loan-products" element={<LoanProductsPage />} />
                 <Route path="savings-products" element={<SavingsProductsPage />} />
+                <Route path="loans" element={<LoansPage />} />
                 <Route path="loan-approvals" element={<LoanApprovalsPage />} />
+                <Route path="overdue-loans" element={<Navigate to="/loans?tab=overdue" replace />} />
                 <Route path="loan-support-requests" element={
                   <ProtectedRoute action={Action.Read} subject="LoanApplication">
                     <LoanSupportRequestsPage />
                   </ProtectedRoute>
                 } />
-                <Route path="overdue-loans" element={<OverdueLoansPage />} />
                 <Route path="customers" element={<CustomersPage />} />
                 <Route path="customers/:id" element={<CustomerDetailPage />} />
                 <Route path="staff" element={
