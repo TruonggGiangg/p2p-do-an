@@ -1,60 +1,80 @@
-import { api, authStorage, authEvents } from '../../../core';
+import { api, authStorage, authEvents } from "../../../core";
 import type {
-    LoginRequest,
-    RegisterRequest,
-    LoginResponse,
-    RegisterResponse,
-    User,
-} from '../../../types/auth.types';
+  LoginRequest,
+  RegisterRequest,
+  LoginResponse,
+  RegisterResponse,
+  User,
+  CreditScoreHistoryPageResponse,
+} from "../../../types/auth.types";
 
 export const authAPI = {
-    /** Register new user */
-    register: async (data: RegisterRequest): Promise<RegisterResponse> => {
-        const response = await api.post<RegisterResponse>('/api/auth/register', data);
-        return response.data;
-    },
+  /** Register new user */
+  register: async (data: RegisterRequest): Promise<RegisterResponse> => {
+    const response = await api.post<RegisterResponse>(
+      "/api/auth/register",
+      data,
+    );
+    return response.data;
+  },
 
-    /** Login with username and password */
-    login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-        const response = await api.post<LoginResponse>('/api/auth/login', credentials);
-        const { data, accessToken, refreshToken, requires2fa } = response.data;
+  /** Login with username and password */
+  login: async (credentials: LoginRequest): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>(
+      "/api/auth/login",
+      credentials,
+    );
+    const { data, accessToken, refreshToken, requires2fa } = response.data;
 
-        if (requires2fa) {
-            return response.data;
-        }
+    if (requires2fa) {
+      return response.data;
+    }
 
-        if (data && accessToken && refreshToken) {
-            await authStorage.saveAuthData(data, { accessToken, refreshToken });
-            authEvents.emitLogin();
-        }
+    if (data && accessToken && refreshToken) {
+      await authStorage.saveAuthData(data, { accessToken, refreshToken });
+      authEvents.emitLogin();
+    }
 
-        return response.data;
-    },
+    return response.data;
+  },
 
-    /** Get current user info */
-    getMe: async (): Promise<User> => {
-        const response = await api.get<{ data: User }>('/api/auth/me');
-        const user = response.data.data;
+  /** Get current user info */
+  getMe: async (): Promise<User> => {
+    const response = await api.get<{ data: User }>("/api/auth/me");
+    const user = response.data.data;
 
-        await authStorage.saveUser(user);
+    await authStorage.saveUser(user);
 
-        return user;
-    },
+    return user;
+  },
 
-    /** Logout user */
-    logout: async (): Promise<void> => {
-        try {
-            await api.post('/api/auth/logout');
-        } catch {
-            // Continue with local cleanup even if API fails
-        } finally {
-            await authStorage.clearAll();
-            authEvents.emitLogout();
-        }
-    },
+  /** Get paginated credit score history of current user */
+  getCreditScoreHistory: async (
+    page = 1,
+    limit = 20,
+  ): Promise<CreditScoreHistoryPageResponse> => {
+    const response = await api.get<{ data: CreditScoreHistoryPageResponse }>(
+      "/api/auth/me/credit-score-history",
+      { params: { page, limit } },
+    );
 
-    /** Check if user is authenticated */
-    isAuthenticated: async (): Promise<boolean> => {
-        return authStorage.isAuthenticated();
-    },
+    return response.data.data;
+  },
+
+  /** Logout user */
+  logout: async (): Promise<void> => {
+    try {
+      await api.post("/api/auth/logout");
+    } catch {
+      // Continue with local cleanup even if API fails
+    } finally {
+      await authStorage.clearAll();
+      authEvents.emitLogout();
+    }
+  },
+
+  /** Check if user is authenticated */
+  isAuthenticated: async (): Promise<boolean> => {
+    return authStorage.isAuthenticated();
+  },
 };

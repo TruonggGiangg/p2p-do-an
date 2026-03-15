@@ -6,6 +6,15 @@ import { CreditScoreHistory } from './schemas/credit-score-history.schema';
 
 const DEFAULT_CREDIT_SCORE = 650;
 
+export interface CreditScoreHistoryPaginationResult {
+  items: CreditScoreHistory[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
+
 @Injectable()
 export class CreditScoreService {
   private readonly logger = new Logger(CreditScoreService.name);
@@ -43,7 +52,7 @@ export class CreditScoreService {
       changeAmount: 0,
       reason: 'initial_account_creation',
       trigger: 'system',
-      note: 'Khoi tao diem tin dung mac dinh khi tao hoac dong bo tai khoan',
+      note: 'Khởi tạo điểm tín dụng mặc định khi tạo hoặc đồng bộ tài khoản',
     });
 
     this.logger.log(`[ensureCreditScoreForUser] Created initial credit score for user ${uid.toString()}`);
@@ -60,5 +69,32 @@ export class CreditScoreService {
     const safeLimit = Math.max(1, Math.min(100, limit));
 
     return this.creditScoreHistoryModel.find({ userId: uid }).sort({ createdAt: -1 }).limit(safeLimit).lean() as any;
+  }
+
+  async getHistoryPageByUserId(
+    userId: string | Types.ObjectId,
+    page = 1,
+    limit = 20,
+  ): Promise<CreditScoreHistoryPaginationResult> {
+    const uid = this.toObjectId(userId);
+    const safePage = Math.max(1, Math.floor(page) || 1);
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+
+    const [items, total] = await Promise.all([
+      this.creditScoreHistoryModel.find({ userId: uid }).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+      this.creditScoreHistoryModel.countDocuments({ userId: uid }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+    return {
+      items: items as any,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages,
+      hasNextPage: safePage < totalPages,
+    };
   }
 }

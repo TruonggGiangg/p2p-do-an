@@ -46,6 +46,19 @@ export interface UserCreditScoreHistoryItem {
   createdAt?: string;
 }
 
+export interface CreditScoreHistoryPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
+
+export interface CreditScoreHistoryPageResponse {
+  items: UserCreditScoreHistoryItem[];
+  pagination: CreditScoreHistoryPagination;
+}
+
 export interface User {
   _id?: string;
   keycloakUserId?: string;

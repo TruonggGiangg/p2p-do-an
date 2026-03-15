@@ -8,6 +8,7 @@ import {
     Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -21,32 +22,33 @@ import {
 } from '../../../components';
 import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
+import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 const SCORE_MIN = 300;
 const SCORE_MAX = 850;
 
 const creditScoreBand = (score: number) => {
-    if (score >= 800) return { label: 'XUAT SAC', color: '#18A058' };
-    if (score >= 740) return { label: 'TOT', color: '#2F80ED' };
-    if (score >= 670) return { label: 'KHA', color: '#F2C94C' };
-    if (score >= 580) return { label: 'TRUNG BINH', color: '#F2994A' };
-    return { label: 'CAN CAI THIEN', color: '#EB5757' };
+    if (score >= 800) return { label: 'XUẤT SẮC', color: '#18A058' };
+    if (score >= 740) return { label: 'TỐT', color: '#2F80ED' };
+    if (score >= 670) return { label: 'KHÁ', color: '#F2C94C' };
+    if (score >= 580) return { label: 'TRUNG BÌNH', color: '#F2994A' };
+    return { label: 'CẦN CẢI THIỆN', color: '#EB5757' };
 };
 
 const formatHistoryReason = (reason?: string) => {
     switch (reason) {
         case 'initial_account_creation':
-            return 'Khoi tao tai khoan';
+            return 'Khởi tạo tài khoản';
         case 'loan_repayment':
-            return 'Tra no dung han';
+            return 'Trả nợ đúng hạn';
         case 'late_payment':
-            return 'Cham thanh toan';
+            return 'Chậm thanh toán';
         case 'manual_adjustment':
-            return 'Dieu chinh thu cong';
+            return 'Điều chỉnh thủ công';
         case 'system_recalculation':
-            return 'He thong tinh lai';
+            return 'Hệ thống tính lại';
         default:
-            return 'Cap nhat diem';
+            return 'Cập nhật điểm';
     }
 };
 
@@ -61,7 +63,7 @@ const formatDateTime = (value?: string) => {
 };
 
 export default function ProfileScreen() {
-    const navigation = useNavigation();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, logout, refreshUser } = useAuth();
     const { theme } = useTheme();
 
@@ -238,68 +240,80 @@ export default function ProfileScreen() {
                         </View>
 
                         <View style={styles.creditSection}>
-                            <Text style={[styles.sectionTitle, { color: c.textDim }]}>TIN DUNG</Text>
-                            <CommonCard
-                                style={[
-                                    styles.creditScoreCard,
-                                    {
-                                        backgroundColor:
-                                            theme.mode === 'dark' ? c.backgroundSecondary : '#FFFBF0',
-                                    },
-                                ]}
-                            >
-                                <View style={styles.creditTopRow}>
-                                    <View>
-                                        <Text style={[styles.creditCaption, { color: c.textMuted }]}>Diem tin dung</Text>
-                                        <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                            <View style={styles.creditHeaderRow}>
+                                <Text style={[styles.sectionTitle, { color: c.textDim, marginBottom: 0 }]}>TÍN DỤNG</Text>
+                                <TouchableOpacity
+                                    style={styles.creditDetailLink}
+                                    activeOpacity={0.75}
+                                    onPress={() => navigation.navigate('CreditScoreDetail')}
+                                >
+                                    <Text style={[styles.creditDetailText, { color: c.primary }]}>Chi tiết</Text>
+                                    <MaterialCommunityIcons name="chevron-right" size={16} color={c.primary} />
+                                </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('CreditScoreDetail')}>
+                                <CommonCard
+                                    style={[
+                                        styles.creditScoreCard,
+                                        {
+                                            backgroundColor:
+                                                theme.mode === 'dark' ? c.backgroundSecondary : '#FFFBF0',
+                                        },
+                                    ]}
+                                >
+                                    <View style={styles.creditTopRow}>
+                                        <View>
+                                            <Text style={[styles.creditCaption, { color: c.textMuted }]}>Điểm tín dụng</Text>
+                                            <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                        </View>
+                                        <View style={[styles.creditBandPill, { backgroundColor: band.color + '22' }]}>
+                                            <Text style={[styles.creditBandText, { color: band.color }]}>{band.label}</Text>
+                                        </View>
                                     </View>
-                                    <View style={[styles.creditBandPill, { backgroundColor: band.color + '22' }]}>
-                                        <Text style={[styles.creditBandText, { color: band.color }]}>{band.label}</Text>
-                                    </View>
-                                </View>
 
-                                <View style={[styles.scoreProgressTrack, { backgroundColor: c.border + '40' }]}>
-                                    <View
-                                        style={[
-                                            styles.scoreProgressFill,
-                                            {
-                                                width: `${Math.max(scoreRatio * 100, 5)}%`,
-                                                backgroundColor: band.color,
-                                            },
-                                        ]}
-                                    />
-                                </View>
+                                    <View style={[styles.scoreProgressTrack, { backgroundColor: c.border + '40' }]}>
+                                        <View
+                                            style={[
+                                                styles.scoreProgressFill,
+                                                {
+                                                    width: `${Math.max(scoreRatio * 100, 5)}%`,
+                                                    backgroundColor: band.color,
+                                                },
+                                            ]}
+                                        />
+                                    </View>
 
-                                <View style={styles.creditMetaRow}>
-                                    <View style={styles.creditMetaItem}>
-                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tong khoan vay</Text>
-                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
-                                            {creditScore?.totalLoans ?? 0}
-                                        </Text>
+                                    <View style={styles.creditMetaRow}>
+                                        <View style={styles.creditMetaItem}>
+                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tổng khoản vay</Text>
+                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                                {creditScore?.totalLoans ?? 0}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.creditMetaItem}>
+                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Trả trễ hạn</Text>
+                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                                {creditScore?.latePayments ?? 0}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.creditMetaItem}>
+                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Cập nhật cuối</Text>
+                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                                {formatDateTime(creditScore?.lastUpdated)}
+                                            </Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.creditMetaItem}>
-                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tra tre han</Text>
-                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
-                                            {creditScore?.latePayments ?? 0}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.creditMetaItem}>
-                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Cap nhat cuoi</Text>
-                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
-                                            {formatDateTime(creditScore?.lastUpdated)}
-                                        </Text>
-                                    </View>
-                                </View>
-                            </CommonCard>
+                                </CommonCard>
+                            </TouchableOpacity>
 
                             <View style={[styles.historyCard, { backgroundColor: c.backgroundSecondary }]}>
                                 <View style={styles.historyHeaderRow}>
-                                    <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lich su cap nhat diem</Text>
-                                    <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} muc</Text>
+                                    <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử cập nhật điểm</Text>
+                                    <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} mục</Text>
                                 </View>
 
                                 {creditHistory.length === 0 ? (
-                                    <Text style={[styles.historyEmpty, { color: c.textMuted }]}>Chua co lich su cap nhat.</Text>
+                                    <Text style={[styles.historyEmpty, { color: c.textMuted }]}>Chưa có lịch sử cập nhật.</Text>
                                 ) : (
                                     creditHistory.slice(0, 6).map((item: any, index: number) => {
                                         const change = Number(item?.changeAmount || 0);
@@ -466,6 +480,21 @@ const styles = StyleSheet.create({
         borderTopWidth: StyleSheet.hairlineWidth,
     },
     creditSection: { paddingHorizontal: 16, paddingTop: 18 },
+    creditHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    creditDetailLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    creditDetailText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
+        marginRight: 2,
+    },
     creditScoreCard: {
         padding: 18,
         borderRadius: 16,

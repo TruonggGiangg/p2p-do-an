@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Body, Req, Res, UnauthorizedException, HttpStatus, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  UnauthorizedException,
+  HttpStatus,
+  HttpCode,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
@@ -160,6 +171,38 @@ export class AuthController {
       creditScoreHistory,
     };
     return { data };
+  }
+
+  @Get('me/credit-score-history')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Get paginated credit score history of current user' })
+  @ApiResponse({ status: 200, description: 'Trả về lịch sử điểm tín dụng có phân trang' })
+  @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
+  async getCreditScoreHistory(
+    @CurrentUser() user: UserPayload,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!user._id) throw new UnauthorizedException();
+
+    await this.creditScoreService.ensureCreditScoreForUser(user._id);
+
+    const pageNumber = Number.parseInt(page || '1', 10);
+    const limitNumber = Number.parseInt(limit || '20', 10);
+    const result = await this.creditScoreService.getHistoryPageByUserId(user._id, pageNumber, limitNumber);
+
+    return {
+      data: {
+        items: result.items,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.hasNextPage,
+        },
+      },
+    };
   }
 
   // ── PIN Endpoints ─────────────────────────────────────────────────────────
