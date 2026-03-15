@@ -9,14 +9,6 @@ export class CreateDelinquencyPolicyDto {
   @IsString()
   debt_group_name?: string;
 
-  @IsInt()
-  @Min(0)
-  min_days: number;
-
-  @IsInt()
-  @Min(0)
-  max_days: number;
-
   @IsBoolean()
   send_email: boolean;
 

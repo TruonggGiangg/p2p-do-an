@@ -36,4 +36,4 @@ import { SmartCAModule } from '../digital-signature/smartca.module';
   providers: [LoanService, RepaymentService, ContractService],
   exports: [LoanService, RepaymentService, ContractService],
 })
-export class LoanModule { }
+export class LoanModule {}

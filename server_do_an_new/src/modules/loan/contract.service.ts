@@ -12,6 +12,7 @@ import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
+import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { generateLoanContractHTML } from './templates/loan-contract.template';
 import { SmartCAService } from '../digital-signature/smartca.service';
 
@@ -25,6 +26,7 @@ export class ContractService {
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(DelinquencyPolicy.name) private delinquencyPolicyModel: Model<DelinquencyPolicy>,
+    private readonly fineractLoanService: FineractLoanService,
     @Optional() private readonly smartCAService: SmartCAService,
   ) {}
 
@@ -39,11 +41,21 @@ export class ContractService {
 
   private async buildDelinquencyPolicySnapshot(): Promise<DelinquencyPolicySnapshotItem[]> {
     const policies = await this.delinquencyPolicyModel.find({ is_active: true }).sort({ debt_group: 1 }).lean().exec();
+    const ranges = await this.fineractLoanService.getDelinquencyRanges().catch(() => []);
+    const rangeMap = new Map<number, { min_days: number; max_days: number }>();
+    for (const range of ranges || []) {
+      const id = Number(range?.id);
+      if (!Number.isFinite(id)) continue;
+      rangeMap.set(id, {
+        min_days: Number(range?.minimumAgeDays ?? 0),
+        max_days: Number(range?.maximumAgeDays ?? 99999),
+      });
+    }
+
     return (policies as any[]).map(policy => ({
+      ...(rangeMap.get(Number(policy.debt_group)) ?? { min_days: 0, max_days: 99999 }),
       debt_group: Number(policy.debt_group ?? 0),
       debt_group_name: String(policy.debt_group_name ?? ''),
-      min_days: Number(policy.min_days ?? 0),
-      max_days: Number(policy.max_days ?? 0),
       send_email: !!policy.send_email,
       send_sms: !!policy.send_sms,
       send_notification: !!policy.send_notification,
@@ -365,6 +377,20 @@ export class ContractService {
    */
   async getContractHTML(contractId: string, userId: string): Promise<string> {
     const contract = await this.getContractById(contractId, userId);
+
+    // Backfill cho hợp đồng cũ chưa có snapshot để PDF luôn hiển thị rõ chính sách trước khi ký.
+    if (
+      (!Array.isArray((contract as any).delinquencyPolicySnapshot) ||
+        (contract as any).delinquencyPolicySnapshot.length === 0) &&
+      contract.status === 'pending_signature'
+    ) {
+      const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot();
+      if (delinquencyPolicySnapshot.length > 0) {
+        await this.contractModel.updateOne({ _id: (contract as any)._id }, { $set: { delinquencyPolicySnapshot } });
+        (contract as any).delinquencyPolicySnapshot = delinquencyPolicySnapshot;
+      }
+    }
+
     return generateLoanContractHTML({ contract });
   }
 

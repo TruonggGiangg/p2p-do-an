@@ -7,7 +7,6 @@ import {
     ActivityIndicator,
     Alert,
     Animated,
-    FlatList,
     Dimensions,
     Modal,
     Platform,
@@ -85,10 +84,8 @@ export default function LoanContractDetailScreen() {
     const [showSignConfirm, setShowSignConfirm] = useState(false);
     const [showSmartCA, setShowSmartCA] = useState(false);
     const [showSignSuccess, setShowSignSuccess] = useState(false);
-    const [acceptedDelinquencyPolicy, setAcceptedDelinquencyPolicy] = useState(false);
 
     // Success animation
-    const successAnim = useRef(new Animated.Value(0)).current;
     const successPageAnim = useRef(new Animated.Value(0)).current;
     const successCheckAnim = useRef(new Animated.Value(0)).current;
     const successSlideAnim = useRef(new Animated.Value(40)).current;
@@ -131,10 +128,6 @@ export default function LoanContractDetailScreen() {
 
     // Sign handler — mở modal SmartCA
     const handleSign = () => {
-        if (!acceptedDelinquencyPolicy) {
-            Alert.alert('Thiếu xác nhận', 'Bạn cần đồng ý chính sách xử lý nợ quá hạn trước khi ký hợp đồng.');
-            return;
-        }
         setShowSignConfirm(false);
         setShowSmartCA(true);
     };
@@ -144,10 +137,6 @@ export default function LoanContractDetailScreen() {
     // Legacy sign handler (fallback khi SmartCA không dùng được)
     const handleSignLegacy = async () => {
         if (!contract) return;
-        if (!acceptedDelinquencyPolicy) {
-            Alert.alert('Thiếu xác nhận', 'Bạn cần đồng ý chính sách xử lý nợ quá hạn trước khi ký hợp đồng.');
-            return;
-        }
         setShowSignConfirm(false);
         setSigning(true);
         try {
@@ -343,7 +332,7 @@ export default function LoanContractDetailScreen() {
                             }
 
                             return (
-                                <View key={`${policy.debt_group}-${idx}`} style={[styles.policyDataRow, { borderBottomColor: colors.border }]}> 
+                                <View key={`${policy.debt_group}-${idx}`} style={[styles.policyDataRow, { borderBottomColor: colors.border }]}>
                                     <Text style={[styles.policyDataCell, styles.policyGroupCol, { color: colors.textPrimary }]}>
                                         Nhóm {policy.debt_group}
                                     </Text>
@@ -357,16 +346,7 @@ export default function LoanContractDetailScreen() {
                             );
                         })}
 
-                        <TouchableOpacity
-                            style={styles.policyConsentRow}
-                            activeOpacity={0.8}
-                            onPress={() => setAcceptedDelinquencyPolicy(prev => !prev)}
-                        >
-                            <View style={[styles.checkboxBase, acceptedDelinquencyPolicy && styles.checkboxChecked]}>
-                                {acceptedDelinquencyPolicy ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
-                            </View>
-                            <Text style={[styles.policyConsentText, { color: colors.textPrimary }]}>Tôi đã đọc và đồng ý với chính sách xử lý nợ quá hạn</Text>
-                        </TouchableOpacity>
+
                     </View>
                 )}
 
@@ -445,7 +425,7 @@ export default function LoanContractDetailScreen() {
                     <TouchableOpacity
                         style={[styles.signBtn, signing && styles.signBtnDisabled]}
                         onPress={() => setShowSignConfirm(true)}
-                        disabled={signing || !acceptedDelinquencyPolicy}
+                        disabled={signing}
                         activeOpacity={0.8}
                     >
                         {signing ? (
@@ -491,7 +471,7 @@ export default function LoanContractDetailScreen() {
                             <TouchableOpacity
                                 style={[styles.signBtn, { marginTop: 12 }, signing && styles.signBtnDisabled]}
                                 onPress={() => { setShowContract(false); setShowSignConfirm(true); }}
-                                disabled={signing || !acceptedDelinquencyPolicy}
+                                disabled={signing}
                                 activeOpacity={0.8}
                             >
                                 <MaterialCommunityIcons name="draw-pen" size={20} color="#fff" />

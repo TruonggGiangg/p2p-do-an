@@ -5,7 +5,6 @@ import {
     Card,
     Form,
     Input,
-    InputNumber,
     Modal,
     Popconfirm,
     Select,
@@ -77,6 +76,19 @@ export default function DelinquencyPoliciesPage() {
         return map;
     }, [debtGroups]);
 
+    const usedDebtGroups = useMemo(() => {
+        return new Set(policies.map((policy) => policy.debt_group));
+    }, [policies]);
+
+    const selectableDebtGroups = useMemo(() => {
+        return debtGroups.filter((group) => {
+            // Create mode: hide debt groups that already have a policy.
+            // Edit mode: keep current group visible for existing policy.
+            if (!usedDebtGroups.has(group.debt_group)) return true;
+            return editingPolicy?.debt_group === group.debt_group;
+        });
+    }, [debtGroups, usedDebtGroups, editingPolicy]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -124,8 +136,6 @@ export default function DelinquencyPoliciesPage() {
         if (!group) return;
         form.setFieldsValue({
             debt_group_name: group.debt_group_name,
-            min_days: group.min_days,
-            max_days: group.max_days,
         });
     };
 
@@ -328,12 +338,13 @@ export default function DelinquencyPoliciesPage() {
                         <Form.Item label="Nhóm nợ từ Fineract" name="debt_group" rules={[{ required: true, message: 'Chọn debt_group' }]} style={{ width: 260 }}>
                             <Select
                                 placeholder="Chọn debt_group"
-                                options={debtGroups.map((group) => ({
+                                options={selectableDebtGroups.map((group) => ({
                                     value: group.debt_group,
                                     label: `#${group.debt_group} - ${group.debt_group_name} (${group.min_days}-${group.max_days} ngày)`,
                                 }))}
                                 onChange={onDebtGroupChange}
                                 disabled={!!editingPolicy}
+                                notFoundContent="Không còn nhóm nợ trống để tạo policy mới"
                             />
                         </Form.Item>
                         <Form.Item label="Tên nhóm" name="debt_group_name" rules={[{ required: true, message: 'Nhập tên nhóm nợ' }]} style={{ flex: 1 }}>
@@ -342,12 +353,6 @@ export default function DelinquencyPoliciesPage() {
                     </Space>
 
                     <Space align="start" style={{ width: '100%' }} size={16}>
-                        <Form.Item label="Số ngày tối thiểu" name="min_days" rules={[{ required: true, message: 'Nhập min_days' }]} style={{ width: 180 }}>
-                            <InputNumber min={0} style={{ width: '100%' }} />
-                        </Form.Item>
-                        <Form.Item label="Số ngày tối đa" name="max_days" rules={[{ required: true, message: 'Nhập max_days' }]} style={{ width: 180 }}>
-                            <InputNumber min={0} style={{ width: '100%' }} />
-                        </Form.Item>
                         <Form.Item label="Collection stage" name="collection_stage" rules={[{ required: true, message: 'Chọn stage' }]} style={{ flex: 1 }}>
                             <Select options={STAGE_OPTIONS} />
                         </Form.Item>

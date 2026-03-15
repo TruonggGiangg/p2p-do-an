@@ -35,7 +35,7 @@ function generateDelinquencyPolicyRows(policies: any[]): string {
       p => `
     <tr>
       <td style="text-align:center">Nhóm ${p.debt_group}</td>
-      <td style="text-align:center">${p.min_days} - ${p.max_days} ngày</td>
+      <td style="text-align:center">${p.min_days ?? 0} - ${p.max_days ?? 99999} ngày</td>
       <td>${mapPolicyActionLabel(p)}</td>
     </tr>
   `,
@@ -46,10 +46,16 @@ function generateDelinquencyPolicyRows(policies: any[]): string {
 function generateDelinquencyPolicySection(contract: LoanContract): string {
   const policies = (contract as any).delinquencyPolicySnapshot || [];
   if (!Array.isArray(policies) || policies.length === 0) {
-    return '<p>Không có cấu hình chính sách nợ quá hạn tại thời điểm tạo hợp đồng.</p>';
+    return `
+      <div class="highlight" style="border-color:#d35400;background:#fff7ed;">
+        <strong>Chưa có snapshot chính sách nợ quá hạn</strong><br/>
+        Hợp đồng chưa ghi nhận cấu hình delinquencyPolicySnapshot tại thời điểm phát hành.
+        Vui lòng liên hệ quản trị để rà soát trước khi ký.
+      </div>
+    `;
   }
   return `
-    <table>
+    <table class="delinquency-table">
       <thead>
         <tr>
           <th>Nhóm nợ</th>
@@ -316,6 +322,21 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
     table tbody tr:nth-child(even) {
       background-color: #f8f9fa;
     }
+    .delinquency-table {
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    .delinquency-table thead th {
+      font-size: 10pt;
+      white-space: normal;
+      line-height: 1.35;
+    }
+    .delinquency-table tbody td {
+      font-size: 10pt;
+      line-height: 1.4;
+      vertical-align: top;
+      word-break: break-word;
+    }
     .highlight {
       background-color: #fef9e7;
       border: 1px solid #f9e79f;
@@ -555,6 +576,11 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
     <p>6.3. Mọi tranh chấp phát sinh từ hợp đồng này sẽ được giải quyết thông qua thương lượng. Trường hợp không thương lượng được, các bên đồng ý đưa ra Tòa án nhân dân có thẩm quyền để giải quyết.</p>
     <p>6.4. Các bên đã đọc kỹ, hiểu rõ và đồng ý với toàn bộ nội dung của hợp đồng này.</p>
   </div>
+
+  <!-- ═══════ NHẮC LẠI SNAPSHOT TRƯỚC KHI KÝ ═══════ -->
+  <h2>Điều 6A: Xác nhận lại chính sách nợ quá hạn trước khi ký</h2>
+  <p>Ngay trước thời điểm ký, Bên B xác nhận đã đọc và đồng ý các nhóm xử lý nợ quá hạn dưới đây:</p>
+  ${generateDelinquencyPolicySection(contract)}
 
   <!-- ═══════ CHỮ KÝ ═══════ -->
   <div class="signature-section">

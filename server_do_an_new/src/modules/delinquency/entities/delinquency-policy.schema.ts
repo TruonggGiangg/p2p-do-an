@@ -22,12 +22,6 @@ export class DelinquencyPolicy extends Document {
   @Prop({ required: true })
   debt_group_name: string;
 
-  @Prop({ required: true, min: 0 })
-  min_days: number;
-
-  @Prop({ required: true, min: 0 })
-  max_days: number;
-
   @Prop({ required: true, default: true })
   send_email: boolean;
 

@@ -676,8 +676,6 @@ export const adminApi = {
   createDelinquencyPolicy: (payload: {
     debt_group: number;
     debt_group_name?: string;
-    min_days: number;
-    max_days: number;
     send_email: boolean;
     send_sms: boolean;
     send_notification: boolean;
@@ -704,8 +702,6 @@ export const adminApi = {
     payload: Partial<{
       debt_group: number;
       debt_group_name: string;
-      min_days: number;
-      max_days: number;
       send_email: boolean;
       send_sms: boolean;
       send_notification: boolean;

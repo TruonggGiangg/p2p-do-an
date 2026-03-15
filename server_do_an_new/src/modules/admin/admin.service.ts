@@ -1913,8 +1913,6 @@ export class AdminService {
 
   private async resolveDebtGroupMetadata(debtGroup: number): Promise<{
     debt_group_name: string;
-    min_days: number;
-    max_days: number;
   }> {
     const groups = await this.getFineractDebtGroups();
     const matched = groups.find(group => group.debt_group === debtGroup);
@@ -1925,18 +1923,7 @@ export class AdminService {
     }
     return {
       debt_group_name: matched.debt_group_name,
-      min_days: matched.min_days,
-      max_days: matched.max_days,
     };
-  }
-
-  private validatePolicyBoundaries(minDays: number, maxDays: number): void {
-    if (minDays < 0 || maxDays < 0) {
-      throw new BadRequestException('min_days và max_days phải >= 0');
-    }
-    if (minDays > maxDays) {
-      throw new BadRequestException('min_days không được lớn hơn max_days');
-    }
   }
 
   async getDelinquencyPolicyDebtGroups() {
@@ -1953,20 +1940,28 @@ export class AdminService {
     if (filters?.debt_group != null) query.debt_group = filters.debt_group;
     if (filters?.collection_stage) query.collection_stage = filters.collection_stage;
 
-    const list = await this.delinquencyPolicyModel.find(query).sort({ debt_group: 1 }).lean().exec();
+    const [list, groups] = await Promise.all([
+      this.delinquencyPolicyModel.find(query).sort({ debt_group: 1 }).lean().exec(),
+      this.getFineractDebtGroups().catch(() => []),
+    ] as const);
+    const groupMap = new Map<number, { min_days: number; max_days: number }>();
+    for (const group of groups as Array<{ debt_group: number; min_days: number; max_days: number }>) {
+      groupMap.set(group.debt_group, { min_days: group.min_days, max_days: group.max_days });
+    }
 
     return list.map((item: any) => {
       const { penalty_rate_multiplier: _penalty_rate_multiplier, ...rest } = item;
+      const metadata = groupMap.get(Number(item.debt_group));
       return {
         ...rest,
+        min_days: metadata?.min_days ?? null,
+        max_days: metadata?.max_days ?? null,
         _id: item._id.toString(),
       };
     });
   }
 
   async createDelinquencyPolicy(dto: CreateDelinquencyPolicyDto) {
-    this.validatePolicyBoundaries(dto.min_days, dto.max_days);
-
     const existing = await this.delinquencyPolicyModel.findOne({ debt_group: dto.debt_group }).lean().exec();
     if (existing) {
       throw new BadRequestException(
@@ -1979,8 +1974,6 @@ export class AdminService {
       const policy = await this.delinquencyPolicyModel.create({
         debt_group: dto.debt_group,
         debt_group_name: dto.debt_group_name || metadata.debt_group_name,
-        min_days: dto.min_days,
-        max_days: dto.max_days,
         send_email: dto.send_email,
         send_sms: dto.send_sms,
         send_notification: dto.send_notification,
@@ -2018,14 +2011,8 @@ export class AdminService {
       throw new ConflictException(`debt_group=${nextDebtGroup} đã có policy khác. Mỗi nhóm nợ chỉ được có 1 policy.`);
     }
 
-    const nextMinDays = dto.min_days ?? existing.min_days;
-    const nextMaxDays = dto.max_days ?? existing.max_days;
-    this.validatePolicyBoundaries(nextMinDays, nextMaxDays);
-
     existing.debt_group = nextDebtGroup;
     existing.debt_group_name = dto.debt_group_name || metadata.debt_group_name;
-    existing.min_days = nextMinDays;
-    existing.max_days = nextMaxDays;
     if (dto.send_email != null) existing.send_email = dto.send_email;
     if (dto.send_sms != null) existing.send_sms = dto.send_sms;
     if (dto.send_notification != null) existing.send_notification = dto.send_notification;

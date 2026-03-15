@@ -11,16 +11,6 @@ export class UpdateDelinquencyPolicyDto {
   debt_group_name?: string;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  min_days?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  max_days?: number;
-
-  @IsOptional()
   @IsBoolean()
   send_email?: boolean;
 
