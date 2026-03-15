@@ -20,15 +20,16 @@ import type { ProTableProps } from '@ant-design/pro-components';
 
 type ProTableDefaults = Pick<
   ProTableProps<any, any>,
-  'showSorterTooltip' | 'cardProps' | 'tableAlertRender' | 'tableAlertOptionRender'
+  'showSorterTooltip' | 'cardProps' | 'tableAlertRender' | 'tableAlertOptionRender' | 'size'
 >;
 
 export const PRO_TABLE_DEFAULTS: ProTableDefaults = {
   showSorterTooltip: false,
+  size: 'middle',
   cardProps: {
     style: {
       borderRadius: 0,
-      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
     },
   },
   tableAlertRender: false,

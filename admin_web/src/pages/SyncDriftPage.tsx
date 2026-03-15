@@ -46,13 +46,13 @@ function FieldChangesTable({ items }: { items: ProductDiffItemDto[] }) {
         ),
         children: (
           <Table
-            size="small"
+            size="middle"
             pagination={false}
             dataSource={m.fieldChanges ?? []}
             columns={[
-              { title: 'Trường', dataIndex: 'label', key: 'label', width: 220 },
-              { title: 'Giá trị cũ', dataIndex: 'before', key: 'before', render: (v) => fmtVal(v) },
-              { title: 'Giá trị mới', dataIndex: 'after', key: 'after', render: (v) => fmtVal(v) },
+              { title: 'Trường', dataIndex: 'label', key: 'label', width: 220, render: (v) => <Text strong style={{ fontSize: 13 }}>{v}</Text> },
+              { title: 'Giá trị cũ', dataIndex: 'before', key: 'before', render: (v) => <Tag color="red" style={{ margin: 0 }}>{fmtVal(v)}</Tag> },
+              { title: 'Giá trị mới', dataIndex: 'after', key: 'after', render: (v) => <Tag color="green" style={{ margin: 0 }}>{fmtVal(v)}</Tag> },
             ]}
             rowKey="field"
           />
@@ -76,14 +76,14 @@ function LoanSyncDetailRow({ d }: { d: LoanSyncRunDetailDto }) {
       </Space>
       {hasChanges && (
         <Table
-          size="small"
+          size="middle"
           pagination={false}
           style={{ marginTop: 8 }}
           dataSource={d.changes!}
           columns={[
-            { title: 'Trường', dataIndex: 'label', key: 'label', width: 200 },
-            { title: 'Trước', dataIndex: 'before', key: 'before', render: (v) => fmtVal(v) },
-            { title: 'Sau', dataIndex: 'after', key: 'after', render: (v) => fmtVal(v) },
+            { title: 'Trường', dataIndex: 'label', key: 'label', width: 200, render: (v) => <Text strong style={{ fontSize: 13 }}>{v}</Text> },
+            { title: 'Trước', dataIndex: 'before', key: 'before', render: (v) => <Tag color="red" style={{ margin: 0 }}>{fmtVal(v)}</Tag> },
+            { title: 'Sau', dataIndex: 'after', key: 'after', render: (v) => <Tag color="green" style={{ margin: 0 }}>{fmtVal(v)}</Tag> },
           ]}
           rowKey="field"
         />

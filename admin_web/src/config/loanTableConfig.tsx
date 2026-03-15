@@ -169,13 +169,6 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             ),
         },
         {
-            title: 'Mục đích',
-            dataIndex: 'willing',
-            width: 120,
-            search: false,
-            render: (v) => <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis>{v || '–'}</Typography.Text>,
-        },
-        {
             title: 'Số tiền vay',
             dataIndex: 'capital',
             width: 120,
@@ -203,7 +196,7 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             width: 110,
             align: 'right',
             search: false,
-            render: (v) => <Typography.Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{v != null ? fmtVND(v) : '–'}</Typography.Text>,
+            render: (v) => <Typography.Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{v != null && Number(v) > 0 ? fmtVND(Number(v)) : 'Chưa tính'}</Typography.Text>,
         },
         {
             title: 'Tổng trả',
@@ -211,7 +204,7 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             width: 110,
             align: 'right',
             search: false,
-            render: (v) => <Typography.Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{v != null ? fmtVND(v) : '–'}</Typography.Text>,
+            render: (v) => <Typography.Text style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{v != null && Number(v) > 0 ? fmtVND(Number(v)) : 'Chưa tính'}</Typography.Text>,
         },
         {
             title: 'Lãi suất',
@@ -219,7 +212,7 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             width: 90,
             align: 'center',
             search: false,
-            render: (v) => <Typography.Text style={{ fontSize: 12 }}>{v != null ? `${v}%/tháng` : '–'}</Typography.Text>,
+            render: (v) => <Typography.Text style={{ fontSize: 12 }}>{v != null && Number(v) > 0 ? `${Number(v).toFixed(2)}%/tháng` : 'Chưa áp dụng'}</Typography.Text>,
         },
         {
             title: 'Trạng thái',
@@ -257,7 +250,15 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             search: false,
             render: (v) => {
                 const val = typeof v === 'string' || typeof v === 'number' ? v : null;
-                return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{val ? new Date(val).toLocaleDateString('vi-VN') : '–'}</Typography.Text>;
+                if (val) {
+                    const d = new Date(val);
+                    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{!isNaN(d.getTime()) ? d.toLocaleDateString('vi-VN') : 'Chưa giải ngân'}</Typography.Text>;
+                }
+                if (Array.isArray(v) && v.length >= 3) {
+                    const d = new Date(v[0], (v[1] ?? 1) - 1, v[2] ?? 1);
+                    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{d.toLocaleDateString('vi-VN')}</Typography.Text>;
+                }
+                return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Chưa giải ngân</Typography.Text>;
             },
         },
         {
@@ -270,13 +271,14 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
                 const days = r.delinquentDays;
                 const amount = r.totalOverdue;
                 const cls = r.delinquencyClassification;
-                if (days == null && amount == null && !cls) return '–';
+                if (days == null && amount == null && !cls) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>Không</Typography.Text>;
+                const hasOverdue = (amount != null && amount > 0) || (days != null && days > 0) || !!cls;
+                if (!hasOverdue) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>Không</Typography.Text>;
                 return (
                     <Space direction="vertical" size={0}>
                         {amount != null && amount > 0 && <Typography.Text type="danger" strong style={{ fontSize: 12 }}>{fmtVND(amount)}</Typography.Text>}
                         {days != null && days > 0 && <Typography.Text type="secondary" style={{ fontSize: 11 }}>{days} ngày</Typography.Text>}
                         {cls && <Tag color="orange" style={{ fontSize: 10 }}>{cls}</Tag>}
-                        {(!days || days === 0) && (!amount || amount === 0) && !cls && '–'}
                     </Space>
                 );
             },

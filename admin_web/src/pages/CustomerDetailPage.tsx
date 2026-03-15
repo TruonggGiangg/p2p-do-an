@@ -1,21 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import type { ActionType } from '@ant-design/pro-components';
 import {
     Card, Typography, Tag, Descriptions, Button, Space,
     Skeleton, Statistic, Row, Col, Avatar, Divider, message, theme,
-    Drawer, Tabs, Table, Badge, Alert, Empty, Image, Popconfirm, Upload
+    Drawer, Tabs, Table, Badge, Alert, Empty, Image, Popconfirm, Upload, Form, Tooltip
 } from 'antd';
 import {
     EyeOutlined, ArrowLeftOutlined, UserOutlined, BankOutlined,
     DollarOutlined, ClockCircleOutlined, FileTextOutlined, InfoCircleOutlined,
     IdcardOutlined, PhoneOutlined, MailOutlined, HomeOutlined, TeamOutlined,
     CheckCircleOutlined, CloseCircleOutlined, CloseOutlined, ExclamationCircleOutlined,
-    CheckOutlined, UploadOutlined
+    CheckOutlined, UploadOutlined, FilterOutlined, ReloadOutlined
 } from '@ant-design/icons';
 import { adminApi, CustomerDetailDto } from '../api/admin';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import LoanDetailDrawer from '../components/LoanDetailDrawer';
 import LoanTable from '../components/LoanTable';
+import LoanFilterForm from '../components/LoanFilterForm';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
@@ -66,6 +68,9 @@ export default function CustomerDetailPage() {
     // Chi tiết khoản vay - dùng LoanDetailDrawer thống nhất
     const [viewLoanId, setViewLoanId] = useState<number | null>(null);
     const [syncingAll, setSyncingAll] = useState(false);
+    const customerLoanActionRef = useRef<ActionType>();
+    const [customerLoanFiltersOpen, setCustomerLoanFiltersOpen] = useState(false);
+    const [customerLoanForm] = Form.useForm();
 
     useEffect(() => {
         if (!id) return;
@@ -75,6 +80,11 @@ export default function CustomerDetailPage() {
             .catch(() => setError('Không thể tải thông tin khách hàng'))
             .finally(() => setLoading(false));
     }, [id]);
+
+    useEffect(() => {
+        customerLoanForm.resetFields();
+        setCustomerLoanFiltersOpen(false);
+    }, [id, customerLoanForm]);
 
     // Mở drawer chi tiết khoản vay khi vào từ trang "Khoản vay quá hạn" với ?viewLoan=...
     const viewLoanParam = searchParams.get('viewLoan');
@@ -400,70 +410,159 @@ export default function CustomerDetailPage() {
     );
 
     // General Tab Content
-    const GeneralTab = () => (
-        <>
-            <PerformanceSection />
+    const GeneralTab = () => {
+        const customerProducts = Array.from(
+            new Map(
+                loans
+                    .filter((l) => l.productId != null)
+                    .map((l) => [l.productId, { id: Number(l.productId), name: l.productName || `SP #${l.productId}`, shortName: l.productShortName || l.productName || `SP #${l.productId}` }]),
+            ).values(),
+        );
 
-            {/* Quick Stats - 3 cards with stats */}
-            <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
-                <Col xs={24} md={8}>
-                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
-                        <Statistic
-                            title="Số lượng khoản vay"
-                            value={loans.length}
-                            prefix={<DollarOutlined />}
-                            valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
-                        />
-                    </Card>
-                </Col>
-                <Col xs={24} md={8}>
-                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
-                        <Statistic
-                            title="Tổng vốn giải ngân"
-                            value={loans.reduce((s, l) => s + (['disbursed', 'active', 'closed'].includes(String(l.status?.code || l.status).toLowerCase()) ? (l.capital || 0) : 0), 0)}
-                            formatter={v => fmtVND(Number(v))}
-                            valueStyle={{ color: token.colorSuccess, fontWeight: 700 }}
-                        />
-                    </Card>
-                </Col>
-                <Col xs={24} md={8}>
-                    <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
-                        <Statistic
-                            title="Đang chờ phê duyệt"
-                            value={loans.filter(l => {
-                                const code = String(l.status?.code || l.status).toLowerCase();
-                                return code.includes('pending') || code.includes('submitted');
-                            }).length}
-                            valueStyle={{ color: token.colorWarning, fontWeight: 700 }}
-                        />
-                    </Card>
-                </Col>
-            </Row>
+        const customerRanges = Array.from(
+            new Set(loans.map((l: any) => l?.delinquencyClassification).filter(Boolean)),
+        ).map((classification, idx) => ({ id: idx + 1, classification: String(classification) }));
 
-            {/* Loan Accounts - dùng LoanTable thống nhất */}
-            <Card
-                title={<Space><BankOutlined /> Các tài khoản vay</Space>}
-                bordered={false}
-                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-            >
-                <LoanTable
-                    key={`customer-loans-${id}-${loans.length}`}
-                    variant="customer"
-                    request={async (params) => {
-                        const page = params.current ?? 1;
-                        const size = params.pageSize ?? 10;
-                        const start = (page - 1) * size;
-                        const paged = loans.slice(start, start + size);
-                        return { data: paged as any, success: true, total: loans.length };
-                    }}
-                    onViewDetails={(loanId) => handleViewDetails(loanId)}
-                    headerTitle=""
-                    pagination={{ pageSize: 10, showTotal: (t) => `Tổng ${t} khoản` }}
-                    columnsStateKey="customer-loans-table-v2"
-                />
-            </Card>
-        </>
-    );
+        return (
+            <>
+                <PerformanceSection />
+
+                {/* Quick Stats - 3 cards with stats */}
+                <Row gutter={[24, 24]} style={{ marginBottom: 24 }}>
+                    <Col xs={24} md={8}>
+                        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                            <Statistic
+                                title="Số lượng khoản vay"
+                                value={loans.length}
+                                prefix={<DollarOutlined />}
+                                valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
+                            />
+                        </Card>
+                    </Col>
+                    <Col xs={24} md={8}>
+                        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                            <Statistic
+                                title="Tổng vốn giải ngân"
+                                value={loans.reduce((s, l) => s + (['disbursed', 'active', 'closed'].includes(String(l.status?.code || l.status).toLowerCase()) ? (l.capital || 0) : 0), 0)}
+                                formatter={v => fmtVND(Number(v))}
+                                valueStyle={{ color: token.colorSuccess, fontWeight: 700 }}
+                            />
+                        </Card>
+                    </Col>
+                    <Col xs={24} md={8}>
+                        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                            <Statistic
+                                title="Đang chờ phê duyệt"
+                                value={loans.filter(l => {
+                                    const code = String(l.status?.code || l.status).toLowerCase();
+                                    return code.includes('pending') || code.includes('submitted');
+                                }).length}
+                                valueStyle={{ color: token.colorWarning, fontWeight: 700 }}
+                            />
+                        </Card>
+                    </Col>
+                </Row>
+
+                {/* Loan Accounts - dùng LoanTable + filter thống nhất */}
+                <Card
+                    title={<Space><BankOutlined /> Các tài khoản vay</Space>}
+                    bordered={false}
+                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                >
+                    <LoanTable
+                        key={`customer-loans-${id}-${loans.length}`}
+                        variant="customer"
+                        request={async (params) => {
+                            const values = customerLoanForm.getFieldsValue();
+                            const keyword = String(values.keyword || '').toLowerCase().trim();
+                            const productId = values.productId ? Number(values.productId) : undefined;
+                            const classification = values.classification ? String(values.classification) : undefined;
+                            const delinquentDaysMin = values.delinquentDaysMin != null ? Number(values.delinquentDaysMin) : undefined;
+                            const delinquentDaysMax = values.delinquentDaysMax != null ? Number(values.delinquentDaysMax) : undefined;
+                            const minOverdueAmount = values.minOverdueAmount != null ? Number(values.minOverdueAmount) : undefined;
+                            const maxOverdueAmount = values.maxOverdueAmount != null ? Number(values.maxOverdueAmount) : undefined;
+                            const dateRange = values.disbursementDate;
+
+                            let filtered = [...(loans as any[])];
+
+                            if (keyword) {
+                                filtered = filtered.filter((l) => {
+                                    const loanNo = String(l.fineractLoanId || '');
+                                    const product = String(l.productName || l.productShortName || '').toLowerCase();
+                                    const willing = String(l.willing || '').toLowerCase();
+                                    return loanNo.includes(keyword) || product.includes(keyword) || willing.includes(keyword);
+                                });
+                            }
+                            if (productId != null && !Number.isNaN(productId)) {
+                                filtered = filtered.filter((l) => Number(l.productId) === productId);
+                            }
+                            if (classification) {
+                                filtered = filtered.filter((l) => String(l.delinquencyClassification || '') === classification);
+                            }
+                            if (delinquentDaysMin != null) {
+                                filtered = filtered.filter((l) => Number(l.delinquentDays || 0) >= delinquentDaysMin);
+                            }
+                            if (delinquentDaysMax != null) {
+                                filtered = filtered.filter((l) => Number(l.delinquentDays || 0) <= delinquentDaysMax);
+                            }
+                            if (minOverdueAmount != null) {
+                                filtered = filtered.filter((l) => Number(l.totalOverdue || 0) >= minOverdueAmount);
+                            }
+                            if (maxOverdueAmount != null) {
+                                filtered = filtered.filter((l) => Number(l.totalOverdue || 0) <= maxOverdueAmount);
+                            }
+                            if (Array.isArray(dateRange) && dateRange[0] && dateRange[1]) {
+                                const from = dateRange[0].startOf('day').valueOf();
+                                const to = dateRange[1].endOf('day').valueOf();
+                                filtered = filtered.filter((l) => {
+                                    const rawDate = l.disbursementDate || l.createdAt;
+                                    if (!rawDate) return false;
+                                    const dateVal = Array.isArray(rawDate)
+                                        ? new Date(rawDate[0], (rawDate[1] ?? 1) - 1, rawDate[2] ?? 1).getTime()
+                                        : new Date(rawDate as string).getTime();
+                                    if (Number.isNaN(dateVal)) return false;
+                                    return dateVal >= from && dateVal <= to;
+                                });
+                            }
+
+                            const page = params.current ?? 1;
+                            const size = params.pageSize ?? 10;
+                            const start = (page - 1) * size;
+                            const paged = filtered.slice(start, start + size);
+                            return { data: paged as any, success: true, total: filtered.length };
+                        }}
+                        onViewDetails={(loanId) => handleViewDetails(loanId)}
+                        actionRef={customerLoanActionRef}
+                        showFilterPanel={customerLoanFiltersOpen}
+                        filterContent={(ref) => (
+                            <LoanFilterForm
+                                form={customerLoanForm}
+                                actionRef={ref}
+                                products={customerProducts}
+                                ranges={customerRanges}
+                                activeTab="all"
+                            />
+                        )}
+                        toolBarRender={() => [
+                            <Tooltip key="filter" title="Bộ lọc nâng cao">
+                                <Button icon={<FilterOutlined />} onClick={() => setCustomerLoanFiltersOpen(!customerLoanFiltersOpen)} type={customerLoanFiltersOpen ? 'primary' : 'default'}>
+                                    Bộ lọc
+                                </Button>
+                            </Tooltip>,
+                            <Tooltip key="reload" title="Làm mới danh sách khoản vay">
+                                <Button icon={<ReloadOutlined />} onClick={() => customerLoanActionRef.current?.reloadAndRest?.()}>
+                                    Làm mới
+                                </Button>
+                            </Tooltip>,
+                        ]}
+                        headerTitle="Danh sách khoản vay"
+                        pagination={{ pageSize: 10, showTotal: (t) => `Tổng ${t} khoản` }}
+                        columnsStateKey="customer-loans-table-v2"
+                    />
+                </Card>
+            </>
+        );
+    };
 
     // KYC Tab Content
     const KycTab = () => {

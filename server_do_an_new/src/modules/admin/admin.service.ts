@@ -1569,14 +1569,20 @@ export class AdminService {
         fineractClientId: user?.fineractClientId,
         productId: app.productId ?? 0,
         productName: app.productName ?? String(app.productId),
+        productShortName: '',
         capital: app.capital ?? 0,
         periodMonth: app.periodMonth ?? 0,
+        monthlyPay: app.monthlyPay ?? 0,
+        entirelyPay: app.entirelyPay ?? 0,
+        monthlyRatePercent: app.monthlyRatePercent ?? 0,
+        willing: app.willing ?? '',
         status: normalizedStatus,
         statusCode: app.fineractStatusString,
         delinquencyClassification: app.delinquencyClassification ?? null,
         totalOverdue,
         delinquentDays: app.delinquentDays ?? 0,
         disbursementDate: app.disbursementDate ?? null,
+        createdAt: app.createdAt ?? null,
         lastSyncedAt: app.lastSyncedAt ?? null,
       };
     };
@@ -1607,14 +1613,20 @@ export class AdminService {
         customerUsername: '–',
         productId: fl.productId,
         productName: fl.productName ?? '',
+        productShortName: (fl as any).productShortName ?? '',
         capital: fl.capital ?? 0,
         periodMonth: fl.periodMonth ?? 0,
+        monthlyPay: (fl as any).monthlyPay ?? 0,
+        entirelyPay: (fl as any).entirelyPay ?? 0,
+        monthlyRatePercent: (fl as any).monthlyRatePercent ?? 0,
+        willing: (fl as any).willing ?? '',
         status: 'pending',
         statusCode: 'loanStatusType.pendingApproval',
         delinquencyClassification: null,
         totalOverdue: 0,
         delinquentDays: 0,
-        disbursementDate: null,
+        disbursementDate: (fl as any).disbursementDate ?? null,
+        createdAt: (fl as any).createdAt ?? null,
         lastSyncedAt: null,
       }));
       items = applyProductFilter(applyKeywordFilter(items));
@@ -1626,27 +1638,40 @@ export class AdminService {
       const products = await this.fineractLoanService.getLoanProducts();
       const productMap = new Map(products.map((p: any) => [p.id, p]));
       const fineractClientIds = approvedLoans.map((fl) => String(fl.clientId));
-      const mongoUsers = await this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean();
+      const fineractLoanIds = approvedLoans.map((fl) => fl.id).filter(Boolean);
+      const [mongoUsers, mongoLoans] = await Promise.all([
+        this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean(),
+        this.loanApplicationModel.find({ fineractLoanId: { $in: fineractLoanIds } }).lean(),
+      ]);
       const userMap = new Map(mongoUsers.map((u: any) => [u.fineractClientId, u]));
+      const loanMap = new Map(mongoLoans.map((l: any) => [l.fineractLoanId, l]));
       let items = approvedLoans.map((fl) => {
-        const p = productMap.get(fl.productId || fl.loanProductId) ?? {};
+        const p: any = productMap.get(fl.productId || fl.loanProductId) ?? {};
         const u = userMap.get(String(fl.clientId));
+        const ll: any = loanMap.get(fl.id);
+        const annualRate = fl.annualInterestRate ?? 0;
         return {
-          _id: `FL_${fl.id}`,
+          _id: ll?._id?.toString() ?? `FL_${fl.id}`,
           fineractLoanId: fl.id,
           userId: u?._id?.toString() ?? '',
           customerName: fl.clientName ?? u?.username ?? '–',
           customerUsername: u?.username ?? '–',
           productId: fl.productId || fl.loanProductId,
           productName: p.name ?? '',
-          capital: fl.principal ?? 0,
-          periodMonth: fl.numberOfRepayments ?? 0,
+          productShortName: p.shortName ?? '',
+          capital: fl.principal ?? ll?.capital ?? 0,
+          periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
+          monthlyPay: ll?.monthlyPay ?? 0,
+          entirelyPay: ll?.entirelyPay ?? 0,
+          monthlyRatePercent: ll?.monthlyRatePercent ?? (annualRate / 12),
+          willing: ll?.willing ?? '',
           status: 'approved',
           statusCode: 'loanStatusType.approved',
           delinquencyClassification: null,
           totalOverdue: 0,
           delinquentDays: 0,
-          disbursementDate: null,
+          disbursementDate: fl.timeline?.expectedDisbursementDate ?? ll?.disbursementDate ?? null,
+          createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
           lastSyncedAt: null,
         };
       });
@@ -1754,8 +1779,11 @@ export class AdminService {
     const productMap = new Map(products.map((p: any) => [p.id, p]));
     const mongoItems = (apps as any[]).map((app) => {
       const item = mapAppToItem(app);
-      const p = productMap.get(app.productId);
-      if (p) item.productName = p.name ?? item.productName;
+      const p: any = productMap.get(app.productId);
+      if (p) {
+        item.productName = p.name ?? item.productName;
+        item.productShortName = p.shortName ?? '';
+      }
       return item;
     });
 

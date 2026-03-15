@@ -11,6 +11,7 @@ import { adminApi, KycPendingUserDto, KycDetailDto } from '../api/admin';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
+import dayjs from 'dayjs';
 
 const { Text } = Typography;
 
@@ -152,7 +153,7 @@ export default function KYCApprovalsPage() {
       key: 'user',
       render: (_: any, r: KycPendingUserDto) => (
         <Space>
-          <Avatar size="small" icon={<UserOutlined />} style={{ background: token.colorPrimary }} />
+          <Avatar size={36} icon={<UserOutlined />} style={{ background: token.colorPrimary }} />
           <div>
             <Text strong>{r.displayName || r.username}</Text>
             <br />
@@ -172,7 +173,7 @@ export default function KYCApprovalsPage() {
       title: 'Ngày hoàn thành',
       dataIndex: 'kycCompletedAt',
       key: 'kycCompletedAt',
-      render: (v: string) => v ? new Date(v).toLocaleString('vi-VN') : '–',
+      render: (v: string) => v ? <Text style={{ fontSize: 13 }}>{dayjs(v).format('DD/MM/YYYY HH:mm')}</Text> : <Text type="secondary">Chưa có</Text>,
     },
     {
       title: 'Hành động',
@@ -214,8 +215,9 @@ export default function KYCApprovalsPage() {
           loading={loading}
           dataSource={users}
           columns={columns}
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: <Empty description="Chưa có hồ sơ KYC chờ kích hoạt" /> }}
+          pagination={{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `${t} hồ sơ chờ duyệt` }}
+          size="middle"
+          onRow={(r) => ({ style: { cursor: 'pointer' }, onClick: () => handleViewDetail(r._id) })}          locale={{ emptyText: <Empty description="Chưa có hồ sơ KYC chờ kích hoạt" /> }}
         />
       </Card>
 

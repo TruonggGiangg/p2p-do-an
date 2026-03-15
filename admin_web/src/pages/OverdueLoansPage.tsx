@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Table, Select, InputNumber, Button, Space, Typography, Alert, Tag, message, theme } from 'antd';
+import { Card, Table, Select, InputNumber, Button, Space, Typography, Alert, Tag, message, theme, Avatar } from 'antd';
 import { EyeOutlined, SyncOutlined, ExclamationCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { adminApi } from '../api/admin';
 import { fmtVND } from '../utils/fineractStatus';
@@ -217,23 +217,24 @@ export default function OverdueLoansPage() {
                     rowKey="_id"
                     loading={loading}
                     dataSource={items}
-                    pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `Tổng ${t} khoản` }}
-                    size="small"
+                    pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `Tổng ${t} khoản quá hạn` }}
+                    size="middle"
                     columns={[
-                        { title: 'Khoản vay', dataIndex: 'fineractLoanId', width: 100, render: (id) => `#${id}` },
+                        { title: 'Khoản vay', dataIndex: 'fineractLoanId', width: 100, render: (id) => <Tag color="blue" style={{ fontWeight: 600, fontSize: 12, margin: 0 }}>#{id}</Tag> },
                         {
                             title: 'Khách hàng',
                             key: 'customer',
+                            width: 200,
                             render: (_, r) => (
                                 <Space>
-                                    <UserOutlined />
-                                    <a onClick={() => navigate(`/customers/${r.userId}`)}>{r.customerName || r.customerUsername || '–'}</a>
+                                    <Avatar size="small" icon={<UserOutlined />} style={{ background: token.colorPrimary }} />
+                                    <a onClick={() => navigate(`/customers/${r.userId}`)} style={{ fontWeight: 500 }}>{r.customerName || r.customerUsername || '–'}</a>
                                 </Space>
                             ),
                         },
                         { title: 'Gốc vay', dataIndex: 'capital', align: 'right', width: 120, render: (v) => fmtVND(v) },
                         { title: 'Số tiền quá hạn', dataIndex: 'totalOverdue', align: 'right', width: 140, render: (v) => <Text type="danger" strong>{fmtVND(v)}</Text> },
-                        { title: 'Số ngày quá hạn', dataIndex: 'delinquentDays', align: 'center', width: 110 },
+                        { title: 'Số ngày', dataIndex: 'delinquentDays', align: 'center', width: 100, render: (v) => v > 0 ? <Tag color="red" style={{ fontWeight: 600, margin: 0 }}>{v} ngày</Tag> : <Typography.Text type="secondary">0</Typography.Text> },
                         {
                             title: 'Nhóm quá hạn',
                             dataIndex: 'delinquencyClassification',
@@ -242,11 +243,12 @@ export default function OverdueLoansPage() {
                         },
                         { title: 'Đồng bộ lúc', dataIndex: 'lastSyncedAt', width: 150, render: formatDate },
                         {
-                            title: '',
+                            title: 'Thao tác',
                             key: 'action',
-                            width: 100,
+                            width: 110,
+                            align: 'center',
                             render: (_, r) => (
-                                <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetails(r)}>
+                                <Button type="primary" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetails(r)} style={{ fontSize: 12 }}>
                                     Chi tiết
                                 </Button>
                             ),

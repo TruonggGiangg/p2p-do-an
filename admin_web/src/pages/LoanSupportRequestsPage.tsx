@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Table, Tag, Button, Typography, Popconfirm, Select, Input, Modal, message } from 'antd';
-import { CheckCircleOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Table, Tag, Button, Typography, Popconfirm, Select, Input, Modal, message, Card, Space, Avatar, theme } from 'antd';
+import { CheckCircleOutlined, EditOutlined, FileTextOutlined, UserOutlined, FilterOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
 
-const { Title, Text } = Typography;
-const { Option } = Select;
+const { Text } = Typography;
 
 export default function LoanSupportRequestsPage() {
+    const { token } = theme.useToken();
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const ability = useAbility(AbilityContext);
@@ -117,17 +117,20 @@ export default function LoanSupportRequestsPage() {
             title: 'Ngày gửi',
             dataIndex: 'createdAt',
             key: 'createdAt',
-            render: (val: string) => dayjs(val).format('YYYY-MM-DD HH:mm'),
+            render: (val: string) => <Typography.Text style={{ fontSize: 13 }}>{dayjs(val).format('DD/MM/YYYY HH:mm')}</Typography.Text>,
         },
         {
             title: 'Khách hàng',
             key: 'user',
             render: (_: any, record: any) => (
-                <div>
-                    <Text strong>{record.userId?.fullName || record.userId?.username || 'Unknown'}</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 12 }}>{record.userId?.phoneNumber || record.userId?.email}</Text>
-                </div>
+                <Space>
+                    <Avatar size="small" icon={<UserOutlined />} style={{ background: token.colorPrimary }} />
+                    <div>
+                        <Typography.Text strong style={{ fontSize: 13 }}>{record.userId?.fullName || record.userId?.username || 'Unknown'}</Typography.Text>
+                        <br />
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{record.userId?.phoneNumber || record.userId?.email}</Typography.Text>
+                    </div>
+                </Space>
             )
         },
         {
@@ -241,51 +244,64 @@ export default function LoanSupportRequestsPage() {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div>
-                    <Title level={3} style={{ margin: 0 }}>Yêu cầu hỗ trợ nợ</Title>
-                    <Text type="secondary">Xử lý các yêu cầu xin miễn giảm phạt hoặc cơ cấu lại nợ quá hạn</Text>
+            <Card
+                bordered={false}
+                style={{ borderRadius: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}
+                title={
+                    <Space>
+                        <ExclamationCircleOutlined style={{ color: token.colorWarning, fontSize: 18 }} />
+                        <span style={{ fontWeight: 600 }}>Yêu cầu hỗ trợ nợ</span>
+                    </Space>
+                }
+                extra={
+                    <Typography.Text type="secondary">Xử lý các yêu cầu xin miễn giảm phạt hoặc cơ cấu lại nợ quá hạn</Typography.Text>
+                }
+            >
+                <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <FilterOutlined style={{ color: token.colorTextSecondary }} />
+                    <Select
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        style={{ width: 160 }}
+                        placeholder="Trạng thái"
+                        options={[
+                            { value: '', label: 'Tất cả trạng thái' },
+                            { value: 'PENDING', label: 'Chờ duyệt' },
+                            { value: 'APPROVED', label: 'Đã duyệt' },
+                            { value: 'REJECTED', label: 'Đã từ chối' },
+                        ]}
+                    />
+                    <Select
+                        value={typeFilter}
+                        onChange={setTypeFilter}
+                        style={{ width: 160 }}
+                        placeholder="Loại yêu cầu"
+                        options={[
+                            { value: '', label: 'Tất cả loại' },
+                            { value: 'WAIVE_PENALTY', label: 'Xóa phạt' },
+                            { value: 'RESCHEDULE', label: 'Cơ cấu nợ' },
+                            { value: 'WRITE_OFF', label: 'Xóa nợ' },
+                            { value: 'WAIVE_INTEREST', label: 'Xóa lãi' },
+                        ]}
+                    />
                 </div>
-            </div>
 
-            <div style={{ marginBottom: 16, display: 'flex', gap: 12 }}>
-                <Select
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    style={{ width: 150 }}
-                    placeholder="Trạng thái"
-                >
-                    <Option value="">Tất cả trạng thái</Option>
-                    <Option value="PENDING">Chờ duyệt</Option>
-                    <Option value="APPROVED">Đã duyệt</Option>
-                    <Option value="REJECTED">Đã từ chối</Option>
-                </Select>
-                <Select
-                    value={typeFilter}
-                    onChange={setTypeFilter}
-                    style={{ width: 150 }}
-                    placeholder="Loại yêu cầu"
-                >
-                    <Option value="">Tất cả loại</Option>
-                    <Option value="WAIVE_PENALTY">Xóa phạt</Option>
-                    <Option value="RESCHEDULE">Cơ cấu nợ</Option>
-                    <Option value="WRITE_OFF">Xóa nợ</Option>
-                    <Option value="WAIVE_INTEREST">Xóa lãi</Option>
-                </Select>
-            </div>
-
-            <Table
-                columns={columns}
-                dataSource={requests}
-                rowKey="_id"
-                loading={loading}
-                pagination={{
-                    current: page,
-                    pageSize: limit,
-                    total: total,
-                    onChange: (p) => setPage(p)
-                }}
-            />
+                <Table
+                    columns={columns}
+                    dataSource={requests}
+                    rowKey="_id"
+                    loading={loading}
+                    size="middle"
+                    pagination={{
+                        current: page,
+                        pageSize: limit,
+                        total: total,
+                        onChange: (p) => setPage(p),
+                        showSizeChanger: true,
+                        showTotal: (t) => `${t} yêu cầu`,
+                    }}
+                />
+            </Card>
 
             <Modal
                 title="Duyệt Cơ Cấu Nợ"

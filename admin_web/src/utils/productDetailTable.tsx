@@ -1,5 +1,8 @@
-import { Table } from 'antd';
+import { Table, Tag, Typography, theme } from 'antd';
 import { translateValue } from './vi';
+import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+
+const { Text } = Typography;
 
 const LABEL_MAP: Record<string, string> = {
   id: 'ID',
@@ -158,11 +161,11 @@ function flattenForDisplay(obj: any): Array<{ key: string; label: string; value:
     const label = toLabel(k);
     let displayValue: any;
     if (v == null) {
-      displayValue = '-';
+      displayValue = null;
     } else if (typeof v === 'object' && !Array.isArray(v)) {
       const o = v as Record<string, unknown>;
       const extracted = o.value ?? o.displayLabel ?? o.code ?? o.name;
-      displayValue = extracted != null ? String(extracted) : '-';
+      displayValue = extracted != null ? String(extracted) : null;
     } else {
       displayValue = v;
     }
@@ -171,14 +174,19 @@ function flattenForDisplay(obj: any): Array<{ key: string; label: string; value:
   return rows.sort((a, b) => a.label.localeCompare(b.label));
 }
 
-function fmtVal(v: any): string {
-  if (v == null || v === '') return '-';
-  if (typeof v === 'boolean') return v ? 'Có' : 'Không';
-  if (typeof v === 'number') return v.toLocaleString('vi-VN');
-  if (typeof v === 'object') return JSON.stringify(v);
+function FmtValue({ v }: { v: any }) {
+  if (v == null || v === '') return <Text type="secondary" italic>Không có</Text>;
+  if (typeof v === 'boolean') {
+    return v
+      ? <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>Có</Tag>
+      : <Tag icon={<CloseCircleOutlined />} color="default" style={{ margin: 0 }}>Không</Tag>;
+  }
+  if (typeof v === 'number') return <Text strong>{v.toLocaleString('vi-VN')}</Text>;
+  if (typeof v === 'object') return <Text code style={{ fontSize: 11 }}>{JSON.stringify(v)}</Text>;
   const s = String(v);
   const translated = translateValue(s);
-  return translated.length > 200 ? translated.slice(0, 200) + '…' : translated;
+  const display = translated.length > 200 ? translated.slice(0, 200) + '…' : translated;
+  return <Text>{display}</Text>;
 }
 
 interface ProductDetailTableProps {
@@ -188,17 +196,33 @@ interface ProductDetailTableProps {
 
 /** Bảng báo cáo chi tiết - hiển thị tất cả trường của sản phẩm */
 export function ProductDetailTable({ product }: ProductDetailTableProps) {
+  const { token: themeToken } = theme.useToken();
   if (!product) return null;
   const rows = flattenForDisplay(product);
   return (
     <div style={{ overflowX: 'auto', width: '100%' }}>
       <Table
-        size="small"
+        size="middle"
         pagination={false}
         dataSource={rows}
         columns={[
-          { title: 'Trường thông tin', dataIndex: 'label', key: 'label', width: 280, ellipsis: false },
-          { title: 'Giá trị', dataIndex: 'value', key: 'value', render: (v) => fmtVal(v), ellipsis: true },
+          {
+            title: 'Trường thông tin',
+            dataIndex: 'label',
+            key: 'label',
+            width: 280,
+            ellipsis: false,
+            render: (label: string) => (
+              <Text strong style={{ fontSize: 13, color: themeToken.colorTextSecondary }}>{label}</Text>
+            ),
+          },
+          {
+            title: 'Giá trị',
+            dataIndex: 'value',
+            key: 'value',
+            render: (v) => <FmtValue v={v} />,
+            ellipsis: true,
+          },
         ]}
         rowKey="key"
         bordered
@@ -207,3 +231,4 @@ export function ProductDetailTable({ product }: ProductDetailTableProps) {
     </div>
   );
 }
+

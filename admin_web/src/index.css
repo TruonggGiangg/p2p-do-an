@@ -189,11 +189,96 @@ p {
 }
 
 [data-theme="light"] .ant-table-tbody > tr:not(.ant-table-measure-row):hover > td {
-  background: #F8FAFC !important;
+  background: #EFF6FF !important;
 }
 
 [data-theme="dark"] .ant-table-tbody > tr:not(.ant-table-measure-row):hover > td {
   background: #334155 !important;
+}
+
+/* ── No text wrapping in table cells ── */
+.ant-table-tbody > tr > td,
+.ant-table-thead > tr > th {
+  white-space: nowrap !important;
+}
+
+/* ── Zebra Rows (alternating) ── */
+[data-theme="light"] .ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(even) > td {
+  background: #F8FAFC;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(even) > td {
+  background: rgba(30, 41, 59, 0.5);
+}
+
+/* ── Row hover accent (left border glow) ── */
+.ant-table-tbody > tr:not(.ant-table-measure-row) {
+  transition: all 0.2s ease !important;
+  position: relative;
+}
+
+.ant-table-tbody > tr:not(.ant-table-measure-row):hover {
+  box-shadow: inset 3px 0 0 0 #3B82F6;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:not(.ant-table-measure-row):hover {
+  box-shadow: inset 3px 0 0 0 #60A5FA;
+}
+
+/* ── Row fade-in animation ── */
+@keyframes tableRowFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ant-table-tbody > tr:not(.ant-table-measure-row) {
+  animation: tableRowFadeIn 0.3s ease forwards;
+}
+
+/* Stagger effect for first 20 rows */
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(1) { animation-delay: 0.02s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(2) { animation-delay: 0.04s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(3) { animation-delay: 0.06s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(4) { animation-delay: 0.08s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(5) { animation-delay: 0.10s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(6) { animation-delay: 0.12s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(7) { animation-delay: 0.14s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(8) { animation-delay: 0.16s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(9) { animation-delay: 0.18s; }
+.ant-table-tbody > tr:not(.ant-table-measure-row):nth-child(10) { animation-delay: 0.20s; }
+
+/* ── Dense table support (size="small") ── */
+.ant-table-small .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
+  padding: 8px 12px !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+.ant-table-small .ant-table-thead > tr > th {
+  padding: 8px 12px !important;
+  font-size: 11px !important;
+}
+
+/* ── Empty state improvements ── */
+.ant-empty {
+  padding: 40px 0;
+}
+
+.ant-empty-description {
+  font-size: var(--font-size-base) !important;
+  color: #94A3B8 !important;
+}
+
+/* ── Table wrapper subtle shadow ── */
+.ant-table-wrapper {
+  border-radius: 0;
+}
+
+[data-theme="light"] .ant-table {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .ant-table {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 /* ProTable search form */
@@ -304,7 +389,7 @@ p {
 .ant-tag,
 .ant-alert,
 .ant-tabs-tab {
-
+  border-radius: 0 !important;
 }
 
 /* ── Card Enhancements ── */
@@ -510,6 +595,53 @@ p {
 .ant-badge-count {
   font-weight: var(--font-weight-semibold) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* ── Pagination Enhancements ── */
+.ant-pagination-item {
+  transition: all 0.2s ease !important;
+}
+
+.ant-pagination-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.ant-pagination-item-active {
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* ── Descriptions Enhancements ── */
+.ant-descriptions-item-label {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.ant-descriptions-item-content {
+  font-size: 13px !important;
+}
+
+[data-theme="light"] .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: rgba(30, 41, 59, 0.6) !important;
+}
+
+/* ── Tag Enhancements ── */
+.ant-tag {
+  font-weight: 500 !important;
+}
+
+/* ── Tabs styling ── */
+.ant-tabs-tab {
+  transition: all 0.2s ease !important;
+}
+
+.ant-tabs-tab:hover {
+  color: #3B82F6 !important;
 }
 
 /* ── View Transition API (Circular Reveal) ── */

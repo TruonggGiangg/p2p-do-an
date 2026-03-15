@@ -87,7 +87,7 @@ export default function CustomersPage() {
                 <Space>
                     <Avatar
                         icon={<UserOutlined />}
-                        size="large"
+                        size={32}
                         style={{
                             background: r.kycStatus === 'VERIFIED' ? token.colorSuccess : token.colorPrimaryBg,
                             color: r.kycStatus === 'VERIFIED' ? '#fff' : token.colorPrimary,
@@ -95,16 +95,11 @@ export default function CustomersPage() {
                         }}
                     />
                     <div>
-                        <Text strong style={{ display: 'block', fontSize: 13 }}>{r.displayName || r.username}</Text>
-                        <Space size={4}>
-                            <PhoneOutlined style={{ fontSize: 11, color: token.colorTextSecondary }} />
-                            <Text type="secondary" style={{ fontSize: 12 }}>{r.username}</Text>
-                        </Space>
-                        {r.externalId && (
-                            <div>
-                                <Text type="secondary" style={{ fontSize: 11 }}>ID: {r.externalId}</Text>
-                            </div>
-                        )}
+                        <Text strong style={{ display: 'block', fontSize: 13, lineHeight: '18px' }}>{r.displayName || r.username}</Text>
+                        <Text type="secondary" style={{ fontSize: 12, lineHeight: '16px' }}>
+                            <PhoneOutlined style={{ fontSize: 10, marginRight: 3 }} />
+                            {r.username}{r.externalId && r.externalId !== r.username ? ` · ${r.externalId}` : ''}
+                        </Text>
                     </div>
                 </Space>
             ),
