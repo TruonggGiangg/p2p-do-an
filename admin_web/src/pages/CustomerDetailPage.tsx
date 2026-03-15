@@ -14,6 +14,7 @@ import {
     CheckOutlined, UploadOutlined, FilterOutlined, ReloadOutlined
 } from '@ant-design/icons';
 import { adminApi, CustomerDetailDto } from '../api/admin';
+import { DetailSkeleton } from '../components/PageSkeleton';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 import LoanDetailDrawer from '../components/LoanDetailDrawer';
 import LoanTable from '../components/LoanTable';
@@ -251,11 +252,7 @@ export default function CustomerDetailPage() {
         }
     };
 
-    if (loading) return (
-        <div>
-            <Card><Skeleton active /></Card>
-        </div>
-    );
+    if (loading) return <DetailSkeleton />;
 
     if (error) return (
         <div>

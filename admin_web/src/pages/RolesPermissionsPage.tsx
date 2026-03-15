@@ -14,6 +14,7 @@ import { adminApi, RoleDto, PermissionDto } from '../api/admin';
 import { useTheme } from '../App';
 import PageHeader from '../components/PageHeader';
 import dayjs from 'dayjs';
+import { RolesPermissionsSkeleton } from '../components/PageSkeleton';
 
 const { Text } = Typography;
 
@@ -100,7 +101,7 @@ export default function RolesPermissionsPage() {
     const [pendingChanges, setPendingChanges] = useState<
         Map<string, { action: string; subject: string; allowed: boolean }>
     >(new Map());
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [permLoading, setPermLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [roleModalOpen, setRoleModalOpen] = useState(false);
@@ -500,6 +501,19 @@ export default function RolesPermissionsPage() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [metadata.subjects, permissions, pendingChanges, selectedRole, isDarkMode, token]);
+
+    if (loading) {
+        return (
+            <>
+                <PageHeader
+                    title="Vai trò & Phân quyền"
+                    description="Quản lý vai trò và phân quyền chi tiết cho từng chức năng"
+                    breadcrumb={[{ label: 'Vai trò & Phân quyền' }]}
+                />
+                <RolesPermissionsSkeleton />
+            </>
+        );
+    }
 
     return (
         <>

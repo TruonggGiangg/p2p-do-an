@@ -5,6 +5,7 @@ import { EyeOutlined, SyncOutlined, ExclamationCircleOutlined, UserOutlined } fr
 import { adminApi } from '../api/admin';
 import { fmtVND } from '../utils/fineractStatus';
 import PageHeader from '../components/PageHeader';
+import { SimplePageSkeleton } from '../components/PageSkeleton';
 
 const { Text } = Typography;
 
@@ -113,6 +114,19 @@ export default function OverdueLoansPage() {
             return '–';
         }
     };
+
+    if (loadingRanges) {
+        return (
+            <>
+                <PageHeader
+                    title="Khoản vay quá hạn"
+                    description="Theo dõi và quản lý các khoản vay quá hạn, cờ cảnh báo nợ xấu"
+                    breadcrumb={[{ label: 'Quản lý khoản vay', path: '/loans' }, { label: 'Quá hạn' }]}
+                />
+                <SimplePageSkeleton rows={4} columns={5} />
+            </>
+        );
+    }
 
     return (
         <>

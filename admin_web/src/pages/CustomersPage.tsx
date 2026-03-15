@@ -17,6 +17,7 @@ import { FineractStatusBadge } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import dayjs from 'dayjs';
 import PageHeader from '../components/PageHeader';
+import { PageWithStatsSkeleton } from '../components/PageSkeleton';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -45,6 +46,7 @@ export default function CustomersPage() {
         dateRange: null,
         searchText: '',
     });
+    const [initialLoading, setInitialLoading] = useState(true);
     const [stats, setStats] = useState({
         total: 0,
         active: 0,
@@ -55,8 +57,6 @@ export default function CustomersPage() {
     // Load counts and stats
     const fetchGlobalStats = async () => {
         try {
-            // Fetch a larger page size to calculate true stats, 
-            // since the backend logic already fetches everything into memory anyway.
             const res = await adminApi.getCustomers(1, 1000);
             const pendingRes = await adminApi.getPendingApprovalCustomers(1, 1000);
 
@@ -69,6 +69,8 @@ export default function CustomersPage() {
             });
         } catch (error) {
             console.error('Failed to fetch stats:', error);
+        } finally {
+            setInitialLoading(false);
         }
     };
 
@@ -367,6 +369,19 @@ export default function CustomersPage() {
         },
     ];
 
+    if (initialLoading) {
+        return (
+            <div>
+                <PageHeader
+                    title="Tất cả khách hàng"
+                    description="Quản lý danh sách khách hàng, trạng thái KYC và tài khoản Fineract"
+                    breadcrumb={[{ label: 'Khách hàng' }]}
+                />
+                <PageWithStatsSkeleton statCount={4} tableRows={6} tableColumns={6} />
+            </div>
+        );
+    }
+
     return (
         <div>
             <PageHeader
@@ -374,168 +389,40 @@ export default function CustomersPage() {
                 description="Quản lý danh sách khách hàng, trạng thái KYC và tài khoản Fineract"
                 breadcrumb={[{ label: 'Khách hàng' }]}
             />
-            {/* Stats Cards - Enhanced with professional styling */}
-            <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
-                <Col xs={24} sm={12} lg={6}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
-                            background: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
-                            boxShadow: '0 4px 12px rgba(30, 64, 175, 0.25)',
-                            height: '100%',
-                        }}
-                        bodyStyle={{ padding: '24px' }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
-                                    Tổng khách hàng
-                                </Text>
-                                <Title level={2} style={{ 
-                                    margin: 0, 
-                                    color: '#FFFFFF', 
-                                    fontSize: 36, 
-                                    fontWeight: 700,
-                                    letterSpacing: '-0.02em',
-                                }}>
-                                    {stats.total}
-                                </Title>
-                            </div>
-                            <div style={{ 
-                                width: 56, 
-                                height: 56, 
-                                borderRadius: 0, 
-                                background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                            }}>
-                                <TeamOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
-                            </div>
-                        </div>
-                    </Card>
-                </Col>
-                
-                <Col xs={24} sm={12} lg={6}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
-                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
-                            height: '100%',
-                        }}
-                        bodyStyle={{ padding: '24px' }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
-                                    Đang hoạt động
-                                </Text>
-                                <Title level={2} style={{ 
-                                    margin: 0, 
-                                    color: '#FFFFFF', 
-                                    fontSize: 36, 
-                                    fontWeight: 700,
-                                }}>
-                                    {stats.active}
-                                </Title>
-                            </div>
-                            <div style={{ 
-                                width: 56, 
-                                height: 56, 
-                                borderRadius: 0, 
-                                background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                            }}>
-                                <CheckCircleTwoTone twoToneColor="#FFFFFF" style={{ fontSize: 28 }} />
-                            </div>
-                        </div>
-                    </Card>
-                </Col>
-                
-                <Col xs={24} sm={12} lg={6}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
-                            background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-                            boxShadow: '0 4px 12px rgba(217, 119, 6, 0.25)',
-                            height: '100%',
-                        }}
-                        bodyStyle={{ padding: '24px' }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
-                                    Có thông tin KYC, chờ duyệt
-                                </Text>
-                                <Title level={2} style={{ 
-                                    margin: 0, 
-                                    color: '#FFFFFF', 
-                                    fontSize: 36, 
-                                    fontWeight: 700,
-                                }}>
-                                    {stats.pendingKyc}
-                                </Title>
-                            </div>
-                            <div style={{ 
-                                width: 56, 
-                                height: 56, 
-                                borderRadius: 0, 
-                                background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                            }}>
-                                <ClockCircleTwoTone twoToneColor="#FFFFFF" style={{ fontSize: 28 }} />
-                            </div>
-                        </div>
-                    </Card>
-                </Col>
-                
-                <Col xs={24} sm={12} lg={6}>
-                    <Card 
-                        bordered={false} 
-                        style={{ 
-                            borderRadius: 0, 
-                            background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-                            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)',
-                            height: '100%',
-                        }}
-                        bodyStyle={{ padding: '24px' }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, display: 'block', marginBottom: 8 }}>
-                                    Đã xác minh KYC
-                                </Text>
-                                <Title level={2} style={{ 
-                                    margin: 0, 
-                                    color: '#FFFFFF', 
-                                    fontSize: 36, 
-                                    fontWeight: 700,
-                                }}>
-                                    {stats.verifiedKyc}
-                                </Title>
-                            </div>
-                            <div style={{ 
-                                width: 56, 
-                                height: 56, 
-                                borderRadius: 0, 
-                                background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                            }}>
-                                <FileSearchOutlined style={{ fontSize: 28, color: '#FFFFFF' }} />
-                            </div>
-                        </div>
-                    </Card>
-                </Col>
+            {/* Stats Cards */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                {([
+                    { title: 'Tổng khách hàng', value: stats.total, gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', icon: <TeamOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+                    { title: 'Đang hoạt động', value: stats.active, gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: <CheckCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+                    { title: 'Có thông tin KYC, chờ duyệt', value: stats.pendingKyc, gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', icon: <ClockCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+                    { title: 'Đã xác minh KYC', value: stats.verifiedKyc, gradient: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', icon: <FileSearchOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+                ] as const).map((s, i) => (
+                    <Col xs={24} sm={12} md={8} lg={6} key={i}>
+                        <Card
+                            bordered={false}
+                            style={{
+                                background: s.gradient,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                                height: '100%',
+                                minHeight: 100,
+                            }}
+                            styles={{ body: { padding: '20px 24px' } }}
+                        >
+                            <Space align="center" size={16} style={{ width: '100%' }}>
+                                <div style={{
+                                    width: 48, height: 48, borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>{s.icon}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>{s.title}</Text>
+                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
+                                </div>
+                            </Space>
+                        </Card>
+                    </Col>
+                ))}
             </Row>
 
             {/* Tabs - Enhanced */}

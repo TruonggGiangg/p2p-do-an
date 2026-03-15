@@ -21,6 +21,7 @@ import PageHeader from '../components/PageHeader';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
+import { SyncDriftSkeleton } from '../components/PageSkeleton';
 
 const { Text } = Typography;
 
@@ -291,6 +292,19 @@ export default function SyncDriftPage() {
       setSyncingLoans(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          title="Đồng bộ / Cảnh báo"
+          description="Giám sát sự sai lệch dữ liệu giữa MongoDB Local và Fineract Central"
+          breadcrumb={[{ label: 'Đồng bộ / Cảnh báo' }]}
+        />
+        <SyncDriftSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div>

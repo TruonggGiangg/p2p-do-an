@@ -9,6 +9,7 @@ import {
   IdcardOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { adminApi, KycPendingUserDto, KycDetailDto } from '../api/admin';
+import { SimplePageSkeleton } from '../components/PageSkeleton';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
@@ -188,6 +189,19 @@ export default function KYCApprovalsPage() {
       ),
     },
   ];
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          title="Phê duyệt KYC"
+          description="Xét duyệt hồ sơ định danh khách hàng (eKYC / KYC trực tiếp)"
+          breadcrumb={[{ label: 'Khách hàng', path: '/customers' }, { label: 'Phê duyệt KYC' }]}
+        />
+        <SimplePageSkeleton rows={4} columns={5} />
+      </div>
+    );
+  }
 
   return (
     <div>

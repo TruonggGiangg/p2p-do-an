@@ -11,7 +11,8 @@ import {
     IdcardOutlined, KeyOutlined, CloudServerOutlined,
     ClockCircleOutlined, SyncOutlined,
 } from '@ant-design/icons';
-import { adminApi, StaffDto } from '../api/admin';
+import { adminApi, type StaffDto } from '../api/admin';
+import { DetailSkeleton } from '../components/PageSkeleton';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -156,13 +157,7 @@ export default function StaffDetailPage() {
         }
     };
 
-    if (loading) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
-                <Spin size="large" />
-            </div>
-        );
-    }
+    if (loading) return <DetailSkeleton />;
 
     if (!staff) {
         return (

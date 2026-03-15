@@ -13,6 +13,7 @@ import LoanPageShell, { StatCard } from '../components/LoanPageShell';
 import LoanTable from '../components/LoanTable';
 import LoanFilterForm from '../components/LoanFilterForm';
 import { TAB_LABELS, type TabKey } from '../config/loanTableConfig';
+import { LoanPageShellSkeleton } from '../components/PageSkeleton';
 
 const STATUS_MAP: Record<string, TabKey> = {
     all: 'all',
@@ -39,11 +40,14 @@ export default function LoansPage() {
     const [drawerLoanId, setDrawerLoanId] = useState<number | null>(null);
     const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
 
     useEffect(() => {
-        adminApi.getLoansStats().then(setStats).catch(() => {});
-        adminApi.getLoanProducts().then(setProducts).catch(() => []);
-        adminApi.getDelinquencyRanges().then(setRanges).catch(() => []);
+        Promise.all([
+            adminApi.getLoansStats().then(setStats).catch(() => {}),
+            adminApi.getLoanProducts().then(setProducts).catch(() => []),
+            adminApi.getDelinquencyRanges().then(setRanges).catch(() => []),
+        ]).finally(() => setInitialLoading(false));
     }, []);
 
     const handleTabChange = (key: string) => {
@@ -122,6 +126,19 @@ export default function LoansPage() {
         { key: 'overdue', label: TAB_LABELS.overdue, count: stats.overdue },
         { key: 'closed', label: TAB_LABELS.closed, count: stats.closed },
     ];
+
+    if (initialLoading) {
+        return (
+            <LoanPageShellSkeleton
+                statCount={5}
+                tableRows={6}
+                tableColumns={6}
+                title="Quản lý khoản vay"
+                description="Quản lý toàn bộ khoản vay theo từng giai đoạn: chờ duyệt, đã phê duyệt, đang hoạt động, quá hạn, đã đóng."
+                breadcrumbLabels={['Quản lý khoản vay']}
+            />
+        );
+    }
 
     return (
         <>

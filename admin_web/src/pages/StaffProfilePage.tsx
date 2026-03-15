@@ -7,7 +7,8 @@ import {
     UserOutlined, MailOutlined, PhoneOutlined, LockOutlined,
     SafetyCertificateOutlined, SaveOutlined, KeyOutlined, HistoryOutlined,
 } from '@ant-design/icons';
-import { adminApi, ActivityLogDto } from '../api/admin';
+import { adminApi, type ActivityLogDto } from '../api/admin';
+import { DetailSkeleton } from '../components/PageSkeleton';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -128,16 +129,7 @@ export default function StaffProfilePage() {
         }
     };
 
-    if (loading) {
-        return (
-            <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                <Spin size="large" />
-                <div style={{ marginTop: 16 }}>
-                    <Text type="secondary">Đang tải thông tin hồ sơ...</Text>
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <DetailSkeleton />;
 
     return (
         <div>

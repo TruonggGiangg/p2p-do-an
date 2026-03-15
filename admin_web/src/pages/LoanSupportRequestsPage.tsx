@@ -7,6 +7,7 @@ import axios from 'axios';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
+import { SimplePageSkeleton } from '../components/PageSkeleton';
 
 const { Text } = Typography;
 
@@ -242,6 +243,19 @@ export default function LoanSupportRequestsPage() {
             }
         }
     ];
+
+    if (loading) {
+        return (
+            <div>
+                <PageHeader
+                    title="Yêu cầu hỗ trợ nợ"
+                    description="Xử lý các yêu cầu xin miễn giảm phạt hoặc cơ cấu lại nợ quá hạn"
+                    breadcrumb={[{ label: 'Quản lý khoản vay', path: '/loans' }, { label: 'Yêu cầu hỗ trợ nợ' }]}
+                />
+                <SimplePageSkeleton rows={4} columns={5} />
+            </div>
+        );
+    }
 
     return (
         <div>

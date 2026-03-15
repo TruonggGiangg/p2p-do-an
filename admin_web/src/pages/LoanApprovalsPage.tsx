@@ -18,6 +18,7 @@ import LoanPageShell, { StatCard } from '../components/LoanPageShell';
 import LoanTable from '../components/LoanTable';
 import LoanFilterForm from '../components/LoanFilterForm';
 import type { LoanTableRow } from '../config/loanTableConfig';
+import { LoanPageShellSkeleton } from '../components/PageSkeleton';
 
 export default function LoanApprovalsPage() {
     const { token } = theme.useToken();
@@ -32,9 +33,10 @@ export default function LoanApprovalsPage() {
     const [showFilters, setShowFilters] = useState(false);
     const [products, setProducts] = useState<Array<{ id: number; name: string; shortName: string }>>([]);
     const [form] = Form.useForm();
+    const [initialLoading, setInitialLoading] = useState(true);
 
     useEffect(() => {
-        adminApi.getLoanProducts().then(setProducts).catch(() => []);
+        adminApi.getLoanProducts().then(setProducts).catch(() => []).finally(() => setInitialLoading(false));
     }, []);
 
     const handleApprove = useCallback(async (loan: LoanTableRow) => {
@@ -210,6 +212,19 @@ export default function LoanApprovalsPage() {
             </div>
         );
     };
+
+    if (initialLoading) {
+        return (
+            <LoanPageShellSkeleton
+                statCount={3}
+                tableRows={6}
+                tableColumns={6}
+                title="Phê duyệt khoản vay"
+                description="Duyệt và giải ngân các khoản vay đã nộp hồ sơ. Kiểm tra tài liệu trước khi phê duyệt."
+                breadcrumbLabels={['Quản lý khoản vay', 'Phê duyệt khoản vay']}
+            />
+        );
+    }
 
     return (
         <>
