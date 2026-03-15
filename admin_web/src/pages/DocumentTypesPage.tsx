@@ -240,7 +240,7 @@ export default function DocumentTypesPage() {
         <div style={{
           padding: '16px',
           background: token.colorFillAlter,
-          borderRadius: 0,
+          borderRadius: 10,
           border: `1px solid ${token.colorBorderSecondary}`,
           marginTop: 8,
         }}>

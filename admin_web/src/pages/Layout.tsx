@@ -110,7 +110,7 @@ export default function AppLayout() {
           marginBottom: 8,
         }}>
           <div style={{
-            width: 40, height: 40, borderRadius: 0,
+            width: 40, height: 40, borderRadius: 10,
             background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, color: '#fff', fontSize: 16, flexShrink: 0,
@@ -261,7 +261,7 @@ export default function AppLayout() {
           margin: '88px 32px 32px 32px',
           padding: 32,
           background: token.colorBgContainer,
-          borderRadius: 0,
+          borderRadius: 10,
           minHeight: 'calc(100vh - 152px)',
           overflow: 'auto',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',

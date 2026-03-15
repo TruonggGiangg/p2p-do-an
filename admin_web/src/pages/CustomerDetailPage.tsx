@@ -270,7 +270,7 @@ export default function CustomerDetailPage() {
             bordered={false}
             style={{
                 marginBottom: 24,
-                borderRadius: 0,
+                borderRadius: 10,
                 boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
             }}
         >
@@ -462,7 +462,7 @@ export default function CustomerDetailPage() {
                 <Card
                     title={<Space><BankOutlined /> Các tài khoản vay</Space>}
                     bordered={false}
-                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     <LoanTable
                         key={`customer-loans-${id}-${loans.length}`}
@@ -568,7 +568,7 @@ export default function CustomerDetailPage() {
         const ApprovalCard = () => (
             <Card
                 bordered={false}
-                style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${token.colorWarningBorder}` }}
+                style={{ marginBottom: 24, borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${token.colorWarningBorder}` }}
             >
                 <Alert
                     message={isDirectKyc ? 'KYC trực tiếp - Đã xác minh khách hàng tại chỗ' : 'Có thông tin KYC và đang chờ phê duyệt'}
@@ -620,7 +620,7 @@ export default function CustomerDetailPage() {
                     {/* Nhân viên tải CCCD lên và chạy OCR giúp khách hàng */}
                     <Card
                         bordered={false}
-                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        style={{ marginBottom: 24, borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                         title={<Space><UploadOutlined /> Tải CCCD lên và nhận dạng OCR (nhân viên làm giúp khách hàng)</Space>}
                     >
                         <Row gutter={[24, 24]}>
@@ -684,7 +684,7 @@ export default function CustomerDetailPage() {
                             </div>
                         )}
                     </Card>
-                    <Card bordered={false} style={{ borderRadius: 0 }}>
+                    <Card bordered={false} style={{ borderRadius: 10 }}>
                         <Empty description="Chưa có dữ liệu KYC" />
                     </Card>
                 </>
@@ -704,7 +704,7 @@ export default function CustomerDetailPage() {
                 {showUploadCard && (
                     <Card
                         bordered={false}
-                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        style={{ marginBottom: 24, borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                         title={<Space><UploadOutlined /> Tải CCCD lên và nhận dạng OCR (nhân viên làm giúp khách hàng)</Space>}
                     >
                         <Row gutter={[24, 24]}>
@@ -780,7 +780,7 @@ export default function CustomerDetailPage() {
                     <Card
                         title={<Space><IdcardOutlined /> Thông tin OCR (CCCD)</Space>}
                         bordered={false}
-                        style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        style={{ marginBottom: 24, borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                     >
                         <Descriptions column={2} bordered size="small">
                             <Descriptions.Item label="Họ tên" span={1}>{ocr?.fullName || '–'}</Descriptions.Item>
@@ -800,7 +800,7 @@ export default function CustomerDetailPage() {
                 <Card
                     title={<Space><FileTextOutlined /> Hình ảnh CCCD (từ Fineract)</Space>}
                     bordered={false}
-                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     {documents && documents.length > 0 ? (
                         <Row gutter={[24, 24]}>
@@ -870,7 +870,7 @@ export default function CustomerDetailPage() {
             <Card
                 title={<Space><BankOutlined /> Tài khoản tiết kiệm</Space>}
                 bordered={false}
-                style={{ marginBottom: 24, borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                style={{ marginBottom: 24, borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 {savingsAccounts.length > 0 ? (
                     <Table
@@ -901,7 +901,7 @@ export default function CustomerDetailPage() {
                 <Card
                     title={<Space><DollarOutlined /> Các khoản phí sắp tới</Space>}
                     bordered={false}
-                    style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                    style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 >
                     <Table
                         dataSource={charges}
@@ -977,7 +977,7 @@ export default function CustomerDetailPage() {
             <HeaderCard />
 
             {/* Tabs */}
-            <Card bordered={false} style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+            <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                 <Tabs
                     activeKey={activeTab}
                     onChange={setActiveTab}

@@ -3,10 +3,12 @@ import {
     Alert,
     Button,
     Card,
+    Col,
     Form,
     Input,
     Modal,
     Popconfirm,
+    Row,
     Select,
     Space,
     Switch,
@@ -14,10 +16,15 @@ import {
     Tag,
     Typography,
     message,
-    theme,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined, SaveOutlined, DeleteOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import {
+    PlusOutlined, ReloadOutlined, SaveOutlined, DeleteOutlined,
+    SafetyCertificateOutlined, CheckCircleOutlined, ExclamationCircleOutlined,
+    StopOutlined
+} from '@ant-design/icons';
 import { adminApi } from '../api/admin';
+import PageHeader from '../components/PageHeader';
+import { PageWithStatsSkeleton } from '../components/PageSkeleton';
 
 const { Text } = Typography;
 
@@ -60,7 +67,6 @@ const STAGE_OPTIONS: Array<{ label: string; value: CollectionStage }> = [
 ];
 
 export default function DelinquencyPoliciesPage() {
-    const { token } = theme.useToken();
     const [messageApi, contextHolder] = message.useMessage();
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -69,6 +75,8 @@ export default function DelinquencyPoliciesPage() {
     const [debtGroups, setDebtGroups] = useState<DebtGroupOption[]>([]);
     const [policies, setPolicies] = useState<Policy[]>([]);
     const [form] = Form.useForm();
+
+    const [initialLoading, setInitialLoading] = useState(true);
 
     const debtGroupMap = useMemo(() => {
         const map = new Map<number, DebtGroupOption>();
@@ -82,8 +90,6 @@ export default function DelinquencyPoliciesPage() {
 
     const selectableDebtGroups = useMemo(() => {
         return debtGroups.filter((group) => {
-            // Create mode: hide debt groups that already have a policy.
-            // Edit mode: keep current group visible for existing policy.
             if (!usedDebtGroups.has(group.debt_group)) return true;
             return editingPolicy?.debt_group === group.debt_group;
         });
@@ -102,12 +108,25 @@ export default function DelinquencyPoliciesPage() {
             messageApi.error(error?.response?.data?.message ?? 'Không tải được cấu hình xử lý nợ xấu');
         } finally {
             setLoading(false);
+            setInitialLoading(false);
         }
     }, [messageApi]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Computed stats
+    const activeCount = policies.filter(p => p.is_active).length;
+    const legalCount = policies.filter(p => p.legal_escalation).length;
+    const blockCount = policies.filter(p => p.block_new_loan).length;
+
+    const statCards = [
+        { title: 'Tổng policy', value: policies.length, gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', icon: <SafetyCertificateOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+        { title: 'Đang hoạt động', value: activeCount, gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: <CheckCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+        { title: 'Hành động pháp lý', value: legalCount, gradient: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)', icon: <ExclamationCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+        { title: 'Chặn vay mới', value: blockCount, gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', icon: <StopOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+    ];
 
     const openCreateModal = () => {
         setEditingPolicy(null);
@@ -180,19 +199,17 @@ export default function DelinquencyPoliciesPage() {
         }
     };
 
+    if (initialLoading) {
+        return <PageWithStatsSkeleton statCount={4} tableRows={5} tableColumns={8} />;
+    }
+
     return (
-        <>
+        <div>
             {contextHolder}
-            <Card
-                bordered={false}
-                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-                title={
-                    <Space>
-                        <SafetyCertificateOutlined style={{ color: token.colorPrimary }} />
-                        <span>Cấu hình xử lý nợ xấu</span>
-                        <Tag color="blue">{policies.length} policy</Tag>
-                    </Space>
-                }
+            <PageHeader
+                title="Cấu hình xử lý nợ xấu"
+                description="Quản lý chính sách xử lý nợ quá hạn: email, SMS, notification, chặn vay mới, lãi phạt, pháp lý."
+                breadcrumb={[{ label: 'Cấu hình xử lý nợ xấu' }]}
                 extra={
                     <Space>
                         <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
@@ -203,6 +220,43 @@ export default function DelinquencyPoliciesPage() {
                         </Button>
                     </Space>
                 }
+            />
+
+            {/* Stat Cards */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                {statCards.map((s, i) => (
+                    <Col xs={24} sm={12} md={8} lg={6} key={i}>
+                        <Card
+                            bordered={false}
+                            style={{
+                                background: s.gradient,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                                height: '100%',
+                                minHeight: 100,
+                            }}
+                            styles={{ body: { padding: '20px 24px' } }}
+                        >
+                            <Space align="center" size={16} style={{ width: '100%' }}>
+                                <div style={{
+                                    width: 48, height: 48, borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>{s.icon}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>{s.title}</Text>
+                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
+                                </div>
+                            </Space>
+                        </Card>
+                    </Col>
+                ))}
+            </Row>
+
+            {/* Table Card */}
+            <Card
+                bordered={false}
+                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
                 <Alert
                     type="info"
@@ -373,6 +427,6 @@ export default function DelinquencyPoliciesPage() {
                     </Form.Item>
                 </Form>
             </Modal>
-        </>
+        </div>
     );
 }

@@ -235,13 +235,13 @@ export default function LoanDetailDrawer({
                             cancelText="Hủy"
                             okButtonProps={{ type: 'primary', size: 'middle' }}
                         >
-                            <Button type="primary" size="middle" icon={<CheckOutlined />} loading={approving} style={{ borderRadius: 0, fontWeight: 600 }}>
+                            <Button type="primary" size="middle" icon={<CheckOutlined />} loading={approving} style={{ borderRadius: 10, fontWeight: 600 }}>
                                 Duyệt khoản vay
                             </Button>
                         </Popconfirm>
                     ) : (
                         <Tooltip title={`Thiếu: ${missingRequired.join(', ')}`}>
-                            <Button size="middle" icon={<CheckOutlined />} disabled style={{ borderRadius: 0 }}>
+                            <Button size="middle" icon={<CheckOutlined />} disabled style={{ borderRadius: 10 }}>
                                 Duyệt khoản vay
                             </Button>
                         </Tooltip>
@@ -255,7 +255,7 @@ export default function LoanDetailDrawer({
                             cancelText="Hủy"
                             okButtonProps={{ danger: true }}
                         >
-                            <Button size="middle" danger icon={<SendOutlined />} loading={disbursing} style={{ borderRadius: 0, fontWeight: 600 }}>
+                            <Button size="middle" danger icon={<SendOutlined />} loading={disbursing} style={{ borderRadius: 10, fontWeight: 600 }}>
                                 Giải ngân
                             </Button>
                         </Popconfirm>
@@ -267,7 +267,7 @@ export default function LoanDetailDrawer({
                                     ? 'Người vay chưa ký hợp đồng. Cần ký trước khi giải ngân.'
                                     : `Trạng thái hợp đồng: ${contractStatus?.contractStatus}`
                         }>
-                            <Button size="middle" icon={<SendOutlined />} disabled style={{ borderRadius: 0, fontWeight: 600 }}>
+                            <Button size="middle" icon={<SendOutlined />} disabled style={{ borderRadius: 10, fontWeight: 600 }}>
                                 Giải ngân
                             </Button>
                         </Tooltip>
@@ -600,7 +600,7 @@ export default function LoanDetailDrawer({
                         children: (
                             <div style={{ padding: '24px' }}>
                                 {mode === 'approval' && !canApprove && missingRequired.length > 0 && (
-                                    <div style={{ marginBottom: 12, padding: '8px 12px', background: token.colorWarningBg, borderRadius: 0, border: `1px solid ${token.colorWarningBorder}` }}>
+                                    <div style={{ marginBottom: 12, padding: '8px 12px', background: token.colorWarningBg, borderRadius: 10, border: `1px solid ${token.colorWarningBorder}` }}>
                                         <Text type="warning">
                                             <strong>Lưu ý:</strong> Cần duyệt đủ tài liệu bắt buộc trước khi duyệt khoản vay: {missingRequired.join(', ')}
                                         </Text>

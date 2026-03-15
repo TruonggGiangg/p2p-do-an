@@ -266,7 +266,7 @@ export default function LoanSupportRequestsPage() {
             />
             <Card
                 bordered={false}
-                style={{ borderRadius: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}
+                style={{ borderRadius: 10, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}
                 title={
                     <Space>
                         <ExclamationCircleOutlined style={{ color: token.colorWarning, fontSize: 18 }} />

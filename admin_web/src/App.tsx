@@ -135,8 +135,9 @@ export default function App() {
             colorBorder: isDarkMode ? '#334155' : '#E2E8F0',
             colorText: isDarkMode ? '#F1F5F9' : '#0F172A',
             colorTextSecondary: isDarkMode ? '#94A3B8' : '#475569',
-            borderRadius: 6,
-            borderRadiusLG: 12,
+            borderRadius: 10,
+            borderRadiusLG: 14,
+            borderRadiusSM: 8,
             fontFamily: "'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             fontSize: 14,
             controlHeight: 40,
@@ -155,23 +156,54 @@ export default function App() {
               darkSubMenuItemBg: isDarkMode ? '#020617' : '#0F172A',
               itemHeight: 48,
               itemMarginBlock: 4,
+              itemBorderRadius: 10,
             },
             Card: {
-              // Inherits borderRadiusLG (12px)
+              borderRadiusLG: 14,
               boxShadowTertiary: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
             },
             Table: {
-              // Inherits borderRadiusLG (12px)
+              borderRadiusLG: 14,
               headerBg: isDarkMode ? '#1E293B' : '#F8FAFC',
               rowHoverBg: isDarkMode ? '#334155' : '#F1F5F9',
               fontSize: 13,
               cellPaddingBlock: 10,
               cellPaddingInline: 12,
+              headerBorderRadius: 14,
             },
-            Button: {},
-            Input: {},
-            Select: {},
-            Tag: {},
+            Button: {
+              borderRadius: 10,
+              borderRadiusLG: 12,
+              borderRadiusSM: 8,
+            },
+            Input: {
+              borderRadius: 10,
+              borderRadiusLG: 12,
+              borderRadiusSM: 8,
+            },
+            Select: {
+              borderRadius: 10,
+              borderRadiusLG: 12,
+              borderRadiusSM: 8,
+            },
+            InputNumber: {
+              borderRadius: 10,
+            },
+            DatePicker: {
+              borderRadius: 10,
+            },
+            Modal: {
+              borderRadiusLG: 16,
+            },
+            Drawer: {
+              borderRadiusLG: 16,
+            },
+            Tag: {
+              borderRadiusSM: 6,
+            },
+            Tabs: {
+              borderRadius: 10,
+            },
           },
         }}
       >

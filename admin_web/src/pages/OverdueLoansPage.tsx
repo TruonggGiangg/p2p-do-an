@@ -138,7 +138,7 @@ export default function OverdueLoansPage() {
             {contextHolder}
             <Card
                 bordered={false}
-                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                 title={
                     <Space>
                         <ExclamationCircleOutlined style={{ color: token.colorError }} />

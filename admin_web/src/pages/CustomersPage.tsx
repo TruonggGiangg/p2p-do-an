@@ -180,7 +180,7 @@ export default function CustomersPage() {
                         icon={s.icon}
                         style={{
                             padding: '4px 12px',
-                            borderRadius: 0,
+                            borderRadius: 10,
                             fontWeight: 500,
                             background: s.bg,
                             border: 'none'
@@ -213,7 +213,7 @@ export default function CustomersPage() {
                         type="primary"
                         icon={<EyeOutlined />}
                         onClick={(e) => { e.stopPropagation(); navigate(`/customers/${r._id || r.fineractClientId}`); }}
-                        style={{ borderRadius: 0, fontSize: 12 }}
+                        style={{ borderRadius: 10, fontSize: 12 }}
                     >
                         Chi tiết
                     </Button>
@@ -429,7 +429,7 @@ export default function CustomersPage() {
             <Card
                 bordered={false}
                 style={{
-                    borderRadius: 0,
+                    borderRadius: 10,
                     marginBottom: 24,
                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
                     overflow: 'visible',
@@ -455,7 +455,7 @@ export default function CustomersPage() {
             <Card
                 bordered={false}
                 style={{
-                    borderRadius: 0,
+                    borderRadius: 10,
                     marginBottom: 16,
                     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                     display: showFilters ? 'block' : 'none'
