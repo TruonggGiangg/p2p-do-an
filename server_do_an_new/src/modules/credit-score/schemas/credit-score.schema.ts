@@ -6,7 +6,7 @@ export class CreditScore extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true, index: true })
   userId: Types.ObjectId;
 
-  @Prop({ type: Number, required: true, default: 650, min: 300, max: 850 })
+  @Prop({ type: Number, required: true, default: 570, min: 150, max: 750 })
   score: number;
 
   @Prop({ type: Number, required: true, default: 0, min: 0 })

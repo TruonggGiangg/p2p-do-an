@@ -24,15 +24,15 @@ import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
-const SCORE_MIN = 300;
-const SCORE_MAX = 850;
+const SCORE_MIN = 150;
+const SCORE_MAX = 750;
 
 const creditScoreBand = (score: number) => {
-    if (score >= 800) return { label: 'XUẤT SẮC', color: '#18A058' };
-    if (score >= 740) return { label: 'TỐT', color: '#2F80ED' };
-    if (score >= 670) return { label: 'KHÁ', color: '#F2C94C' };
-    if (score >= 580) return { label: 'TRUNG BÌNH', color: '#F2994A' };
-    return { label: 'CẦN CẢI THIỆN', color: '#EB5757' };
+    if (score >= 680) return { label: 'RỦI RO RẤT THẤP', color: '#18A058' };
+    if (score >= 570) return { label: 'RỦI RO THẤP', color: '#2F80ED' };
+    if (score >= 431) return { label: 'RỦI RO TRUNG BÌNH', color: '#F2C94C' };
+    if (score >= 322) return { label: 'RỦI RO CAO', color: '#F2994A' };
+    return { label: 'RỦI RO RẤT CAO', color: '#EB5757' };
 };
 
 const formatHistoryReason = (reason?: string) => {
@@ -103,7 +103,7 @@ export default function ProfileScreen() {
     const uid = user?._id?.toString().slice(-8).toUpperCase() || 'P2P-8888';
     const creditScore = user?.creditScore;
     const creditHistory = user?.creditScoreHistory || [];
-    const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 650;
+    const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 570;
     const scoreRatio = Math.max(0, Math.min(1, (scoreValue - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)));
     const band = creditScoreBand(scoreValue);
     const c = theme.colors;

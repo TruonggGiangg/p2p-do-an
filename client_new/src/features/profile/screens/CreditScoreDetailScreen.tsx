@@ -16,16 +16,16 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { authAPI } from '../../auth/api/auth.api';
 import type { UserCreditScoreHistoryItem } from '../../../types/auth.types';
 
-const SCORE_MIN = 300;
-const SCORE_MAX = 850;
+const SCORE_MIN = 150;
+const SCORE_MAX = 750;
 const PAGE_LIMIT = 15;
 
 const creditScoreBand = (score: number) => {
-    if (score >= 800) return { label: 'Xuất sắc', color: '#18A058' };
-    if (score >= 740) return { label: 'Tốt', color: '#2F80ED' };
-    if (score >= 670) return { label: 'Khá', color: '#F2C94C' };
-    if (score >= 580) return { label: 'Trung bình', color: '#F2994A' };
-    return { label: 'Cần cải thiện', color: '#EB5757' };
+    if (score >= 680) return { label: 'Rủi ro rất thấp', color: '#18A058' };
+    if (score >= 570) return { label: 'Rủi ro thấp', color: '#2F80ED' };
+    if (score >= 431) return { label: 'Rủi ro trung bình', color: '#F2C94C' };
+    if (score >= 322) return { label: 'Rủi ro cao', color: '#F2994A' };
+    return { label: 'Rủi ro rất cao', color: '#EB5757' };
 };
 
 const formatHistoryReason = (reason?: string) => {
@@ -70,7 +70,7 @@ export default function CreditScoreDetailScreen() {
     const loadingMoreRef = useRef(false);
 
     const creditScore = user?.creditScore;
-    const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 650;
+    const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 570;
     const scoreRatio = Math.max(0, Math.min(1, (scoreValue - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)));
     const band = useMemo(() => creditScoreBand(scoreValue), [scoreValue]);
 

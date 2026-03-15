@@ -15,6 +15,7 @@ import { WalletsModule } from '../wallets/wallets.module';
 import { UsersModule } from '../users/users.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 import { SmartCAModule } from '../digital-signature/smartca.module';
+import { CreditScoreModule } from '../credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { SmartCAModule } from '../digital-signature/smartca.module';
     UsersModule,
     SmartOtpModule,
     SmartCAModule,
+    CreditScoreModule,
   ],
   controllers: [LoanController],
   providers: [LoanService, RepaymentService, ContractService],

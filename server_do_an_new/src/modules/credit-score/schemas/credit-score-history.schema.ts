@@ -4,6 +4,7 @@ import { Document, Types } from 'mongoose';
 export type CreditScoreHistoryReason =
   | 'initial_account_creation'
   | 'loan_repayment'
+  | 'loan_prepayment'
   | 'late_payment'
   | 'manual_adjustment'
   | 'system_recalculation';
@@ -23,7 +24,7 @@ export class CreditScoreHistory extends Document {
   @Prop({ type: Number, default: null })
   beforeScore: number | null;
 
-  @Prop({ type: Number, required: true, min: 300, max: 850 })
+  @Prop({ type: Number, required: true, min: 150, max: 750 })
   afterScore: number;
 
   @Prop({ type: Number, required: true, default: 0 })
@@ -32,7 +33,14 @@ export class CreditScoreHistory extends Document {
   @Prop({
     type: String,
     required: true,
-    enum: ['initial_account_creation', 'loan_repayment', 'late_payment', 'manual_adjustment', 'system_recalculation'],
+    enum: [
+      'initial_account_creation',
+      'loan_repayment',
+      'loan_prepayment',
+      'late_payment',
+      'manual_adjustment',
+      'system_recalculation',
+    ],
     default: 'initial_account_creation',
   })
   reason: CreditScoreHistoryReason;
