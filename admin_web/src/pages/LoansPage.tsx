@@ -1,11 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ActionType } from '@ant-design/pro-components';
-import { Card, Button, Space, Tag, Form, message, Tooltip } from 'antd';
+import { Card, Button, Space, Tag, Form, message, Tooltip, Row, Col } from 'antd';
 import {
     SyncOutlined, FilterOutlined, ReloadOutlined,
     DollarOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
-    ExclamationCircleOutlined
+    ExclamationCircleOutlined,
+    PlusOutlined
 } from '@ant-design/icons';
 import { adminApi } from '../api/admin';
 import LoanDetailDrawer from '../components/LoanDetailDrawer';
@@ -14,6 +15,8 @@ import LoanTable from '../components/LoanTable';
 import LoanFilterForm from '../components/LoanFilterForm';
 import { TAB_LABELS, type TabKey } from '../config/loanTableConfig';
 import { LoanPageShellSkeleton } from '../components/PageSkeleton';
+import Text from 'antd/es/typography/Text';
+import PageHeader from '../components/PageHeader';
 
 const STATUS_MAP: Record<string, TabKey> = {
     all: 'all',
@@ -143,71 +146,110 @@ export default function LoansPage() {
     return (
         <>
             {contextHolder}
-            <LoanPageShell
+            {/* <LoanPageShell
                 title="Quản lý khoản vay"
                 description="Quản lý toàn bộ khoản vay theo từng giai đoạn: chờ duyệt, đã phê duyệt, đang hoạt động, quá hạn, đã đóng."
                 breadcrumb={[{ label: 'Quản lý khoản vay' }]}
                 stats={statCards}
                 helpTooltip="Dùng tab để lọc theo trạng thái. Bộ lọc nâng cao hỗ trợ tìm theo khoản quá hạn, ngày giải ngân."
-            >
-                <Card bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ padding: 0 }}>
-                    <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
-                        <Space wrap>
-                            {tabItems.map((t) => (
-                                <Button
-                                    key={t.key}
-                                    type={activeTab === t.key ? 'primary' : 'default'}
-                                    size="middle"
-                                    onClick={() => handleTabChange(t.key)}
-                                    style={{ fontWeight: activeTab === t.key ? 600 : 400 }}
-                                >
-                                    {t.label}
-                                    <Tag color={activeTab === t.key ? 'primary' : 'default'} style={{ marginLeft: 6 }}>
-                                        {t.count}
-                                    </Tag>
-                                </Button>
-                            ))}
-                        </Space>
-                    </div>
-                </Card>
+            > */}
+            <PageHeader
+                title="Quản lý khoản vay"
+                description="Quản lý toàn bộ khoản vay theo từng giai đoạn: chờ duyệt, đã phê duyệt, đang hoạt động, quá hạn, đã đóng."
+                breadcrumb={[{ label: 'Quản lý khoản vay' }]}
+            />
+            {/* Stat Cards */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                {statCards.map((s, i) => (
+                    <Col flex="1 0 20%" style={{ alignItems: "center", justifyContent: "center" }} key={i}>
+                        <Card
+                            bordered={false}
+                            style={{
+                                background: s.gradient,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                                height: '100%',
+                                minHeight: 100,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                display: 'flex',
+                            }}
+                            styles={{ body: { padding: '24px 29px' } }}
+                        >
+                            <Space align="center" size={16} style={{ width: '100%' }}>
+                                <div style={{
+                                    width: 38, height: 38, borderRadius: 8,
+                                    background: 'rgba(255,255,255,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>{s.icon}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, display: 'block' }}>{s.title}</Text>
+                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
+                                </div>
+                            </Space>
+                        </Card>
+                    </Col>
+                ))}
+            </Row>
+            <Card bordered={false} style={{ marginBottom: 16 }} bodyStyle={{ padding: 0 }}>
+                <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
+                    <Space wrap>
+                        {tabItems.map((t) => (
+                            <Button
+                                key={t.key}
+                                type={activeTab === t.key ? 'primary' : 'default'}
+                                size="middle"
+                                onClick={() => handleTabChange(t.key)}
+                                style={{ fontWeight: activeTab === t.key ? 600 : 400 }}
+                            >
+                                {t.label}
+                                <Tag color={activeTab === t.key ? 'primary' : 'default'} style={{ marginLeft: 6 }}>
+                                    {t.count}
+                                </Tag>
+                            </Button>
+                        ))}
+                    </Space>
+                </div>
+            </Card>
 
-                <LoanTable
-                    variant="management"
-                    request={fetchData}
-                    onViewDetails={handleViewDetails}
-                    activeTab={activeTab}
-                    showFilterPanel={showFilters}
-                    filterContent={(ref) => (
-                        <LoanFilterForm
-                            form={form}
-                            actionRef={ref}
-                            products={products}
-                            ranges={ranges}
-                            activeTab={activeTab}
-                        />
-                    )}
-                    actionRef={actionRef}
-                    toolBarRender={() => [
-                        <Tooltip key="filter" title="Bộ lọc nâng cao theo sản phẩm, ngày giải ngân, quá hạn">
-                            <Button icon={<FilterOutlined />} onClick={() => setShowFilters(!showFilters)} type={showFilters ? 'primary' : 'default'}>
-                                Bộ lọc
-                            </Button>
-                        </Tooltip>,
-                        <Tooltip key="sync" title="Đồng bộ dữ liệu mới nhất từ Fineract">
-                            <Button icon={<SyncOutlined />} onClick={handleSync} loading={syncing}>
-                                Đồng bộ
-                            </Button>
-                        </Tooltip>,
-                        <Tooltip key="refresh" title="Làm mới danh sách và thống kê">
-                            <Button icon={<ReloadOutlined />} onClick={() => { adminApi.getLoansStats().then(setStats); actionRef.current?.reloadAndRest?.(); }}>
-                                Làm mới
-                            </Button>
-                        </Tooltip>,
-                    ]}
-                    headerTitle="Danh sách khoản vay"
-                    columnsStateKey="loans-management-table-v2"
-                />
-            </LoanPageShell>
+
+            <LoanTable
+                variant="management"
+                request={fetchData}
+                onViewDetails={handleViewDetails}
+                activeTab={activeTab}
+                showFilterPanel={showFilters}
+                filterContent={(ref) => (
+                    <LoanFilterForm
+                        form={form}
+                        actionRef={ref}
+                        products={products}
+                        ranges={ranges}
+                        activeTab={activeTab}
+                    />
+                )}
+                actionRef={actionRef}
+                toolBarRender={() => [
+                    <Tooltip key="filter" title="Bộ lọc nâng cao theo sản phẩm, ngày giải ngân, quá hạn">
+                        <Button icon={<FilterOutlined />} onClick={() => setShowFilters(!showFilters)} type={showFilters ? 'primary' : 'default'}>
+                            Bộ lọc
+                        </Button>
+                    </Tooltip>,
+                    <Tooltip key="sync" title="Đồng bộ dữ liệu mới nhất từ Fineract">
+                        <Button icon={<SyncOutlined />} onClick={handleSync} loading={syncing}>
+                            Đồng bộ
+                        </Button>
+                    </Tooltip>,
+                    <Tooltip key="refresh" title="Làm mới danh sách và thống kê">
+                        <Button icon={<ReloadOutlined />} onClick={() => { adminApi.getLoansStats().then(setStats); actionRef.current?.reloadAndRest?.(); }}>
+                            Làm mới
+                        </Button>
+                    </Tooltip>,
+                ]}
+                headerTitle="Danh sách khoản vay"
+                columnsStateKey="loans-management-table-v2"
+            />
+            {/* </LoanPageShell> */}
 
             <LoanDetailDrawer
                 open={!!drawerLoanId}

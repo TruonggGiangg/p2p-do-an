@@ -31,15 +31,18 @@ function mapPolicyActionLabel(policy: any): string {
 
 function generateDelinquencyPolicyRows(policies: any[]): string {
   return policies
-    .map(
-      p => `
+    .map(p => {
+      const maxDays = p.max_days != null ? Number(p.max_days) : null;
+      const isOpenEnded = maxDays == null || maxDays >= 99999;
+      const dayRangeLabel = isOpenEnded ? `>= ${p.min_days ?? 0} ngày` : `${p.min_days ?? 0} - ${maxDays} ngày`;
+      return `
     <tr>
       <td style="text-align:center">Nhóm ${p.debt_group}</td>
-      <td style="text-align:center">${p.min_days ?? 0} - ${p.max_days ?? 99999} ngày</td>
+      <td style="text-align:center">${dayRangeLabel}</td>
       <td>${mapPolicyActionLabel(p)}</td>
     </tr>
-  `,
-    )
+  `;
+    })
     .join('');
 }
 

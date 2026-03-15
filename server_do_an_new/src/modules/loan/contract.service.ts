@@ -59,18 +59,18 @@ export class ContractService {
     }
 
     const ranges = await this.fineractLoanService.getDelinquencyRanges().catch(() => []);
-    const rangeMap = new Map<number, { min_days: number; max_days: number }>();
+    const rangeMap = new Map<number, { min_days: number; max_days: number | null }>();
     for (const range of ranges || []) {
       const id = Number(range?.id);
       if (!Number.isFinite(id)) continue;
       rangeMap.set(id, {
         min_days: Number(range?.minimumAgeDays ?? 0),
-        max_days: Number(range?.maximumAgeDays ?? 99999),
+        max_days: range?.maximumAgeDays != null ? Number(range.maximumAgeDays) : null,
       });
     }
 
     return (policies as any[]).map(policy => ({
-      ...(rangeMap.get(Number(policy.debt_group)) ?? { min_days: 0, max_days: 99999 }),
+      ...(rangeMap.get(Number(policy.debt_group)) ?? { min_days: 0, max_days: null }),
       debt_group: Number(policy.debt_group ?? 0),
       debt_group_name: String(policy.debt_group_name ?? ''),
       send_email: !!policy.send_email,

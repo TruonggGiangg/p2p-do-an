@@ -34,7 +34,7 @@ type DebtGroupOption = {
     debt_group: number;
     debt_group_name: string;
     min_days: number;
-    max_days: number;
+    max_days: number | null;
 };
 
 type Policy = {
@@ -45,7 +45,7 @@ type Policy = {
     debt_group: number;
     debt_group_name: string;
     min_days: number;
-    max_days: number;
+    max_days: number | null;
     send_email: boolean;
     send_sms: boolean;
     send_notification: boolean;
@@ -69,6 +69,13 @@ const STAGE_OPTIONS: Array<{ label: string; value: CollectionStage }> = [
 ];
 
 export default function DelinquencyPoliciesPage() {
+    const formatDebtGroupDayRange = (minDays?: number | null, maxDays?: number | null) => {
+        const min = Number(minDays ?? 0);
+        const max = maxDays != null ? Number(maxDays) : null;
+        if (max == null || max >= 99999) return `>= ${min} ngày`;
+        return `${min} - ${max} ngày`;
+    };
+
     const [messageApi, contextHolder] = message.useMessage();
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -352,7 +359,7 @@ export default function DelinquencyPoliciesPage() {
                             render: (_, row) => (
                                 <Space direction="vertical" size={0}>
                                     <Text strong>#{row.debt_group} - {row.debt_group_name}</Text>
-                                    <Text type="secondary">{row.min_days} - {row.max_days} ngày</Text>
+                                    <Text type="secondary">{formatDebtGroupDayRange(row.min_days, row.max_days)}</Text>
                                 </Space>
                             ),
                         },
@@ -482,7 +489,7 @@ export default function DelinquencyPoliciesPage() {
                                 placeholder="Chọn debt_group"
                                 options={selectableDebtGroups.map((group) => ({
                                     value: group.debt_group,
-                                    label: `#${group.debt_group} - ${group.debt_group_name} (${group.min_days}-${group.max_days} ngày)`,
+                                    label: `#${group.debt_group} - ${group.debt_group_name} (${formatDebtGroupDayRange(group.min_days, group.max_days)})`,
                                 }))}
                                 onChange={onDebtGroupChange}
                                 disabled={!!editingPolicy}

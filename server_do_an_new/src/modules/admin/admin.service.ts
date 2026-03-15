@@ -1072,7 +1072,6 @@ export class AdminService {
     for (let i = 0; i < sorted.length - 1; i++) {
       if (sorted[i].max == null) sorted[i].max = sorted[i + 1].min - 1;
     }
-    if (sorted.length && sorted[sorted.length - 1].max == null) sorted[sorted.length - 1].max = 99999;
 
     const result: Array<{
       period: number;
@@ -1095,7 +1094,7 @@ export class AdminService {
         ? Math.max(0, Math.floor((referenceDate.getTime() - dueDate.getTime()) / 86400000))
         : 0;
       const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : '–';
-      const range = sorted.find((r: any) => daysOverdue >= r.min && daysOverdue <= (r.max ?? 99999));
+      const range = sorted.find((r: any) => daysOverdue >= r.min && (r.max == null || daysOverdue <= r.max));
       result.push({
         period: periodNum,
         dueDate: dueDateStr,
@@ -1890,7 +1889,7 @@ export class AdminService {
       debt_group: number;
       debt_group_name: string;
       min_days: number;
-      max_days: number;
+      max_days: number | null;
     }>
   > {
     const ranges = await this.fineractLoanService.getDelinquencyRanges();
@@ -1902,14 +1901,14 @@ export class AdminService {
           debt_group: id,
           debt_group_name: String(range.classification ?? range.name ?? `Nhóm ${id}`),
           min_days: Number(range.minimumAgeDays ?? 0),
-          max_days: Number(range.maximumAgeDays ?? 99999),
+          max_days: range.maximumAgeDays != null ? Number(range.maximumAgeDays) : null,
         };
       })
       .filter(Boolean) as Array<{
       debt_group: number;
       debt_group_name: string;
       min_days: number;
-      max_days: number;
+      max_days: number | null;
     }>;
   }
 
@@ -1948,8 +1947,8 @@ export class AdminService {
       this.delinquencyPolicyModel.find(query).sort({ loan_product_id: 1, debt_group: 1 }).lean().exec(),
       this.getFineractDebtGroups().catch(() => []),
     ] as const);
-    const groupMap = new Map<number, { min_days: number; max_days: number }>();
-    for (const group of groups as Array<{ debt_group: number; min_days: number; max_days: number }>) {
+    const groupMap = new Map<number, { min_days: number; max_days: number | null }>();
+    for (const group of groups as Array<{ debt_group: number; min_days: number; max_days: number | null }>) {
       groupMap.set(group.debt_group, { min_days: group.min_days, max_days: group.max_days });
     }
 

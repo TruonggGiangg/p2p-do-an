@@ -109,7 +109,15 @@ export default function LoanPageShell({
                                     </div>
                                 )}
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>
+                                    <Text
+                                        style={{
+                                            color: 'rgba(255,255,255,0.9)',
+                                            fontSize: 13,
+                                            display: 'block',
+                                            minHeight: 36,
+                                            lineHeight: 1.35,
+                                        }}
+                                    >
                                         {s.title}
                                     </Text>
                                     <Typography.Text
@@ -118,7 +126,8 @@ export default function LoanPageShell({
                                             color: '#fff',
                                             fontSize: 26,
                                             fontWeight: 700,
-                                            lineHeight: 1.2,
+                                            lineHeight: 1.15,
+                                            minHeight: 32,
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',

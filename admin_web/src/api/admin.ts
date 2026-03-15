@@ -628,7 +628,7 @@ export const adminApi = {
           debt_group: number;
           debt_group_name: string;
           min_days: number;
-          max_days: number;
+          max_days: number | null;
         }>;
       }>("/api/delinquency/policies/debt-groups")
       .then((r) => r.data.data),
@@ -656,7 +656,7 @@ export const adminApi = {
           debt_group: number;
           debt_group_name: string;
           min_days: number;
-          max_days: number;
+          max_days: number | null;
           send_email: boolean;
           send_sms: boolean;
           send_notification: boolean;
