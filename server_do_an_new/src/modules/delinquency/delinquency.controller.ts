@@ -143,11 +143,14 @@ export class DelinquencyController {
   async getDelinquencyPolicies(
     @Query('is_active') isActive?: string,
     @Query('debt_group') debtGroup?: string,
+    @Query('loan_product_id') loanProductId?: string,
     @Query('collection_stage') collectionStage?: DelinquencyCollectionStage,
   ) {
+    const parsedLoanProductId = loanProductId != null ? Number(loanProductId) : undefined;
     const data = await this.delinquencyService.getDelinquencyPolicies({
       is_active: isActive == null ? undefined : isActive === 'true',
       debt_group: debtGroup != null ? Number(debtGroup) : undefined,
+      loan_product_id: Number.isFinite(parsedLoanProductId) ? parsedLoanProductId : undefined,
       collection_stage: collectionStage,
     });
     return { statusCode: 200, message: 'OK', data };

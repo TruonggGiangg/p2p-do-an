@@ -35,6 +35,7 @@ const CODE_MAP: Record<string, { color: string; label: string }> = {
     'rejected': { color: 'red', label: 'Từ chối' },
     'repaid': { color: 'default', label: 'Đã hoàn trả' },
     'active': { color: 'green', label: 'Hoạt động' },
+    'inactive': { color: 'default', label: 'Không hoạt động' },
 };
 
 export function FineractStatusBadge({ status }: {

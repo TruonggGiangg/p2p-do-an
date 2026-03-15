@@ -39,8 +39,25 @@ export class ContractService {
     return `P2P-LC-${ts}-${rand}`;
   }
 
-  private async buildDelinquencyPolicySnapshot(): Promise<DelinquencyPolicySnapshotItem[]> {
-    const policies = await this.delinquencyPolicyModel.find({ is_active: true }).sort({ debt_group: 1 }).lean().exec();
+  private async buildDelinquencyPolicySnapshot(productId: number): Promise<DelinquencyPolicySnapshotItem[]> {
+    let policies = await this.delinquencyPolicyModel
+      .find({ is_active: true, loan_product_id: productId })
+      .sort({ debt_group: 1 })
+      .lean()
+      .exec();
+
+    // Backward compatibility for old contracts when policies were global (no product attached).
+    if (!policies.length) {
+      policies = await this.delinquencyPolicyModel
+        .find({
+          is_active: true,
+          $or: [{ loan_product_id: { $exists: false } }, { loan_product_id: null }],
+        })
+        .sort({ debt_group: 1 })
+        .lean()
+        .exec();
+    }
+
     const ranges = await this.fineractLoanService.getDelinquencyRanges().catch(() => []);
     const rangeMap = new Map<number, { min_days: number; max_days: number }>();
     for (const range of ranges || []) {
@@ -124,7 +141,7 @@ export class ContractService {
     }));
 
     // 5.1 Snapshot chính sách nợ xấu tại thời điểm phát hành hợp đồng
-    const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot();
+    const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot(app.productId);
 
     // 6. Tạo hợp đồng
     const contract = await this.contractModel.create({
@@ -384,7 +401,15 @@ export class ContractService {
         (contract as any).delinquencyPolicySnapshot.length === 0) &&
       contract.status === 'pending_signature'
     ) {
-      const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot();
+      const loanApp = await this.loanApplicationModel
+        .findById((contract as any).loanId)
+        .select('productId')
+        .lean()
+        .exec();
+      const productId = Number((loanApp as any)?.productId);
+      const delinquencyPolicySnapshot = Number.isFinite(productId)
+        ? await this.buildDelinquencyPolicySnapshot(productId)
+        : [];
       if (delinquencyPolicySnapshot.length > 0) {
         await this.contractModel.updateOne({ _id: (contract as any)._id }, { $set: { delinquencyPolicySnapshot } });
         (contract as any).delinquencyPolicySnapshot = delinquencyPolicySnapshot;

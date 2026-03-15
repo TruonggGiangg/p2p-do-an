@@ -16,7 +16,13 @@ export class DelinquencyPolicy extends Document {
   @Prop({ required: true, default: () => randomUUID(), unique: true, index: true })
   policy_id: string;
 
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: false, index: true })
+  loan_product_id?: number;
+
+  @Prop({ required: false })
+  loan_product_name?: string;
+
+  @Prop({ required: true, index: true })
   debt_group: number;
 
   @Prop({ required: true })
@@ -55,4 +61,15 @@ export class DelinquencyPolicy extends Document {
 }
 
 export const DelinquencyPolicySchema = SchemaFactory.createForClass(DelinquencyPolicy);
-DelinquencyPolicySchema.index({ is_active: 1, debt_group: 1 }, { name: 'idx_policy_active_group' });
+DelinquencyPolicySchema.index(
+  { loan_product_id: 1, debt_group: 1 },
+  {
+    unique: true,
+    name: 'uniq_policy_product_group',
+    partialFilterExpression: { loan_product_id: { $exists: true, $type: 'number' } },
+  },
+);
+DelinquencyPolicySchema.index(
+  { is_active: 1, loan_product_id: 1, debt_group: 1 },
+  { name: 'idx_policy_active_product_group' },
+);

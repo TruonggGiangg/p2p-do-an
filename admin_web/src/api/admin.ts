@@ -637,6 +637,7 @@ export const adminApi = {
   getDelinquencyPolicies: (params?: {
     is_active?: boolean;
     debt_group?: number;
+    loan_product_id?: number;
     collection_stage?:
       | "NONE"
       | "REMINDER"
@@ -650,6 +651,8 @@ export const adminApi = {
         data: Array<{
           _id: string;
           policy_id: string;
+          loan_product_id?: number | null;
+          loan_product_name?: string | null;
           debt_group: number;
           debt_group_name: string;
           min_days: number;
@@ -677,6 +680,8 @@ export const adminApi = {
 
   /** Tạo policy xử lý nợ xấu. */
   createDelinquencyPolicy: (payload: {
+    loan_product_id: number;
+    loan_product_name?: string;
     debt_group: number;
     debt_group_name?: string;
     send_email: boolean;
@@ -703,6 +708,8 @@ export const adminApi = {
   updateDelinquencyPolicy: (
     id: string,
     payload: Partial<{
+      loan_product_id: number;
+      loan_product_name: string;
       debt_group: number;
       debt_group_name: string;
       send_email: boolean;

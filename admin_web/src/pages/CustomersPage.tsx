@@ -4,13 +4,12 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
     Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
-    Card, Row, Col, Statistic, Select, DatePicker, Form, Input, Divider
+    Card, Row, Col, Select, DatePicker, Form, Input
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
     ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
-    BankOutlined, FileSearchOutlined, DashboardOutlined, UsergroupAddOutlined,
-    CheckCircleTwoTone, ClockCircleTwoTone
+    BankOutlined, FileSearchOutlined,
 } from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
@@ -441,7 +440,7 @@ export default function CustomersPage() {
                     onChange={handleTabChange}
                     items={tabItems}
                     size="large"
-                    tabBarStyle={{ 
+                    tabBarStyle={{
                         marginBottom: 0,
                         padding: '16px 24px 12px 24px',
                         borderBottom: `2px solid ${token.colorBorderSecondary}`,

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
     Button,
     Card,
     Col,
@@ -22,9 +21,10 @@ import {
     SafetyCertificateOutlined, CheckCircleOutlined, ExclamationCircleOutlined,
     StopOutlined
 } from '@ant-design/icons';
-import { adminApi } from '../api/admin';
+import { adminApi, type LoanProductDto } from '../api/admin';
 import PageHeader from '../components/PageHeader';
 import { PageWithStatsSkeleton } from '../components/PageSkeleton';
+import { FineractStatusBadge } from '../utils/fineractStatus';
 
 const { Text } = Typography;
 
@@ -40,6 +40,8 @@ type DebtGroupOption = {
 type Policy = {
     _id: string;
     policy_id: string;
+    loan_product_id?: number | null;
+    loan_product_name?: string | null;
     debt_group: number;
     debt_group_name: string;
     min_days: number;
@@ -73,6 +75,8 @@ export default function DelinquencyPoliciesPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
     const [debtGroups, setDebtGroups] = useState<DebtGroupOption[]>([]);
+    const [loanProducts, setLoanProducts] = useState<LoanProductDto[]>([]);
+    const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
     const [policies, setPolicies] = useState<Policy[]>([]);
     const [form] = Form.useForm();
 
@@ -83,6 +87,12 @@ export default function DelinquencyPoliciesPage() {
         debtGroups.forEach((group) => map.set(group.debt_group, group));
         return map;
     }, [debtGroups]);
+
+    const productMap = useMemo(() => {
+        const map = new Map<number, LoanProductDto>();
+        loanProducts.forEach((product) => map.set(product.id, product));
+        return map;
+    }, [loanProducts]);
 
     const usedDebtGroups = useMemo(() => {
         return new Set(policies.map((policy) => policy.debt_group));
@@ -95,14 +105,25 @@ export default function DelinquencyPoliciesPage() {
         });
     }, [debtGroups, usedDebtGroups, editingPolicy]);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (targetProductId?: number | null) => {
         setLoading(true);
         try {
-            const [groups, list] = await Promise.all([
+            const [groups, products] = await Promise.all([
                 adminApi.getDelinquencyPolicyDebtGroups(),
-                adminApi.getDelinquencyPolicies(),
+                adminApi.getLoanProducts(),
             ]);
+
+            const effectiveProductId = targetProductId ?? selectedProductId ?? products?.[0]?.id ?? null;
+            if (effectiveProductId !== selectedProductId) {
+                setSelectedProductId(effectiveProductId);
+            }
+
+            const list = effectiveProductId != null
+                ? await adminApi.getDelinquencyPolicies({ loan_product_id: effectiveProductId })
+                : [];
+
             setDebtGroups(groups || []);
+            setLoanProducts(products || []);
             setPolicies(list || []);
         } catch (error: any) {
             messageApi.error(error?.response?.data?.message ?? 'Không tải được cấu hình xử lý nợ xấu');
@@ -110,10 +131,10 @@ export default function DelinquencyPoliciesPage() {
             setLoading(false);
             setInitialLoading(false);
         }
-    }, [messageApi]);
+    }, [messageApi, selectedProductId]);
 
     useEffect(() => {
-        fetchData();
+        fetchData(selectedProductId);
     }, [fetchData]);
 
     // Computed stats
@@ -129,9 +150,17 @@ export default function DelinquencyPoliciesPage() {
     ];
 
     const openCreateModal = () => {
+        if (selectedProductId == null) {
+            messageApi.warning('Vui lòng chọn sản phẩm vay trước khi tạo policy');
+            return;
+        }
+
+        const product = productMap.get(selectedProductId);
         setEditingPolicy(null);
         form.resetFields();
         form.setFieldsValue({
+            loan_product_id: selectedProductId,
+            loan_product_name: product?.name,
             send_email: true,
             send_sms: true,
             send_notification: true,
@@ -150,6 +179,14 @@ export default function DelinquencyPoliciesPage() {
         setIsModalOpen(true);
     };
 
+    const onProductChange = (productId: number) => {
+        const product = productMap.get(productId);
+        form.setFieldsValue({
+            loan_product_id: productId,
+            loan_product_name: product?.name,
+        });
+    };
+
     const onDebtGroupChange = (debtGroup: number) => {
         const group = debtGroupMap.get(debtGroup);
         if (!group) return;
@@ -161,16 +198,30 @@ export default function DelinquencyPoliciesPage() {
     const handleSave = async () => {
         try {
             const values = await form.validateFields();
+            const selectedProduct = selectedProductId != null ? productMap.get(selectedProductId) : undefined;
+            const productId = editingPolicy?.loan_product_id ?? selectedProductId;
+
+            if (productId == null) {
+                messageApi.error('Vui lòng chọn sản phẩm vay trước khi lưu policy');
+                return;
+            }
+
+            const payload = {
+                ...values,
+                loan_product_id: productId,
+                loan_product_name: editingPolicy?.loan_product_name ?? selectedProduct?.name,
+            };
+
             setSaving(true);
             if (editingPolicy) {
-                await adminApi.updateDelinquencyPolicy(editingPolicy._id, values);
+                await adminApi.updateDelinquencyPolicy(editingPolicy._id, payload);
                 messageApi.success('Cập nhật policy thành công');
             } else {
-                await adminApi.createDelinquencyPolicy(values);
+                await adminApi.createDelinquencyPolicy(payload);
                 messageApi.success('Tạo policy thành công');
             }
             setIsModalOpen(false);
-            await fetchData();
+            await fetchData(productId);
         } catch (error: any) {
             if (error?.errorFields) return;
             messageApi.error(error?.response?.data?.message ?? 'Không thể lưu policy');
@@ -183,7 +234,7 @@ export default function DelinquencyPoliciesPage() {
         try {
             await adminApi.updateDelinquencyPolicy(id, payload);
             messageApi.success(successMessage);
-            await fetchData();
+            await fetchData(selectedProductId);
         } catch (error: any) {
             messageApi.error(error?.response?.data?.message ?? 'Không cập nhật được policy');
         }
@@ -193,7 +244,7 @@ export default function DelinquencyPoliciesPage() {
         try {
             await adminApi.removeDelinquencyPolicy(id);
             messageApi.success('Xóa policy thành công');
-            await fetchData();
+            await fetchData(selectedProductId);
         } catch (error: any) {
             messageApi.error(error?.response?.data?.message ?? 'Không xóa được policy');
         }
@@ -212,10 +263,10 @@ export default function DelinquencyPoliciesPage() {
                 breadcrumb={[{ label: 'Cấu hình xử lý nợ xấu' }]}
                 extra={
                     <Space>
-                        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
+                        <Button icon={<ReloadOutlined />} onClick={() => fetchData(selectedProductId)} loading={loading}>
                             Làm mới
                         </Button>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={selectedProductId == null}>
                             Tạo policy
                         </Button>
                     </Space>
@@ -258,17 +309,23 @@ export default function DelinquencyPoliciesPage() {
                 bordered={false}
                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
             >
-                <Alert
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                    message={
-                        <>
-                            debt_group lấy trực tiếp từ cấu hình quá hạn trên Fineract. Hệ thống lưu ID nhóm nợ và cho phép bật/tắt từng biện pháp xử lý
-                            (email, SMS, notification, chặn vay mới, lãi phạt, pháp lý) theo chính sách tuân thủ.
-                        </>
-                    }
-                />
+                <Space size={12} style={{ marginBottom: 16 }}>
+                    <Text strong>Sản phẩm vay:</Text>
+                    <Select
+                        style={{ width: 340 }}
+                        placeholder="Chọn sản phẩm vay"
+                        value={selectedProductId ?? undefined}
+                        options={loanProducts.map((product) => ({
+                            value: product.id,
+                            label: `#${product.id} - ${product.name}`,
+                        }))}
+                        onChange={(value) => {
+                            setSelectedProductId(value);
+                            fetchData(value);
+                        }}
+                        allowClear={false}
+                    />
+                </Space>
 
                 <Table<Policy>
                     rowKey="_id"
@@ -277,6 +334,17 @@ export default function DelinquencyPoliciesPage() {
                     pagination={{ pageSize: 10, showSizeChanger: true }}
                     scroll={{ x: 1600 }}
                     columns={[
+                        {
+                            title: 'Sản phẩm vay',
+                            key: 'loan_product',
+                            width: 260,
+                            render: (_, row) => (
+                                <Space direction="vertical" size={0}>
+                                    <Text strong>{row.loan_product_name || `Loan Product #${row.loan_product_id ?? '-'}`}</Text>
+                                    <Text type="secondary">#{row.loan_product_id ?? '-'}</Text>
+                                </Space>
+                            ),
+                        },
                         {
                             title: 'Nhóm nợ',
                             key: 'group',
@@ -297,9 +365,12 @@ export default function DelinquencyPoliciesPage() {
                         {
                             title: 'Policy Active',
                             dataIndex: 'is_active',
-                            width: 130,
+                            width: 160,
                             render: (value: boolean, row) => (
-                                <Switch checked={value} onChange={(checked) => updateSingleField(row._id, { is_active: checked }, 'Đã cập nhật trạng thái policy')} />
+                                <div style={{ cursor: "pointer" }} onClick={() => updateSingleField(row._id, { is_active: !value }, 'Đã cập nhật trạng thái policy')}>
+                                    <FineractStatusBadge status={value ? "active" : "inactive"} />
+                                </div>
+
                             ),
                         },
                         {
@@ -388,6 +459,23 @@ export default function DelinquencyPoliciesPage() {
                 width={860}
             >
                 <Form form={form} layout="vertical">
+                    <Space align="start" style={{ width: '100%' }} size={16}>
+                        <Form.Item label="Sản phẩm vay" name="loan_product_id" rules={[{ required: true, message: 'Chọn sản phẩm vay' }]} style={{ width: 320 }}>
+                            <Select
+                                placeholder="Chọn sản phẩm vay"
+                                options={loanProducts.map((product) => ({
+                                    value: product.id,
+                                    label: `#${product.id} - ${product.name}`,
+                                }))}
+                                onChange={onProductChange}
+                                disabled
+                            />
+                        </Form.Item>
+                        <Form.Item name="loan_product_name" hidden>
+                            <Input />
+                        </Form.Item>
+                    </Space>
+
                     <Space align="start" style={{ width: '100%' }} size={16}>
                         <Form.Item label="Nhóm nợ từ Fineract" name="debt_group" rules={[{ required: true, message: 'Chọn debt_group' }]} style={{ width: 260 }}>
                             <Select

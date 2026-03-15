@@ -51,6 +51,7 @@ export class DelinquencyService {
   async getDelinquencyPolicies(filters?: {
     is_active?: boolean;
     debt_group?: number;
+    loan_product_id?: number;
     collection_stage?: DelinquencyCollectionStage;
   }) {
     return this.adminService.getDelinquencyPolicies(filters);

@@ -1935,15 +1935,17 @@ export class AdminService {
   async getDelinquencyPolicies(filters?: {
     is_active?: boolean;
     debt_group?: number;
+    loan_product_id?: number;
     collection_stage?: DelinquencyCollectionStage;
   }) {
     const query: any = {};
     if (filters?.is_active != null) query.is_active = filters.is_active;
     if (filters?.debt_group != null) query.debt_group = filters.debt_group;
+    if (filters?.loan_product_id != null) query.loan_product_id = filters.loan_product_id;
     if (filters?.collection_stage) query.collection_stage = filters.collection_stage;
 
     const [list, groups] = await Promise.all([
-      this.delinquencyPolicyModel.find(query).sort({ debt_group: 1 }).lean().exec(),
+      this.delinquencyPolicyModel.find(query).sort({ loan_product_id: 1, debt_group: 1 }).lean().exec(),
       this.getFineractDebtGroups().catch(() => []),
     ] as const);
     const groupMap = new Map<number, { min_days: number; max_days: number }>();
@@ -1956,6 +1958,8 @@ export class AdminService {
       const metadata = groupMap.get(Number(item.debt_group));
       return {
         ...rest,
+        loan_product_id: item.loan_product_id ?? null,
+        loan_product_name: item.loan_product_name ?? null,
         min_days: metadata?.min_days ?? null,
         max_days: metadata?.max_days ?? null,
         _id: item._id.toString(),
@@ -1964,16 +1968,24 @@ export class AdminService {
   }
 
   async createDelinquencyPolicy(dto: CreateDelinquencyPolicyDto) {
-    const existing = await this.delinquencyPolicyModel.findOne({ debt_group: dto.debt_group }).lean().exec();
+    const existing = await this.delinquencyPolicyModel
+      .findOne({
+        loan_product_id: dto.loan_product_id,
+        debt_group: dto.debt_group,
+      })
+      .lean()
+      .exec();
     if (existing) {
       throw new BadRequestException(
-        `Đã tồn tại policy cho debt_group=${dto.debt_group}. Dùng API cập nhật thay vì tạo mới.`,
+        `Đã tồn tại policy cho product=${dto.loan_product_id}, debt_group=${dto.debt_group}. Dùng API cập nhật thay vì tạo mới.`,
       );
     }
 
     const metadata = await this.resolveDebtGroupMetadata(dto.debt_group);
     try {
       const policy = await this.delinquencyPolicyModel.create({
+        loan_product_id: dto.loan_product_id,
+        loan_product_name: dto.loan_product_name || `Loan Product #${dto.loan_product_id}`,
         debt_group: dto.debt_group,
         debt_group_name: dto.debt_group_name || metadata.debt_group_name,
         send_email: dto.send_email,
@@ -1989,7 +2001,9 @@ export class AdminService {
       return policy.toObject();
     } catch (error: any) {
       if (error?.code === 11000) {
-        throw new ConflictException(`debt_group=${dto.debt_group} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy.`);
+        throw new ConflictException(
+          `product=${dto.loan_product_id}, debt_group=${dto.debt_group} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+        );
       }
       throw error;
     }
@@ -2001,18 +2015,32 @@ export class AdminService {
       throw new NotFoundException('Delinquency policy không tồn tại');
     }
 
+    const nextProductId = dto.loan_product_id ?? existing.loan_product_id;
+    if (nextProductId == null) {
+      throw new BadRequestException('Policy cũ chưa có loan_product_id. Vui lòng tạo lại policy theo từng sản phẩm.');
+    }
+
     const nextDebtGroup = dto.debt_group ?? existing.debt_group;
     const metadata = await this.resolveDebtGroupMetadata(nextDebtGroup);
 
     const duplicate = await this.delinquencyPolicyModel
-      .findOne({ debt_group: nextDebtGroup, _id: { $ne: existing._id } })
+      .findOne({
+        loan_product_id: nextProductId,
+        debt_group: nextDebtGroup,
+        _id: { $ne: existing._id },
+      })
       .select('_id debt_group')
       .lean()
       .exec();
     if (duplicate) {
-      throw new ConflictException(`debt_group=${nextDebtGroup} đã có policy khác. Mỗi nhóm nợ chỉ được có 1 policy.`);
+      throw new ConflictException(
+        `product=${nextProductId}, debt_group=${nextDebtGroup} đã có policy khác. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+      );
     }
 
+    existing.loan_product_id = nextProductId;
+    existing.loan_product_name =
+      dto.loan_product_name || existing.loan_product_name || `Loan Product #${nextProductId}`;
     existing.debt_group = nextDebtGroup;
     existing.debt_group_name = dto.debt_group_name || metadata.debt_group_name;
     if (dto.send_email != null) existing.send_email = dto.send_email;
@@ -2032,7 +2060,9 @@ export class AdminService {
       return saved.toObject();
     } catch (error: any) {
       if (error?.code === 11000) {
-        throw new ConflictException(`debt_group=${nextDebtGroup} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy.`);
+        throw new ConflictException(
+          `product=${nextProductId}, debt_group=${nextDebtGroup} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+        );
       }
       throw error;
     }
