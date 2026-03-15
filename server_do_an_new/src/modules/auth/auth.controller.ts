@@ -95,9 +95,15 @@ export class AuthController {
     }
     */
 
-    // 4. Generate Internal Session
+    // 4. Generate Internal Session (ưu tiên role từ DB thay vì realm role của Keycloak)
+    const dbRoleNames = Array.isArray((mongoUser as any)?.metadata?.roleNames)
+      ? (mongoUser as any).metadata.roleNames.filter(Boolean)
+      : [];
+    const effectiveRoles = dbRoleNames.length > 0 ? dbRoleNames : keycloakUser.roles;
+
     const userSession = {
       ...keycloakUser,
+      roles: effectiveRoles,
       _id: mongoUser._id.toString(),
       fineractClientId: mongoUser.fineractClientId,
     };

@@ -53,6 +53,7 @@ import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import { CreateDelinquencyPolicyDto } from '../delinquency/dto/create-delinquency-policy.dto';
 import { UpdateDelinquencyPolicyDto } from '../delinquency/dto/update-delinquency-policy.dto';
+import { Role } from '../rbac/schemas/role.schema';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -104,6 +105,7 @@ export class AdminService {
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
+    @InjectModel(Role.name) private roleModel: Model<Role>,
     private readonly fineractSignupService: FineractSignupService,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
@@ -2844,6 +2846,15 @@ export class AdminService {
    */
   async createStaff(dto: RegisterDto) {
     dto.userType = 'staff'; // Luôn ép userType = staff khi tạo qua admin
+    if (!dto.roleId) {
+      throw new BadRequestException('Thiếu roleId khi tạo nhân viên');
+    }
+
+    const role = await this.roleModel.findById(dto.roleId).lean();
+    if (!role || !role.isActive) {
+      throw new BadRequestException('Vai trò không hợp lệ hoặc đã bị vô hiệu hóa');
+    }
+
     this.logger.log(`[createStaff] Creating staff: ${dto.phoneNumber}`);
     const result = await this.fineractSignupService.signup(dto);
 
@@ -2852,6 +2863,15 @@ export class AdminService {
       const user = await this.userModel.findOne({ username: dto.phoneNumber });
       if (user) {
         user.phoneNumber = dto.phoneNumber;
+        user.set('roles', [role.name]);
+        user.metadata = {
+          ...(user.metadata || {}),
+          roleId: role._id?.toString(),
+          roleIds: [role._id?.toString()],
+          roleName: role.name,
+          roleNames: [role.name],
+        };
+        user.markModified('metadata');
         await user.save();
       }
     } catch (err: any) {
@@ -2891,6 +2911,8 @@ export class AdminService {
       keycloakId: u.keycloakId,
       fineractClientId: u.fineractClientId || null,
       fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
+      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
       phoneNumber: u.phoneNumber || u.username || null,
       displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
       createdAt: u.createdAt,
@@ -2922,6 +2944,8 @@ export class AdminService {
       keycloakId: u.keycloakId,
       fineractClientId: u.fineractClientId || null,
       fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
+      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
       phoneNumber: u.phoneNumber || u.username || null,
       displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
       createdAt: u.createdAt,
@@ -2954,6 +2978,9 @@ export class AdminService {
       keycloakId: user.keycloakId,
       fineractClientId: user.fineractClientId || null,
       fineractStaffId: user.metadata?.fineractStaffId ?? null,
+      roleId: user.metadata?.roleId ?? (Array.isArray(user.metadata?.roleIds) ? user.metadata.roleIds[0] : null),
+      roleName:
+        user.metadata?.roleName ?? (Array.isArray(user.metadata?.roleNames) ? user.metadata.roleNames[0] : null),
       phoneNumber: user.phoneNumber || user.username || null,
       displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
       createdAt: user.createdAt,

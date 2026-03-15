@@ -14,6 +14,7 @@ import { LoanSupportRequest, LoanSupportRequestSchema } from '../loan/schemas/lo
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { Notification, NotificationSchema } from '../loan/schemas/notification.schema';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
+import { Role, RoleSchema } from '../rbac/schemas/role.schema';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { LoanSyncScheduler } from './loan-sync.scheduler';
@@ -49,6 +50,7 @@ import { UsersModule } from '../users/users.module';
       { name: Wallet.name, schema: WalletSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: LoanContract.name, schema: LoanContractSchema },
+      { name: Role.name, schema: RoleSchema },
     ]),
   ],
   controllers: [AdminController],

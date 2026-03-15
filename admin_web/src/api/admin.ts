@@ -249,6 +249,8 @@ export interface StaffDto {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  roleId?: string | null;
+  roleName?: string | null;
   isDeleted?: boolean;
 }
 
@@ -258,6 +260,7 @@ export interface CreateStaffBody {
   phoneNumber: string;
   email?: string;
   password: string;
+  roleId: string;
   userType?: "borrower" | "lender" | "staff";
 }
 

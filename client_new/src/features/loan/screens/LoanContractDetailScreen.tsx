@@ -561,19 +561,19 @@ export default function LoanContractDetailScreen() {
                         {/* Info card */}
                         <View style={styles.successCard}>
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="shield-check" size={18} color="#10B981" />
+                                <MaterialCommunityIcons name="shield-check" size={18} color="#B88700" />
                                 <Text style={styles.successCardText}>Chứng thư số VNPT SmartCA</Text>
                             </View>
                             <View style={[styles.successCardDivider]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#6B7280" />
+                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#B88700" />
                                 <Text style={styles.successCardTextDim}>
                                     Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}
                                 </Text>
                             </View>
                             <View style={[styles.successCardDivider]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#8B5CF6" />
+                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#B88700" />
                                 <Text style={styles.successCardText}>Khoản vay sẽ được giải ngân sớm</Text>
                             </View>
                         </View>
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
     // Sign success page
     successPage: {
         flex: 1,
-        backgroundColor: '#0A0F1E',
+        backgroundColor: '#FAFAFA',
         justifyContent: 'center',
         alignItems: 'center',
         padding: 28,
@@ -891,7 +891,7 @@ const styles = StyleSheet.create({
         width: 340,
         height: 340,
         borderRadius: 170,
-        backgroundColor: '#10B98112',
+        backgroundColor: '#F0B90B22',
         top: -80,
         right: -80,
     },
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
         width: 260,
         height: 260,
         borderRadius: 130,
-        backgroundColor: '#6366F110',
+        backgroundColor: '#F0B90B1A',
         bottom: -60,
         left: -60,
     },
@@ -920,43 +920,43 @@ const styles = StyleSheet.create({
         height: 112,
         borderRadius: 56,
         borderWidth: 2,
-        borderColor: '#10B98130',
+        borderColor: '#F0B90B55',
     },
     successCheckCircle: {
         width: 96,
         height: 96,
         borderRadius: 48,
-        backgroundColor: '#10B981',
+        backgroundColor: '#F0B90B',
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#10B981',
+        shadowColor: '#F0B90B',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
+        shadowOpacity: 0.35,
         shadowRadius: 16,
         elevation: 12,
     },
     successTitle: {
         fontSize: 26,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: '#1E1E1E',
         textAlign: 'center',
     },
     successSubtitle: {
         fontSize: 14,
-        color: '#9CA3AF',
+        color: '#555555',
         textAlign: 'center',
         lineHeight: 20,
     },
     successHighlight: {
-        color: '#F0B90B',
+        color: '#B88700',
         fontWeight: '700',
     },
     successCard: {
         width: '100%',
-        backgroundColor: '#FFFFFF0D',
+        backgroundColor: '#FFFFFF',
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#FFFFFF10',
+        borderColor: '#F0B90B44',
         padding: 20,
         gap: 12,
         marginTop: 8,
@@ -968,27 +968,27 @@ const styles = StyleSheet.create({
     },
     successCardText: {
         fontSize: 14,
-        color: '#E5E7EB',
+        color: '#1E1E1E',
         fontWeight: '500',
         flex: 1,
     },
     successCardTextDim: {
         fontSize: 13,
-        color: '#9CA3AF',
+        color: '#666666',
         flex: 1,
     },
     successCardDivider: {
         height: 1,
-        backgroundColor: '#FFFFFF0F',
+        backgroundColor: '#F0B90B33',
     },
     successBtn: {
         width: '100%',
         paddingVertical: 16,
         borderRadius: 16,
-        backgroundColor: '#10B981',
+        backgroundColor: '#F0B90B',
         alignItems: 'center',
         marginTop: 8,
-        shadowColor: '#10B981',
+        shadowColor: '#F0B90B',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
     successBtnText: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: '#181A20',
     },
 
     // Empty
