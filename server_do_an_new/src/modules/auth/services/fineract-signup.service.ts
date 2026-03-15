@@ -6,6 +6,7 @@ import { User, UserStatus } from '../../users/schemas/user.schema';
 import { Wallet } from '../../wallets/schemas/wallet.schema';
 import { KeycloakService } from './keycloak.service';
 import { FineractService } from '../../fineract/fineract.service';
+import { CreditScoreService } from '../../credit-score/credit-score.service';
 
 export interface SignupData {
   firstName: string;
@@ -30,6 +31,7 @@ export class FineractSignupService {
     private readonly keycloakService: KeycloakService,
     private readonly configService: ConfigService,
     private readonly fineractService: FineractService,
+    private readonly creditScoreService: CreditScoreService,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
   ) {}
@@ -86,7 +88,7 @@ export class FineractSignupService {
       );
 
       // Step 4: Save user to MongoDB (inactive status - pending KYC and approval)
-      await this.userModel.create({
+      const createdUser = await this.userModel.create({
         keycloakId: keycloakUserId,
         fineractClientId: fineractClientId.toString(),
         username,
@@ -100,6 +102,9 @@ export class FineractSignupService {
           registeredAt: new Date(),
         },
       });
+
+      // Khởi tạo hồ sơ điểm tín dụng mặc định ngay khi account được tạo.
+      await this.creditScoreService.ensureCreditScoreForUser(createdUser._id);
 
       // No wallet created yet - will be created after KYC approval
       this.logger.log(`[SIGNUP] User saved to MongoDB. Wallet will be created after KYC approval.`);

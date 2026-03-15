@@ -15,6 +15,7 @@ import { WalletsModule } from '../wallets/wallets.module';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { TwoFactorModule } from '../two-factor/two-factor.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
+import { CreditScoreModule } from '../credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SmartOtpModule } from '../smart-otp/smart-otp.module';
     MongooseModule.forFeature([{ name: Wallet.name, schema: WalletSchema }]),
     TwoFactorModule,
     SmartOtpModule,
+    CreditScoreModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

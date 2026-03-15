@@ -22,6 +22,44 @@ import {
 import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 
+const SCORE_MIN = 300;
+const SCORE_MAX = 850;
+
+const creditScoreBand = (score: number) => {
+    if (score >= 800) return { label: 'XUAT SAC', color: '#18A058' };
+    if (score >= 740) return { label: 'TOT', color: '#2F80ED' };
+    if (score >= 670) return { label: 'KHA', color: '#F2C94C' };
+    if (score >= 580) return { label: 'TRUNG BINH', color: '#F2994A' };
+    return { label: 'CAN CAI THIEN', color: '#EB5757' };
+};
+
+const formatHistoryReason = (reason?: string) => {
+    switch (reason) {
+        case 'initial_account_creation':
+            return 'Khoi tao tai khoan';
+        case 'loan_repayment':
+            return 'Tra no dung han';
+        case 'late_payment':
+            return 'Cham thanh toan';
+        case 'manual_adjustment':
+            return 'Dieu chinh thu cong';
+        case 'system_recalculation':
+            return 'He thong tinh lai';
+        default:
+            return 'Cap nhat diem';
+    }
+};
+
+const formatDateTime = (value?: string) => {
+    if (!value) return '--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--';
+    return `${date.toLocaleDateString('vi-VN')} ${date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+    })}`;
+};
+
 export default function ProfileScreen() {
     const navigation = useNavigation();
     const { user, logout, refreshUser } = useAuth();
@@ -61,6 +99,11 @@ export default function ProfileScreen() {
     const email = getUserEmail(user);
     const phone = getUserPhone(user);
     const uid = user?._id?.toString().slice(-8).toUpperCase() || 'P2P-8888';
+    const creditScore = user?.creditScore;
+    const creditHistory = user?.creditScoreHistory || [];
+    const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 650;
+    const scoreRatio = Math.max(0, Math.min(1, (scoreValue - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)));
+    const band = creditScoreBand(scoreValue);
     const c = theme.colors;
 
     const SettingItem = ({
@@ -194,6 +237,110 @@ export default function ProfileScreen() {
                             </CommonCard>
                         </View>
 
+                        <View style={styles.creditSection}>
+                            <Text style={[styles.sectionTitle, { color: c.textDim }]}>TIN DUNG</Text>
+                            <CommonCard
+                                style={[
+                                    styles.creditScoreCard,
+                                    {
+                                        backgroundColor:
+                                            theme.mode === 'dark' ? c.backgroundSecondary : '#FFFBF0',
+                                    },
+                                ]}
+                            >
+                                <View style={styles.creditTopRow}>
+                                    <View>
+                                        <Text style={[styles.creditCaption, { color: c.textMuted }]}>Diem tin dung</Text>
+                                        <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                    </View>
+                                    <View style={[styles.creditBandPill, { backgroundColor: band.color + '22' }]}>
+                                        <Text style={[styles.creditBandText, { color: band.color }]}>{band.label}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={[styles.scoreProgressTrack, { backgroundColor: c.border + '40' }]}>
+                                    <View
+                                        style={[
+                                            styles.scoreProgressFill,
+                                            {
+                                                width: `${Math.max(scoreRatio * 100, 5)}%`,
+                                                backgroundColor: band.color,
+                                            },
+                                        ]}
+                                    />
+                                </View>
+
+                                <View style={styles.creditMetaRow}>
+                                    <View style={styles.creditMetaItem}>
+                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tong khoan vay</Text>
+                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                            {creditScore?.totalLoans ?? 0}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.creditMetaItem}>
+                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tra tre han</Text>
+                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                            {creditScore?.latePayments ?? 0}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.creditMetaItem}>
+                                        <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Cap nhat cuoi</Text>
+                                        <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                            {formatDateTime(creditScore?.lastUpdated)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </CommonCard>
+
+                            <View style={[styles.historyCard, { backgroundColor: c.backgroundSecondary }]}>
+                                <View style={styles.historyHeaderRow}>
+                                    <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lich su cap nhat diem</Text>
+                                    <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} muc</Text>
+                                </View>
+
+                                {creditHistory.length === 0 ? (
+                                    <Text style={[styles.historyEmpty, { color: c.textMuted }]}>Chua co lich su cap nhat.</Text>
+                                ) : (
+                                    creditHistory.slice(0, 6).map((item: any, index: number) => {
+                                        const change = Number(item?.changeAmount || 0);
+                                        const isUp = change > 0;
+                                        const isDown = change < 0;
+                                        const changeColor = isUp ? '#18A058' : isDown ? '#EB5757' : c.textMuted;
+
+                                        return (
+                                            <View
+                                                key={item?._id || `${index}-${item?.createdAt || item?.afterScore || 0}`}
+                                                style={[
+                                                    styles.historyItem,
+                                                    { borderBottomColor: c.border + '35' },
+                                                    index === creditHistory.slice(0, 6).length - 1
+                                                        ? { borderBottomWidth: 0 }
+                                                        : null,
+                                                ]}
+                                            >
+                                                <View style={styles.historyLeft}>
+                                                    <Text style={[styles.historyReason, { color: c.textPrimary }]}>
+                                                        {formatHistoryReason(item?.reason)}
+                                                    </Text>
+                                                    <Text style={[styles.historyDate, { color: c.textMuted }]}>
+                                                        {formatDateTime(item?.createdAt)}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.historyRight}>
+                                                    <Text style={[styles.historyAfter, { color: c.textPrimary }]}>
+                                                        {item?.afterScore ?? '--'}
+                                                    </Text>
+                                                    <Text style={[styles.historyDelta, { color: changeColor }]}>
+                                                        {isUp ? `+${change}` : `${change}`}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        );
+                                    })
+                                )}
+                            </View>
+                        </View>
+
                         {/* Security - Giao diện, Ngôn ngữ, Hỗ trợ đã chuyển sang Home */}
                         <View style={styles.menuSection}>
                             <Text style={[styles.sectionTitle, { color: c.textDim }]}>
@@ -207,8 +354,8 @@ export default function ProfileScreen() {
                                         (user as any)?.kycStatus === 'VERIFIED'
                                             ? 'Đã xác minh (eKYC)'
                                             : (user as any)?.kycStatus === 'PENDING'
-                                              ? 'Đang chờ phê duyệt'
-                                              : 'Chưa xác minh'
+                                                ? 'Đang chờ phê duyệt'
+                                                : 'Chưa xác minh'
                                     }
                                     onPress={() => {
                                         const status = (user as any)?.kycStatus;
@@ -233,8 +380,8 @@ export default function ProfileScreen() {
                                         (user as any)?.kycStatus === 'VERIFIED'
                                             ? c.success
                                             : (user as any)?.kycStatus === 'PENDING'
-                                              ? c.primary
-                                              : c.warning
+                                                ? c.primary
+                                                : c.warning
                                     }
                                 />
                                 <SmartOTPSection />
@@ -317,6 +464,111 @@ const styles = StyleSheet.create({
         marginTop: 16,
         paddingTop: 16,
         borderTopWidth: StyleSheet.hairlineWidth,
+    },
+    creditSection: { paddingHorizontal: 16, paddingTop: 18 },
+    creditScoreCard: {
+        padding: 18,
+        borderRadius: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(194,157,70,0.24)',
+    },
+    creditTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    creditCaption: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        marginBottom: 2,
+    },
+    creditScoreValue: {
+        fontSize: 38,
+        lineHeight: 44,
+        fontFamily: 'Poppins_700Bold',
+    },
+    creditBandPill: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        marginTop: 4,
+    },
+    creditBandText: {
+        fontSize: 11,
+        fontFamily: 'Poppins_700Bold',
+    },
+    scoreProgressTrack: {
+        height: 10,
+        borderRadius: 999,
+        marginTop: 14,
+        overflow: 'hidden',
+    },
+    scoreProgressFill: {
+        height: '100%',
+        borderRadius: 999,
+    },
+    creditMetaRow: {
+        marginTop: 14,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
+    creditMetaItem: { flex: 1 },
+    creditMetaLabel: {
+        fontSize: 11,
+        fontFamily: 'Poppins_500Medium',
+        marginBottom: 4,
+    },
+    creditMetaValue: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    historyCard: {
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+    },
+    historyHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    historyTitle: {
+        fontSize: 14,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    historyCount: {
+        fontSize: 11,
+        fontFamily: 'Poppins_500Medium',
+    },
+    historyEmpty: {
+        fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
+        paddingVertical: 10,
+    },
+    historyItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    historyLeft: { flex: 1, paddingRight: 8 },
+    historyReason: {
+        fontSize: 13,
+        fontFamily: 'Poppins_500Medium',
+    },
+    historyDate: {
+        fontSize: 11,
+        fontFamily: 'Poppins_400Regular',
+        marginTop: 2,
+    },
+    historyRight: { alignItems: 'flex-end' },
+    historyAfter: {
+        fontSize: 15,
+        fontFamily: 'Poppins_700Bold',
+    },
+    historyDelta: {
+        fontSize: 12,
+        fontFamily: 'Poppins_600SemiBold',
     },
     menuSection: { paddingHorizontal: 16, paddingTop: 24 },
     sectionTitle: {

@@ -6,6 +6,7 @@ import { Wallet } from '../../wallets/schemas/wallet.schema';
 import { KeycloakService } from './keycloak.service';
 import { FineractService } from '../../fineract/fineract.service';
 import { KeycloakUser } from '../interfaces/auth.interface';
+import { CreditScoreService } from '../../credit-score/credit-score.service';
 
 import { ConfigService } from '@nestjs/config';
 
@@ -18,6 +19,7 @@ export class UserSyncService {
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
     private readonly keycloakService: KeycloakService,
     private readonly fineractService: FineractService,
+    private readonly creditScoreService: CreditScoreService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -60,6 +62,9 @@ export class UserSyncService {
     if (mongoUser?.fineractClientId) {
       await this.syncWallets(mongoUser, Number(mongoUser.fineractClientId), username);
     }
+
+    // Backfill cho user cũ chưa có credit score.
+    await this.creditScoreService.ensureCreditScoreForUser(mongoUser._id);
 
     return mongoUser;
   }
@@ -146,10 +151,7 @@ export class UserSyncService {
     }
 
     this.logger.warn(`[SYNC] No unclaimed Fineract Client found for ${username}`);
-    await this.userModel.updateOne(
-      { _id: mongoUser._id },
-      { $set: { 'metadata.syncStatus': 'no_fineract_client' } },
-    );
+    await this.userModel.updateOne({ _id: mongoUser._id }, { $set: { 'metadata.syncStatus': 'no_fineract_client' } });
   }
 
   /**

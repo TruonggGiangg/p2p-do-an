@@ -9,6 +9,7 @@ import { FineractSignupService } from './services/fineract-signup.service';
 import { UserSyncService } from './services/user-sync.service';
 import { PinService } from './services/pin.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
+import { CreditScoreService } from '../credit-score/credit-score.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { SetupPinDto, VerifyPinDto, ChangePinDto } from './dto/pin.dto';
@@ -29,6 +30,7 @@ export class AuthController {
     private readonly fineractSignupService: FineractSignupService,
     private readonly twoFactorService: TwoFactorService,
     private readonly pinService: PinService,
+    private readonly creditScoreService: CreditScoreService,
   ) {}
 
   @Public()
@@ -140,11 +142,22 @@ export class AuthController {
   async getProfile(@CurrentUser() user: UserPayload) {
     const mongoProfile = user._id ? await this.userSyncService.getProfileWithKyc(user._id) : null;
     const pinStatus = user._id ? await this.pinService.getStatus(user._id) : { hasPin: false };
+    const creditScore = user._id ? await this.creditScoreService.ensureCreditScoreForUser(user._id) : null;
+    const creditScoreHistory = user._id ? await this.creditScoreService.getHistoryByUserId(user._id, 20) : [];
     const data = {
       ...user,
       profile: mongoProfile?.profile,
       kycStatus: mongoProfile?.kycStatus ?? 'NONE',
       hasPin: pinStatus.hasPin,
+      creditScore: creditScore
+        ? {
+            score: creditScore.score,
+            totalLoans: creditScore.totalLoans,
+            latePayments: creditScore.latePayments,
+            lastUpdated: creditScore.lastUpdated,
+          }
+        : null,
+      creditScoreHistory,
     };
     return { data };
   }

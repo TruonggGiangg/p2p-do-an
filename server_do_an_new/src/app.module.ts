@@ -25,6 +25,7 @@ import configuration from './config/configuration';
 import { validate } from './config/validation';
 import { SmartCAModule } from './modules/digital-signature/smartca.module';
 import { RbacModule } from './modules/rbac/rbac.module';
+import { CreditScoreModule } from './modules/credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
     DelinquencyModule,
     SmartCAModule,
     RbacModule,
+    CreditScoreModule,
   ],
 
   controllers: [AppController],

@@ -23,6 +23,29 @@ export interface UserMetadata {
   phone?: string;
 }
 
+export interface UserCreditScore {
+  score: number;
+  totalLoans: number;
+  latePayments: number;
+  lastUpdated?: string;
+}
+
+export interface UserCreditScoreHistoryItem {
+  _id?: string;
+  beforeScore: number | null;
+  afterScore: number;
+  changeAmount: number;
+  reason:
+    | "initial_account_creation"
+    | "loan_repayment"
+    | "late_payment"
+    | "manual_adjustment"
+    | "system_recalculation";
+  trigger?: string;
+  note?: string;
+  createdAt?: string;
+}
+
 export interface User {
   _id?: string;
   keycloakUserId?: string;
@@ -36,6 +59,8 @@ export interface User {
   status?: "active" | "inactive" | "suspended";
   kycStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED";
   hasPin?: boolean;
+  creditScore?: UserCreditScore | null;
+  creditScoreHistory?: UserCreditScoreHistoryItem[];
   createdAt?: string;
   updatedAt?: string;
 }
