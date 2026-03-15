@@ -19,6 +19,7 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { adminApi, type LoanProductDto, type DocumentTypeDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import PageHeader from '../components/PageHeader';
 import { ProductDetailTable } from '../utils/productDetailTable';
 import { translateValue } from '../utils/vi';
 import { useAbility } from '@casl/react';
@@ -179,6 +180,11 @@ export default function LoanProductsPage() {
 
   return (
     <>
+      <PageHeader
+        title="Sản phẩm vay"
+        description="Danh sách sản phẩm vay đồng bộ từ Fineract"
+        breadcrumb={[{ label: 'Sản phẩm vay' }]}
+      />
       <ProTable<LoanProductDto>
         {...PRO_TABLE_DEFAULTS}
         headerTitle="Danh sách sản phẩm vay (Fineract)"

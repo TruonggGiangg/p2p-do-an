@@ -12,6 +12,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { adminApi, RoleDto, PermissionDto } from '../api/admin';
 import { useTheme } from '../App';
+import PageHeader from '../components/PageHeader';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -502,6 +503,11 @@ export default function RolesPermissionsPage() {
 
     return (
         <>
+            <PageHeader
+                title="Vai trò & Phân quyền"
+                description="Quản lý vai trò và phân quyền chi tiết cho từng chức năng"
+                breadcrumb={[{ label: 'Vai trò & Phân quyền' }]}
+            />
             <style>{`
                 /* ── Role table ── */
                 .rp-role-row-selected td {

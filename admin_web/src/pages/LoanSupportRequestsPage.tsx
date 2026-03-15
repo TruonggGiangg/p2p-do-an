@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PageHeader from '../components/PageHeader';
 import { Table, Tag, Button, Typography, Popconfirm, Select, Input, Modal, message, Card, Space, Avatar, theme } from 'antd';
 import { CheckCircleOutlined, EditOutlined, FileTextOutlined, UserOutlined, FilterOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -244,6 +245,11 @@ export default function LoanSupportRequestsPage() {
 
     return (
         <div>
+            <PageHeader
+                title="Yêu cầu hỗ trợ nợ"
+                description="Xử lý các yêu cầu xin miễn giảm phạt hoặc cơ cấu lại nợ quá hạn"
+                breadcrumb={[{ label: 'Quản lý khoản vay', path: '/loans' }, { label: 'Yêu cầu hỗ trợ nợ' }]}
+            />
             <Card
                 bordered={false}
                 style={{ borderRadius: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}

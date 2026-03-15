@@ -252,13 +252,13 @@ export default function CustomerDetailPage() {
     };
 
     if (loading) return (
-        <div style={{ padding: 24 }}>
+        <div>
             <Card><Skeleton active /></Card>
         </div>
     );
 
     if (error) return (
-        <div style={{ padding: 24 }}>
+        <div>
             <Alert type="error" message={error} />
         </div>
     );
@@ -273,33 +273,30 @@ export default function CustomerDetailPage() {
             bordered={false}
             style={{
                 marginBottom: 24,
-                backgroundColor: '#fff',
-                borderRadius: 8,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                padding: '24px'
+                borderRadius: 0,
+                boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
             }}
-            bodyStyle={{ padding: 0 }}
         >
-            <Row gutter={[32, 24]} align="middle">
+            <Row gutter={[24, 16]} align="middle">
                 <Col flex="none">
                     <Avatar
-                        size={100}
+                        size={64}
                         icon={<UserOutlined />}
                         style={{
                             backgroundColor: token.colorPrimaryBg,
                             color: token.colorPrimary,
-                            fontSize: 48,
-                            border: `4px solid ${token.colorBgContainer}`,
+                            fontSize: 32,
+                            border: `3px solid ${token.colorBgContainer}`,
                             boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                         }}
                     />
                 </Col>
                 <Col flex="auto">
-                    <div style={{ marginBottom: 16 }}>
-                        <Title level={2} style={{ margin: 0, fontWeight: 700, display: 'inline-block', marginRight: 16 }}>
+                    <div style={{ marginBottom: 8 }}>
+                        <Title level={3} style={{ margin: 0, fontWeight: 700, display: 'inline-block', marginRight: 12 }}>
                             {customer.displayName || customer.username}
                         </Title>
-                        <Space size={8} style={{ verticalAlign: 'middle', marginBottom: 8 }}>
+                        <Space size={8} style={{ verticalAlign: 'middle' }}>
                             <FineractStatusBadge status={customer.fineractStatus} />
                             {customer.kycStatus === 'VERIFIED' ? (
                                 <Tag color="success" icon={<CheckCircleOutlined />}>KYC Đã xác minh</Tag>
@@ -314,34 +311,34 @@ export default function CustomerDetailPage() {
                     </div>
 
                     <Descriptions column={{ xxl: 3, xl: 3, lg: 2, md: 1, sm: 1, xs: 1 }} size="small" colon={false}>
-                        <Descriptions.Item label={<Space><HomeOutlined /> <strong>Văn phòng</strong></Space>}>
+                        <Descriptions.Item label={<><HomeOutlined style={{ marginRight: 4 }} /><strong>Văn phòng</strong></>}>
                             {customer.officeName || 'Head Office'}
                         </Descriptions.Item>
-                        <Descriptions.Item label={<Space><TeamOutlined /> <strong>Khách hàng</strong></Space>}>
+                        <Descriptions.Item label={<><TeamOutlined style={{ marginRight: 4 }} /><strong>Khách hàng</strong></>}>
                             <Text code>{customer.fineractClientId ? String(customer.fineractClientId).padStart(9, '0') : '–'}</Text>
                         </Descriptions.Item>
-                        <Descriptions.Item label={<Space><IdcardOutlined /> <strong>ID bên ngoài</strong></Space>}>
+                        <Descriptions.Item label={<><IdcardOutlined style={{ marginRight: 4 }} /><strong>ID bên ngoài</strong></>}>
                             {customer.externalId || customer.username || '–'}
                         </Descriptions.Item>
-                        <Descriptions.Item label={<Space><UserOutlined /> <strong>Nhân viên</strong></Space>}>
+                        <Descriptions.Item label={<><UserOutlined style={{ marginRight: 4 }} /><strong>Nhân viên</strong></>}>
                             {customer.staffName || <Text type="secondary">Chưa phân công</Text>}
                         </Descriptions.Item>
-                        <Descriptions.Item label={<Space><PhoneOutlined /> <strong>Số điện thoại</strong></Space>}>
+                        <Descriptions.Item label={<><PhoneOutlined style={{ marginRight: 4 }} /><strong>Số điện thoại</strong></>}>
                             {customer.mobileNo || customer.username || '–'}
                         </Descriptions.Item>
-                        <Descriptions.Item label={<Space><MailOutlined /> <strong>Email</strong></Space>}>
+                        <Descriptions.Item label={<><MailOutlined style={{ marginRight: 4 }} /><strong>Email</strong></>}>
                             {customer.email || '–'}
                         </Descriptions.Item>
                     </Descriptions>
                 </Col>
-                <Col flex="none" style={{ textAlign: 'right', minWidth: 200 }}>
+                <Col flex="none" style={{ textAlign: 'right', minWidth: 180 }}>
                     <Statistic
                         title="Tổng vốn vay"
                         value={totalCapital}
                         formatter={v => fmtVND(Number(v))}
                         valueStyle={{ color: token.colorPrimary, fontWeight: 700 }}
                     />
-                    <div style={{ marginTop: 24 }}>
+                    <div style={{ marginTop: 16 }}>
                         {ability.can(Action.Update, 'Customer') && (
                             <Button
                                 icon={<ClockCircleOutlined />}
@@ -349,6 +346,7 @@ export default function CustomerDetailPage() {
                                 loading={syncingAll}
                                 type="primary"
                                 ghost
+                                size="small"
                             >
                                 Làm mới thông tin
                             </Button>
@@ -966,7 +964,7 @@ export default function CustomerDetailPage() {
     ];
 
     return (
-        <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+        <div>
             {/* Back Button */}
             <Space style={{ marginBottom: 24 }}>
                 <Button

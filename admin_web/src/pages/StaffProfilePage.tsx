@@ -140,7 +140,7 @@ export default function StaffProfilePage() {
     }
 
     return (
-        <div style={{ margin: '0 auto' }}>
+        <div>
             {/* Profile Header */}
             <Card
                 bordered={false}

@@ -17,11 +17,12 @@ import {
 import { SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, BankOutlined, FileTextOutlined } from '@ant-design/icons';
 import { adminApi, type SyncDriftLogDto, type ProductDiffItemDto, type LoanSyncRunDto, type LoanSyncRunDetailDto } from '../api/admin';
 import { translateValue } from '../utils/vi';
+import PageHeader from '../components/PageHeader';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 function fmtVal(v: any): string {
   if (v == null || v === '') return '-';
@@ -293,14 +294,11 @@ export default function SyncDriftPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>Đồng bộ / Cảnh báo</Title>
-          <Text type="secondary">
-            Giám sát sự sai lệch dữ liệu giữa MongoDB Local và Fineract Central
-          </Text>
-        </div>
-      </div>
+      <PageHeader
+        title="Đồng bộ / Cảnh báo"
+        description="Giám sát sự sai lệch dữ liệu giữa MongoDB Local và Fineract Central"
+        breadcrumb={[{ label: 'Đồng bộ / Cảnh báo' }]}
+      />
 
       <Alert
         message="Thông tin đồng bộ"
