@@ -16,6 +16,7 @@ import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import dayjs from 'dayjs';
+import PageHeader from '../components/PageHeader';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -368,6 +369,11 @@ export default function CustomersPage() {
 
     return (
         <div>
+            <PageHeader
+                title="Tất cả khách hàng"
+                description="Quản lý danh sách khách hàng, trạng thái KYC và tài khoản Fineract"
+                breadcrumb={[{ label: 'Khách hàng' }]}
+            />
             {/* Stats Cards - Enhanced with professional styling */}
             <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
                 <Col xs={24} sm={12} lg={6}>

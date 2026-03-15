@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import PageHeader from '../components/PageHeader';
 import {
   Card, Table, Button, Space, Tag, Typography, Descriptions, Drawer, Empty,
   Skeleton, message, Popconfirm, theme, Row, Col, Avatar, Divider, Badge,
@@ -190,6 +191,11 @@ export default function KYCApprovalsPage() {
 
   return (
     <div>
+      <PageHeader
+        title="Phê duyệt KYC"
+        description="Xét duyệt hồ sơ định danh khách hàng (eKYC / KYC trực tiếp)"
+        breadcrumb={[{ label: 'Khách hàng', path: '/customers' }, { label: 'Phê duyệt KYC' }]}
+      />
       {contextHolder}
       <Card
         bordered={false}

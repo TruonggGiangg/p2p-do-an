@@ -12,6 +12,7 @@ import { Button, Popconfirm, message, Space, Typography, Tag, Divider, theme } f
 import { PlusOutlined, EditOutlined, DeleteOutlined, FileImageOutlined, FilePdfOutlined, FileOutlined, FileTextOutlined, CloseOutlined } from '@ant-design/icons';
 import { adminApi, type DocumentTypeDto, type FileFormat } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import PageHeader from '../components/PageHeader';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
@@ -253,6 +254,11 @@ export default function DocumentTypesPage() {
         </div>
       </DrawerForm>
 
+      <PageHeader
+        title="Loại tài liệu"
+        description="Quản lý các loại tài liệu yêu cầu đính kèm khoản vay"
+        breadcrumb={[{ label: 'Loại tài liệu' }]}
+      />
       <ProTable<DocumentTypeDto>
         {...PRO_TABLE_DEFAULTS}
         headerTitle={

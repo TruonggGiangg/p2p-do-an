@@ -15,6 +15,7 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { adminApi, type SavingsProductDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
+import PageHeader from '../components/PageHeader';
 import { ProductDetailTable } from '../utils/productDetailTable';
 import { translateValue } from '../utils/vi';
 
@@ -99,6 +100,11 @@ export default function SavingsProductsPage() {
 
   return (
     <>
+      <PageHeader
+        title="Sản phẩm tiết kiệm"
+        description="Danh sách sản phẩm tiết kiệm đồng bộ từ Fineract"
+        breadcrumb={[{ label: 'Sản phẩm tiết kiệm' }]}
+      />
       <ProTable<SavingsProductDto>
         {...PRO_TABLE_DEFAULTS}
         headerTitle="Danh sách sản phẩm tiết kiệm (Fineract)"

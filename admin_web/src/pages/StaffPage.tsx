@@ -1,5 +1,6 @@
-﻿import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
@@ -416,6 +417,11 @@ export default function StaffPage() {
 
     return (
         <div>
+            <PageHeader
+                title="Quản lý nhân viên"
+                description="Danh sách nhân viên, phân quyền và trạng thái tài khoản"
+                breadcrumb={[{ label: 'Nhân viên' }]}
+            />
             <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
                 <Col xs={24} sm={12} lg={6}>
                     <Card bordered={false} style={{ borderRadius: 0, background: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', boxShadow: '0 4px 12px rgba(30, 64, 175, 0.25)', height: '100%' }} bodyStyle={{ padding: '24px' }}>
