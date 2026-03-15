@@ -67,13 +67,12 @@ export default function LoginPage() {
           width: '100%',
           maxWidth: 420,
           boxShadow: token.boxShadow,
-          borderRadius: 0,
           border: `1px solid ${token.colorBorderSecondary}`,
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            width: 48, height: 48, borderRadius: 0,
+            width: 48, height: 48, borderRadius: 12,
             background: token.colorPrimary,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 800, color: '#fff', fontSize: 20, marginBottom: 16

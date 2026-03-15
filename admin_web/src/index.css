@@ -270,7 +270,7 @@ p {
 
 /* ── Table wrapper subtle shadow ── */
 .ant-table-wrapper {
-  border-radius: 0;
+  border-radius: 10px;
 }
 
 [data-theme="light"] .ant-table {
@@ -372,24 +372,46 @@ p {
   color: #F1F5F9 !important;
 }
 
-/* ── No border-radius (square corners) ── */
-.ant-card,
-.ant-modal-content,
-.ant-modal-wrap .ant-modal,
-.ant-drawer-content,
-.ant-drawer-wrapper-body,
-.ant-btn,
+/* ── Rounded corners (soft UI) ── */
+.ant-card {
+  border-radius: 14px !important;
+}
+
+.ant-modal-content {
+  border-radius: 16px !important;
+}
+
+.ant-drawer-content {
+  border-radius: 16px !important;
+}
+
+.ant-btn {
+  border-radius: 10px !important;
+}
+
 .ant-input,
 .ant-input-affix-wrapper,
 .ant-select-selector,
-.ant-picker,
+.ant-picker {
+  border-radius: 10px !important;
+}
+
 .ant-pagination-item,
 .ant-pagination-prev .ant-pagination-item-link,
-.ant-pagination-next .ant-pagination-item-link,
-.ant-tag,
-.ant-alert,
+.ant-pagination-next .ant-pagination-item-link {
+  border-radius: 8px !important;
+}
+
+.ant-tag {
+  border-radius: 6px !important;
+}
+
+.ant-alert {
+  border-radius: 10px !important;
+}
+
 .ant-tabs-tab {
-  border-radius: 0 !important;
+  border-radius: 8px 8px 0 0 !important;
 }
 
 /* ── Card Enhancements ── */

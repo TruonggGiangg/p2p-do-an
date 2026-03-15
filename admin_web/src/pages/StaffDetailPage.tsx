@@ -187,7 +187,7 @@ export default function StaffDetailPage() {
                     <Button
                         icon={<ArrowLeftOutlined />}
                         onClick={() => navigate('/staff')}
-                        style={{ borderRadius: 0 }}
+                        style={{ borderRadius: 10 }}
                     >
                         Danh sách nhân viên
                     </Button>
@@ -200,7 +200,7 @@ export default function StaffDetailPage() {
                             ghost
                             icon={<UndoOutlined />}
                             onClick={handleRestore}
-                            style={{ borderRadius: 0 }}
+                            style={{ borderRadius: 10 }}
                         >
                             Khôi phục tài khoản
                         </Button>
@@ -209,7 +209,7 @@ export default function StaffDetailPage() {
                             <Button
                                 icon={<EditOutlined />}
                                 onClick={openEdit}
-                                style={{ borderRadius: 0 }}
+                                style={{ borderRadius: 10 }}
                             >
                                 Sửa
                             </Button>
@@ -217,7 +217,7 @@ export default function StaffDetailPage() {
                                 danger
                                 icon={<LockOutlined />}
                                 onClick={handleDelete}
-                                style={{ borderRadius: 0 }}
+                                style={{ borderRadius: 10 }}
                             >
                                 Khóa tài khoản
                             </Button>
@@ -231,7 +231,7 @@ export default function StaffDetailPage() {
                 <Col xs={24} lg={8}>
                     <Card
                         bordered={false}
-                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                        style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                     >
                         <div style={{ textAlign: 'center', padding: '24px 0' }}>
                             <Avatar
@@ -253,7 +253,7 @@ export default function StaffDetailPage() {
                             <Text type="secondary" style={{ fontSize: 13 }}>{staff.username}</Text>
                             <div style={{ marginTop: 12 }}>
                                 {staff.isDeleted ? (
-                                    <Tag color="error" style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
+                                    <Tag color="error" style={{ padding: '4px 16px', fontWeight: 500, borderRadius: 10, border: 'none' }}>Đã khóa</Tag>
                                 ) : (
                                     <Select
                                         value={staff.status}
@@ -262,9 +262,9 @@ export default function StaffDetailPage() {
                                         onChange={handleStatusChange}
                                         style={{ minWidth: 140 }}
                                         options={[
-                                            { value: 'active', label: <Tag color="success" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Hoạt động</Tag> },
-                                            { value: 'inactive', label: <Tag color="default" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Không hoạt động</Tag> },
-                                            { value: 'suspended', label: <Tag color="error" style={{ margin: 0, borderRadius: 0, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Tạm khóa</Tag> },
+                                            { value: 'active', label: <Tag color="success" style={{ margin: 0, borderRadius: 10, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Hoạt động</Tag> },
+                                            { value: 'inactive', label: <Tag color="default" style={{ margin: 0, borderRadius: 10, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Không hoạt động</Tag> },
+                                            { value: 'suspended', label: <Tag color="error" style={{ margin: 0, borderRadius: 10, border: 'none', padding: '2px 14px', fontWeight: 500 }}>Tạm khóa</Tag> },
                                         ]}
                                     />
                                 )}
@@ -288,7 +288,7 @@ export default function StaffDetailPage() {
                                 <Divider style={{ margin: '16px 0' }} />
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text type="secondary" style={{ fontSize: 13 }}>Loại tài khoản</Text>
-                                    <Tag color="blue" style={{ borderRadius: 0, border: 'none', fontWeight: 500 }}>
+                                    <Tag color="blue" style={{ borderRadius: 10, border: 'none', fontWeight: 500 }}>
                                         {staff.metadata.userType === 'staff' ? 'Nhân viên' : staff.metadata.userType === 'admin' ? 'Quản trị viên' : staff.metadata.userType}
                                     </Tag>
                                 </div>
@@ -303,7 +303,7 @@ export default function StaffDetailPage() {
                     <Card
                         bordered={false}
                         title={<Space><UserOutlined /><span>Thông tin cá nhân</span></Space>}
-                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
+                        style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
                         bodyStyle={{ padding: '20px 24px' }}
                     >
                         <Row gutter={[48, 20]}>
@@ -327,8 +327,8 @@ export default function StaffDetailPage() {
                                     label="Trạng thái"
                                     value={
                                         staff.isDeleted
-                                            ? <Tag color="error" style={{ borderRadius: 0, border: 'none' }}>Đã khóa</Tag>
-                                            : <Tag color={statusInfo.color} style={{ borderRadius: 0, border: 'none' }}>{statusInfo.text}</Tag>
+                                            ? <Tag color="error" style={{ borderRadius: 10, border: 'none' }}>Đã khóa</Tag>
+                                            : <Tag color={statusInfo.color} style={{ borderRadius: 10, border: 'none' }}>{statusInfo.text}</Tag>
                                     }
                                 />
                             </Col>
@@ -339,7 +339,7 @@ export default function StaffDetailPage() {
                     <Card
                         bordered={false}
                         title={<Space><DatabaseOutlined /><span>Thông tin hệ thống</span></Space>}
-                        style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
+                        style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 24 }}
                         bodyStyle={{ padding: '20px 24px' }}
                     >
                         <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -360,7 +360,7 @@ export default function StaffDetailPage() {
                                             <CloudServerOutlined style={{ marginRight: 6 }} />Fineract Staff ID
                                         </Text>
                                         {staff.fineractStaffId
-                                            ? <Tag color="blue" style={{ borderRadius: 0 }}>#{staff.fineractStaffId}</Tag>
+                                            ? <Tag color="blue" style={{ borderRadius: 10 }}>#{staff.fineractStaffId}</Tag>
                                             : <Text type="secondary">–</Text>
                                         }
                                     </div>
@@ -371,7 +371,7 @@ export default function StaffDetailPage() {
                                             <CloudServerOutlined style={{ marginRight: 6 }} />Fineract Client ID
                                         </Text>
                                         {staff.fineractClientId || staff.metadata?.fineractClientId
-                                            ? <Tag color="geekblue" style={{ borderRadius: 0 }}>#{staff.fineractClientId || staff.metadata?.fineractClientId}</Tag>
+                                            ? <Tag color="geekblue" style={{ borderRadius: 10 }}>#{staff.fineractClientId || staff.metadata?.fineractClientId}</Tag>
                                             : <Text type="secondary">–</Text>
                                         }
                                     </div>
@@ -407,7 +407,7 @@ export default function StaffDetailPage() {
                             <Card
                                 bordered={false}
                                 title={<Space><SafetyCertificateOutlined /><span>Thông tin bổ sung</span></Space>}
-                                style={{ borderRadius: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                                style={{ borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
                                 bodyStyle={{ padding: '20px 24px' }}
                             >
                                 <Row gutter={[48, 20]}>
@@ -427,7 +427,7 @@ export default function StaffDetailPage() {
                                                 <Tag
                                                     color={syncColors[String(val)] || 'default'}
                                                     icon={<SyncOutlined />}
-                                                    style={{ borderRadius: 0, border: 'none' }}
+                                                    style={{ borderRadius: 10, border: 'none' }}
                                                 >
                                                     {String(val)}
                                                 </Tag>

@@ -163,7 +163,7 @@ export default function StaffProfilePage() {
                             </Text>
                             <Tag
                                 color="rgba(255,255,255,0.2)"
-                                style={{ borderRadius: 0, border: '1px solid rgba(255,255,255,0.3)', color: '#fff' }}
+                                style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,0.3)', color: '#fff' }}
                             >
                                 Nhân viên
                             </Tag>
@@ -368,7 +368,7 @@ export default function StaffProfilePage() {
                                 const colorMap: Record<string, string> = {
                                     POST: '#059669', PUT: '#D97706', PATCH: '#D97706', DELETE: '#DC2626',
                                 };
-                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
+                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 10, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
                             },
                         },
                         {

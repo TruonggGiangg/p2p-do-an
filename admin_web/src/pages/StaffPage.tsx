@@ -348,14 +348,14 @@ export default function StaffPage() {
                     return (
                         <Space size={8}>
                             <Tooltip title="Xem chi tiết">
-                                <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 0, fontSize: 12 }}>Chi tiết</Button>
+                                <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 10, fontSize: 12 }}>Chi tiết</Button>
                             </Tooltip>
                             <Tooltip title="Lịch sử hoạt động">
-                                <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                                <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 10, fontSize: 12 }} />
                             </Tooltip>
                             {ability.can(Action.Update, 'Staff') && (
                                 <Popconfirm title="Khôi phục nhân viên?" description="Tài khoản sẽ được kích hoạt lại" okText="Khôi phục" cancelText="Hủy" onConfirm={() => handleRestore(r)} onPopupClick={(e) => e.stopPropagation()}>
-                                    <Button type="primary" ghost icon={<UndoOutlined />} onClick={(e) => e.stopPropagation()} style={{ borderRadius: 0, fontSize: 12 }}>Khôi phục</Button>
+                                    <Button type="primary" ghost icon={<UndoOutlined />} onClick={(e) => e.stopPropagation()} style={{ borderRadius: 10, fontSize: 12 }}>Khôi phục</Button>
                                 </Popconfirm>
                             )}
                         </Space>
@@ -364,19 +364,19 @@ export default function StaffPage() {
                 return (
                     <Space size={8}>
                         <Tooltip title="Xem chi tiết">
-                            <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 0, fontSize: 12 }}>Chi tiết</Button>
+                            <Button type="primary" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/staff/${r._id}`); }} style={{ borderRadius: 10, fontSize: 12 }}>Chi tiết</Button>
                         </Tooltip>
                         {ability.can(Action.Update, 'Staff') && (
                             <Tooltip title="Sửa">
-                                <Button icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                                <Button icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r); }} style={{ borderRadius: 10, fontSize: 12 }} />
                             </Tooltip>
                         )}
                         <Tooltip title="Lịch sử hoạt động">
-                            <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                            <Button icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); openLogDrawer(r); }} style={{ borderRadius: 10, fontSize: 12 }} />
                         </Tooltip>
                         {ability.can(Action.Delete, 'Staff') && (
                             <Tooltip title="Khóa tài khoản">
-                                <Button danger icon={<LockOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(r); }} style={{ borderRadius: 0, fontSize: 12 }} />
+                                <Button danger icon={<LockOutlined />} onClick={(e) => { e.stopPropagation(); handleDelete(r); }} style={{ borderRadius: 10, fontSize: 12 }} />
                             </Tooltip>
                         )}
                     </Space>
@@ -484,7 +484,7 @@ export default function StaffPage() {
                 ))}
             </Row>
 
-            <Card bordered={false} style={{ borderRadius: 0, marginBottom: 24, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)', overflow: 'visible' }} bodyStyle={{ padding: 0, overflow: 'visible' }}>
+            <Card bordered={false} style={{ borderRadius: 10, marginBottom: 24, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)', overflow: 'visible' }} bodyStyle={{ padding: 0, overflow: 'visible' }}>
                 <Tabs activeKey={viewMode} onChange={handleTabChange} items={tabItems} size="large" tabBarStyle={{ marginBottom: 0, padding: '16px 24px 12px 24px', borderBottom: `2px solid ${token.colorBorderSecondary}`, minHeight: 52 }} tabBarGutter={16} />
             </Card>
 
@@ -671,7 +671,7 @@ export default function StaffPage() {
                                 const colorMap: Record<string, string> = {
                                     POST: '#059669', PUT: '#D97706', PATCH: '#D97706', DELETE: '#DC2626',
                                 };
-                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 0, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
+                                return <Tag color={colorMap[v] || token.colorPrimary} style={{ borderRadius: 10, fontWeight: 600, fontSize: 11, margin: 0 }}>{v}</Tag>;
                             },
                         },
                         {
@@ -684,7 +684,7 @@ export default function StaffPage() {
                                     <Text style={{ fontSize: 12 }}>{v}</Text>
                                     <Tag
                                         color={r.userRole === 'admin' ? 'blue' : 'green'}
-                                        style={{ borderRadius: 0, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}
+                                        style={{ borderRadius: 10, fontSize: 10, padding: '0 4px', lineHeight: '16px' }}
                                     >
                                         {r.userRole === 'admin' ? 'Admin' : 'NV'}
                                     </Tag>

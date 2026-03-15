@@ -28,7 +28,7 @@ export const PRO_TABLE_DEFAULTS: ProTableDefaults = {
   size: 'middle',
   cardProps: {
     style: {
-      borderRadius: 0,
+      borderRadius: 10,
       boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
     },
   },
