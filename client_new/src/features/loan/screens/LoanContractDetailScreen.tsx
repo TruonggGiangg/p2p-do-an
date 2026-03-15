@@ -86,7 +86,6 @@ export default function LoanContractDetailScreen() {
     const [showSignSuccess, setShowSignSuccess] = useState(false);
 
     // Success animation
-    const successAnim = useRef(new Animated.Value(0)).current;
     const successPageAnim = useRef(new Animated.Value(0)).current;
     const successCheckAnim = useRef(new Animated.Value(0)).current;
     const successSlideAnim = useRef(new Animated.Value(40)).current;
@@ -141,7 +140,7 @@ export default function LoanContractDetailScreen() {
         setShowSignConfirm(false);
         setSigning(true);
         try {
-            const updated = await loanService.signContract(contract.contractId || contract._id);
+            const updated = await loanService.signContract(contract.contractId || contract._id, true);
             setContract(updated);
 
             // Navigate to signing success screen
@@ -297,6 +296,57 @@ export default function LoanContractDetailScreen() {
                                 colors={colors}
                             />
                         ))}
+                    </View>
+                )}
+
+                {/* Delinquency Policy Snapshot */}
+                {Array.isArray(contract.delinquencyPolicySnapshot) && contract.delinquencyPolicySnapshot.length > 0 && (
+                    <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 10 }]}>
+                            <MaterialCommunityIcons name="alert-octagon-outline" size={14} /> Chính sách nợ quá hạn
+                        </Text>
+
+                        <View style={[styles.policyHeaderRow, { backgroundColor: colors.primary + '10' }]}>
+                            <Text style={[styles.policyHeadCell, styles.policyGroupCol, { color: colors.textPrimary }]}>Nhóm</Text>
+                            <Text style={[styles.policyHeadCell, styles.policyDaysCol, { color: colors.textPrimary }]}>Ngày quá hạn</Text>
+                            <Text style={[styles.policyHeadCell, styles.policyActionCol, { color: colors.textPrimary }]}>Hành động</Text>
+                        </View>
+
+                        {(contract.delinquencyPolicySnapshot || []).map((policy, idx) => {
+                            const actions: string[] = [];
+                            if (policy.send_notification) actions.push('Thông báo');
+                            if (policy.send_email) actions.push('Email');
+                            if (policy.send_sms) actions.push('SMS');
+                            if (policy.apply_penalty) actions.push('Áp dụng lãi phạt');
+                            if (policy.block_new_loan) actions.push('Chặn vay mới');
+                            const stageLabel: Record<string, string> = {
+                                NONE: 'Theo dõi',
+                                REMINDER: 'Nhắc nợ',
+                                WARNING: 'Cảnh báo',
+                                COLLECTION: 'Chuyển thu hồi',
+                                LEGAL: 'Xử lý pháp lý',
+                                WRITE_OFF: 'Nợ mất vốn',
+                            };
+                            if (stageLabel[policy.collection_stage]) {
+                                actions.push(stageLabel[policy.collection_stage]);
+                            }
+
+                            return (
+                                <View key={`${policy.debt_group}-${idx}`} style={[styles.policyDataRow, { borderBottomColor: colors.border }]}>
+                                    <Text style={[styles.policyDataCell, styles.policyGroupCol, { color: colors.textPrimary }]}>
+                                        Nhóm {policy.debt_group}
+                                    </Text>
+                                    <Text style={[styles.policyDataCell, styles.policyDaysCol, { color: colors.textPrimary }]}>
+                                        {policy.min_days}-{policy.max_days}
+                                    </Text>
+                                    <Text style={[styles.policyDataCell, styles.policyActionCol, { color: colors.textPrimary }]}>
+                                        {actions.length ? actions.join(', ') : 'Theo chính sách nội bộ'}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+
+
                     </View>
                 )}
 
@@ -511,19 +561,19 @@ export default function LoanContractDetailScreen() {
                         {/* Info card */}
                         <View style={styles.successCard}>
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="shield-check" size={18} color="#10B981" />
+                                <MaterialCommunityIcons name="shield-check" size={18} color="#B88700" />
                                 <Text style={styles.successCardText}>Chứng thư số VNPT SmartCA</Text>
                             </View>
                             <View style={[styles.successCardDivider]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#6B7280" />
+                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#B88700" />
                                 <Text style={styles.successCardTextDim}>
                                     Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}
                                 </Text>
                             </View>
                             <View style={[styles.successCardDivider]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#8B5CF6" />
+                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#B88700" />
                                 <Text style={styles.successCardText}>Khoản vay sẽ được giải ngân sớm</Text>
                             </View>
                         </View>
@@ -650,6 +700,63 @@ const styles = StyleSheet.create({
     scheduleCellSm: { flex: 0.3, textAlign: 'center' },
     moreText: { textAlign: 'center', fontSize: 12, paddingTop: 8 },
 
+    policyHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+    },
+    policyHeadCell: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    policyDataRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderBottomWidth: 0.5,
+    },
+    policyDataCell: {
+        fontSize: 12,
+    },
+    policyGroupCol: {
+        flex: 0.9,
+    },
+    policyDaysCol: {
+        flex: 1,
+    },
+    policyActionCol: {
+        flex: 1.8,
+    },
+    policyConsentRow: {
+        marginTop: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    checkboxBase: {
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#9CA3AF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    checkboxChecked: {
+        backgroundColor: '#10B981',
+        borderColor: '#10B981',
+    },
+    policyConsentText: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: '500',
+    },
+
     // View Contract
     viewContractBtn: {
         flexDirection: 'row',
@@ -773,7 +880,7 @@ const styles = StyleSheet.create({
     // Sign success page
     successPage: {
         flex: 1,
-        backgroundColor: '#0A0F1E',
+        backgroundColor: '#FAFAFA',
         justifyContent: 'center',
         alignItems: 'center',
         padding: 28,
@@ -784,7 +891,7 @@ const styles = StyleSheet.create({
         width: 340,
         height: 340,
         borderRadius: 170,
-        backgroundColor: '#10B98112',
+        backgroundColor: '#F0B90B22',
         top: -80,
         right: -80,
     },
@@ -793,7 +900,7 @@ const styles = StyleSheet.create({
         width: 260,
         height: 260,
         borderRadius: 130,
-        backgroundColor: '#6366F110',
+        backgroundColor: '#F0B90B1A',
         bottom: -60,
         left: -60,
     },
@@ -813,43 +920,43 @@ const styles = StyleSheet.create({
         height: 112,
         borderRadius: 56,
         borderWidth: 2,
-        borderColor: '#10B98130',
+        borderColor: '#F0B90B55',
     },
     successCheckCircle: {
         width: 96,
         height: 96,
         borderRadius: 48,
-        backgroundColor: '#10B981',
+        backgroundColor: '#F0B90B',
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#10B981',
+        shadowColor: '#F0B90B',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
+        shadowOpacity: 0.35,
         shadowRadius: 16,
         elevation: 12,
     },
     successTitle: {
         fontSize: 26,
         fontWeight: '800',
-        color: '#FFFFFF',
+        color: '#1E1E1E',
         textAlign: 'center',
     },
     successSubtitle: {
         fontSize: 14,
-        color: '#9CA3AF',
+        color: '#555555',
         textAlign: 'center',
         lineHeight: 20,
     },
     successHighlight: {
-        color: '#F0B90B',
+        color: '#B88700',
         fontWeight: '700',
     },
     successCard: {
         width: '100%',
-        backgroundColor: '#FFFFFF0D',
+        backgroundColor: '#FFFFFF',
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#FFFFFF10',
+        borderColor: '#F0B90B44',
         padding: 20,
         gap: 12,
         marginTop: 8,
@@ -861,27 +968,27 @@ const styles = StyleSheet.create({
     },
     successCardText: {
         fontSize: 14,
-        color: '#E5E7EB',
+        color: '#1E1E1E',
         fontWeight: '500',
         flex: 1,
     },
     successCardTextDim: {
         fontSize: 13,
-        color: '#9CA3AF',
+        color: '#666666',
         flex: 1,
     },
     successCardDivider: {
         height: 1,
-        backgroundColor: '#FFFFFF0F',
+        backgroundColor: '#F0B90B33',
     },
     successBtn: {
         width: '100%',
         paddingVertical: 16,
         borderRadius: 16,
-        backgroundColor: '#10B981',
+        backgroundColor: '#F0B90B',
         alignItems: 'center',
         marginTop: 8,
-        shadowColor: '#10B981',
+        shadowColor: '#F0B90B',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
@@ -890,7 +997,7 @@ const styles = StyleSheet.create({
     successBtnText: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: '#181A20',
     },
 
     // Empty

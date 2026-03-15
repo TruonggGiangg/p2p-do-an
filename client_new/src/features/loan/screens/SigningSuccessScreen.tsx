@@ -19,6 +19,9 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 const { width } = Dimensions.get('window');
+const GOLD = '#F0B90B';
+const GOLD_DARK = '#B88700';
+const WHITE = '#FFFFFF';
 
 const formatMoney = (amount?: number | null) => {
     if (amount == null || isNaN(amount)) return '0';
@@ -66,31 +69,34 @@ export default function SigningSuccessScreen() {
     }, []);
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={[styles.container, { backgroundColor: '#FAFAFA', paddingTop: insets.top }]}>
+            <View style={styles.bgOrbTop} />
+            <View style={styles.bgOrbBottom} />
+
             {/* Close button */}
             <TouchableOpacity
-                style={[styles.closeBtn, { backgroundColor: colors.surfaceLight }]}
+                style={styles.closeBtn}
                 onPress={() => navigation.popToTop()}
             >
-                <Ionicons name="close" size={22} color={colors.textPrimary} />
+                <Ionicons name="close" size={22} color={GOLD_DARK} />
             </TouchableOpacity>
 
             {/* Success Icon */}
             <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
-                <View style={[styles.iconCircle, { backgroundColor: '#10B981' + '20' }]}>
-                    <View style={[styles.iconCircleInner, { backgroundColor: '#10B981' }]}>
-                        <MaterialCommunityIcons name="check" size={48} color="#fff" />
+                <View style={styles.iconCircle}>
+                    <View style={styles.iconCircleInner}>
+                        <MaterialCommunityIcons name="check" size={48} color={WHITE} />
                     </View>
                 </View>
             </Animated.View>
 
             {/* Title */}
             <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>
-                    Ký hợp đồng thành công!
+                <Text style={styles.title}>
+                    Ký số thành công!
                 </Text>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                    Hợp đồng đã được ký xác nhận. Khoản vay của bạn đang được xử lý.
+                <Text style={styles.subtitle}>
+                    Hợp đồng {contractId ? <Text style={styles.contractInline}>{contractId}</Text> : ''} đã được ký số hợp lệ.
                 </Text>
             </Animated.View>
 
@@ -98,37 +104,36 @@ export default function SigningSuccessScreen() {
             <Animated.View
                 style={[
                     styles.infoCard,
-                    {
-                        backgroundColor: colors.surface,
-                        opacity: fadeAnim,
-                        transform: [{ translateY: slideAnim }],
-                    },
+                    { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
                 ]}
             >
-                <View style={[styles.infoIconRow, { backgroundColor: '#F59E0B' + '15' }]}>
-                    <MaterialCommunityIcons name="clock-outline" size={24} color="#F59E0B" />
-                    <Text style={[styles.infoStatusText, { color: '#F59E0B' }]}>Chờ giải ngân</Text>
+                <View style={styles.infoIconRow}>
+                    <MaterialCommunityIcons name="shield-check" size={22} color={GOLD_DARK} />
+                    <Text style={styles.infoStatusText}>Chứng thư số VNPT SmartCA</Text>
                 </View>
 
-                <Text style={[styles.infoMessage, { color: colors.textSecondary }]}>
-                    Vui lòng chờ{' '}
-                    <Text style={{ fontWeight: '700', color: colors.textPrimary }}>2-3 ngày làm việc</Text>
-                    , số tiền sẽ được chuyển vào tài khoản của bạn.
-                </Text>
+                <View style={styles.rowWithIcon}>
+                    <MaterialCommunityIcons name="clock-outline" size={16} color={GOLD_DARK} />
+                    <Text style={styles.infoMessage}>Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}</Text>
+                </View>
+                <View style={styles.rowWithIcon}>
+                    <MaterialCommunityIcons name="bank-transfer" size={16} color={GOLD_DARK} />
+                    <Text style={styles.infoMessage}>Khoản vay sẽ được giải ngân sớm</Text>
+                </View>
 
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={styles.divider} />
 
                 {contractId ? (
                     <View style={styles.infoRow}>
-                        <Text style={[styles.infoLabel, { color: colors.textDim }]}>Mã hợp đồng</Text>
-                        <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{contractId}</Text>
+                        <Text style={styles.infoLabel}>Mã hợp đồng</Text>
+                        <Text style={styles.infoValue}>{contractId}</Text>
                     </View>
                 ) : null}
 
                 {principalAmount > 0 && (
                     <View style={styles.infoRow}>
-                        <Text style={[styles.infoLabel, { color: colors.textDim }]}>Số tiền vay</Text>
-                        <Text style={[styles.infoValue, { color: colors.primary }]}>
+                        <Text style={styles.infoLabel}>Số tiền vay</Text>
+                        <Text style={[styles.infoValue, { color: GOLD_DARK }]}>
                             {formatMoney(principalAmount)} đ
                         </Text>
                     </View>
@@ -136,69 +141,23 @@ export default function SigningSuccessScreen() {
 
                 {tenure > 0 && (
                     <View style={styles.infoRow}>
-                        <Text style={[styles.infoLabel, { color: colors.textDim }]}>Kỳ hạn</Text>
-                        <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{tenure} tháng</Text>
+                        <Text style={styles.infoLabel}>Kỳ hạn</Text>
+                        <Text style={styles.infoValue}>{tenure} tháng</Text>
                     </View>
                 )}
-            </Animated.View>
-
-            {/* Timeline hint */}
-            <Animated.View
-                style={[
-                    styles.timelineCard,
-                    {
-                        backgroundColor: colors.surface,
-                        opacity: fadeAnim,
-                        transform: [{ translateY: slideAnim }],
-                    },
-                ]}
-            >
-                <Text style={[styles.timelineTitle, { color: colors.textPrimary }]}>Các bước tiếp theo</Text>
-                <View style={styles.timelineItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: '#10B981' }]}>
-                        <Ionicons name="checkmark" size={10} color="#fff" />
-                    </View>
-                    <View style={[styles.timelineLine, { backgroundColor: '#10B981' }]} />
-                    <Text style={[styles.timelineText, { color: colors.textSecondary }]}>Ký hợp đồng thành công</Text>
-                </View>
-                <View style={styles.timelineItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: '#F59E0B' }]}>
-                        <MaterialCommunityIcons name="clock-outline" size={10} color="#fff" />
-                    </View>
-                    <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />
-                    <Text style={[styles.timelineText, { color: '#F59E0B', fontWeight: '600' }]}>
-                        Chờ admin xét duyệt giải ngân (2-3 ngày)
-                    </Text>
-                </View>
-                <View style={styles.timelineItem}>
-                    <View style={[styles.timelineDot, { backgroundColor: colors.border }]}>
-                        <MaterialCommunityIcons name="cash" size={10} color={colors.textDim} />
-                    </View>
-                    <View style={{ width: 0 }} />
-                    <Text style={[styles.timelineText, { color: colors.textDim }]}>
-                        Giải ngân vào tài khoản
-                    </Text>
-                </View>
             </Animated.View>
 
             {/* Bottom buttons */}
             <View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                 <TouchableOpacity
-                    style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => navigation.popToTop()}
-                    activeOpacity={0.85}
-                >
-                    <Text style={styles.primaryBtnText}>Về trang chủ</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.secondaryBtn, { borderColor: colors.border }]}
+                    style={styles.primaryBtn}
                     onPress={() => {
                         navigation.pop();
                         // Stay on LoanContractDetail
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
                 >
-                    <Text style={[styles.secondaryBtnText, { color: colors.textSecondary }]}>Xem hợp đồng</Text>
+                    <Text style={styles.primaryBtnText}>Xem hợp đồng</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -211,6 +170,24 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 24,
     },
+    bgOrbTop: {
+        position: 'absolute',
+        top: -120,
+        right: -70,
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: '#F0B90B22',
+    },
+    bgOrbBottom: {
+        position: 'absolute',
+        bottom: -140,
+        left: -90,
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: '#F0B90B1A',
+    },
     closeBtn: {
         alignSelf: 'flex-end',
         width: 36,
@@ -219,6 +196,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginTop: 8,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#F0B90B55',
     },
     iconContainer: {
         marginTop: 20,
@@ -230,6 +210,7 @@ const styles = StyleSheet.create({
         borderRadius: 60,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#F0B90B22',
     },
     iconCircleInner: {
         width: 80,
@@ -237,24 +218,34 @@ const styles = StyleSheet.create({
         borderRadius: 40,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: GOLD,
     },
     title: {
         fontSize: 24,
         fontWeight: '800',
         textAlign: 'center',
         marginBottom: 8,
+        color: '#1E1E1E',
     },
     subtitle: {
         fontSize: 14,
         textAlign: 'center',
         lineHeight: 20,
         paddingHorizontal: 16,
+        color: '#555',
+    },
+    contractInline: {
+        color: GOLD_DARK,
+        fontWeight: '700',
     },
     infoCard: {
         width: '100%',
         borderRadius: 16,
         padding: 20,
         marginTop: 24,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#F0B90B44',
     },
     infoIconRow: {
         flexDirection: 'row',
@@ -265,20 +256,28 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         alignSelf: 'center',
         marginBottom: 16,
+        backgroundColor: '#F0B90B1A',
     },
     infoStatusText: {
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: '700',
+        color: '#1E1E1E',
+    },
+    rowWithIcon: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 10,
     },
     infoMessage: {
-        fontSize: 14,
-        lineHeight: 22,
-        textAlign: 'center',
-        marginBottom: 16,
+        fontSize: 13,
+        lineHeight: 20,
+        color: '#555',
     },
     divider: {
         height: 1,
         marginVertical: 12,
+        backgroundColor: '#F0B90B44',
     },
     infoRow: {
         flexDirection: 'row',
@@ -288,49 +287,12 @@ const styles = StyleSheet.create({
     },
     infoLabel: {
         fontSize: 13,
+        color: '#777',
     },
     infoValue: {
         fontSize: 14,
         fontWeight: '700',
-    },
-    timelineCard: {
-        width: '100%',
-        borderRadius: 16,
-        padding: 20,
-        marginTop: 12,
-    },
-    timelineTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        marginBottom: 16,
-    },
-    timelineItem: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 12,
-        marginBottom: 12,
-        position: 'relative',
-    },
-    timelineDot: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 2,
-    },
-    timelineLine: {
-        position: 'absolute',
-        left: 9,
-        top: 20,
-        width: 2,
-        height: 24,
-    },
-    timelineText: {
-        flex: 1,
-        fontSize: 13,
-        lineHeight: 20,
-        paddingTop: 1,
+        color: '#1E1E1E',
     },
     bottomContainer: {
         position: 'absolute',
@@ -344,21 +306,11 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: GOLD,
     },
     primaryBtnText: {
         fontSize: 16,
         fontWeight: '700',
         color: '#181A20',
-    },
-    secondaryBtn: {
-        height: 44,
-        borderRadius: 12,
-        borderWidth: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    secondaryBtnText: {
-        fontSize: 14,
-        fontWeight: '600',
     },
 });

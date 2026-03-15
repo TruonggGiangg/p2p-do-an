@@ -32,6 +32,7 @@ const menuItems = [
   { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
   { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
   { key: '/loans', icon: <DollarOutlined />, label: 'Quản lý khoản vay' },
+  { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
   { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
   { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },

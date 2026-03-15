@@ -6,12 +6,15 @@ import { LoanProductSnapshot, LoanProductSnapshotSchema } from './schemas/loan-p
 import { SavingsProductSnapshot, SavingsProductSnapshotSchema } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
 import { LoanSyncRun, LoanSyncRunSchema } from './schemas/loan-sync-run.schema';
+import { LoanDelinquency, LoanDelinquencySchema } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy, DelinquencyPolicySchema } from '../delinquency/entities/delinquency-policy.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { LoanSupportRequest, LoanSupportRequestSchema } from '../loan/schemas/loan-support-request.schema';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { Notification, NotificationSchema } from '../loan/schemas/notification.schema';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
+import { Role, RoleSchema } from '../rbac/schemas/role.schema';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { LoanSyncScheduler } from './loan-sync.scheduler';
@@ -39,16 +42,19 @@ import { UsersModule } from '../users/users.module';
       { name: SavingsProductSnapshot.name, schema: SavingsProductSnapshotSchema },
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
       { name: LoanSyncRun.name, schema: LoanSyncRunSchema },
+      { name: LoanDelinquency.name, schema: LoanDelinquencySchema },
+      { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
       { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
       { name: Wallet.name, schema: WalletSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: LoanContract.name, schema: LoanContractSchema },
+      { name: Role.name, schema: RoleSchema },
     ]),
   ],
   controllers: [AdminController],
   providers: [AdminService, LoanSyncScheduler, ReminderScheduler, PushNotificationService],
   exports: [AdminService],
 })
-export class AdminModule { }
+export class AdminModule {}

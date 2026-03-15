@@ -23,7 +23,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
-import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult } from '../services/loan.service';
+import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, DelinquencyPolicyItem } from '../services/loan.service';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
@@ -486,6 +486,8 @@ export default function LoanCreateScreen() {
     const [schedule, setSchedule] = useState<LoanScheduleResult | null>(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
     const [loadingPreview, setLoadingPreview] = useState(false);
+    const [delinquencyPolicies, setDelinquencyPolicies] = useState<DelinquencyPolicyItem[]>([]);
+    const [acceptedDelinquencyPolicy, setAcceptedDelinquencyPolicy] = useState(false);
 
     const minRep = config?.minNumberOfRepayments ?? 1;
     const maxRep = config?.maxNumberOfRepayments ?? 360;
@@ -535,6 +537,39 @@ export default function LoanCreateScreen() {
         return () => clearTimeout(t);
     }, [fetchPreview]);
 
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            const policies = await loanService.getDelinquencyPolicies();
+            if (!isMounted) return;
+            setDelinquencyPolicies((policies || []).sort((a, b) => a.debt_group - b.debt_group));
+        })();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
+        const actions: string[] = [];
+        if (policy.send_notification) actions.push('Thông báo');
+        if (policy.send_email) actions.push('Gửi email');
+        if (policy.send_sms) actions.push('Gửi SMS');
+        if (policy.apply_penalty) actions.push('Áp dụng lãi phạt');
+        if (policy.block_new_loan) actions.push('Chặn vay mới');
+        const stageLabel: Record<string, string> = {
+            NONE: 'Theo dõi',
+            REMINDER: 'Nhắc nợ',
+            WARNING: 'Cảnh báo',
+            COLLECTION: 'Chuyển thu hồi',
+            LEGAL: 'Xử lý pháp lý',
+            WRITE_OFF: 'Nợ mất vốn',
+        };
+        actions.push(stageLabel[policy.collection_stage] || policy.collection_stage);
+        if (policy.legal_escalation) actions.push('Escalation pháp lý');
+        return actions.join(', ');
+    };
+
     const handleNext = () => {
         if (!product || capitalNum < 100000 || effectivePeriod < 1) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền và kỳ hạn hợp lệ');
@@ -542,6 +577,10 @@ export default function LoanCreateScreen() {
         }
         if (!schedule) {
             Alert.alert('Lỗi', 'Đang tính toán lịch trả nợ, vui lòng đợi');
+            return;
+        }
+        if (delinquencyPolicies.length > 0 && !acceptedDelinquencyPolicy) {
+            Alert.alert('Thiếu xác nhận', 'Vui lòng đọc và xác nhận chính sách xử lý quá hạn trước khi tiếp tục.');
             return;
         }
         navigation.navigate('LoanConfirm', {
@@ -565,7 +604,11 @@ export default function LoanCreateScreen() {
         );
     }
 
-    const canProceed = !!schedule && capitalNum >= 100000 && effectivePeriod >= 1;
+    const canProceed =
+        !!schedule &&
+        capitalNum >= 100000 &&
+        effectivePeriod >= 1 &&
+        (delinquencyPolicies.length === 0 || acceptedDelinquencyPolicy);
     const formatCurrency = (n: number) => n.toLocaleString('vi-VN');
 
     return (
@@ -826,6 +869,73 @@ export default function LoanCreateScreen() {
                         </View>
                     )}
 
+                    {delinquencyPolicies.length > 0 && (
+                        <>
+                            <CardConnector color={PRIMARY} surfaceColor={theme.colors.surface} />
+                            <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
+                                <LinearGradient
+                                    colors={[PRIMARY + 'AA', PRIMARY + '10']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.cardTopBar}
+                                />
+                                <View style={styles.cardTitleRow}>
+                                    <LinearGradient
+                                        colors={[PRIMARY + 'BB', PRIMARY]}
+                                        style={styles.cardIconWrap}
+                                    >
+                                        <MaterialCommunityIcons name="file-document-alert-outline" size={17} color="#111" />
+                                    </LinearGradient>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Chính sách xử lý quá hạn</Text>
+                                        <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>Đọc kỹ trước khi gửi đơn vay</Text>
+                                    </View>
+                                </View>
+
+                                <View style={[styles.policyTableHeader, { borderBottomColor: theme.colors.border }]}>
+                                    <Text style={[styles.policyHeaderText, { flex: 1.2, color: theme.colors.textDim }]}>Nhóm nợ</Text>
+                                    <Text style={[styles.policyHeaderText, { flex: 1.2, color: theme.colors.textDim }]}>Số ngày</Text>
+                                    <Text style={[styles.policyHeaderText, { flex: 2, color: theme.colors.textDim }]}>Biện pháp</Text>
+                                </View>
+
+                                {delinquencyPolicies.map((policy) => (
+                                    <View key={policy._id} style={[styles.policyDataRow, { borderBottomColor: theme.colors.border + '40' }]}>
+                                        <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textPrimary }]}>
+                                            Nhóm {policy.debt_group}
+                                        </Text>
+                                        <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textSecondary }]}>
+                                            {`${policy.min_days ?? 0} - ${policy.max_days ?? '99999+'} ngày`}
+                                        </Text>
+                                        <Text style={[styles.policyCellText, { flex: 2, color: theme.colors.textSecondary }]}>
+                                            {mapPolicyActions(policy)}
+                                        </Text>
+                                    </View>
+                                ))}
+
+                                <TouchableOpacity
+                                    style={styles.policyConfirmRow}
+                                    activeOpacity={0.8}
+                                    onPress={() => setAcceptedDelinquencyPolicy((prev) => !prev)}
+                                >
+                                    <View
+                                        style={[
+                                            styles.checkboxBase,
+                                            { borderColor: theme.colors.border },
+                                            acceptedDelinquencyPolicy && { backgroundColor: PRIMARY, borderColor: PRIMARY },
+                                        ]}
+                                    >
+                                        {acceptedDelinquencyPolicy ? (
+                                            <MaterialCommunityIcons name="check" size={13} color="#111" />
+                                        ) : null}
+                                    </View>
+                                    <Text style={[styles.policyConfirmText, { color: theme.colors.textSecondary }]}>
+                                        Tôi đã đọc và đồng ý với chính sách xử lý quá hạn.
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </>
+                    )}
+
                     <View style={{ height: 110 }} />
                 </ScrollView>
 
@@ -1034,4 +1144,48 @@ const styles = StyleSheet.create({
     },
     nextBtnText: { fontSize: 15, fontWeight: '700', color: '#111' },
     nextBtnTextDisabled: { fontSize: 15, fontWeight: '700' },
+
+    // Delinquency policy table
+    policyTableHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        paddingBottom: 8,
+        marginBottom: 4,
+        gap: 8,
+    },
+    policyHeaderText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    policyDataRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        borderBottomWidth: 1,
+        paddingVertical: 12,
+        gap: 8,
+    },
+    policyCellText: {
+        fontSize: 12,
+        lineHeight: 18,
+    },
+    policyConfirmRow: {
+        marginTop: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    checkboxBase: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        borderWidth: 1.2,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    policyConfirmText: {
+        flex: 1,
+        fontSize: 12,
+        lineHeight: 18,
+    },
 });

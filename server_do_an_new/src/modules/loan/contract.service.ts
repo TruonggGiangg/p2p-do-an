@@ -1,10 +1,18 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { LoanContract, BorrowerInfo, RepaymentScheduleItem, FeeStructureItem } from './schemas/loan-contract.schema';
+import {
+  LoanContract,
+  BorrowerInfo,
+  RepaymentScheduleItem,
+  FeeStructureItem,
+  DelinquencyPolicySnapshotItem,
+} from './schemas/loan-contract.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
+import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
+import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { generateLoanContractHTML } from './templates/loan-contract.template';
 import { SmartCAService } from '../digital-signature/smartca.service';
 
@@ -17,6 +25,8 @@ export class ContractService {
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(DelinquencyPolicy.name) private delinquencyPolicyModel: Model<DelinquencyPolicy>,
+    private readonly fineractLoanService: FineractLoanService,
     @Optional() private readonly smartCAService: SmartCAService,
   ) {}
 
@@ -27,6 +37,35 @@ export class ContractService {
     const ts = Date.now().toString(36).toUpperCase();
     const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `P2P-LC-${ts}-${rand}`;
+  }
+
+  private async buildDelinquencyPolicySnapshot(): Promise<DelinquencyPolicySnapshotItem[]> {
+    const policies = await this.delinquencyPolicyModel.find({ is_active: true }).sort({ debt_group: 1 }).lean().exec();
+    const ranges = await this.fineractLoanService.getDelinquencyRanges().catch(() => []);
+    const rangeMap = new Map<number, { min_days: number; max_days: number }>();
+    for (const range of ranges || []) {
+      const id = Number(range?.id);
+      if (!Number.isFinite(id)) continue;
+      rangeMap.set(id, {
+        min_days: Number(range?.minimumAgeDays ?? 0),
+        max_days: Number(range?.maximumAgeDays ?? 99999),
+      });
+    }
+
+    return (policies as any[]).map(policy => ({
+      ...(rangeMap.get(Number(policy.debt_group)) ?? { min_days: 0, max_days: 99999 }),
+      debt_group: Number(policy.debt_group ?? 0),
+      debt_group_name: String(policy.debt_group_name ?? ''),
+      send_email: !!policy.send_email,
+      send_sms: !!policy.send_sms,
+      send_notification: !!policy.send_notification,
+      apply_penalty: !!policy.apply_penalty,
+      block_new_loan: !!policy.block_new_loan,
+      collection_stage: String(policy.collection_stage ?? 'NONE') as DelinquencyPolicySnapshotItem['collection_stage'],
+      legal_escalation: !!policy.legal_escalation,
+      is_active: !!policy.is_active,
+      description: policy.description ?? undefined,
+    }));
   }
 
   /**
@@ -84,6 +123,9 @@ export class ContractService {
       chargeTime: c.chargeTimeType || 'disbursement',
     }));
 
+    // 5.1 Snapshot chính sách nợ xấu tại thời điểm phát hành hợp đồng
+    const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot();
+
     // 6. Tạo hợp đồng
     const contract = await this.contractModel.create({
       contractId: this.generateContractId(),
@@ -98,6 +140,7 @@ export class ContractService {
       totalPayable: app.entirelyPay || 0,
       monthlyPayment: app.monthlyPay || 0,
       feeStructure,
+      delinquencyPolicySnapshot,
       productName: app.willing || 'Vay tiêu dùng',
       status: 'pending_signature',
       legalApprovalAt: new Date(),
@@ -334,6 +377,20 @@ export class ContractService {
    */
   async getContractHTML(contractId: string, userId: string): Promise<string> {
     const contract = await this.getContractById(contractId, userId);
+
+    // Backfill cho hợp đồng cũ chưa có snapshot để PDF luôn hiển thị rõ chính sách trước khi ký.
+    if (
+      (!Array.isArray((contract as any).delinquencyPolicySnapshot) ||
+        (contract as any).delinquencyPolicySnapshot.length === 0) &&
+      contract.status === 'pending_signature'
+    ) {
+      const delinquencyPolicySnapshot = await this.buildDelinquencyPolicySnapshot();
+      if (delinquencyPolicySnapshot.length > 0) {
+        await this.contractModel.updateOne({ _id: (contract as any)._id }, { $set: { delinquencyPolicySnapshot } });
+        (contract as any).delinquencyPolicySnapshot = delinquencyPolicySnapshot;
+      }
+    }
+
     return generateLoanContractHTML({ contract });
   }
 

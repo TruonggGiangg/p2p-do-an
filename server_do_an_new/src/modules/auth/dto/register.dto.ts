@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsMongoId, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Nguyễn', description: 'Họ và tên đệm' })
@@ -45,6 +45,13 @@ export class RegisterDto {
   @IsEnum(['borrower', 'lender', 'staff'])
   @IsOptional()
   userType?: 'borrower' | 'lender' | 'staff';
+
+  @ApiPropertyOptional({
+    description: 'Role ID trong collection roles (dùng cho luồng admin tạo nhân viên)',
+  })
+  @IsMongoId()
+  @IsOptional()
+  roleId?: string;
 }
 
 export class RefreshTokenDto {

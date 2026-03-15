@@ -1,4 +1,12 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
@@ -16,6 +24,12 @@ import {
 } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
 import { LoanSyncRun, type LoanSyncRunDetailItem, type LoanSyncChangeItem } from './schemas/loan-sync-run.schema';
+import {
+  LoanDelinquency,
+  LoanCollectionStage,
+  LoanDelinquencyStatus,
+} from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyCollectionStage, DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 import {
   flattenLoanProduct,
   flattenSavingsProduct,
@@ -37,6 +51,9 @@ import { EkycService } from '../ekyc/ekyc.service';
 import { FineractSignupService } from 'src/modules/auth/services/fineract-signup.service';
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
+import { CreateDelinquencyPolicyDto } from '../delinquency/dto/create-delinquency-policy.dto';
+import { UpdateDelinquencyPolicyDto } from '../delinquency/dto/update-delinquency-policy.dto';
+import { Role } from '../rbac/schemas/role.schema';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -80,12 +97,15 @@ export class AdminService {
     @InjectModel(SavingsProductSnapshot.name) private savingsSnapshotModel: Model<SavingsProductSnapshot>,
     @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
     @InjectModel(LoanSyncRun.name) private loanSyncRunModel: Model<LoanSyncRun>,
+    @InjectModel(LoanDelinquency.name) private loanDelinquencyModel: Model<LoanDelinquency>,
+    @InjectModel(DelinquencyPolicy.name) private delinquencyPolicyModel: Model<DelinquencyPolicy>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
     @InjectModel(LoanSupportRequest.name) private supportRequestModel: Model<LoanSupportRequest>,
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
+    @InjectModel(Role.name) private roleModel: Model<Role>,
     private readonly fineractSignupService: FineractSignupService,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
@@ -94,7 +114,109 @@ export class AdminService {
     private readonly keycloakAuthService: KeycloakAuthService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly ekycService: EkycService,
-  ) { }
+  ) {}
+
+  private parseAnyDate(value: any): Date | null {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (Array.isArray(value) && value.length >= 3) {
+      const [y, m, d] = value;
+      const parsed = new Date(Number(y), Number(m) - 1, Number(d));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private mapDebtGroup(delinquentDays: number, overdueAmount: number): number {
+    if (overdueAmount <= 0 || delinquentDays <= 0) return 1;
+    if (delinquentDays <= 10) return 2;
+    if (delinquentDays <= 90) return 3;
+    if (delinquentDays <= 180) return 4;
+    return 5;
+  }
+
+  private mapDelinquencyStatus(
+    delinquentDays: number,
+    overdueAmount: number,
+    existing?: LoanDelinquency | null,
+  ): LoanDelinquencyStatus {
+    if (overdueAmount <= 0 || delinquentDays <= 0) {
+      if (existing && (existing.status === 'overdue' || existing.status === 'defaulted')) {
+        return 'resolved';
+      }
+      return 'normal';
+    }
+    if (delinquentDays >= 180) return 'defaulted';
+    return 'overdue';
+  }
+
+  private mapCollectionStage(delinquentDays: number, overdueAmount: number): LoanCollectionStage {
+    if (overdueAmount <= 0 || delinquentDays <= 0) return 'none';
+    if (delinquentDays <= 7) return 'reminder';
+    if (delinquentDays <= 30) return 'warning';
+    if (delinquentDays <= 90) return 'collection';
+    return 'legal';
+  }
+
+  private async syncLoanDelinquencySnapshot(app: LoanApplication, fl: any, dData: any): Promise<void> {
+    if (!app.fineractLoanId) return;
+
+    const existing = await this.loanDelinquencyModel.findOne({ fineractLoanId: app.fineractLoanId });
+    const overdueAmount = Number(app.totalOverdue ?? 0);
+    const delinquentDays = Number(app.delinquentDays ?? 0);
+    const overdueDateRaw =
+      dData?.summary?.overdueSinceDate ||
+      dData?.delinquent?.delinquentDate ||
+      fl?.delinquencyRange?.delinquentDate ||
+      app?.delinquencyRange?.delinquentDate;
+    const overdueDate = this.parseAnyDate(overdueDateRaw);
+    const now = new Date();
+    const status = this.mapDelinquencyStatus(delinquentDays, overdueAmount, existing);
+
+    const firstOverdueDate =
+      overdueAmount > 0
+        ? (existing?.firstOverdueDate ?? overdueDate ?? now)
+        : (existing?.firstOverdueDate ?? overdueDate ?? null);
+    const lastOverdueDate =
+      overdueAmount > 0 ? (overdueDate ?? now) : (existing?.lastOverdueDate ?? overdueDate ?? null);
+
+    await this.loanDelinquencyModel
+      .findOneAndUpdate(
+        { fineractLoanId: app.fineractLoanId },
+        {
+          $set: {
+            loanId: app._id,
+            borrowerId: app.userId,
+            delinquentDays,
+            debtGroup: this.mapDebtGroup(delinquentDays, overdueAmount),
+            overdueAmount,
+            firstOverdueDate,
+            lastOverdueDate,
+            status,
+            collectionStage: this.mapCollectionStage(delinquentDays, overdueAmount),
+            lastSyncedAt: app.lastSyncedAt ?? now,
+          },
+        },
+        { upsert: true, new: true },
+      )
+      .exec();
+  }
+
+  private async syncDelinquencyViewFromFineract(): Promise<void> {
+    const apps = await this.loanApplicationModel
+      .find({ status: 'disbursed', fineractLoanId: { $exists: true, $ne: null } })
+      .select('fineractLoanId')
+      .lean()
+      .exec();
+    const loanIds = apps.map((a: any) => Number(a.fineractLoanId)).filter((id: number) => Number.isFinite(id));
+
+    const batchSize = 5;
+    for (let i = 0; i < loanIds.length; i += batchSize) {
+      const batch = loanIds.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(loanId => this.syncLoanFromFineract(loanId)));
+    }
+  }
 
   // ---------- Loan products (from Fineract) ----------
   async getLoanProductsForAdmin() {
@@ -784,7 +906,9 @@ export class AdminService {
     try {
       const loanDetails = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
       const submittedOnDate = parseFineractDate(loanDetails?.timeline?.submittedOnDate);
-      const expectedDisbursementDate = parseFineractDate(loanDetails?.timeline?.expectedDisbursementDate) || parseFineractDate(loanDetails?.expectedDisbursementDate);
+      const expectedDisbursementDate =
+        parseFineractDate(loanDetails?.timeline?.expectedDisbursementDate) ||
+        parseFineractDate(loanDetails?.expectedDisbursementDate);
       const disbursementDate = app?.disbursementDate;
 
       // Candidate: use disbursementDate if past-dated, else today
@@ -798,7 +922,9 @@ export class AdminService {
       const upperBound = expectedDisbursementDate || today;
       const clamped = candidate > upperBound ? upperBound : candidate;
       approvedOnDate = submittedOnDate && clamped < submittedOnDate ? submittedOnDate : clamped;
-      this.logger.log(`[approveLoan] Dates: submitted=${submittedOnDate} expectedDisb=${expectedDisbursementDate} candidate=${candidate} -> approvedOnDate=${approvedOnDate}`);
+      this.logger.log(
+        `[approveLoan] Dates: submitted=${submittedOnDate} expectedDisb=${expectedDisbursementDate} candidate=${candidate} -> approvedOnDate=${approvedOnDate}`,
+      );
     } catch (err) {
       this.logger.warn(`[approveLoan] Could not fetch loan details, using today: ${(err as Error).message}`);
     }
@@ -924,7 +1050,16 @@ export class AdminService {
   private async computePeriodDelinquency(
     periods: any[],
     referenceDate: Date,
-  ): Promise<Array<{ period: number; dueDate: string; daysOverdue: number; classification: string; totalOverdue: number; totalOutstandingForPeriod: number }>> {
+  ): Promise<
+    Array<{
+      period: number;
+      dueDate: string;
+      daysOverdue: number;
+      classification: string;
+      totalOverdue: number;
+      totalOutstandingForPeriod: number;
+    }>
+  > {
     const ranges = await this.fineractLoanService.getDelinquencyRanges();
     const sorted = (ranges || [])
       .filter((r: any) => r.minimumAgeDays != null)
@@ -939,7 +1074,14 @@ export class AdminService {
     }
     if (sorted.length && sorted[sorted.length - 1].max == null) sorted[sorted.length - 1].max = 99999;
 
-    const result: Array<{ period: number; dueDate: string; daysOverdue: number; classification: string; totalOverdue: number; totalOutstandingForPeriod: number }> = [];
+    const result: Array<{
+      period: number;
+      dueDate: string;
+      daysOverdue: number;
+      classification: string;
+      totalOverdue: number;
+      totalOutstandingForPeriod: number;
+    }> = [];
     for (const p of periods) {
       const periodNum = p.period;
       if (periodNum == null) continue;
@@ -948,13 +1090,11 @@ export class AdminService {
       if (totalOverdue <= 0 && totalOutstanding <= 0) continue;
 
       const due = p.dueDate;
-      const dueDate = Array.isArray(due) && due.length >= 3
-        ? new Date(due[0], due[1] - 1, due[2])
-        : null;
+      const dueDate = Array.isArray(due) && due.length >= 3 ? new Date(due[0], due[1] - 1, due[2]) : null;
       const daysOverdue = dueDate
         ? Math.max(0, Math.floor((referenceDate.getTime() - dueDate.getTime()) / 86400000))
         : 0;
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : (Array.isArray(due) ? due.join('-') : '–');
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : '–';
       const range = sorted.find((r: any) => daysOverdue >= r.min && daysOverdue <= (r.max ?? 99999));
       result.push({
         period: periodNum,
@@ -979,7 +1119,7 @@ export class AdminService {
       const appObj = app.toObject() as any;
       const periods = Array.isArray(appObj.repaymentSchedule)
         ? appObj.repaymentSchedule
-        : (fl.repaymentSchedule?.periods || appObj.repaymentSchedule?.periods || []);
+        : fl.repaymentSchedule?.periods || appObj.repaymentSchedule?.periods || [];
       const referenceDate = app.lastSyncedAt ? new Date(app.lastSyncedAt) : new Date();
       const periodDelinquency = await this.computePeriodDelinquency(periods, referenceDate);
       return {
@@ -1012,7 +1152,9 @@ export class AdminService {
     // Fetch supplemental data early
     const dData = await this.fineractLoanService.getDelinquencyData(fineractLoanId.toString()).catch(() => ({}));
     const dTags = await this.fineractLoanService.getDelinquencyTags(fineractLoanId.toString()).catch(() => []);
-    const dActions = await (this.fineractLoanService as any).getDelinquencyActions?.(fineractLoanId.toString()).catch(() => []) || [];
+    const dActions =
+      (await (this.fineractLoanService as any).getDelinquencyActions?.(fineractLoanId.toString()).catch(() => [])) ||
+      [];
 
     // Consolidated data objects - prioritize dData (the detailed delinquency call)
     const delinquentInfo = dData.delinquent || fl.delinquent || dData.collection || fl.collection || {};
@@ -1035,7 +1177,9 @@ export class AdminService {
     if (!app) {
       // Try to find by userId if it's a new loan from Fineract we don't know about yet
       // This is rare in this P2P system but good for "Sync Module" robustness
-      this.logger.warn(`[syncLoanFromFineract] No local loan application found for fineractLoanId=${fineractLoanId}. Attempting to create one.`);
+      this.logger.warn(
+        `[syncLoanFromFineract] No local loan application found for fineractLoanId=${fineractLoanId}. Attempting to create one.`,
+      );
 
       const user = await this.userModel.findOne({ fineractClientId: String(fl.clientId) });
       if (!user) {
@@ -1049,7 +1193,10 @@ export class AdminService {
         capital: fl.principal || 0,
         periodMonth: fl.numberOfRepayments || 0,
         monthlyRatePercent: (fl.annualInterestRate || 0) / 12,
-        disbursementDate: parseFineractDate(fl.timeline?.actualDisbursementDate) || parseFineractDate(fl.timeline?.expectedDisbursementDate) || new Date().toISOString().split('T')[0],
+        disbursementDate:
+          parseFineractDate(fl.timeline?.actualDisbursementDate) ||
+          parseFineractDate(fl.timeline?.expectedDisbursementDate) ||
+          new Date().toISOString().split('T')[0],
         disbursementWalletId: new Types.ObjectId(), // Placeholder for external loans
       });
     }
@@ -1065,10 +1212,17 @@ export class AdminService {
     this.logger.debug(`[syncLoan] DELINQUENCY DATA for loan ${fineractLoanId}: ${JSON.stringify(dData)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY TAGS for loan ${fineractLoanId}: ${JSON.stringify(dTags)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY ACTIONS for loan ${fineractLoanId}: ${JSON.stringify(dActions)}`);
-    this.logger.debug(`[syncLoan] RAW fl.delinquent (main call) for loan ${fineractLoanId}: ${JSON.stringify(fl.delinquent)}`);
+    this.logger.debug(
+      `[syncLoan] RAW fl.delinquent (main call) for loan ${fineractLoanId}: ${JSON.stringify(fl.delinquent)}`,
+    );
 
     // Fineract fix: pastDueDays often returns 0 incorrectly. Use rangeInfo.minimumAgeDays or similar if available.
-    app.delinquentDays = delinquentInfo?.pastDueDays || delinquentInfo?.delinquentDays || rangeInfo?.minimumAgeDays || rangeInfo?.pastDueDays || 0;
+    app.delinquentDays =
+      delinquentInfo?.pastDueDays ||
+      delinquentInfo?.delinquentDays ||
+      rangeInfo?.minimumAgeDays ||
+      rangeInfo?.pastDueDays ||
+      0;
     app.delinquencyClassification = rangeInfo?.classification ?? delinquentInfo?.classification ?? null;
 
     // Persist full schedule from Fineract (includes principalPaid/interestPaid per period after allocation)
@@ -1081,14 +1235,18 @@ export class AdminService {
         `[syncLoanFromFineract] loan ${fineractLoanId} period 1: principalPaid=${firstPeriod.principalPaid ?? 0} interestPaid=${firstPeriod.interestPaid ?? 0} totalPaidForPeriod=${firstPeriod.totalPaidForPeriod ?? 0}`,
       );
     }
-    this.logger.debug(`[syncLoanFromFineract] loan ${fineractLoanId} summary.totalRepayment=${summary.totalRepayment ?? 0} totalOverdue=${summary.totalOverdue ?? 0}`);
+    this.logger.debug(
+      `[syncLoanFromFineract] loan ${fineractLoanId} summary.totalRepayment=${summary.totalRepayment ?? 0} totalOverdue=${summary.totalOverdue ?? 0}`,
+    );
     app.transactions = fl.transactions || [];
     app.charges = fl.charges || [];
     app.collateral = fl.collateral || [];
     app.guarantors = fl.guarantors || [];
 
     // Keep disbursementDate in sync with Fineract (source of truth after disbursal)
-    const fineractDisbursement = parseFineractDate(fl.timeline?.actualDisbursementDate) || parseFineractDate(fl.timeline?.expectedDisbursementDate);
+    const fineractDisbursement =
+      parseFineractDate(fl.timeline?.actualDisbursementDate) ||
+      parseFineractDate(fl.timeline?.expectedDisbursementDate);
     if (fineractDisbursement) {
       app.disbursementDate = fineractDisbursement;
       app.markModified('disbursementDate');
@@ -1100,7 +1258,7 @@ export class AdminService {
       if (firstDueStr && firstDueStr < app.disbursementDate) {
         this.logger.error(
           `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
-          'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+            'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
         );
       }
     }
@@ -1114,16 +1272,19 @@ export class AdminService {
     };
 
     // Priority for delinquentDate: summaryInfo.overdueSinceDate > dData.delinquent.delinquentDate > dTags earliest
-    let overdueDate = summaryInfo.overdueSinceDate || dData.delinquent?.delinquentDate || fl.delinquencyRange?.delinquentDate;
+    let overdueDate =
+      summaryInfo.overdueSinceDate || dData.delinquent?.delinquentDate || fl.delinquencyRange?.delinquentDate;
 
     if (!overdueDate && dTags.length > 0) {
-      const sortedTags = [...dTags].filter(t => t.addedOnDate).sort((a, b) => {
-        const dateA = a.addedOnDate;
-        const dateB = b.addedOnDate;
-        if (dateA[0] !== dateB[0]) return dateA[0] - dateB[0];
-        if (dateA[1] !== dateB[1]) return dateA[1] - dateB[1];
-        return dateA[2] - dateB[2];
-      });
+      const sortedTags = [...dTags]
+        .filter(t => t.addedOnDate)
+        .sort((a, b) => {
+          const dateA = a.addedOnDate;
+          const dateB = b.addedOnDate;
+          if (dateA[0] !== dateB[0]) return dateA[0] - dateB[0];
+          if (dateA[1] !== dateB[1]) return dateA[1] - dateB[1];
+          return dateA[2] - dateB[2];
+        });
       if (sortedTags.length > 0) {
         overdueDate = sortedTags[0].addedOnDate;
       }
@@ -1134,7 +1295,8 @@ export class AdminService {
     }
 
     app.delinquencyTag = dData.delinquencyTag || fl.delinquencyTag || [];
-    app.installmentLevelDelinquency = dData.delinquent?.installmentLevelDelinquency || dData.collection?.installmentLevelDelinquency || [];
+    app.installmentLevelDelinquency =
+      dData.delinquent?.installmentLevelDelinquency || dData.collection?.installmentLevelDelinquency || [];
     app.delinquencyTags = dTags || [];
     app.delinquencyActions = dActions || [];
 
@@ -1158,7 +1320,8 @@ export class AdminService {
       try {
         const client = await this.fineractClientService.getClientById(Number(clientId));
         if (client) {
-          app.clientDisplayName = client.displayName ?? ([client.firstname, client.lastname].filter(Boolean).join(' ')?.trim() || null);
+          app.clientDisplayName =
+            client.displayName ?? ([client.firstname, client.lastname].filter(Boolean).join(' ')?.trim() || null);
         }
       } catch {
         // keep existing or leave unset
@@ -1184,7 +1347,15 @@ export class AdminService {
     app.markModified('totalPaid');
     app.markModified('lastPaymentDate');
 
-    return await app.save();
+    const saved = await app.save();
+
+    await this.syncLoanDelinquencySnapshot(saved, fl, dData).catch((error: any) => {
+      this.logger.warn(
+        `[syncLoanFromFineract] Failed to upsert loan_delinquency for loan ${fineractLoanId}: ${error?.message}`,
+      );
+    });
+
+    return saved;
   }
 
   /**
@@ -1230,7 +1401,7 @@ export class AdminService {
 
   private snapshotLoanForSyncDiff(doc: any): Record<string, any> {
     if (!doc) return {};
-    const periods = Array.isArray(doc.repaymentSchedule) ? doc.repaymentSchedule : (doc.repaymentSchedule?.periods || []);
+    const periods = Array.isArray(doc.repaymentSchedule) ? doc.repaymentSchedule : doc.repaymentSchedule?.periods || [];
     const firstPeriod = periods.find((p: any) => p.period != null && Number(p.period) > 0);
     return {
       status: doc.status,
@@ -1302,7 +1473,9 @@ export class AdminService {
       }
     }
 
-    this.logger.log(`[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`);
+    this.logger.log(
+      `[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`,
+    );
 
     const trigger = options?.trigger ?? 'manual';
     let runId: string | undefined;
@@ -1328,12 +1501,7 @@ export class AdminService {
    * Lấy danh sách lần chạy đồng bộ khoản vay (loan_sync_runs) để hiển thị và truy vết.
    */
   async getLoanSyncRuns(limit = 30): Promise<any[]> {
-    const runs = await this.loanSyncRunModel
-      .find()
-      .sort({ ranAt: -1 })
-      .limit(limit)
-      .lean()
-      .exec();
+    const runs = await this.loanSyncRunModel.find().sort({ ranAt: -1 }).limit(limit).lean().exec();
     return runs;
   }
 
@@ -1372,7 +1540,9 @@ export class AdminService {
    * Lấy danh sách nhóm quá hạn (delinquency ranges) từ Fineract để dùng cho filter.
    * Fallback: distinct classification từ Mongo nếu Fineract lỗi.
    */
-  async getDelinquencyRangesForFilter(): Promise<Array<{ id: number; classification: string; minimumAgeDays?: number }>> {
+  async getDelinquencyRangesForFilter(): Promise<
+    Array<{ id: number; classification: string; minimumAgeDays?: number }>
+  > {
     const fromFineract = await this.fineractLoanService.getDelinquencyRanges();
     if (fromFineract?.length) {
       return fromFineract.map((r: any) => ({
@@ -1388,9 +1558,7 @@ export class AdminService {
         delinquencyClassification: { $exists: true, $nin: [null, ''] },
       })
       .exec();
-    return (distinct as string[])
-      .filter(Boolean)
-      .map((classification, i) => ({ id: i + 1, classification }));
+    return (distinct as string[]).filter(Boolean).map((classification, i) => ({ id: i + 1, classification }));
   }
 
   /**
@@ -1407,33 +1575,40 @@ export class AdminService {
     total: number;
     items: Array<{
       _id: string;
+      loanId: string;
       fineractLoanId: number;
+      borrowerId: string;
       userId: string;
       customerName: string;
       customerUsername: string;
       fineractClientId?: string;
       capital: number;
+      overdueAmount: number;
+      debtGroup: number;
+      firstOverdueDate: Date | null;
+      lastOverdueDate: Date | null;
+      status: LoanDelinquencyStatus;
+      collectionStage: LoanCollectionStage;
       totalOverdue: number;
       delinquentDays: number;
       delinquencyClassification: string | null;
       lastSyncedAt: Date | null;
     }>;
   }> {
-    const query: any = {
-      status: 'disbursed',
-      fineractLoanId: { $exists: true, $ne: null },
-    };
+    await this.syncDelinquencyViewFromFineract().catch((error: any) => {
+      this.logger.warn(`[getOverdueLoans] Sync from Fineract before read failed: ${error?.message}`);
+    });
 
-    // Khoản quá hạn (tổng tiền): luôn > 0, có thể thêm min/max
-    query.totalOverdue = { $gt: 0 };
-    if (filters?.minOverdueAmount != null && filters.minOverdueAmount > 0) {
-      query.totalOverdue.$gte = filters.minOverdueAmount;
+    const query: any = {
+      overdueAmount: { $gt: 0 },
+      status: { $in: ['overdue', 'defaulted'] },
+    };
+    if (filters?.minOverdueAmount != null && filters.minOverdueAmount >= 0) {
+      query.overdueAmount.$gte = filters.minOverdueAmount;
     }
     if (filters?.maxOverdueAmount != null && filters.maxOverdueAmount >= 0) {
-      query.totalOverdue.$lte = filters.maxOverdueAmount;
+      query.overdueAmount.$lte = filters.maxOverdueAmount;
     }
-
-    // Số ngày quá hạn (kỳ quá hạn): từ – đến
     if (filters?.delinquentDaysMin != null && filters.delinquentDaysMin >= 0) {
       query.delinquentDays = query.delinquentDays ?? {};
       query.delinquentDays.$gte = filters.delinquentDaysMin;
@@ -1443,66 +1618,432 @@ export class AdminService {
       query.delinquentDays.$lte = filters.delinquentDaysMax;
     }
 
-    if (filters?.classification) {
-      query.delinquencyClassification = filters.classification;
-    }
-
-    const apps = await this.loanApplicationModel
+    const delinquencies = await this.loanDelinquencyModel
       .find(query)
-      .sort({ totalOverdue: -1, delinquentDays: -1 })
-      .populate('userId', 'username profile fineractClientId')
+      .sort({ overdueAmount: -1, delinquentDays: -1 })
       .lean()
       .exec();
 
-    const items = (apps as any[]).map(app => {
-      const user = app.userId as any;
-      const profile = user?.profile ?? {};
-      const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
-      // Ưu tiên tên trên Fineract (clientDisplayName); chỉ dùng fallback khi chưa có
-      return {
-        _id: app._id.toString(),
-        fineractLoanId: app.fineractLoanId,
-        userId: app.userId?._id?.toString() ?? '',
-        customerName: app.clientDisplayName ?? fallbackName,
-        customerUsername: user?.username ?? '–',
-        fineractClientId: user?.fineractClientId,
-        capital: app.capital ?? 0,
-        totalOverdue: app.totalOverdue ?? 0,
-        delinquentDays: app.delinquentDays ?? 0,
-        delinquencyClassification: app.delinquencyClassification ?? null,
-        lastSyncedAt: app.lastSyncedAt ?? null,
-      };
-    });
+    const loanObjectIds = delinquencies.map((d: any) => d.loanId).filter(Boolean);
+    const apps = await this.loanApplicationModel
+      .find({ _id: { $in: loanObjectIds } })
+      .populate('userId', 'username profile fineractClientId')
+      .lean()
+      .exec();
+    const appMap = new Map((apps as any[]).map(app => [String(app._id), app]));
+
+    const items = (delinquencies as any[])
+      .map(delinquency => {
+        const app = appMap.get(String(delinquency.loanId));
+        if (!app) return null;
+
+        if (filters?.classification && app.delinquencyClassification !== filters.classification) {
+          return null;
+        }
+
+        const user = app.userId;
+        const profile = user?.profile ?? {};
+        const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
+        // Ưu tiên tên trên Fineract (clientDisplayName); chỉ dùng fallback khi chưa có
+        return {
+          _id: delinquency._id.toString(),
+          loanId: app._id.toString(),
+          fineractLoanId: delinquency.fineractLoanId,
+          borrowerId: (delinquency.borrowerId ?? app.userId?._id ?? app.userId)?.toString?.() ?? '',
+          userId: app.userId?._id?.toString() ?? '',
+          customerName: app.clientDisplayName ?? fallbackName,
+          customerUsername: user?.username ?? '–',
+          fineractClientId: user?.fineractClientId,
+          capital: app.capital ?? 0,
+          overdueAmount: delinquency.overdueAmount ?? 0,
+          debtGroup: delinquency.debtGroup ?? 1,
+          firstOverdueDate: delinquency.firstOverdueDate ?? null,
+          lastOverdueDate: delinquency.lastOverdueDate ?? null,
+          status: delinquency.status,
+          collectionStage: delinquency.collectionStage,
+          totalOverdue: delinquency.overdueAmount ?? 0,
+          delinquentDays: delinquency.delinquentDays ?? 0,
+          delinquencyClassification: app.delinquencyClassification ?? null,
+          lastSyncedAt: delinquency.lastSyncedAt ?? app.lastSyncedAt ?? null,
+        };
+      })
+      .filter(Boolean) as Array<{
+      _id: string;
+      loanId: string;
+      fineractLoanId: number;
+      borrowerId: string;
+      userId: string;
+      customerName: string;
+      customerUsername: string;
+      fineractClientId?: string;
+      capital: number;
+      overdueAmount: number;
+      debtGroup: number;
+      firstOverdueDate: Date | null;
+      lastOverdueDate: Date | null;
+      status: LoanDelinquencyStatus;
+      collectionStage: LoanCollectionStage;
+      totalOverdue: number;
+      delinquentDays: number;
+      delinquencyClassification: string | null;
+      lastSyncedAt: Date | null;
+    }>;
 
     // Khi clientDisplayName trống (sync cũ hoặc lỗi), lấy tên từ Fineract để luôn hiện đúng tên khoản vay
-    const needFineractName = (apps as any[]).map((app, idx) => ({ app, idx })).filter(({ app }) => !app.clientDisplayName);
+    const needFineractName = items
+      .map((item, idx) => ({ item, idx }))
+      .filter(({ item }) => !item.customerName || item.customerName === '–');
     if (needFineractName.length > 0) {
       const results = await Promise.all(
-        needFineractName.map(async ({ app, idx }) => {
+        needFineractName.map(async ({ item, idx }) => {
           try {
-            const fl = await this.fineractLoanService.getLoanDetails(String(app.fineractLoanId));
+            const fl = await this.fineractLoanService.getLoanDetails(String(item.fineractLoanId));
             const clientId = fl?.clientId ?? fl?.client?.id;
-            if (clientId == null) return { idx, name: null, appId: app._id };
+            if (clientId == null) return { idx, name: null, loanId: item.loanId };
             const client = await this.fineractClientService.getClientById(Number(clientId));
             const name =
-              client?.displayName ??
-              ([client?.firstname, client?.lastname].filter(Boolean).join(' ').trim() || null);
-            return { idx, name, appId: app._id };
+              client?.displayName ?? ([client?.firstname, client?.lastname].filter(Boolean).join(' ').trim() || null);
+            return { idx, name, loanId: item.loanId };
           } catch {
-            return { idx, name: null, appId: app._id };
+            return { idx, name: null, loanId: item.loanId };
           }
         }),
       );
-      results.forEach(({ idx, name, appId }) => {
+      results.forEach(({ idx, name, loanId }) => {
         if (name) {
           items[idx].customerName = name;
           // Lưu vào Mongo để lần sau không cần gọi Fineract
-          this.loanApplicationModel.updateOne({ _id: appId }, { $set: { clientDisplayName: name } }).exec().catch(() => {});
+          this.loanApplicationModel
+            .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
+            .exec()
+            .catch(() => {});
         }
       });
     }
 
     return { total: items.length, items };
+  }
+
+  /**
+   * API riêng cho bảng loan_delinquency.
+   * Mặc định sync từ Fineract trước khi đọc để dữ liệu luôn đồng bộ.
+   */
+  async getLoanDelinquencyList(params?: {
+    page?: number;
+    limit?: number;
+    syncBeforeRead?: boolean;
+    status?: LoanDelinquencyStatus;
+    collectionStage?: LoanCollectionStage;
+    debtGroup?: number;
+    borrowerId?: string;
+    minOverdueAmount?: number;
+    maxOverdueAmount?: number;
+    delinquentDaysMin?: number;
+    delinquentDaysMax?: number;
+  }): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    items: Array<{
+      _id: string;
+      loanId: string;
+      fineractLoanId: number;
+      borrowerId: string;
+      borrowerName: string;
+      borrowerUsername: string;
+      debtGroup: number;
+      delinquentDays: number;
+      overdueAmount: number;
+      firstOverdueDate: Date | null;
+      lastOverdueDate: Date | null;
+      status: LoanDelinquencyStatus;
+      collectionStage: LoanCollectionStage;
+      lastSyncedAt: Date;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+  }> {
+    const page = Math.max(1, params?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, params?.limit ?? 20));
+
+    if (params?.syncBeforeRead !== false) {
+      await this.syncDelinquencyViewFromFineract().catch((error: any) => {
+        this.logger.warn(`[getLoanDelinquencyList] Sync from Fineract failed: ${error?.message}`);
+      });
+    }
+
+    const query: any = {};
+    if (params?.status) query.status = params.status;
+    if (params?.collectionStage) query.collectionStage = params.collectionStage;
+    if (params?.debtGroup != null) query.debtGroup = params.debtGroup;
+    if (params?.borrowerId) query.borrowerId = new Types.ObjectId(params.borrowerId);
+
+    if (params?.minOverdueAmount != null || params?.maxOverdueAmount != null) {
+      query.overdueAmount = {};
+      if (params?.minOverdueAmount != null) query.overdueAmount.$gte = params.minOverdueAmount;
+      if (params?.maxOverdueAmount != null) query.overdueAmount.$lte = params.maxOverdueAmount;
+    }
+
+    if (params?.delinquentDaysMin != null || params?.delinquentDaysMax != null) {
+      query.delinquentDays = {};
+      if (params?.delinquentDaysMin != null) query.delinquentDays.$gte = params.delinquentDaysMin;
+      if (params?.delinquentDaysMax != null) query.delinquentDays.$lte = params.delinquentDaysMax;
+    }
+
+    const [total, docs] = await Promise.all([
+      this.loanDelinquencyModel.countDocuments(query).exec(),
+      this.loanDelinquencyModel
+        .find(query)
+        .sort({ overdueAmount: -1, delinquentDays: -1, updatedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+        .exec(),
+    ]);
+
+    const loanIds = docs.map((d: any) => d.loanId).filter(Boolean);
+    const apps = await this.loanApplicationModel
+      .find({ _id: { $in: loanIds } })
+      .populate('userId', 'username profile')
+      .select('_id userId fineractLoanId')
+      .lean()
+      .exec();
+    const appMap = new Map((apps as any[]).map(app => [String(app._id), app]));
+
+    const items = docs.map((doc: any) => {
+      const app = appMap.get(String(doc.loanId));
+      const user = app?.userId;
+      const profile = user?.profile ?? {};
+      const borrowerName =
+        [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || user?.username || '–';
+
+      return {
+        _id: doc._id.toString(),
+        loanId: doc.loanId?.toString?.() ?? '',
+        fineractLoanId: doc.fineractLoanId,
+        borrowerId: doc.borrowerId?.toString?.() ?? '',
+        borrowerName,
+        borrowerUsername: user?.username ?? '–',
+        debtGroup: doc.debtGroup,
+        delinquentDays: doc.delinquentDays,
+        overdueAmount: doc.overdueAmount,
+        firstOverdueDate: doc.firstOverdueDate ?? null,
+        lastOverdueDate: doc.lastOverdueDate ?? null,
+        status: doc.status,
+        collectionStage: doc.collectionStage,
+        lastSyncedAt: doc.lastSyncedAt,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      };
+    });
+
+    return { total, page, limit, items };
+  }
+
+  /**
+   * Đồng bộ dữ liệu nợ xấu cho một khoản vay cụ thể (API riêng).
+   */
+  async syncOneLoanDelinquency(fineractLoanId: number): Promise<any> {
+    await this.syncLoanFromFineract(fineractLoanId);
+    const doc = await this.loanDelinquencyModel.findOne({ fineractLoanId }).lean().exec();
+    if (!doc) throw new NotFoundException(`Loan delinquency for loan #${fineractLoanId} not found`);
+    return doc;
+  }
+
+  /**
+   * Đồng bộ dữ liệu nợ xấu cho tất cả khoản vay đã giải ngân (API riêng).
+   */
+  async syncLoanDelinquencyBatch(
+    limit = 200,
+  ): Promise<{ total: number; synced: number; errors: number; details: any[] }> {
+    const apps = await this.loanApplicationModel
+      .find({ status: 'disbursed', fineractLoanId: { $exists: true, $ne: null } })
+      .select('fineractLoanId')
+      .limit(limit)
+      .lean()
+      .exec();
+
+    let synced = 0;
+    let errors = 0;
+    const details: Array<{ fineractLoanId: number; status: 'success' | 'error'; message?: string }> = [];
+
+    for (const app of apps) {
+      try {
+        await this.syncLoanFromFineract(app.fineractLoanId!);
+        synced++;
+        details.push({ fineractLoanId: app.fineractLoanId!, status: 'success' });
+      } catch (error: any) {
+        errors++;
+        details.push({
+          fineractLoanId: app.fineractLoanId!,
+          status: 'error',
+          message: error?.message ?? 'sync failed',
+        });
+      }
+    }
+
+    return { total: apps.length, synced, errors, details };
+  }
+
+  private async getFineractDebtGroups(): Promise<
+    Array<{
+      debt_group: number;
+      debt_group_name: string;
+      min_days: number;
+      max_days: number;
+    }>
+  > {
+    const ranges = await this.fineractLoanService.getDelinquencyRanges();
+    return (ranges || [])
+      .map((range: any) => {
+        const id = Number(range.id);
+        if (!Number.isFinite(id)) return null;
+        return {
+          debt_group: id,
+          debt_group_name: String(range.classification ?? range.name ?? `Nhóm ${id}`),
+          min_days: Number(range.minimumAgeDays ?? 0),
+          max_days: Number(range.maximumAgeDays ?? 99999),
+        };
+      })
+      .filter(Boolean) as Array<{
+      debt_group: number;
+      debt_group_name: string;
+      min_days: number;
+      max_days: number;
+    }>;
+  }
+
+  private async resolveDebtGroupMetadata(debtGroup: number): Promise<{
+    debt_group_name: string;
+  }> {
+    const groups = await this.getFineractDebtGroups();
+    const matched = groups.find(group => group.debt_group === debtGroup);
+    if (!matched) {
+      throw new BadRequestException(
+        `debt_group=${debtGroup} không tồn tại trên Fineract delinquency ranges. Vui lòng đồng bộ cấu hình nhóm nợ trước.`,
+      );
+    }
+    return {
+      debt_group_name: matched.debt_group_name,
+    };
+  }
+
+  async getDelinquencyPolicyDebtGroups() {
+    return this.getFineractDebtGroups();
+  }
+
+  async getDelinquencyPolicies(filters?: {
+    is_active?: boolean;
+    debt_group?: number;
+    collection_stage?: DelinquencyCollectionStage;
+  }) {
+    const query: any = {};
+    if (filters?.is_active != null) query.is_active = filters.is_active;
+    if (filters?.debt_group != null) query.debt_group = filters.debt_group;
+    if (filters?.collection_stage) query.collection_stage = filters.collection_stage;
+
+    const [list, groups] = await Promise.all([
+      this.delinquencyPolicyModel.find(query).sort({ debt_group: 1 }).lean().exec(),
+      this.getFineractDebtGroups().catch(() => []),
+    ] as const);
+    const groupMap = new Map<number, { min_days: number; max_days: number }>();
+    for (const group of groups as Array<{ debt_group: number; min_days: number; max_days: number }>) {
+      groupMap.set(group.debt_group, { min_days: group.min_days, max_days: group.max_days });
+    }
+
+    return list.map((item: any) => {
+      const { penalty_rate_multiplier: _penalty_rate_multiplier, ...rest } = item;
+      const metadata = groupMap.get(Number(item.debt_group));
+      return {
+        ...rest,
+        min_days: metadata?.min_days ?? null,
+        max_days: metadata?.max_days ?? null,
+        _id: item._id.toString(),
+      };
+    });
+  }
+
+  async createDelinquencyPolicy(dto: CreateDelinquencyPolicyDto) {
+    const existing = await this.delinquencyPolicyModel.findOne({ debt_group: dto.debt_group }).lean().exec();
+    if (existing) {
+      throw new BadRequestException(
+        `Đã tồn tại policy cho debt_group=${dto.debt_group}. Dùng API cập nhật thay vì tạo mới.`,
+      );
+    }
+
+    const metadata = await this.resolveDebtGroupMetadata(dto.debt_group);
+    try {
+      const policy = await this.delinquencyPolicyModel.create({
+        debt_group: dto.debt_group,
+        debt_group_name: dto.debt_group_name || metadata.debt_group_name,
+        send_email: dto.send_email,
+        send_sms: dto.send_sms,
+        send_notification: dto.send_notification,
+        apply_penalty: dto.apply_penalty,
+        block_new_loan: dto.block_new_loan,
+        collection_stage: dto.collection_stage,
+        legal_escalation: dto.legal_escalation ?? false,
+        is_active: dto.is_active ?? true,
+        description: dto.description,
+      });
+      return policy.toObject();
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        throw new ConflictException(`debt_group=${dto.debt_group} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy.`);
+      }
+      throw error;
+    }
+  }
+
+  async updateDelinquencyPolicy(id: string, dto: UpdateDelinquencyPolicyDto) {
+    const existing = await this.delinquencyPolicyModel.findById(id);
+    if (!existing) {
+      throw new NotFoundException('Delinquency policy không tồn tại');
+    }
+
+    const nextDebtGroup = dto.debt_group ?? existing.debt_group;
+    const metadata = await this.resolveDebtGroupMetadata(nextDebtGroup);
+
+    const duplicate = await this.delinquencyPolicyModel
+      .findOne({ debt_group: nextDebtGroup, _id: { $ne: existing._id } })
+      .select('_id debt_group')
+      .lean()
+      .exec();
+    if (duplicate) {
+      throw new ConflictException(`debt_group=${nextDebtGroup} đã có policy khác. Mỗi nhóm nợ chỉ được có 1 policy.`);
+    }
+
+    existing.debt_group = nextDebtGroup;
+    existing.debt_group_name = dto.debt_group_name || metadata.debt_group_name;
+    if (dto.send_email != null) existing.send_email = dto.send_email;
+    if (dto.send_sms != null) existing.send_sms = dto.send_sms;
+    if (dto.send_notification != null) existing.send_notification = dto.send_notification;
+    if (dto.apply_penalty != null) existing.apply_penalty = dto.apply_penalty;
+    if (dto.block_new_loan != null) existing.block_new_loan = dto.block_new_loan;
+    if (dto.collection_stage != null) existing.collection_stage = dto.collection_stage;
+    if (dto.legal_escalation != null) existing.legal_escalation = dto.legal_escalation;
+    if (dto.is_active != null) existing.is_active = dto.is_active;
+    if (dto.description !== undefined) existing.description = dto.description;
+    // Legacy cleanup: remove old configurable multiplier from existing documents.
+    existing.set('penalty_rate_multiplier', undefined);
+
+    try {
+      const saved = await existing.save();
+      return saved.toObject();
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        throw new ConflictException(`debt_group=${nextDebtGroup} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy.`);
+      }
+      throw error;
+    }
+  }
+
+  async removeDelinquencyPolicy(id: string) {
+    const doc = await this.delinquencyPolicyModel.findByIdAndDelete(id).lean().exec();
+    if (!doc) {
+      throw new NotFoundException('Delinquency policy không tồn tại');
+    }
+    return { deleted: true };
   }
 
   /**
@@ -1591,7 +2132,7 @@ export class AdminService {
       if (!filters.keyword?.trim()) return items;
       const search = filters.keyword.toLowerCase().trim();
       return items.filter(
-        (i) =>
+        i =>
           i.customerName?.toLowerCase().includes(search) ||
           i.customerUsername?.toLowerCase().includes(search) ||
           String(i.fineractLoanId).includes(search),
@@ -1600,12 +2141,12 @@ export class AdminService {
 
     const applyProductFilter = (items: any[]) => {
       if (filters.productId == null) return items;
-      return items.filter((i) => i.productId === filters.productId);
+      return items.filter(i => i.productId === filters.productId);
     };
 
     const getPendingItems = async () => {
       const pending = await this.getAllPendingLoans();
-      let items = pending.map((fl) => ({
+      let items = pending.map(fl => ({
         _id: fl._id,
         fineractLoanId: fl.fineractLoanId,
         userId: fl.userId ?? '',
@@ -1637,15 +2178,15 @@ export class AdminService {
       const approvedLoans = await this.fineractLoanService.getLoansByStatus(200).catch(() => []);
       const products = await this.fineractLoanService.getLoanProducts();
       const productMap = new Map(products.map((p: any) => [p.id, p]));
-      const fineractClientIds = approvedLoans.map((fl) => String(fl.clientId));
-      const fineractLoanIds = approvedLoans.map((fl) => fl.id).filter(Boolean);
+      const fineractClientIds = approvedLoans.map(fl => String(fl.clientId));
+      const fineractLoanIds = approvedLoans.map(fl => fl.id).filter(Boolean);
       const [mongoUsers, mongoLoans] = await Promise.all([
         this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean(),
         this.loanApplicationModel.find({ fineractLoanId: { $in: fineractLoanIds } }).lean(),
       ]);
       const userMap = new Map(mongoUsers.map((u: any) => [u.fineractClientId, u]));
       const loanMap = new Map(mongoLoans.map((l: any) => [l.fineractLoanId, l]));
-      let items = approvedLoans.map((fl) => {
+      let items = approvedLoans.map(fl => {
         const p: any = productMap.get(fl.productId || fl.loanProductId) ?? {};
         const u = userMap.get(String(fl.clientId));
         const ll: any = loanMap.get(fl.id);
@@ -1663,7 +2204,7 @@ export class AdminService {
           periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
           monthlyPay: ll?.monthlyPay ?? 0,
           entirelyPay: ll?.entirelyPay ?? 0,
-          monthlyRatePercent: ll?.monthlyRatePercent ?? (annualRate / 12),
+          monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
           willing: ll?.willing ?? '',
           status: 'approved',
           statusCode: 'loanStatusType.approved',
@@ -1713,9 +2254,7 @@ export class AdminService {
 
     if (filters.keyword?.trim()) {
       const search = filters.keyword.trim();
-      const keywordOr: any[] = [
-        { clientDisplayName: { $regex: search, $options: 'i' } },
-      ];
+      const keywordOr: any[] = [{ clientDisplayName: { $regex: search, $options: 'i' } }];
       const loanIdNum = Number(search);
       if (!isNaN(loanIdNum)) keywordOr.push({ fineractLoanId: loanIdNum });
       const matchingUsers = await this.userModel
@@ -1777,7 +2316,7 @@ export class AdminService {
 
     const products = await this.fineractLoanService.getLoanProducts();
     const productMap = new Map(products.map((p: any) => [p.id, p]));
-    const mongoItems = (apps as any[]).map((app) => {
+    const mongoItems = (apps as any[]).map(app => {
       const item = mapAppToItem(app);
       const p: any = productMap.get(app.productId);
       if (p) {
@@ -1788,12 +2327,10 @@ export class AdminService {
     });
 
     if (status === 'all') {
-      const [pendingItems, approvedItems] = await Promise.all([
-        getPendingItems(),
-        getApprovedItems(),
-      ]);
-      const allItems = [...pendingItems, ...approvedItems, ...mongoItems]
-        .sort((a, b) => Number(b.fineractLoanId ?? 0) - Number(a.fineractLoanId ?? 0));
+      const [pendingItems, approvedItems] = await Promise.all([getPendingItems(), getApprovedItems()]);
+      const allItems = [...pendingItems, ...approvedItems, ...mongoItems].sort(
+        (a, b) => Number(b.fineractLoanId ?? 0) - Number(a.fineractLoanId ?? 0),
+      );
       return {
         total: allItems.length,
         page,
@@ -1844,8 +2381,8 @@ export class AdminService {
           },
         },
       ]),
-      this.fineractLoanService.getLoansByStatus(100).then((r) => r.length),
-      this.fineractLoanService.getLoansByStatus(200).then((r) => r.length),
+      this.fineractLoanService.getLoansByStatus(100).then(r => r.length),
+      this.fineractLoanService.getLoansByStatus(200).then(r => r.length),
     ]);
 
     const agg = mongoCounts[0] ?? {};
@@ -1874,9 +2411,7 @@ export class AdminService {
     }
 
     // Map documentType names
-    const docTypeIds = app.documents
-      .map(d => d.documentTypeId)
-      .filter(id => id && Types.ObjectId.isValid(id));
+    const docTypeIds = app.documents.map(d => d.documentTypeId).filter(id => id && Types.ObjectId.isValid(id));
 
     const docTypes = await this.documentTypeModel
       .find({ _id: { $in: docTypeIds } })
@@ -1892,7 +2427,8 @@ export class AdminService {
         return {
           ...fd,
           documentTypeId: mongoDoc.documentTypeId,
-          documentTypeName: typeIdStr && typeIdStr !== 'unknown' ? (typeMap.get(typeIdStr) || 'Unknown') : (fd.name || 'Fineract Document'),
+          documentTypeName:
+            typeIdStr && typeIdStr !== 'unknown' ? typeMap.get(typeIdStr) || 'Unknown' : fd.name || 'Fineract Document',
           originalName: mongoDoc.name,
           uploadedAt: mongoDoc.uploadedAt,
           reviewStatus: mongoDoc.reviewStatus ?? 'pending',
@@ -1913,14 +2449,18 @@ export class AdminService {
     let doc = app.documents?.find(d => String(d.fineractDocumentId) === String(documentId));
 
     if (!doc) {
-      this.logger.warn(`[approveDocument] Document #${documentId} NOT found in MongoDB records for Loan #${fineractLoanId}. Attempting self-healing...`);
+      this.logger.warn(
+        `[approveDocument] Document #${documentId} NOT found in MongoDB records for Loan #${fineractLoanId}. Attempting self-healing...`,
+      );
 
       // 1. If it's the ONLY document in Fineract and we have the ONLY required document pending in Mongo
       // Or simply find any pending document that has NO fineractDocumentId yet
       const pendingWithoutId = app.documents?.find(d => !d.fineractDocumentId && d.reviewStatus === 'pending');
 
       if (pendingWithoutId) {
-        this.logger.log(`[approveDocument] Self-healing matching Document #${documentId} to existing pending record [${pendingWithoutId.documentTypeId}]`);
+        this.logger.log(
+          `[approveDocument] Self-healing matching Document #${documentId} to existing pending record [${pendingWithoutId.documentTypeId}]`,
+        );
         doc = pendingWithoutId;
         doc.fineractDocumentId = Number(documentId);
         doc.reviewStatus = 'approved';
@@ -1930,7 +2470,9 @@ export class AdminService {
         const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
         const fd = fineractDocs.find(d => d.id == documentId);
         if (!fd) {
-          throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+          throw new BadRequestException(
+            `Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`,
+          );
         }
 
         const newDoc = {
@@ -2003,7 +2545,9 @@ export class AdminService {
     let unknownApproved = documents.find(d => d.documentTypeId === 'unknown' && d.reviewStatus === 'approved');
     const pendingWithTypeId = documents.find(d => d.documentTypeId !== 'unknown' && d.reviewStatus === 'pending');
 
-    this.logger.log(`[canApproveLoan] fineractLoanId=${fineractLoanId} documents: ${JSON.stringify(documents.map(d => ({ type: d.documentTypeId, name: d.name, status: d.reviewStatus, fid: d.fineractDocumentId })))}`);
+    this.logger.log(
+      `[canApproveLoan] fineractLoanId=${fineractLoanId} documents: ${JSON.stringify(documents.map(d => ({ type: d.documentTypeId, name: d.name, status: d.reviewStatus, fid: d.fineractDocumentId })))}`,
+    );
 
     if (unknownApproved && pendingWithTypeId) {
       this.logger.log(`[canApproveLoan] Auto-healing document merge for loan #${fineractLoanId} (unknown+pending)`);
@@ -2023,19 +2567,25 @@ export class AdminService {
       .populate('documentTypeId')
       .lean();
 
-    this.logger.log(`[canApproveLoan] Required for product ${productId}: ${JSON.stringify(requiredDocTypes.map(r => ({ name: (r.documentTypeId as any)?.name, id: (r.documentTypeId as any)?._id?.toString() })))}`);
+    this.logger.log(
+      `[canApproveLoan] Required for product ${productId}: ${JSON.stringify(requiredDocTypes.map(r => ({ name: (r.documentTypeId as any)?.name, id: (r.documentTypeId as any)?._id?.toString() })))}`,
+    );
 
     if (requiredDocTypes.length === 0) return { canApprove: true, missingRequired: [] };
     const approvedDocTypeIds = new Set(
       (app.documents || []).filter(d => d.reviewStatus === 'approved').map(d => d.documentTypeId?.toString()),
     );
-    this.logger.log(`[canApproveLoan] fineractLoanId=${fineractLoanId} approvedDocTypeIds: [${Array.from(approvedDocTypeIds).join(', ')}]`);
+    this.logger.log(
+      `[canApproveLoan] fineractLoanId=${fineractLoanId} approvedDocTypeIds: [${Array.from(approvedDocTypeIds).join(', ')}]`,
+    );
 
     const missingRequired: string[] = [];
     for (const r of requiredDocTypes) {
       const typeId = (r.documentTypeId as any)?._id?.toString();
       const typeName = (r.documentTypeId as any)?.name || 'Tài liệu bắt buộc';
-      this.logger.log(`[canApproveLoan] Checking required: ${typeName} (${typeId}) -> found: ${approvedDocTypeIds.has(typeId)}`);
+      this.logger.log(
+        `[canApproveLoan] Checking required: ${typeName} (${typeId}) -> found: ${approvedDocTypeIds.has(typeId)}`,
+      );
       if (!approvedDocTypeIds.has(typeId)) missingRequired.push(typeName);
     }
     return { canApprove: missingRequired.length === 0, missingRequired };
@@ -2296,6 +2846,15 @@ export class AdminService {
    */
   async createStaff(dto: RegisterDto) {
     dto.userType = 'staff'; // Luôn ép userType = staff khi tạo qua admin
+    if (!dto.roleId) {
+      throw new BadRequestException('Thiếu roleId khi tạo nhân viên');
+    }
+
+    const role = await this.roleModel.findById(dto.roleId).lean();
+    if (!role || !role.isActive) {
+      throw new BadRequestException('Vai trò không hợp lệ hoặc đã bị vô hiệu hóa');
+    }
+
     this.logger.log(`[createStaff] Creating staff: ${dto.phoneNumber}`);
     const result = await this.fineractSignupService.signup(dto);
 
@@ -2304,6 +2863,15 @@ export class AdminService {
       const user = await this.userModel.findOne({ username: dto.phoneNumber });
       if (user) {
         user.phoneNumber = dto.phoneNumber;
+        user.set('roles', [role.name]);
+        user.metadata = {
+          ...(user.metadata || {}),
+          roleId: role._id?.toString(),
+          roleIds: [role._id?.toString()],
+          roleName: role.name,
+          roleNames: [role.name],
+        };
+        user.markModified('metadata');
         await user.save();
       }
     } catch (err: any) {
@@ -2343,6 +2911,8 @@ export class AdminService {
       keycloakId: u.keycloakId,
       fineractClientId: u.fineractClientId || null,
       fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
+      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
       phoneNumber: u.phoneNumber || u.username || null,
       displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
       createdAt: u.createdAt,
@@ -2374,6 +2944,8 @@ export class AdminService {
       keycloakId: u.keycloakId,
       fineractClientId: u.fineractClientId || null,
       fineractStaffId: u.metadata?.fineractStaffId ?? null,
+      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
+      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
       phoneNumber: u.phoneNumber || u.username || null,
       displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
       createdAt: u.createdAt,
@@ -2406,6 +2978,9 @@ export class AdminService {
       keycloakId: user.keycloakId,
       fineractClientId: user.fineractClientId || null,
       fineractStaffId: user.metadata?.fineractStaffId ?? null,
+      roleId: user.metadata?.roleId ?? (Array.isArray(user.metadata?.roleIds) ? user.metadata.roleIds[0] : null),
+      roleName:
+        user.metadata?.roleName ?? (Array.isArray(user.metadata?.roleNames) ? user.metadata.roleNames[0] : null),
       phoneNumber: user.phoneNumber || user.username || null,
       displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
       createdAt: user.createdAt,
@@ -2685,14 +3260,15 @@ export class AdminService {
     const limit = Number(query.limit) || 20;
 
     const [items, total] = await Promise.all([
-      this.supportRequestModel.find(filter)
+      this.supportRequestModel
+        .find(filter)
         .populate('userId', 'username email fullName phoneNumber')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean()
         .exec(),
-      this.supportRequestModel.countDocuments(filter)
+      this.supportRequestModel.countDocuments(filter),
     ]);
 
     return { items, total, page, limit };
@@ -2735,7 +3311,9 @@ export class AdminService {
       const firstUnpaid = loanDetails.repaymentSchedule.periods.find((p: any) => p.period > 0 && !p.complete);
       if (firstUnpaid && firstUnpaid.dueDate) {
         const dateArr = firstUnpaid.dueDate;
-        rescheduleFromDate = Array.isArray(dateArr) ? `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}-${String(dateArr[2]).padStart(2, '0')}` : dateArr;
+        rescheduleFromDate = Array.isArray(dateArr)
+          ? `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}-${String(dateArr[2]).padStart(2, '0')}`
+          : dateArr;
       }
     }
 
@@ -2743,7 +3321,7 @@ export class AdminService {
     await this.fineractLoanService.rescheduleLoan(request.fineractLoanId, {
       rescheduleFromDate: rescheduleFromDate,
       adjustedDueDate: request.proposedRescheduleDate,
-      rescheduleReasonId: 1 // Default "Other" reason in standard config
+      rescheduleReasonId: 1, // Default "Other" reason in standard config
     });
 
     // Mark request as approved
@@ -2762,10 +3340,7 @@ export class AdminService {
       throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
     }
 
-    await this.fineractLoanService.writeOffLoan(
-      request.fineractLoanId,
-      adminNote || request.reason,
-    );
+    await this.fineractLoanService.writeOffLoan(request.fineractLoanId, adminNote || request.reason);
 
     request.status = 'APPROVED';
     request.resolvedBy = new Types.ObjectId(adminId);

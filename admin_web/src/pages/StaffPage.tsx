@@ -16,7 +16,7 @@ import {
     CheckCircleOutlined, StopOutlined, UndoOutlined, LockOutlined,
     HistoryOutlined,
 } from '@ant-design/icons';
-import { adminApi, StaffDto, ActivityLogDto } from '../api/admin';
+import { adminApi, StaffDto, ActivityLogDto, RoleDto } from '../api/admin';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
@@ -37,6 +37,7 @@ export default function StaffPage() {
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editingStaff, setEditingStaff] = useState<StaffDto | null>(null);
+    const [roleOptions, setRoleOptions] = useState<RoleDto[]>([]);
     const [creating, setCreating] = useState(false);
     const [updating, setUpdating] = useState(false);
     const [createForm] = Form.useForm();
@@ -100,6 +101,15 @@ export default function StaffPage() {
 
     useEffect(() => {
         fetchGlobalStats();
+        (async () => {
+            try {
+                const roles = await adminApi.getRoles();
+                // Trang "Thêm nhân viên" chỉ cho chọn role nghiệp vụ, không cho tự tạo admin.
+                setRoleOptions((roles || []).filter((r) => r.isActive && r.name !== 'admin'));
+            } catch (error) {
+                console.error('Failed to fetch roles:', error);
+            }
+        })();
     }, []);
 
     // -- Create Staff
@@ -519,6 +529,19 @@ export default function StaffPage() {
                     </Form.Item>
                     <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
                         <Input prefix={<MailOutlined />} placeholder="email@example.com" />
+                    </Form.Item>
+                    <Form.Item
+                        name="roleId"
+                        label="Vai trò"
+                        rules={[{ required: true, message: 'Vui lòng chọn vai trò cho nhân viên' }]}
+                    >
+                        <Select
+                            placeholder="Chọn vai trò"
+                            options={roleOptions.map((role) => ({
+                                value: role._id,
+                                label: `${role.name}${role.description ? ` - ${role.description}` : ''}`,
+                            }))}
+                        />
                     </Form.Item>
                     <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }, { min: 6, message: 'Tối thiểu 6 ký tự' }]}>
                         <Input.Password prefix={<SafetyCertificateOutlined />} placeholder="Mật khẩu" />

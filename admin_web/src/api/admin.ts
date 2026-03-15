@@ -249,6 +249,8 @@ export interface StaffDto {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  roleId?: string | null;
+  roleName?: string | null;
   isDeleted?: boolean;
 }
 
@@ -258,6 +260,7 @@ export interface CreateStaffBody {
   phoneNumber: string;
   email?: string;
   password: string;
+  roleId: string;
   userType?: "borrower" | "lender" | "staff";
 }
 
@@ -505,15 +508,28 @@ export const adminApi = {
   // ── Loan Management ──────────────────────────────────────────────────────────
   getLoansStats: () =>
     api
-      .get<{ data: { total: number; pending: number; approved: number; disbursed: number; overdue: number; closed: number } }>(
-        '/api/admin/loans/stats',
-      )
+      .get<{
+        data: {
+          total: number;
+          pending: number;
+          approved: number;
+          disbursed: number;
+          overdue: number;
+          closed: number;
+        };
+      }>("/api/admin/loans/stats")
       .then((r) => r.data.data),
 
   getLoans: (params?: {
     page?: number;
     limit?: number;
-    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+    status?:
+      | "all"
+      | "pending"
+      | "approved"
+      | "disbursed"
+      | "overdue"
+      | "closed";
     productId?: number;
     classification?: string;
     keyword?: string;
@@ -554,7 +570,7 @@ export const adminApi = {
             lastSyncedAt: string | null;
           }>;
         };
-      }>('/api/admin/loans', { params })
+      }>("/api/admin/loans", { params })
       .then((r) => r.data.data),
 
   // ── Loan Approvals ──────────────────────────────────────────────────────────
@@ -589,7 +605,7 @@ export const adminApi = {
             lastSyncedAt: string | null;
           }>;
         };
-      }>("/api/admin/overdue-loans", { params })
+      }>("/api/delinquency/overdue-loans", { params })
       .then((r) => r.data.data),
 
   /** Danh sách nhóm quá hạn (delinquency ranges) từ Fineract để lọc. */
@@ -601,7 +617,121 @@ export const adminApi = {
           classification: string;
           minimumAgeDays?: number;
         }>;
-      }>("/api/admin/delinquency-ranges")
+      }>("/api/delinquency/ranges")
+      .then((r) => r.data.data),
+
+  /** Danh sách debt_group từ Fineract delinquency ranges để cấu hình policy. */
+  getDelinquencyPolicyDebtGroups: () =>
+    api
+      .get<{
+        data: Array<{
+          debt_group: number;
+          debt_group_name: string;
+          min_days: number;
+          max_days: number;
+        }>;
+      }>("/api/delinquency/policies/debt-groups")
+      .then((r) => r.data.data),
+
+  /** Danh sách policy cấu hình xử lý nợ xấu. */
+  getDelinquencyPolicies: (params?: {
+    is_active?: boolean;
+    debt_group?: number;
+    collection_stage?:
+      | "NONE"
+      | "REMINDER"
+      | "WARNING"
+      | "COLLECTION"
+      | "LEGAL"
+      | "WRITE_OFF";
+  }) =>
+    api
+      .get<{
+        data: Array<{
+          _id: string;
+          policy_id: string;
+          debt_group: number;
+          debt_group_name: string;
+          min_days: number;
+          max_days: number;
+          send_email: boolean;
+          send_sms: boolean;
+          send_notification: boolean;
+          apply_penalty: boolean;
+          block_new_loan: boolean;
+          collection_stage:
+            | "NONE"
+            | "REMINDER"
+            | "WARNING"
+            | "COLLECTION"
+            | "LEGAL"
+            | "WRITE_OFF";
+          legal_escalation: boolean;
+          is_active: boolean;
+          description?: string;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+      }>("/api/delinquency/policies", { params })
+      .then((r) => r.data.data),
+
+  /** Tạo policy xử lý nợ xấu. */
+  createDelinquencyPolicy: (payload: {
+    debt_group: number;
+    debt_group_name?: string;
+    send_email: boolean;
+    send_sms: boolean;
+    send_notification: boolean;
+    apply_penalty: boolean;
+    block_new_loan: boolean;
+    collection_stage:
+      | "NONE"
+      | "REMINDER"
+      | "WARNING"
+      | "COLLECTION"
+      | "LEGAL"
+      | "WRITE_OFF";
+    legal_escalation?: boolean;
+    is_active?: boolean;
+    description?: string;
+  }) =>
+    api
+      .post<{ data: any }>("/api/delinquency/policies", payload)
+      .then((r) => r.data.data),
+
+  /** Cập nhật policy xử lý nợ xấu (dùng cho switch on/off). */
+  updateDelinquencyPolicy: (
+    id: string,
+    payload: Partial<{
+      debt_group: number;
+      debt_group_name: string;
+      send_email: boolean;
+      send_sms: boolean;
+      send_notification: boolean;
+      apply_penalty: boolean;
+      block_new_loan: boolean;
+      collection_stage:
+        | "NONE"
+        | "REMINDER"
+        | "WARNING"
+        | "COLLECTION"
+        | "LEGAL"
+        | "WRITE_OFF";
+      legal_escalation: boolean;
+      is_active: boolean;
+      description: string;
+    }>,
+  ) =>
+    api
+      .put<{ data: any }>(`/api/delinquency/policies/${id}`, payload)
+      .then((r) => r.data.data),
+
+  /** Xóa policy xử lý nợ xấu. */
+  removeDelinquencyPolicy: (id: string) =>
+    api
+      .delete<{
+        data: { deleted: boolean };
+      }>(`/api/delinquency/policies/${id}`)
       .then((r) => r.data.data),
 
   /** Đồng bộ tất cả khoản vay đã giải ngân từ Fineract vào Mongo; báo cáo từng thay đổi lưu vào loan_sync_runs. */

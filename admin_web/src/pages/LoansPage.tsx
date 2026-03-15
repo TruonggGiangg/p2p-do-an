@@ -44,7 +44,7 @@ export default function LoansPage() {
 
     useEffect(() => {
         Promise.all([
-            adminApi.getLoansStats().then(setStats).catch(() => {}),
+            adminApi.getLoansStats().then(setStats).catch(() => { }),
             adminApi.getLoanProducts().then(setProducts).catch(() => []),
             adminApi.getDelinquencyRanges().then(setRanges).catch(() => []),
         ]).finally(() => setInitialLoading(false));

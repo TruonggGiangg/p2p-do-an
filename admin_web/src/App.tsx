@@ -14,6 +14,7 @@ import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
 import LoansPage from './pages/LoansPage';
+import DelinquencyPoliciesPage from './pages/DelinquencyPoliciesPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
@@ -190,6 +191,7 @@ export default function App() {
                 <Route path="loan-products" element={<LoanProductsPage />} />
                 <Route path="savings-products" element={<SavingsProductsPage />} />
                 <Route path="loans" element={<LoansPage />} />
+                <Route path="delinquency-policies" element={<DelinquencyPoliciesPage />} />
                 <Route path="loan-approvals" element={<LoanApprovalsPage />} />
                 <Route path="overdue-loans" element={<Navigate to="/loans?tab=overdue" replace />} />
                 <Route path="loan-support-requests" element={

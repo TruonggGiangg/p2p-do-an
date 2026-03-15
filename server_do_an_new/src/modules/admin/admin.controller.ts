@@ -355,49 +355,6 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: { loans } };
   }
 
-  @Get('overdue-loans')
-  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
-  @ApiOperation({
-    summary:
-      'Danh sách khoản vay quá hạn (lọc chi tiết: nhóm, khoản quá hạn từ–đến, số ngày quá hạn từ–đến). Data sync từ Fineract hằng ngày.',
-  })
-  @ApiResponse({ status: 200 })
-  async getOverdueLoans(
-    @Query('classification') classification?: string,
-    @Query('minOverdueAmount') minOverdueAmount?: string,
-    @Query('maxOverdueAmount') maxOverdueAmount?: string,
-    @Query('delinquentDaysMin') delinquentDaysMin?: string,
-    @Query('delinquentDaysMax') delinquentDaysMax?: string,
-  ) {
-    const filters: {
-      classification?: string;
-      minOverdueAmount?: number;
-      maxOverdueAmount?: number;
-      delinquentDaysMin?: number;
-      delinquentDaysMax?: number;
-    } = {};
-    if (classification) filters.classification = classification;
-    const n1 = minOverdueAmount != null ? parseFloat(minOverdueAmount) : NaN;
-    if (!isNaN(n1) && n1 >= 0) filters.minOverdueAmount = n1;
-    const n2 = maxOverdueAmount != null ? parseFloat(maxOverdueAmount) : NaN;
-    if (!isNaN(n2) && n2 >= 0) filters.maxOverdueAmount = n2;
-    const d1 = delinquentDaysMin != null ? parseInt(delinquentDaysMin, 10) : NaN;
-    if (!isNaN(d1) && d1 >= 0) filters.delinquentDaysMin = d1;
-    const d2 = delinquentDaysMax != null ? parseInt(delinquentDaysMax, 10) : NaN;
-    if (!isNaN(d2) && d2 >= 0) filters.delinquentDaysMax = d2;
-    const result = await this.adminService.getOverdueLoans(filters);
-    return { statusCode: 200, message: 'OK', data: result };
-  }
-
-  @Get('delinquency-ranges')
-  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
-  @ApiOperation({ summary: 'Danh sách nhóm quá hạn (delinquency ranges) từ Fineract để lọc khoản vay quá hạn' })
-  @ApiResponse({ status: 200 })
-  async getDelinquencyRanges() {
-    const ranges = await this.adminService.getDelinquencyRangesForFilter();
-    return { statusCode: 200, message: 'OK', data: ranges };
-  }
-
   @Post('sync-disbursed-loans')
   @CheckPolicies(ability => ability.can(Action.Update, 'Loan'))
   @ApiOperation({

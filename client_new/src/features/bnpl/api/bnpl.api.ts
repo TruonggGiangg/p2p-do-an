@@ -83,6 +83,29 @@ export interface BnplTransaction {
   source?: string;
 }
 
+export interface DelinquencyPolicyItem {
+  _id: string;
+  debt_group: number;
+  debt_group_name: string;
+  min_days: number | null;
+  max_days: number | null;
+  send_email: boolean;
+  send_sms: boolean;
+  send_notification: boolean;
+  apply_penalty: boolean;
+  block_new_loan: boolean;
+  collection_stage:
+    | "NONE"
+    | "REMINDER"
+    | "WARNING"
+    | "COLLECTION"
+    | "LEGAL"
+    | "WRITE_OFF";
+  legal_escalation: boolean;
+  is_active: boolean;
+  description?: string;
+}
+
 // ==================== API ====================
 
 export const bnplAPI = {
@@ -159,6 +182,19 @@ export const bnplAPI = {
       return response.data.data;
     } catch {
       return { transactions: [], total: 0 };
+    }
+  },
+
+  /** Get active delinquency policies for displaying contract terms before signature */
+  getDelinquencyPolicies: async (): Promise<DelinquencyPolicyItem[]> => {
+    try {
+      const response = await api.get<{ data: DelinquencyPolicyItem[] }>(
+        "/api/delinquency/policies",
+        { params: { is_active: true } },
+      );
+      return response.data.data || [];
+    } catch {
+      return [];
     }
   },
 };

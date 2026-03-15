@@ -132,6 +132,29 @@ export interface ProductCharge {
   currency?: string;
 }
 
+export interface DelinquencyPolicyItem {
+  _id: string;
+  debt_group: number;
+  debt_group_name: string;
+  min_days: number | null;
+  max_days: number | null;
+  send_email: boolean;
+  send_sms: boolean;
+  send_notification: boolean;
+  apply_penalty: boolean;
+  block_new_loan: boolean;
+  collection_stage:
+    | "NONE"
+    | "REMINDER"
+    | "WARNING"
+    | "COLLECTION"
+    | "LEGAL"
+    | "WRITE_OFF";
+  legal_escalation: boolean;
+  is_active: boolean;
+  description?: string;
+}
+
 // =============================================
 // LOAN CONTRACT Interfaces
 // =============================================
@@ -182,6 +205,27 @@ export interface LoanContract {
   totalPayable: number;
   monthlyPayment: number;
   feeStructure: FeeStructureItem[];
+  delinquencyPolicySnapshot?: Array<{
+    debt_group: number;
+    debt_group_name: string;
+    min_days: number;
+    max_days: number;
+    send_email: boolean;
+    send_sms: boolean;
+    send_notification: boolean;
+    apply_penalty: boolean;
+    block_new_loan: boolean;
+    collection_stage:
+      | "NONE"
+      | "REMINDER"
+      | "WARNING"
+      | "COLLECTION"
+      | "LEGAL"
+      | "WRITE_OFF";
+    legal_escalation: boolean;
+    is_active: boolean;
+    description?: string;
+  }>;
   productName?: string;
   status: LoanContractStatus;
   signedAt?: string;
@@ -582,6 +626,19 @@ class LoanService {
     return response.data.data?.charges ?? [];
   }
 
+  /** Lấy chính sách quá hạn đang áp dụng để hiển thị trước khi gửi đơn vay */
+  async getDelinquencyPolicies(): Promise<DelinquencyPolicyItem[]> {
+    try {
+      const response = await api.get<{ data: DelinquencyPolicyItem[] }>(
+        "/api/delinquency/policies",
+        { params: { is_active: true } },
+      );
+      return response.data.data ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   // =============================================
   // LOAN SUPPORT REQUESTS Methods
   // =============================================
@@ -658,12 +715,16 @@ class LoanService {
    */
   async signContract(
     contractId: string,
+    acceptedDelinquencyPolicy?: boolean,
     signatureData?: string,
   ): Promise<LoanContract> {
     const response = await api.post<{
       statusCode: number;
       data: LoanContract;
-    }>(`/api/loan/contracts/${contractId}/sign`, { signatureData });
+    }>(`/api/loan/contracts/${contractId}/sign`, {
+      signatureData,
+      acceptedDelinquencyPolicy,
+    });
     return response.data.data;
   }
 

@@ -8,6 +8,7 @@ import { LoanApplication, LoanApplicationSchema } from './schemas/loan-applicati
 import { LoanContract, LoanContractSchema } from './schemas/loan-contract.schema';
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { LoanSupportRequest, LoanSupportRequestSchema } from './schemas/loan-support-request.schema';
+import { DelinquencyPolicy, DelinquencyPolicySchema } from '../delinquency/entities/delinquency-policy.schema';
 import { FineractModule } from '../fineract/fineract.module';
 import { AdminModule } from '../admin/admin.module';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -22,6 +23,7 @@ import { SmartCAModule } from '../digital-signature/smartca.module';
       { name: LoanContract.name, schema: LoanContractSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
+      { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
     ]),
     FineractModule,
     forwardRef(() => AdminModule),
@@ -34,4 +36,4 @@ import { SmartCAModule } from '../digital-signature/smartca.module';
   providers: [LoanService, RepaymentService, ContractService],
   exports: [LoanService, RepaymentService, ContractService],
 })
-export class LoanModule { }
+export class LoanModule {}

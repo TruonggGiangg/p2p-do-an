@@ -18,6 +18,7 @@ import { TwoFactorModule } from './modules/two-factor/two-factor.module';
 import { EkycModule } from './modules/ekyc/ekyc.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
+import { DelinquencyModule } from './modules/delinquency/delinquency.module';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -62,6 +63,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
     TwoFactorModule,
     EkycModule,
     ActivityLogModule,
+    DelinquencyModule,
     SmartCAModule,
     RbacModule,
   ],

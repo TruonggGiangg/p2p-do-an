@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
-import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem } from '../api/bnpl.api';
+import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem, DelinquencyPolicyItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
@@ -94,6 +94,7 @@ export default function BNPLScreen() {
     // Terms & signature
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [signatureChecked, setSignatureChecked] = useState(false);
+    const [delinquencyPolicies, setDelinquencyPolicies] = useState<DelinquencyPolicyItem[]>([]);
 
     // Form state
     const [amountRaw, setAmountRaw] = useState('5000000');
@@ -114,7 +115,13 @@ export default function BNPLScreen() {
 
     useEffect(() => {
         fetchData();
+        fetchDelinquencyPolicies();
     }, []);
+
+    const fetchDelinquencyPolicies = async () => {
+        const policies = await bnplAPI.getDelinquencyPolicies();
+        setDelinquencyPolicies((policies || []).sort((a, b) => a.debt_group - b.debt_group));
+    };
 
     const fetchData = async () => {
         const MIN_DISPLAY_MS = 1700;
@@ -396,6 +403,26 @@ export default function BNPLScreen() {
         setBnplStatus('active');
     };
 
+    const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
+        const actions: string[] = [];
+        if (policy.send_notification) actions.push('Thông báo');
+        if (policy.send_email) actions.push('Gửi email');
+        if (policy.send_sms) actions.push('Gửi SMS');
+        if (policy.apply_penalty) actions.push('Áp dụng lãi phạt');
+        if (policy.block_new_loan) actions.push('Chặn vay mới');
+        const stageLabel: Record<string, string> = {
+            NONE: 'Theo dõi',
+            REMINDER: 'Nhắc nợ',
+            WARNING: 'Cảnh báo',
+            COLLECTION: 'Chuyển thu hồi',
+            LEGAL: 'Xử lý pháp lý',
+            WRITE_OFF: 'Nợ mất vốn',
+        };
+        actions.push(stageLabel[policy.collection_stage] || policy.collection_stage);
+        if (policy.legal_escalation) actions.push('Escalation pháp lý');
+        return actions.join(', ');
+    };
+
     // ── Render: No Wallet
     const renderNoWallet = () => (
         <View style={styles.flowContainer}>
@@ -591,6 +618,34 @@ export default function BNPLScreen() {
                     <MaterialCommunityIcons name="file-pdf-box" size={20} color={c.primary} />
                     <Text style={[{ marginLeft: 8, color: c.primary, fontWeight: '600', fontSize: 13 }]}>Xem hợp đồng đầy đủ (PDF)</Text>
                 </TouchableOpacity>
+
+                <View style={[styles.policyCard, { borderColor: c.border, backgroundColor: c.surface }]}>
+                    <Text style={[styles.policyTitle, { color: c.textPrimary }]}>Chính sách nợ quá hạn</Text>
+
+                    <View style={[styles.policyHeaderRow, { borderBottomColor: c.border }]}>
+                        <Text style={[styles.policyHeadText, styles.policyColGroup, { color: c.textSecondary }]}>Nhóm</Text>
+                        <Text style={[styles.policyHeadText, styles.policyColRange, { color: c.textSecondary }]}>Ngày quá hạn</Text>
+                        <Text style={[styles.policyHeadText, styles.policyColAction, { color: c.textSecondary }]}>Hành động</Text>
+                    </View>
+
+                    {delinquencyPolicies.length > 0 ? (
+                        delinquencyPolicies.map((policy) => (
+                            <View key={policy._id} style={[styles.policyDataRow, { borderBottomColor: c.border }]}>
+                                <Text style={[styles.policyCellText, styles.policyColGroup, { color: c.textPrimary }]}>
+                                    Nhóm {policy.debt_group}
+                                </Text>
+                                <Text style={[styles.policyCellText, styles.policyColRange, { color: c.textPrimary }]}>
+                                    {policy.min_days != null ? policy.min_days : '?'}-{policy.max_days != null ? policy.max_days : '?'}
+                                </Text>
+                                <Text style={[styles.policyCellText, styles.policyColAction, { color: c.textPrimary }]}>
+                                    {mapPolicyActions(policy)}
+                                </Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={[styles.policyEmptyText, { color: c.textMuted }]}>Chưa tải được chính sách nợ quá hạn.</Text>
+                    )}
+                </View>
             </CommonCard>
 
             {/* Terms checkbox */}
@@ -604,9 +659,8 @@ export default function BNPLScreen() {
                 </View>
                 <Text style={[styles.checkLabel, { color: c.textSecondary }]}>
                     Tôi đã đọc và đồng ý với{' '}
-                    <Text style={{ color: c.primary, fontWeight: '600' }}>Điều khoản dịch vụ</Text>
-                    {' '}và{' '}
-                    <Text style={{ color: c.primary, fontWeight: '600' }}>Chính sách bảo mật</Text>
+                    <Text style={{ color: c.primary, fontWeight: '600' }}>chính sách xử lý nợ quá hạn</Text>
+                    {' '}và các điều khoản dịch vụ.
                 </Text>
             </TouchableOpacity>
 
@@ -1956,6 +2010,52 @@ const styles = StyleSheet.create({
         marginTop: 24,
         alignItems: 'center',
         borderStyle: 'dashed',
+    },
+
+    policyCard: {
+        marginTop: 14,
+        borderWidth: 1,
+        borderRadius: 10,
+        padding: 12,
+    },
+    policyTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 10,
+    },
+    policyHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+    },
+    policyDataRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 8,
+        borderBottomWidth: 0.5,
+    },
+    policyHeadText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    policyCellText: {
+        fontSize: 12,
+        lineHeight: 18,
+    },
+    policyColGroup: {
+        flex: 0.7,
+    },
+    policyColRange: {
+        flex: 1,
+    },
+    policyColAction: {
+        flex: 1.6,
+    },
+    policyEmptyText: {
+        marginTop: 8,
+        fontSize: 12,
+        fontStyle: 'italic',
     },
 
     // ── Dropdown menu
