@@ -182,6 +182,21 @@ export interface LoanContract {
   totalPayable: number;
   monthlyPayment: number;
   feeStructure: FeeStructureItem[];
+  delinquencyPolicySnapshot?: Array<{
+    debt_group: number;
+    debt_group_name: string;
+    min_days: number;
+    max_days: number;
+    send_email: boolean;
+    send_sms: boolean;
+    send_notification: boolean;
+    apply_penalty: boolean;
+    block_new_loan: boolean;
+    collection_stage: "NONE" | "REMINDER" | "WARNING" | "COLLECTION" | "LEGAL" | "WRITE_OFF";
+    legal_escalation: boolean;
+    is_active: boolean;
+    description?: string;
+  }>;
   productName?: string;
   status: LoanContractStatus;
   signedAt?: string;
@@ -658,12 +673,13 @@ class LoanService {
    */
   async signContract(
     contractId: string,
+    acceptedDelinquencyPolicy?: boolean,
     signatureData?: string,
   ): Promise<LoanContract> {
     const response = await api.post<{
       statusCode: number;
       data: LoanContract;
-    }>(`/api/loan/contracts/${contractId}/sign`, { signatureData });
+    }>(`/api/loan/contracts/${contractId}/sign`, { signatureData, acceptedDelinquencyPolicy });
     return response.data.data;
   }
 

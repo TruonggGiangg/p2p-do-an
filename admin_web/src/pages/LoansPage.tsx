@@ -41,7 +41,7 @@ export default function LoansPage() {
     const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
-        adminApi.getLoansStats().then(setStats).catch(() => {});
+        adminApi.getLoansStats().then(setStats).catch(() => { });
         adminApi.getLoanProducts().then(setProducts).catch(() => []);
         adminApi.getDelinquencyRanges().then(setRanges).catch(() => []);
     }, []);
@@ -102,6 +102,8 @@ export default function LoansPage() {
             const firstPageRes = await adminApi.getLoans({ ...filters, page: 1 });
             return { data: firstPageRes.items ?? [], success: true, total: firstPageRes.total ?? 0 };
         }
+
+        console.log(res.items)
 
         return { data: res.items ?? [], success: true, total: res.total ?? 0 };
     }, [activeTab, form]);

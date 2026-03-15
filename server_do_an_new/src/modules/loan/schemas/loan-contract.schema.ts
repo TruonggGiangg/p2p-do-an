@@ -37,6 +37,22 @@ export interface FeeStructureItem {
   chargeTime: string; // e.g. 'disbursement', 'monthly'
 }
 
+export interface DelinquencyPolicySnapshotItem {
+  debt_group: number;
+  debt_group_name: string;
+  min_days: number;
+  max_days: number;
+  send_email: boolean;
+  send_sms: boolean;
+  send_notification: boolean;
+  apply_penalty: boolean;
+  block_new_loan: boolean;
+  collection_stage: 'NONE' | 'REMINDER' | 'WARNING' | 'COLLECTION' | 'LEGAL' | 'WRITE_OFF';
+  legal_escalation: boolean;
+  is_active: boolean;
+  description?: string;
+}
+
 @Schema({ timestamps: true, collection: 'loan_contracts' })
 export class LoanContract extends Document {
   /** Mã hợp đồng duy nhất: P2P-LC-{timestamp}-{random} */
@@ -86,6 +102,10 @@ export class LoanContract extends Document {
   /** Cấu trúc phí */
   @Prop({ type: [Object], default: [] })
   feeStructure: FeeStructureItem[];
+
+  /** Snapshot chính sách nợ xấu tại thời điểm tạo hợp đồng (không bị ảnh hưởng bởi thay đổi policy sau này) */
+  @Prop({ type: [Object], default: [] })
+  delinquencyPolicySnapshot: DelinquencyPolicySnapshotItem[];
 
   /** Tên sản phẩm vay */
   @Prop({ required: false })

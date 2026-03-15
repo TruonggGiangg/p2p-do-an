@@ -6,6 +6,8 @@ import { LoanProductSnapshot, LoanProductSnapshotSchema } from './schemas/loan-p
 import { SavingsProductSnapshot, SavingsProductSnapshotSchema } from './schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, SyncDriftLogSchema } from './schemas/sync-drift-log.schema';
 import { LoanSyncRun, LoanSyncRunSchema } from './schemas/loan-sync-run.schema';
+import { LoanDelinquency, LoanDelinquencySchema } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy, DelinquencyPolicySchema } from '../delinquency/entities/delinquency-policy.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { LoanSupportRequest, LoanSupportRequestSchema } from '../loan/schemas/loan-support-request.schema';
@@ -39,6 +41,8 @@ import { UsersModule } from '../users/users.module';
       { name: SavingsProductSnapshot.name, schema: SavingsProductSnapshotSchema },
       { name: SyncDriftLog.name, schema: SyncDriftLogSchema },
       { name: LoanSyncRun.name, schema: LoanSyncRunSchema },
+      { name: LoanDelinquency.name, schema: LoanDelinquencySchema },
+      { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
       { name: User.name, schema: UserSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
       { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
@@ -51,4 +55,4 @@ import { UsersModule } from '../users/users.module';
   providers: [AdminService, LoanSyncScheduler, ReminderScheduler, PushNotificationService],
   exports: [AdminService],
 })
-export class AdminModule { }
+export class AdminModule {}

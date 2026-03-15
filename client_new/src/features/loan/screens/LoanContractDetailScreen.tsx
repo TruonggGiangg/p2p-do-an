@@ -7,6 +7,7 @@ import {
     ActivityIndicator,
     Alert,
     Animated,
+    FlatList,
     Dimensions,
     Modal,
     Platform,
@@ -84,6 +85,7 @@ export default function LoanContractDetailScreen() {
     const [showSignConfirm, setShowSignConfirm] = useState(false);
     const [showSmartCA, setShowSmartCA] = useState(false);
     const [showSignSuccess, setShowSignSuccess] = useState(false);
+    const [acceptedDelinquencyPolicy, setAcceptedDelinquencyPolicy] = useState(false);
 
     // Success animation
     const successAnim = useRef(new Animated.Value(0)).current;
@@ -129,6 +131,10 @@ export default function LoanContractDetailScreen() {
 
     // Sign handler — mở modal SmartCA
     const handleSign = () => {
+        if (!acceptedDelinquencyPolicy) {
+            Alert.alert('Thiếu xác nhận', 'Bạn cần đồng ý chính sách xử lý nợ quá hạn trước khi ký hợp đồng.');
+            return;
+        }
         setShowSignConfirm(false);
         setShowSmartCA(true);
     };
@@ -138,10 +144,14 @@ export default function LoanContractDetailScreen() {
     // Legacy sign handler (fallback khi SmartCA không dùng được)
     const handleSignLegacy = async () => {
         if (!contract) return;
+        if (!acceptedDelinquencyPolicy) {
+            Alert.alert('Thiếu xác nhận', 'Bạn cần đồng ý chính sách xử lý nợ quá hạn trước khi ký hợp đồng.');
+            return;
+        }
         setShowSignConfirm(false);
         setSigning(true);
         try {
-            const updated = await loanService.signContract(contract.contractId || contract._id);
+            const updated = await loanService.signContract(contract.contractId || contract._id, true);
             setContract(updated);
 
             // Navigate to signing success screen
@@ -300,6 +310,66 @@ export default function LoanContractDetailScreen() {
                     </View>
                 )}
 
+                {/* Delinquency Policy Snapshot */}
+                {Array.isArray(contract.delinquencyPolicySnapshot) && contract.delinquencyPolicySnapshot.length > 0 && (
+                    <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 10 }]}>
+                            <MaterialCommunityIcons name="alert-octagon-outline" size={14} /> Chính sách nợ quá hạn
+                        </Text>
+
+                        <View style={[styles.policyHeaderRow, { backgroundColor: colors.primary + '10' }]}>
+                            <Text style={[styles.policyHeadCell, styles.policyGroupCol, { color: colors.textPrimary }]}>Nhóm</Text>
+                            <Text style={[styles.policyHeadCell, styles.policyDaysCol, { color: colors.textPrimary }]}>Ngày quá hạn</Text>
+                            <Text style={[styles.policyHeadCell, styles.policyActionCol, { color: colors.textPrimary }]}>Hành động</Text>
+                        </View>
+
+                        {(contract.delinquencyPolicySnapshot || []).map((policy, idx) => {
+                            const actions: string[] = [];
+                            if (policy.send_notification) actions.push('Thông báo');
+                            if (policy.send_email) actions.push('Email');
+                            if (policy.send_sms) actions.push('SMS');
+                            if (policy.apply_penalty) actions.push('Áp dụng lãi phạt');
+                            if (policy.block_new_loan) actions.push('Chặn vay mới');
+                            const stageLabel: Record<string, string> = {
+                                NONE: 'Theo dõi',
+                                REMINDER: 'Nhắc nợ',
+                                WARNING: 'Cảnh báo',
+                                COLLECTION: 'Chuyển thu hồi',
+                                LEGAL: 'Xử lý pháp lý',
+                                WRITE_OFF: 'Nợ mất vốn',
+                            };
+                            if (stageLabel[policy.collection_stage]) {
+                                actions.push(stageLabel[policy.collection_stage]);
+                            }
+
+                            return (
+                                <View key={`${policy.debt_group}-${idx}`} style={[styles.policyDataRow, { borderBottomColor: colors.border }]}> 
+                                    <Text style={[styles.policyDataCell, styles.policyGroupCol, { color: colors.textPrimary }]}>
+                                        Nhóm {policy.debt_group}
+                                    </Text>
+                                    <Text style={[styles.policyDataCell, styles.policyDaysCol, { color: colors.textPrimary }]}>
+                                        {policy.min_days}-{policy.max_days}
+                                    </Text>
+                                    <Text style={[styles.policyDataCell, styles.policyActionCol, { color: colors.textPrimary }]}>
+                                        {actions.length ? actions.join(', ') : 'Theo chính sách nội bộ'}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+
+                        <TouchableOpacity
+                            style={styles.policyConsentRow}
+                            activeOpacity={0.8}
+                            onPress={() => setAcceptedDelinquencyPolicy(prev => !prev)}
+                        >
+                            <View style={[styles.checkboxBase, acceptedDelinquencyPolicy && styles.checkboxChecked]}>
+                                {acceptedDelinquencyPolicy ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                            </View>
+                            <Text style={[styles.policyConsentText, { color: colors.textPrimary }]}>Tôi đã đọc và đồng ý với chính sách xử lý nợ quá hạn</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* Schedule Summary */}
                 {contract.repaymentSchedule && contract.repaymentSchedule.length > 0 && (
                     <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -375,7 +445,7 @@ export default function LoanContractDetailScreen() {
                     <TouchableOpacity
                         style={[styles.signBtn, signing && styles.signBtnDisabled]}
                         onPress={() => setShowSignConfirm(true)}
-                        disabled={signing}
+                        disabled={signing || !acceptedDelinquencyPolicy}
                         activeOpacity={0.8}
                     >
                         {signing ? (
@@ -421,7 +491,7 @@ export default function LoanContractDetailScreen() {
                             <TouchableOpacity
                                 style={[styles.signBtn, { marginTop: 12 }, signing && styles.signBtnDisabled]}
                                 onPress={() => { setShowContract(false); setShowSignConfirm(true); }}
-                                disabled={signing}
+                                disabled={signing || !acceptedDelinquencyPolicy}
                                 activeOpacity={0.8}
                             >
                                 <MaterialCommunityIcons name="draw-pen" size={20} color="#fff" />
@@ -649,6 +719,63 @@ const styles = StyleSheet.create({
     scheduleCell: { flex: 1, fontSize: 12 },
     scheduleCellSm: { flex: 0.3, textAlign: 'center' },
     moreText: { textAlign: 'center', fontSize: 12, paddingTop: 8 },
+
+    policyHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+    },
+    policyHeadCell: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    policyDataRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderBottomWidth: 0.5,
+    },
+    policyDataCell: {
+        fontSize: 12,
+    },
+    policyGroupCol: {
+        flex: 0.9,
+    },
+    policyDaysCol: {
+        flex: 1,
+    },
+    policyActionCol: {
+        flex: 1.8,
+    },
+    policyConsentRow: {
+        marginTop: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    checkboxBase: {
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#9CA3AF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    checkboxChecked: {
+        backgroundColor: '#10B981',
+        borderColor: '#10B981',
+    },
+    policyConsentText: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: '500',
+    },
 
     // View Contract
     viewContractBtn: {

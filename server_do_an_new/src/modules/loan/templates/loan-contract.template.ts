@@ -6,6 +6,64 @@
 
 import { LoanContract, RepaymentScheduleItem, FeeStructureItem, BorrowerInfo } from '../schemas/loan-contract.schema';
 
+function mapPolicyActionLabel(policy: any): string {
+  const actions: string[] = [];
+  if (policy.send_notification) actions.push('Thông báo ứng dụng');
+  if (policy.send_email) actions.push('Gửi email nhắc nợ');
+  if (policy.send_sms) actions.push('Gửi SMS nhắc nợ');
+  if (policy.apply_penalty) actions.push('Áp dụng lãi phạt theo hợp đồng');
+  if (policy.block_new_loan) actions.push('Chặn vay mới');
+
+  const stageLabel: Record<string, string> = {
+    NONE: 'Theo dõi',
+    REMINDER: 'Nhắc nợ',
+    WARNING: 'Cảnh báo',
+    COLLECTION: 'Chuyển thu hồi',
+    LEGAL: 'Xử lý pháp lý',
+    WRITE_OFF: 'Nợ mất vốn',
+  };
+  if (policy.collection_stage && stageLabel[String(policy.collection_stage)]) {
+    actions.push(stageLabel[String(policy.collection_stage)]);
+  }
+  if (policy.legal_escalation) actions.push('Escalation pháp lý');
+  return actions.length ? actions.join(', ') : 'Theo chính sách nội bộ tại thời điểm ký';
+}
+
+function generateDelinquencyPolicyRows(policies: any[]): string {
+  return policies
+    .map(
+      p => `
+    <tr>
+      <td style="text-align:center">Nhóm ${p.debt_group}</td>
+      <td style="text-align:center">${p.min_days} - ${p.max_days} ngày</td>
+      <td>${mapPolicyActionLabel(p)}</td>
+    </tr>
+  `,
+    )
+    .join('');
+}
+
+function generateDelinquencyPolicySection(contract: LoanContract): string {
+  const policies = (contract as any).delinquencyPolicySnapshot || [];
+  if (!Array.isArray(policies) || policies.length === 0) {
+    return '<p>Không có cấu hình chính sách nợ quá hạn tại thời điểm tạo hợp đồng.</p>';
+  }
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Nhóm nợ</th>
+          <th>Ngày quá hạn</th>
+          <th>Biện pháp xử lý</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${generateDelinquencyPolicyRows(policies)}
+      </tbody>
+    </table>
+  `;
+}
+
 /** Format số tiền VND */
 function formatMoney(amount: number): string {
   return Math.round(amount).toLocaleString('vi-VN');
@@ -445,6 +503,11 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
   <h2>Điều 3: Phí khoản vay</h2>
   ${generateFeeSection(contract.feeStructure)}
 
+  <!-- ═══════ CHÍNH SÁCH NỢ QUÁ HẠN SNAPSHOT ═══════ -->
+  <h2>Điều 3A: Chính sách nợ quá hạn tại thời điểm ký</h2>
+  <p>Chính sách dưới đây được snapshot tại thời điểm phát hành hợp đồng và được ưu tiên áp dụng cho hợp đồng này.</p>
+  ${generateDelinquencyPolicySection(contract)}
+
   <!-- ═══════ LỊCH TRẢ NỢ ═══════ -->
   <h2>Điều 4: Lịch trả nợ</h2>
   <p>Bên B cam kết thực hiện thanh toán theo lịch trả nợ dưới đây:</p>
@@ -471,7 +534,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
   <div class="indent">
     <p>a) Giải ngân đúng số tiền và thời hạn đã cam kết trong hợp đồng;</p>
     <p>b) Có quyền yêu cầu Bên B thanh toán đầy đủ và đúng hạn;</p>
-    <p>c) Có quyền áp dụng lãi phạt chậm trả theo quy định;</p>
+    <p>c) Có quyền áp dụng lãi phạt chậm trả theo quy định đã công bố tại thời điểm ký hợp đồng;</p>
     <p>d) Thông báo cho Bên B trước ít nhất 07 ngày về bất kỳ thay đổi nào liên quan đến khoản vay.</p>
   </div>
 
@@ -479,7 +542,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
   <div class="indent">
     <p>a) Nhận giải ngân đúng số tiền theo hợp đồng;</p>
     <p>b) Thanh toán đầy đủ các kỳ trả nợ (gốc + lãi) đúng hạn;</p>
-    <p>c) Chịu lãi phạt nếu chậm trả: <strong>150%</strong> lãi suất vay cho số ngày chậm;</p>
+    <p>c) Chịu lãi phạt nếu chậm trả theo điều khoản và chính sách nợ quá hạn snapshot tại thời điểm ký;</p>
     <p>d) Có quyền trả trước hạn toàn bộ hoặc một phần khoản vay;</p>
     <p>e) Cung cấp thông tin trung thực, chính xác cho Bên A.</p>
   </div>
