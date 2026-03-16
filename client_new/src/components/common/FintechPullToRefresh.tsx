@@ -148,6 +148,7 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     const [showParticles, setShowParticles] = useState(false);
     const showStartRef = React.useRef<number | null>(null);
     const pendingHideRef = React.useRef<NodeJS.Timeout | null>(null);
+    const isPullTriggered = React.useRef(false); // true = user physically pulled
 
     useEffect(() => {
         if (DEBUG_PULL_TO_REFRESH) {
@@ -173,27 +174,35 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
             }
             showStartRef.current = Date.now();
             isRefreshingValue.value = true;
-            setIsRefreshingUI(true);
-            setShowParticles(true);
-            translationY.value = withSpring(REFRESH_TRIGGER, {
-                damping: 18,
-                stiffness: 130,
-                mass: 0.7,
-            });
-            pullProgress.value = withTiming(1, { duration: 220 });
+
+            // Only show Vento header when user physically pulled (not initial load)
+            if (isPullTriggered.current) {
+                setIsRefreshingUI(true);
+                setShowParticles(true);
+                translationY.value = withSpring(REFRESH_TRIGGER, {
+                    damping: 18,
+                    stiffness: 130,
+                    mass: 0.7,
+                });
+                pullProgress.value = withTiming(1, { duration: 220 });
+            }
         } else {
+            const wasPull = isPullTriggered.current;
             const minDisplayDuration = MIN_DISPLAY_MS;
             const elapsed = showStartRef.current ? Date.now() - showStartRef.current : minDisplayDuration;
-            const delay = Math.max(0, minDisplayDuration - elapsed);
+            const delay = wasPull ? Math.max(0, minDisplayDuration - elapsed) : 0;
 
             const doHide = () => {
                 pendingHideRef.current = null;
                 isRefreshingValue.value = false;
-                setIsRefreshingUI(false);
-                setShowParticles(false);
-                scrollY.value = 0; // Reset để lần kéo sau nhận diện đúng
-                translationY.value = withTiming(0, { duration: 220, easing: EASING_OUT });
-                pullProgress.value = withTiming(0, { duration: 200, easing: EASING_OUT });
+                isPullTriggered.current = false;
+                if (wasPull) {
+                    setIsRefreshingUI(false);
+                    setShowParticles(false);
+                    translationY.value = withTiming(0, { duration: 220, easing: EASING_OUT });
+                    pullProgress.value = withTiming(0, { duration: 200, easing: EASING_OUT });
+                }
+                scrollY.value = 0;
             };
 
             if (delay > 0) {
@@ -210,9 +219,9 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     const onPullTrigger = useCallback(() => {
         debugLog('onPullTrigger - onRefresh được gọi');
         if (onRefresh) {
+            isPullTriggered.current = true; // Mark this as user-initiated pull
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             if (Platform.OS === 'android') {
-                // Rung thỏa mãn khi thả - như kéo dây rút xong
                 Vibration.vibrate([0, 25, 30, 35, 50, 40, 30]);
             }
             onRefresh();

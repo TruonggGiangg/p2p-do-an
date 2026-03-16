@@ -32,7 +32,7 @@ import { useDebounce } from '../../../shared/hooks';
 const TIERS = [
     { key: 'dong', label: 'Hạng Đồng', icon: 'medal-outline' as const, color: '#CD7F32', limit: 2_000_000, minSpend: 0 },
     { key: 'bac', label: 'Hạng Bạc', icon: 'medal' as const, color: '#9E9E9E', limit: 5_000_000, minSpend: 5_000_000 },
-    { key: 'vang', label: 'Hạng Vàng', icon: 'star-circle' as const, color: '#F0B90B', limit: 10_000_000, minSpend: 20_000_000 },
+    { key: 'vang', label: 'Hạng Vàng', icon: 'star-circle' as const, color: '#CDEA2D', limit: 10_000_000, minSpend: 20_000_000 },
     { key: 'kimcuong', label: 'Kim Cương', icon: 'diamond-stone' as const, color: '#81D4FA', limit: 20_000_000, minSpend: 50_000_000 },
 ];
 

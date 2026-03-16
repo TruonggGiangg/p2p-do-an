@@ -87,11 +87,11 @@ export const WalletCard: React.FC<WalletCardProps> = ({ wallet, onPress }) => {
 
 const styles = StyleSheet.create({
     container: {
-        borderRadius: 12,
-        padding: 16,
+        borderRadius: 18,
+        padding: 18,
         marginVertical: 6,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.05)',
+        borderColor: 'rgba(30, 61, 48, 0.15)',
     },
     content: {
         flexDirection: 'row',
@@ -104,12 +104,12 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     iconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
+        width: 48,
+        height: 48,
+        borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 14,
     },
     textInfo: {
         flex: 1,
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     statusBadge: {
         paddingHorizontal: 8,
         paddingVertical: 2,
-        borderRadius: 4,
+        borderRadius: 8,
     },
     statusText: {
         fontSize: 10,
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 8,
         paddingVertical: 2,
-        borderRadius: 4,
+        borderRadius: 8,
         borderWidth: 0.5,
         marginBottom: 4,
         gap: 2,

@@ -6,16 +6,17 @@ import {
     TouchableOpacity,
     Platform,
     Alert,
+    Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import {
     BinanceHeader,
     RoleBadges,
-    CommonCard,
     CommonButton,
     FintechPullToRefresh,
     FintechScreenSkeleton,
@@ -24,31 +25,26 @@ import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
 
 const creditScoreBand = (score: number) => {
-    if (score >= 680) return { label: 'RỦI RO RẤT THẤP', color: '#18A058' };
-    if (score >= 570) return { label: 'RỦI RO THẤP', color: '#2F80ED' };
-    if (score >= 431) return { label: 'RỦI RO TRUNG BÌNH', color: '#F2C94C' };
-    if (score >= 322) return { label: 'RỦI RO CAO', color: '#F2994A' };
-    return { label: 'RỦI RO RẤT CAO', color: '#EB5757' };
+    if (score >= 680) return { label: 'Rất tốt', color: '#0ECB81', icon: 'shield-check' as const };
+    if (score >= 570) return { label: 'Tốt', color: '#2F80ED', icon: 'shield-half-full' as const };
+    if (score >= 431) return { label: 'Trung bình', color: '#F0B90B', icon: 'shield-alert' as const };
+    if (score >= 322) return { label: 'Thấp', color: '#F2994A', icon: 'shield-alert-outline' as const };
+    return { label: 'Rất thấp', color: '#F6465D', icon: 'shield-off' as const };
 };
 
 const formatHistoryReason = (reason?: string) => {
     switch (reason) {
-        case 'initial_account_creation':
-            return 'Khởi tạo tài khoản';
-        case 'loan_repayment':
-            return 'Trả nợ đúng hạn';
-        case 'late_payment':
-            return 'Chậm thanh toán';
-        case 'manual_adjustment':
-            return 'Điều chỉnh thủ công';
-        case 'system_recalculation':
-            return 'Hệ thống tính lại';
-        default:
-            return 'Cập nhật điểm';
+        case 'initial_account_creation': return 'Khởi tạo tài khoản';
+        case 'loan_repayment': return 'Trả nợ đúng hạn';
+        case 'late_payment': return 'Chậm thanh toán';
+        case 'manual_adjustment': return 'Điều chỉnh thủ công';
+        case 'system_recalculation': return 'Hệ thống tính lại';
+        default: return 'Cập nhật điểm';
     }
 };
 
@@ -56,10 +52,7 @@ const formatDateTime = (value?: string) => {
     if (!value) return '--';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '--';
-    return `${date.toLocaleDateString('vi-VN')} ${date.toLocaleTimeString('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit',
-    })}`;
+    return `${date.toLocaleDateString('vi-VN')} ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
 };
 
 export default function ProfileScreen() {
@@ -72,8 +65,7 @@ export default function ProfileScreen() {
 
     useEffect(() => {
         const init = async () => {
-            const minDelay = new Promise((resolve) => setTimeout(resolve, 1700));
-            await minDelay;
+            await new Promise((resolve) => setTimeout(resolve, 1700));
             setLoading(false);
         };
         init();
@@ -81,13 +73,10 @@ export default function ProfileScreen() {
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        const minDelay = new Promise((resolve) => setTimeout(resolve, 1700));
         try {
             await Promise.all([
-                minDelay,
-                (async () => {
-                    if (refreshUser) await refreshUser();
-                })(),
+                new Promise((resolve) => setTimeout(resolve, 1700)),
+                refreshUser ? refreshUser() : Promise.resolve(),
             ]);
         } catch (error) {
             console.error('Failed to refresh profile:', error);
@@ -107,33 +96,24 @@ export default function ProfileScreen() {
     const scoreRatio = Math.max(0, Math.min(1, (scoreValue - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)));
     const band = creditScoreBand(scoreValue);
     const c = theme.colors;
+    const isDark = theme.mode === 'dark';
 
-    const SettingItem = ({
-        icon,
-        title,
-        subtitle,
-        onPress,
-        rightElement,
-        color,
-    }: any) => (
+    // ── Setting Item Component ──
+    const SettingItem = ({ icon, title, subtitle, onPress, rightElement, color }: any) => (
         <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: c.border + '40' }]}
+            style={styles.settingItem}
             onPress={onPress}
             disabled={!onPress}
             activeOpacity={0.7}
         >
-            <View style={[styles.settingIconContainer, { backgroundColor: (color || c.primary) + '18' }]}>
-                <MaterialCommunityIcons name={icon} size={22} color={color || c.primary} />
+            <View style={[styles.settingIconWrap, { backgroundColor: (color || c.primary) + '15' }]}>
+                <MaterialCommunityIcons name={icon} size={20} color={color || c.primary} />
             </View>
             <View style={styles.settingContent}>
                 <Text style={[styles.settingTitle, { color: c.textPrimary }]}>{title}</Text>
-                {subtitle && (
-                    <Text style={[styles.settingSubtitle, { color: c.textMuted }]}>{subtitle}</Text>
-                )}
+                {subtitle && <Text style={[styles.settingSubtitle, { color: c.textMuted }]}>{subtitle}</Text>}
             </View>
-            {rightElement || (
-                <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDim} />
-            )}
+            {rightElement || <MaterialCommunityIcons name="chevron-right" size={18} color={c.textDim} />}
         </TouchableOpacity>
     );
 
@@ -156,182 +136,148 @@ export default function ProfileScreen() {
                     </View>
                 ) : (
                     <>
-                        {/* Profile Header - Banking style */}
-                        <View style={styles.profileHeader}>
-                            <CommonCard style={styles.profileCard}>
-                                <View style={styles.profileTop}>
-                                    <View style={styles.avatarSection}>
-                                        <View
-                                            style={[
-                                                styles.avatar,
-                                                {
-                                                    backgroundColor:
-                                                        theme.mode === 'dark'
-                                                            ? c.backgroundTertiary || '#2b3139'
-                                                            : '#FFF9E6',
-                                                },
-                                            ]}
-                                        >
-                                            <Text
-                                                style={[
-                                                    styles.avatarText,
-                                                    { color: c.primary },
-                                                ]}
-                                            >
-                                                {initials}
-                                            </Text>
+                        {/* ═══ PROFILE HERO ═══ */}
+                        <View style={styles.heroSection}>
+                            <LinearGradient
+                                colors={isDark ? ['#14342B', '#1A3B34', '#0B1A14'] : ['#14342B', '#1E4D3F', '#245649']}
+                                style={styles.heroGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                {/* Decorative blobs */}
+                                <View style={styles.heroBlob1} />
+                                <View style={styles.heroBlob2} />
+
+                                <View style={styles.heroContent}>
+                                    {/* Avatar */}
+                                    <View style={styles.avatarOuter}>
+                                        <View style={styles.avatar}>
+                                            <Text style={styles.avatarText}>{initials}</Text>
                                         </View>
-                                        <View
-                                            style={[
-                                                styles.verifiedBadge,
-                                                { backgroundColor: c.success },
-                                            ]}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name="check-decagram"
-                                                size={14}
-                                                color="#fff"
-                                            />
+                                        <View style={[styles.verifiedBadge, { backgroundColor: c.success }]}>
+                                            <MaterialCommunityIcons name="check-decagram" size={14} color="#fff" />
                                         </View>
                                     </View>
-                                    <View style={styles.userInfo}>
+
+                                    {/* User Info */}
+                                    <View style={styles.heroInfo}>
                                         <View style={styles.nameRow}>
-                                            <Text
-                                                style={[styles.userName, { color: c.textPrimary }]}
-                                                numberOfLines={1}
-                                            >
-                                                {displayName}
-                                            </Text>
-                                            <View
-                                                style={[
-                                                    styles.levelBadge,
-                                                    { backgroundColor: c.primary },
-                                                ]}
-                                            >
-                                                <Text
-                                                    style={[styles.levelText, { color: '#000' }]}
-                                                >
-                                                    VIP 1
-                                                </Text>
+                                            <Text style={styles.heroName} numberOfLines={1}>{displayName}</Text>
+                                            <View style={styles.vipBadge}>
+                                                <MaterialCommunityIcons name="crown" size={10} color="#14342B" />
+                                                <Text style={styles.vipText}>VIP</Text>
                                             </View>
                                         </View>
-                                        <Text
-                                            style={[styles.userUid, { color: c.textSecondary }]}
-                                        >
-                                            UID: {uid}
-                                        </Text>
+                                        <Text style={styles.heroUid}>UID: {uid}</Text>
                                         {(email || phone) && (
-                                            <Text
-                                                style={[
-                                                    styles.userContact,
-                                                    { color: c.textMuted },
-                                                ]}
-                                                numberOfLines={1}
-                                            >
+                                            <Text style={styles.heroContact} numberOfLines={1}>
                                                 {email || phone}
                                             </Text>
                                         )}
                                     </View>
                                 </View>
-                                <View style={[styles.badgesRow, { borderTopColor: c.border + '40' }]}>
+
+                                {/* Roles */}
+                                <View style={styles.heroRoles}>
                                     <RoleBadges roles={user?.roles || []} />
                                 </View>
-                            </CommonCard>
+                            </LinearGradient>
                         </View>
 
+                        {/* ═══ CREDIT SCORE ═══ */}
                         <View style={styles.creditSection}>
-                            <View style={styles.creditHeaderRow}>
-                                <Text style={[styles.sectionTitle, { color: c.textDim, marginBottom: 0 }]}>TÍN DỤNG</Text>
-                                <TouchableOpacity
-                                    style={styles.creditDetailLink}
-                                    activeOpacity={0.75}
-                                    onPress={() => navigation.navigate('CreditScoreDetail')}
-                                >
-                                    <Text style={[styles.creditDetailText, { color: c.primary }]}>Chi tiết</Text>
+                            <View style={styles.creditHeader}>
+                                <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ĐIỂM TÍN DỤNG</Text>
+                                <TouchableOpacity style={styles.creditLink} onPress={() => navigation.navigate('CreditScoreDetail')}>
+                                    <Text style={[styles.creditLinkText, { color: c.primary }]}>Chi tiết</Text>
                                     <MaterialCommunityIcons name="chevron-right" size={16} color={c.primary} />
                                 </TouchableOpacity>
                             </View>
-                            <TouchableOpacity activeOpacity={0.92} onPress={() => navigation.navigate('CreditScoreDetail')}>
-                                <CommonCard
-                                    style={[
-                                        styles.creditScoreCard,
-                                        {
-                                            backgroundColor:
-                                                theme.mode === 'dark' ? c.backgroundSecondary : '#FFFBF0',
-                                        },
-                                    ]}
-                                >
+
+                            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('CreditScoreDetail')}>
+                                <View style={[styles.creditCard, {
+                                    backgroundColor: isDark ? c.backgroundSecondary : '#FFFFFF',
+                                    ...Platform.select({
+                                        ios: { shadowColor: '#14342B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.2 : 0.06, shadowRadius: 16 },
+                                        android: { elevation: isDark ? 4 : 3 },
+                                    }),
+                                }]}>
+                                    {/* Score + Badge */}
                                     <View style={styles.creditTopRow}>
-                                        <View>
-                                            <Text style={[styles.creditCaption, { color: c.textMuted }]}>Điểm tín dụng</Text>
-                                            <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                        <View style={styles.creditScoreWrap}>
+                                            <View style={[styles.creditIconCircle, { backgroundColor: band.color + '18' }]}>
+                                                <MaterialCommunityIcons name={band.icon} size={22} color={band.color} />
+                                            </View>
+                                            <View>
+                                                <Text style={[styles.creditScoreLabel, { color: c.textMuted }]}>Điểm hiện tại</Text>
+                                                <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                            </View>
                                         </View>
-                                        <View style={[styles.creditBandPill, { backgroundColor: band.color + '22' }]}>
-                                            <Text style={[styles.creditBandText, { color: band.color }]}>{band.label}</Text>
+                                        <View style={[styles.creditBadge, { backgroundColor: band.color + '18' }]}>
+                                            <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
                                         </View>
                                     </View>
 
-                                    <View style={[styles.scoreProgressTrack, { backgroundColor: c.border + '40' }]}>
-                                        <View
-                                            style={[
-                                                styles.scoreProgressFill,
-                                                {
-                                                    width: `${Math.max(scoreRatio * 100, 5)}%`,
-                                                    backgroundColor: band.color,
-                                                },
-                                            ]}
+                                    {/* Progress bar */}
+                                    <View style={[styles.progressTrack, { backgroundColor: c.border + '40' }]}>
+                                        <LinearGradient
+                                            colors={[band.color, band.color + 'CC']}
+                                            style={[styles.progressFill, { width: `${Math.max(scoreRatio * 100, 5)}%` }]}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
                                         />
                                     </View>
 
-                                    <View style={styles.creditMetaRow}>
-                                        <View style={styles.creditMetaItem}>
-                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Tổng khoản vay</Text>
-                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                    {/* Stats row */}
+                                    <View style={styles.creditStats}>
+                                        <View style={styles.creditStat}>
+                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
                                                 {creditScore?.totalLoans ?? 0}
                                             </Text>
+                                            <Text style={[styles.creditStatLabel, { color: c.textMuted }]}>Khoản vay</Text>
                                         </View>
-                                        <View style={styles.creditMetaItem}>
-                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Trả trễ hạn</Text>
-                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
+                                        <View style={[styles.creditStatDivider, { backgroundColor: c.border + '40' }]} />
+                                        <View style={styles.creditStat}>
+                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
                                                 {creditScore?.latePayments ?? 0}
                                             </Text>
+                                            <Text style={[styles.creditStatLabel, { color: c.textMuted }]}>Trả trễ</Text>
                                         </View>
-                                        <View style={styles.creditMetaItem}>
-                                            <Text style={[styles.creditMetaLabel, { color: c.textMuted }]}>Cập nhật cuối</Text>
-                                            <Text style={[styles.creditMetaValue, { color: c.textPrimary }]}>
-                                                {formatDateTime(creditScore?.lastUpdated)}
+                                        <View style={[styles.creditStatDivider, { backgroundColor: c.border + '40' }]} />
+                                        <View style={styles.creditStat}>
+                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]} numberOfLines={1}>
+                                                {formatDateTime(creditScore?.lastUpdated).split(' ')[0]}
                                             </Text>
+                                            <Text style={[styles.creditStatLabel, { color: c.textMuted }]}>Cập nhật</Text>
                                         </View>
                                     </View>
-                                </CommonCard>
+                                </View>
                             </TouchableOpacity>
 
-                            <View style={[styles.historyCard, { backgroundColor: c.backgroundSecondary }]}>
-                                <View style={styles.historyHeaderRow}>
-                                    <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử cập nhật điểm</Text>
-                                    <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} mục</Text>
-                                </View>
-
-                                {creditHistory.length === 0 ? (
-                                    <Text style={[styles.historyEmpty, { color: c.textMuted }]}>Chưa có lịch sử cập nhật.</Text>
-                                ) : (
-                                    creditHistory.slice(0, 6).map((item: any, index: number) => {
+                            {/* Credit History */}
+                            {creditHistory.length > 0 && (
+                                <View style={[styles.historyCard, {
+                                    backgroundColor: isDark ? c.backgroundSecondary : '#FFFFFF',
+                                    ...Platform.select({
+                                        ios: { shadowColor: '#14342B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0.15 : 0.04, shadowRadius: 10 },
+                                        android: { elevation: isDark ? 3 : 2 },
+                                    }),
+                                }]}>
+                                    <View style={styles.historyHeaderRow}>
+                                        <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử điểm</Text>
+                                        <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} mục</Text>
+                                    </View>
+                                    {creditHistory.slice(0, 5).map((item: any, index: number) => {
                                         const change = Number(item?.changeAmount || 0);
                                         const isUp = change > 0;
                                         const isDown = change < 0;
-                                        const changeColor = isUp ? '#18A058' : isDown ? '#EB5757' : c.textMuted;
-
+                                        const changeColor = isUp ? '#0ECB81' : isDown ? '#F6465D' : c.textMuted;
                                         return (
-                                            <View
-                                                key={item?._id || `${index}-${item?.createdAt || item?.afterScore || 0}`}
-                                                style={[
-                                                    styles.historyItem,
-                                                    { borderBottomColor: c.border + '35' },
-                                                    index === creditHistory.slice(0, 6).length - 1
-                                                        ? { borderBottomWidth: 0 }
-                                                        : null,
-                                                ]}
-                                            >
+                                            <View key={item?._id || `${index}`}
+                                                style={[styles.historyItem, { borderBottomColor: c.border + '25' },
+                                                index === Math.min(creditHistory.length, 5) - 1 && { borderBottomWidth: 0 },
+                                                ]}>
+                                                <View style={[styles.historyDot, { backgroundColor: changeColor }]} />
                                                 <View style={styles.historyLeft}>
                                                     <Text style={[styles.historyReason, { color: c.textPrimary }]}>
                                                         {formatHistoryReason(item?.reason)}
@@ -341,62 +287,43 @@ export default function ProfileScreen() {
                                                     </Text>
                                                 </View>
                                                 <View style={styles.historyRight}>
-                                                    <Text style={[styles.historyAfter, { color: c.textPrimary }]}>
-                                                        {item?.afterScore ?? '--'}
-                                                    </Text>
+                                                    <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item?.afterScore ?? '--'}</Text>
                                                     <Text style={[styles.historyDelta, { color: changeColor }]}>
                                                         {isUp ? `+${change}` : `${change}`}
                                                     </Text>
                                                 </View>
                                             </View>
                                         );
-                                    })
-                                )}
-                            </View>
+                                    })}
+                                </View>
+                            )}
                         </View>
 
-                        {/* Security - Giao diện, Ngôn ngữ, Hỗ trợ đã chuyển sang Home */}
+                        {/* ═══ SECURITY SETTINGS ═══ */}
                         <View style={styles.menuSection}>
-                            <Text style={[styles.sectionTitle, { color: c.textDim }]}>
-                                BẢO MẬT
-                            </Text>
-                            <View style={[styles.menuCard, { backgroundColor: c.backgroundSecondary }]}>
+                            <Text style={[styles.sectionLabel, { color: c.textMuted }]}>BẢO MẬT</Text>
+                            <View style={[styles.menuCard, {
+                                backgroundColor: isDark ? c.backgroundSecondary : '#FFFFFF',
+                                ...Platform.select({
+                                    ios: { shadowColor: '#14342B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0.15 : 0.04, shadowRadius: 10 },
+                                    android: { elevation: isDark ? 3 : 2 },
+                                }),
+                            }]}>
                                 <SettingItem
                                     icon="shield-check-outline"
                                     title="Xác minh danh tính"
                                     subtitle={
-                                        (user as any)?.kycStatus === 'VERIFIED'
-                                            ? 'Đã xác minh (eKYC)'
-                                            : (user as any)?.kycStatus === 'PENDING'
-                                                ? 'Đang chờ phê duyệt'
+                                        (user as any)?.kycStatus === 'VERIFIED' ? 'Đã xác minh (eKYC)'
+                                            : (user as any)?.kycStatus === 'PENDING' ? 'Đang chờ phê duyệt'
                                                 : 'Chưa xác minh'
                                     }
                                     onPress={() => {
                                         const status = (user as any)?.kycStatus;
-                                        if (status === 'PENDING') {
-                                            Alert.alert(
-                                                'Đang chờ phê duyệt',
-                                                'Hồ sơ xác minh danh tính của bạn đang được xử lý.',
-                                                [{ text: 'Đã hiểu' }]
-                                            );
-                                            return;
-                                        }
-                                        if (status === 'VERIFIED') {
-                                            Alert.alert(
-                                                'Đã xác minh',
-                                                'Tài khoản của bạn đã được xác minh eKYC.'
-                                            );
-                                            return;
-                                        }
+                                        if (status === 'PENDING') { Alert.alert('Đang chờ phê duyệt', 'Hồ sơ xác minh danh tính của bạn đang được xử lý.', [{ text: 'Đã hiểu' }]); return; }
+                                        if (status === 'VERIFIED') { Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.'); return; }
                                         (navigation as any).getParent()?.navigate('KYCIntro');
                                     }}
-                                    color={
-                                        (user as any)?.kycStatus === 'VERIFIED'
-                                            ? c.success
-                                            : (user as any)?.kycStatus === 'PENDING'
-                                                ? c.primary
-                                                : c.warning
-                                    }
+                                    color={(user as any)?.kycStatus === 'VERIFIED' ? c.success : (user as any)?.kycStatus === 'PENDING' ? c.primary : c.warning}
                                 />
                                 <SmartOTPSection />
                                 <TwoFactorSection />
@@ -404,21 +331,19 @@ export default function ProfileScreen() {
                             </View>
                         </View>
 
-                        {/* Logout - tách biệt, sát bottom nav */}
+                        {/* ═══ LOGOUT ═══ */}
                         <View style={styles.logoutWrapper}>
                             <CommonButton
                                 title="Đăng xuất"
                                 onPress={logout}
-                                variant="secondary"
-                                style={{ ...styles.logoutBtn, borderColor: c.border }}
+                                variant="outline"
+                                style={{ ...styles.logoutBtn, borderColor: c.error + '40' }}
                                 textStyle={{ color: c.error }}
                                 icon="logout"
                             />
                         </View>
 
-                        <Text style={[styles.versionText, { color: c.textDim }]}>
-                            Phiên bản 2.85.0
-                        </Text>
+                        <Text style={[styles.versionText, { color: c.textDim }]}>Phiên bản 2.85.0</Text>
                     </>
                 )}
             </FintechPullToRefresh>
@@ -426,229 +351,129 @@ export default function ProfileScreen() {
     );
 }
 
+// ═══════════════════════════════════════════════
 const styles = StyleSheet.create({
     container: { flex: 1 },
     scrollContent: { paddingBottom: 100, flexGrow: 1 },
-    loadingContainer: {
-        marginTop: Platform.OS === 'ios' ? 24 : 36,
+    loadingContainer: { marginTop: Platform.OS === 'ios' ? 24 : 36 },
+
+    // ── Hero Section ──
+    heroSection: { marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
+    heroGradient: {
+        borderRadius: 24, padding: 24, overflow: 'hidden', position: 'relative',
     },
-    profileHeader: { paddingHorizontal: 16, paddingTop: 16, marginBottom: 4 },
-    profileCard: { padding: 22, borderRadius: 18, overflow: 'hidden', elevation: 1 },
-    profileTop: { flexDirection: 'row', alignItems: 'center' },
-    avatarSection: { position: 'relative' },
+    heroBlob1: {
+        position: 'absolute', width: 200, height: 200, borderRadius: 100,
+        backgroundColor: 'rgba(205, 234, 45, 0.08)', top: -80, right: -60,
+    },
+    heroBlob2: {
+        position: 'absolute', width: 150, height: 150, borderRadius: 75,
+        backgroundColor: 'rgba(205, 234, 45, 0.05)', bottom: -50, left: -30,
+    },
+    heroContent: { flexDirection: 'row', alignItems: 'center', zIndex: 1 },
+    avatarOuter: { position: 'relative' },
     avatar: {
-        width: 68,
-        height: 68,
-        borderRadius: 34,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.1)',
+        width: 72, height: 72, borderRadius: 36,
+        backgroundColor: 'rgba(205, 234, 45, 0.15)',
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 2, borderColor: 'rgba(205, 234, 45, 0.3)',
     },
-    avatarText: { fontSize: 24, fontWeight: '700', fontFamily: 'Poppins_700Bold' },
+    avatarText: {
+        fontSize: 26, fontWeight: '800', fontFamily: 'Poppins_700Bold', color: '#CDEA2D',
+    },
     verifiedBadge: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: '#111318',
+        position: 'absolute', bottom: -2, right: -2, width: 22, height: 22,
+        borderRadius: 11, justifyContent: 'center', alignItems: 'center',
+        borderWidth: 2, borderColor: '#14342B',
     },
-    userInfo: { marginLeft: 16, flex: 1, minWidth: 0 },
-    nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' },
-    userName: {
-        fontSize: 18,
-        fontWeight: '700',
-        fontFamily: 'Poppins_700Bold',
-        marginRight: 8,
+    heroInfo: { marginLeft: 18, flex: 1, minWidth: 0 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' },
+    heroName: {
+        fontSize: 20, fontWeight: '800', fontFamily: 'Poppins_700Bold', color: '#FFFFFF',
     },
-    levelBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
+    vipBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: 3,
+        backgroundColor: '#CDEA2D', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
     },
-    levelText: { fontSize: 10, fontWeight: '700' },
-    userUid: { fontSize: 12, fontFamily: 'Poppins_400Regular', marginBottom: 2 },
-    userContact: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
-    badgesRow: {
-        marginTop: 16,
-        paddingTop: 16,
-        borderTopWidth: StyleSheet.hairlineWidth,
-    },
-    creditSection: { paddingHorizontal: 16, paddingTop: 18 },
-    creditHeaderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 10,
-    },
-    creditDetailLink: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    creditDetailText: {
-        fontSize: 12,
-        fontFamily: 'Poppins_600SemiBold',
-        marginRight: 2,
-    },
-    creditScoreCard: {
-        padding: 18,
-        borderRadius: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(194,157,70,0.24)',
-    },
-    creditTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    creditCaption: {
-        fontSize: 12,
-        fontFamily: 'Poppins_500Medium',
-        marginBottom: 2,
-    },
-    creditScoreValue: {
-        fontSize: 38,
-        lineHeight: 44,
-        fontFamily: 'Poppins_700Bold',
-    },
-    creditBandPill: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        marginTop: 4,
-    },
-    creditBandText: {
-        fontSize: 11,
-        fontFamily: 'Poppins_700Bold',
-    },
-    scoreProgressTrack: {
-        height: 10,
-        borderRadius: 999,
-        marginTop: 14,
-        overflow: 'hidden',
-    },
-    scoreProgressFill: {
-        height: '100%',
-        borderRadius: 999,
-    },
-    creditMetaRow: {
-        marginTop: 14,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 8,
-    },
-    creditMetaItem: { flex: 1 },
-    creditMetaLabel: {
-        fontSize: 11,
-        fontFamily: 'Poppins_500Medium',
-        marginBottom: 4,
-    },
-    creditMetaValue: {
-        fontSize: 13,
+    vipText: { fontSize: 10, fontWeight: '800', color: '#14342B', fontFamily: 'Poppins_700Bold' },
+    heroUid: { fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Poppins_400Regular', marginBottom: 2 },
+    heroContact: { fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: 'Poppins_400Regular' },
+    heroRoles: { marginTop: 16, zIndex: 1 },
+
+    // ── Section Label ──
+    sectionLabel: {
+        fontSize: 11, fontWeight: '700', letterSpacing: 1.2, marginBottom: 12,
         fontFamily: 'Poppins_600SemiBold',
     },
-    historyCard: {
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
+
+    // ── Credit Score ──
+    creditSection: { paddingHorizontal: 16, paddingTop: 20 },
+    creditHeader: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
     },
+    creditLink: { flexDirection: 'row', alignItems: 'center' },
+    creditLinkText: { fontSize: 12, fontFamily: 'Poppins_600SemiBold', marginRight: 2 },
+    creditCard: { borderRadius: 20, padding: 20, marginBottom: 12 },
+    creditTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    creditScoreWrap: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    creditIconCircle: {
+        width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center',
+    },
+    creditScoreLabel: { fontSize: 11, fontFamily: 'Poppins_400Regular', marginBottom: 2 },
+    creditScoreValue: { fontSize: 34, lineHeight: 38, fontFamily: 'Poppins_700Bold' },
+    creditBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+    creditBadgeText: { fontSize: 12, fontFamily: 'Poppins_700Bold' },
+
+    progressTrack: { height: 8, borderRadius: 4, marginTop: 18, overflow: 'hidden' },
+    progressFill: { height: '100%', borderRadius: 4 },
+
+    creditStats: {
+        flexDirection: 'row', marginTop: 18, alignItems: 'center',
+    },
+    creditStat: { flex: 1, alignItems: 'center' },
+    creditStatValue: { fontSize: 16, fontFamily: 'Poppins_700Bold', marginBottom: 2 },
+    creditStatLabel: { fontSize: 10, fontFamily: 'Poppins_400Regular' },
+    creditStatDivider: { width: 1, height: 28 },
+
+    // ── History ──
+    historyCard: { borderRadius: 20, padding: 18, marginTop: 4 },
     historyHeaderRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 4,
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
     },
-    historyTitle: {
-        fontSize: 14,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    historyCount: {
-        fontSize: 11,
-        fontFamily: 'Poppins_500Medium',
-    },
-    historyEmpty: {
-        fontSize: 12,
-        fontFamily: 'Poppins_400Regular',
-        paddingVertical: 10,
-    },
+    historyTitle: { fontSize: 15, fontFamily: 'Poppins_600SemiBold' },
+    historyCount: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
     historyItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 10,
+        flexDirection: 'row', alignItems: 'center', paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
     },
+    historyDot: { width: 8, height: 8, borderRadius: 4, marginRight: 12 },
     historyLeft: { flex: 1, paddingRight: 8 },
-    historyReason: {
-        fontSize: 13,
-        fontFamily: 'Poppins_500Medium',
-    },
-    historyDate: {
-        fontSize: 11,
-        fontFamily: 'Poppins_400Regular',
-        marginTop: 2,
-    },
+    historyReason: { fontSize: 13, fontFamily: 'Poppins_500Medium' },
+    historyDate: { fontSize: 11, fontFamily: 'Poppins_400Regular', marginTop: 2 },
     historyRight: { alignItems: 'flex-end' },
-    historyAfter: {
-        fontSize: 15,
-        fontFamily: 'Poppins_700Bold',
-    },
-    historyDelta: {
-        fontSize: 12,
-        fontFamily: 'Poppins_600SemiBold',
-    },
+    historyAfter: { fontSize: 15, fontFamily: 'Poppins_700Bold' },
+    historyDelta: { fontSize: 12, fontFamily: 'Poppins_600SemiBold' },
+
+    // ── Settings ──
     menuSection: { paddingHorizontal: 16, paddingTop: 24 },
-    sectionTitle: {
-        fontSize: 11,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-        marginBottom: 10,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    menuCard: {
-        borderRadius: 16,
-        overflow: 'hidden',
-    },
+    menuCard: { borderRadius: 20, overflow: 'hidden' },
     settingItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row', alignItems: 'center',
+        paddingVertical: 15, paddingHorizontal: 18,
     },
-    settingIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 14,
+    settingIconWrap: {
+        width: 40, height: 40, borderRadius: 12,
+        justifyContent: 'center', alignItems: 'center', marginRight: 14,
     },
     settingContent: { flex: 1, minWidth: 0 },
-    settingTitle: {
-        fontSize: 15,
-        fontWeight: '500',
-        fontFamily: 'Poppins_500Medium',
-    },
-    settingSubtitle: {
-        fontSize: 12,
-        marginTop: 2,
-        fontFamily: 'Poppins_400Regular',
-    },
-    logoutWrapper: { paddingHorizontal: 16, marginTop: 32 },
-    logoutBtn: {
-        height: 52,
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-    },
+    settingTitle: { fontSize: 15, fontWeight: '500', fontFamily: 'Poppins_500Medium' },
+    settingSubtitle: { fontSize: 12, marginTop: 2, fontFamily: 'Poppins_400Regular' },
+
+    // ── Logout ──
+    logoutWrapper: { paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
+    logoutBtn: { height: 52, backgroundColor: 'transparent', borderWidth: 1 },
     versionText: {
-        textAlign: 'center',
-        marginTop: 16,
-        marginBottom: 24,
-        fontSize: 11,
-        fontFamily: 'Poppins_400Regular',
-        opacity: 0.6,
+        textAlign: 'center', marginTop: 16, marginBottom: 24,
+        fontSize: 11, fontFamily: 'Poppins_400Regular', opacity: 0.6,
     },
 });

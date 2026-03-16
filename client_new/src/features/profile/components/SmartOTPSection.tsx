@@ -40,7 +40,7 @@ export const SmartOTPSection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isRegistered) setExpanded(true);
+    // Don't auto-expand
   }, [isRegistered]);
 
   const handleRegister = async () => {
@@ -112,7 +112,7 @@ export const SmartOTPSection: React.FC = () => {
   };
 
   return (
-    <CommonCard style={styles.card}>
+    <View style={styles.card}>
       <View style={styles.section}>
         <TouchableOpacity
           style={styles.header}
@@ -340,14 +340,14 @@ export const SmartOTPSection: React.FC = () => {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-    </CommonCard>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
-    marginBottom: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
   },
   section: {
     width: '100%',

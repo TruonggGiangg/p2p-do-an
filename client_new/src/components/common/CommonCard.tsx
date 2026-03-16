@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, TouchableOpacity, StyleProp } from 'react-native';
+import { View, StyleSheet, ViewStyle, TouchableOpacity, StyleProp, Platform } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface CommonCardProps {
@@ -15,16 +15,16 @@ export const CommonCard: React.FC<CommonCardProps> = ({
     style,
     onPress,
     variant = 'default',
-    padding = 16,
+    padding = 20,
 }) => {
     const { theme } = useTheme();
+    const isDark = theme.mode === 'dark';
 
     const getVariantStyles = () => {
         switch (variant) {
             case 'surface':
                 return {
                     backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.border,
                 };
             case 'outline':
                 return {
@@ -34,15 +34,28 @@ export const CommonCard: React.FC<CommonCardProps> = ({
                 };
             default:
                 return {
-                    backgroundColor: theme.colors.backgroundSecondary,
-                    borderColor: theme.colors.border,
+                    backgroundColor: isDark ? theme.colors.backgroundSecondary : '#FFFFFF',
                 };
         }
     };
 
     const cardStyles = [
         styles.card,
-        { padding, borderRadius: theme.radius.md },
+        {
+            padding,
+            borderRadius: theme.radius.lg,
+            ...Platform.select({
+                ios: {
+                    shadowColor: isDark ? '#000' : '#14342B',
+                    shadowOffset: { width: 0, height: isDark ? 4 : 3 },
+                    shadowOpacity: isDark ? 0.25 : 0.06,
+                    shadowRadius: isDark ? 10 : 16,
+                },
+                android: {
+                    elevation: isDark ? 4 : 3,
+                },
+            }),
+        },
         getVariantStyles(),
         style,
     ];
@@ -65,6 +78,5 @@ export const CommonCard: React.FC<CommonCardProps> = ({
 const styles = StyleSheet.create({
     card: {
         width: '100%',
-        borderWidth: 1,
     },
 });

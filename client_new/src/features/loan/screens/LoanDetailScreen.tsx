@@ -510,7 +510,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
         const statusConfig = {
             paid: { label: 'Đã trả', color: colors.success, bg: colors.success + '10' },
             overdue: { label: 'Quá hạn', color: '#EF4444', bg: '#FFF0F0' },
-            current: { label: 'Đang đến hạn', color: '#F0B90B', bg: '#FFF9E6' },
+            current: { label: 'Đang đến hạn', color: '#CDEA2D', bg: '#F5FFD6' },
             upcoming: { label: 'Chưa đến hạn', color: '#9CA3AF', bg: '#F9FAFB' },
         };
         return (
@@ -585,7 +585,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             />
 
             {/* Amount Hero */}
-            <View style={[styles.heroCard, { backgroundColor: '#FFF9E6', borderColor: '#F0B90B20' }]}>
+            <View style={[styles.heroCard, { backgroundColor: '#F5FFD6', borderColor: '#CDEA2D20' }]}>
                 <Text style={[styles.heroLabel, { color: '#6B7280' }]}>Số tiền vay</Text>
                 <Text style={[styles.heroAmount, { color: '#111827' }]}>{formatMoney(loan.capital)} <Text style={{ fontSize: 18, fontWeight: '700' }}>đ</Text></Text>
                 {outstanding && isActive && (
@@ -601,10 +601,10 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
-                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#F0B90B' }]]}
+                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#CDEA2D' }]]}
                         onPress={() => setActiveTab(tab.key)}
                     >
-                        <Text style={[styles.tabText, { color: '#6B7280' }, activeTab === tab.key && { color: '#F0B90B', fontWeight: '700' }]}>
+                        <Text style={[styles.tabText, { color: '#6B7280' }, activeTab === tab.key && { color: '#CDEA2D', fontWeight: '700' }]}>
                             {tab.label}
                         </Text>
                     </TouchableOpacity>
@@ -636,7 +636,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             {isActive && (
                 <View style={[styles.footer, { backgroundColor: '#FFF', borderTopColor: '#F3F4F6' }]}>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnOutline, { borderColor: '#F0B90B' }]}
+                        style={[styles.actionBtn, styles.btnOutline, { borderColor: '#CDEA2D' }]}
                         onPress={() => {
                             let amount = loan.monthlyPay || 0;
                             if (amount === 0 && schedule?.periods) {
@@ -650,11 +650,11 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         }}
                         disabled={paymentLoading}
                     >
-                        <Ionicons name="cash-outline" size={18} color="#F0B90B" />
-                        <Text style={[styles.btnOutlineText, { color: '#F0B90B' }]}>TRẢ MỘT PHẦN</Text>
+                        <Ionicons name="cash-outline" size={18} color="#CDEA2D" />
+                        <Text style={[styles.btnOutlineText, { color: '#CDEA2D' }]}>TRẢ MỘT PHẦN</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#F0B90B' }]}
+                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#CDEA2D' }]}
                         onPress={handlePrepayment}
                         disabled={paymentLoading}
                     >

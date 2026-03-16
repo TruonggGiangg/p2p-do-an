@@ -42,8 +42,8 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
         switch (variant) {
             case 'primary':
                 return {
-                    container: { backgroundColor: '#FCD535' }, // Binance Yellow
-                    text: { color: '#000', fontWeight: '700' as const },
+                    container: { backgroundColor: theme.colors.primary },
+                    text: { color: '#14342B', fontWeight: '700' as const },
                 };
             case 'secondary':
                 return {
@@ -77,7 +77,7 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
             default:
                 return {
                     container: { backgroundColor: theme.colors.primary },
-                    text: { color: '#000' },
+                    text: { color: '#14342B' },
                 };
         }
     };
@@ -87,11 +87,11 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
             case 'sm':
                 return { paddingVertical: 6, paddingHorizontal: 12, height: 32 };
             case 'md':
-                return { paddingVertical: 10, paddingHorizontal: 20, height: 44 };
+                return { paddingVertical: 10, paddingHorizontal: 20, height: 48 };
             case 'lg':
                 return { paddingVertical: 14, paddingHorizontal: 28, height: 56 };
             default:
-                return { paddingVertical: 10, paddingHorizontal: 20, height: 44 };
+                return { paddingVertical: 10, paddingHorizontal: 20, height: 48 };
         }
     };
 
@@ -142,7 +142,7 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
 
 const styles = StyleSheet.create({
     container: {
-        borderRadius: 12,
+        borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
     },

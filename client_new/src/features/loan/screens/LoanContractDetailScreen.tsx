@@ -487,7 +487,7 @@ export default function LoanContractDetailScreen() {
                 <View style={styles.confirmOverlay}>
                     <View style={[styles.confirmCard, { backgroundColor: colors.surface }]}>
                         <View style={styles.confirmIconWrap}>
-                            <MaterialCommunityIcons name="shield-check" size={48} color="#F0B90B" />
+                            <MaterialCommunityIcons name="shield-check" size={48} color="#CDEA2D" />
                         </View>
                         <Text style={[styles.confirmTitle, { color: colors.textPrimary }]}>
                             Xác nhận ký hợp đồng
@@ -793,7 +793,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F0B90B',
+        backgroundColor: '#CDEA2D',
         borderRadius: 12,
         paddingVertical: 14,
         gap: 8,
@@ -849,7 +849,7 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: '#F0B90B15',
+        backgroundColor: '#CDEA2D15',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 16,
@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         paddingVertical: 14,
         borderRadius: 12,
-        backgroundColor: '#F0B90B',
+        backgroundColor: '#CDEA2D',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
@@ -891,7 +891,7 @@ const styles = StyleSheet.create({
         width: 340,
         height: 340,
         borderRadius: 170,
-        backgroundColor: '#F0B90B22',
+        backgroundColor: '#CDEA2D22',
         top: -80,
         right: -80,
     },
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
         width: 260,
         height: 260,
         borderRadius: 130,
-        backgroundColor: '#F0B90B1A',
+        backgroundColor: '#CDEA2D1A',
         bottom: -60,
         left: -60,
     },
@@ -920,16 +920,16 @@ const styles = StyleSheet.create({
         height: 112,
         borderRadius: 56,
         borderWidth: 2,
-        borderColor: '#F0B90B55',
+        borderColor: '#CDEA2D55',
     },
     successCheckCircle: {
         width: 96,
         height: 96,
         borderRadius: 48,
-        backgroundColor: '#F0B90B',
+        backgroundColor: '#CDEA2D',
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#F0B90B',
+        shadowColor: '#CDEA2D',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.35,
         shadowRadius: 16,
@@ -956,7 +956,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#F0B90B44',
+        borderColor: '#CDEA2D44',
         padding: 20,
         gap: 12,
         marginTop: 8,
@@ -979,16 +979,16 @@ const styles = StyleSheet.create({
     },
     successCardDivider: {
         height: 1,
-        backgroundColor: '#F0B90B33',
+        backgroundColor: '#CDEA2D33',
     },
     successBtn: {
         width: '100%',
         paddingVertical: 16,
         borderRadius: 16,
-        backgroundColor: '#F0B90B',
+        backgroundColor: '#CDEA2D',
         alignItems: 'center',
         marginTop: 8,
-        shadowColor: '#F0B90B',
+        shadowColor: '#CDEA2D',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,

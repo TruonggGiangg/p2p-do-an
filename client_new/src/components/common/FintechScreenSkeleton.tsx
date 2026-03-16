@@ -5,13 +5,18 @@ import Animated, {
     useAnimatedStyle,
     withRepeat,
     withTiming,
+    withDelay,
+    withSequence,
     interpolate,
+    Extrapolate,
     SharedValue,
+    Easing,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
-import VentoSVGLoading from './VentoSVGLoading';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SHIMMER_WIDTH = SCREEN_WIDTH * 0.7;
 
 type SkeletonVariant = 'home' | 'bnpl' | 'loan' | 'profile';
 
@@ -24,35 +29,55 @@ interface SkeletonBoxProps {
     width?: any;
     height: number;
     radius?: number;
+    shimmerProgress: SharedValue<number>;
+    pulseProgress: SharedValue<number>;
     baseColor: string;
-    shimmerColor: string;
-    progress: SharedValue<number>;
+    shimmerColors: [string, string, string];
     style?: StyleProp<ViewStyle>;
-    delay?: number;
+    staggerIndex?: number;
 }
 
+/**
+ * Premium SkeletonBox with gradient shimmer + pulse
+ */
 const SkeletonBox: React.FC<SkeletonBoxProps> = ({
     width = '100%',
     height,
-    radius = 12,
+    radius = 14,
+    shimmerProgress,
+    pulseProgress,
     baseColor,
-    shimmerColor,
-    progress,
+    shimmerColors,
     style,
+    staggerIndex = 0,
 }) => {
-    const animatedStyle = useAnimatedStyle(() => {
+    // Shimmer wave: gradient slides across with smooth easing
+    const shimmerStyle = useAnimatedStyle(() => {
         const translateX = interpolate(
-            progress.value,
+            shimmerProgress.value,
             [0, 1],
-            [-SCREEN_WIDTH * 0.5, SCREEN_WIDTH]
+            [-SHIMMER_WIDTH, SCREEN_WIDTH + SHIMMER_WIDTH * 0.3],
+            Extrapolate.CLAMP,
         );
         return {
-            transform: [{ translateX }, { skewX: '-15deg' }],
+            transform: [{ translateX }, { skewX: '-20deg' }],
         };
     });
 
+    // Pulse: subtle opacity breathing per box, staggered
+    const pulseStyle = useAnimatedStyle(() => {
+        const staggerOffset = staggerIndex * 0.08;
+        const opacity = interpolate(
+            pulseProgress.value,
+            [0, 0.5, 1],
+            [0.45 + staggerOffset, 0.8, 0.45 + staggerOffset],
+            Extrapolate.CLAMP,
+        );
+        return { opacity };
+    });
+
     return (
-        <View
+        <Animated.View
             style={[
                 styles.skeletonBox,
                 {
@@ -61,124 +86,155 @@ const SkeletonBox: React.FC<SkeletonBoxProps> = ({
                     borderRadius: radius,
                     backgroundColor: baseColor,
                 },
+                pulseStyle,
                 style,
             ]}
         >
-            <Animated.View
-                style={[
-                    styles.shimmer,
-                    {
-                        backgroundColor: shimmerColor,
-                    },
-                    animatedStyle,
-                ]}
-            />
-        </View>
+            <Animated.View style={[styles.shimmerWrap, shimmerStyle]}>
+                <LinearGradient
+                    colors={shimmerColors}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.shimmerGradient}
+                />
+            </Animated.View>
+        </Animated.View>
     );
 };
 
+/**
+ * Row of small skeleton boxes (for grid items, inline elements)
+ */
+const SkeletonRow: React.FC<{
+    items: { w: number | string; h: number; r?: number }[];
+    gap?: number;
+    shimmerProgress: SharedValue<number>;
+    pulseProgress: SharedValue<number>;
+    baseColor: string;
+    shimmerColors: [string, string, string];
+    style?: StyleProp<ViewStyle>;
+    startIndex?: number;
+}> = ({ items, gap = 10, shimmerProgress, pulseProgress, baseColor, shimmerColors, style, startIndex = 0 }) => (
+    <View style={[{ flexDirection: 'row', gap }, style]}>
+        {items.map((item, i) => (
+            <SkeletonBox
+                key={i}
+                width={item.w}
+                height={item.h}
+                radius={item.r ?? 10}
+                shimmerProgress={shimmerProgress}
+                pulseProgress={pulseProgress}
+                baseColor={baseColor}
+                shimmerColors={shimmerColors}
+                staggerIndex={startIndex + i}
+            />
+        ))}
+    </View>
+);
+
 const FintechScreenSkeleton: React.FC<FintechScreenSkeletonProps> = ({ variant, style }) => {
     const { theme } = useTheme();
+    const isDark = theme.mode === 'dark';
+
     const shimmerProgress = useSharedValue(0);
+    const pulseProgress = useSharedValue(0);
 
     useEffect(() => {
+        // Shimmer: smooth wave slide
         shimmerProgress.value = withRepeat(
-            withTiming(1, { duration: 1500 }),
+            withDelay(200,
+                withTiming(1, { duration: 1400, easing: Easing.bezier(0.25, 0.1, 0.25, 1) })
+            ),
             -1,
-            false
+            false,
+        );
+        // Pulse: gentle breathing
+        pulseProgress.value = withRepeat(
+            withSequence(
+                withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+            ),
+            -1,
+            false,
         );
     }, []);
 
-    const isDark = theme.mode === 'dark';
     const baseColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-    const shimmerColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)';
+    const shimmerColors: [string, string, string] = isDark
+        ? ['transparent', 'rgba(255,255,255,0.08)', 'transparent']
+        : ['transparent', 'rgba(255,255,255,0.7)', 'transparent'];
+
+    const boxProps = { shimmerProgress, pulseProgress, baseColor, shimmerColors };
+
+    // ── VARIANT LAYOUTS ──
 
     const renderHome = () => (
         <>
-            <SkeletonBox
-                height={180}
-                radius={24}
-                baseColor={baseColor}
-                shimmerColor={shimmerColor}
-                progress={shimmerProgress}
-            />
+            {/* Wallet card */}
+            <SkeletonBox height={190} radius={22} {...boxProps} staggerIndex={0} />
+            {/* Action grid */}
             <View style={styles.gridContainer}>
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((item) => (
-                    <View key={item} style={styles.gridItem}>
-                        <SkeletonBox
-                            width={52}
-                            height={52}
-                            radius={15}
-                            baseColor={baseColor}
-                            shimmerColor={shimmerColor}
-                            progress={shimmerProgress}
-                        />
-                        <SkeletonBox
-                            width={40}
-                            height={10}
-                            radius={4}
-                            baseColor={baseColor}
-                            shimmerColor={shimmerColor}
-                            progress={shimmerProgress}
-                            style={{ marginTop: 8 }}
-                        />
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <View key={i} style={styles.gridItem}>
+                        <SkeletonBox width={48} height={48} radius={14} {...boxProps} staggerIndex={i + 1} />
+                        <SkeletonBox width={36} height={8} radius={4} {...boxProps} staggerIndex={i + 1} style={{ marginTop: 8 }} />
                     </View>
                 ))}
             </View>
-            <SkeletonBox
-                height={160}
-                radius={20}
-                baseColor={baseColor}
-                shimmerColor={shimmerColor}
-                progress={shimmerProgress}
-                style={styles.sectionGap}
-            />
-        </>
-    );
-
-    const renderBnpl = () => (
-        <>
-            <SkeletonBox height={160} radius={18} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} />
-            <SkeletonBox height={200} radius={18} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
-            <SkeletonBox height={140} radius={18} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
+            {/* Recent section */}
+            <SkeletonRow items={[{ w: 120, h: 14, r: 6 }, { w: 60, h: 14, r: 6 }]} gap={0} {...boxProps} startIndex={9} style={{ justifyContent: 'space-between', marginTop: 20, marginBottom: 12 }} />
+            <SkeletonBox height={70} radius={16} {...boxProps} staggerIndex={11} />
+            <SkeletonBox height={70} radius={16} {...boxProps} staggerIndex={12} style={{ marginTop: 10 }} />
         </>
     );
 
     const renderLoan = () => (
         <>
-            <SkeletonBox width="50%" height={16} radius={8} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} />
-            <SkeletonBox height={140} radius={16} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
-            <SkeletonBox height={140} radius={16} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
+            {/* Header */}
+            <SkeletonRow items={[{ w: 160, h: 20, r: 8 }]} {...boxProps} startIndex={0} style={{ marginBottom: 6 }} />
+            <SkeletonBox width="70%" height={12} radius={6} {...boxProps} staggerIndex={1} style={{ marginBottom: 18 }} />
+            {/* Product cards */}
+            <SkeletonBox height={140} radius={20} {...boxProps} staggerIndex={2} />
+            <SkeletonBox height={140} radius={20} {...boxProps} staggerIndex={3} style={{ marginTop: 14 }} />
+            {/* Recent section */}
+            <SkeletonRow items={[{ w: 130, h: 14, r: 6 }, { w: 70, h: 14, r: 6 }]} gap={0} {...boxProps} startIndex={4} style={{ justifyContent: 'space-between', marginTop: 28, marginBottom: 12 }} />
+            <SkeletonBox height={60} radius={16} {...boxProps} staggerIndex={6} />
+            <SkeletonBox height={60} radius={16} {...boxProps} staggerIndex={7} style={{ marginTop: 8 }} />
+        </>
+    );
+
+    const renderBnpl = () => (
+        <>
+            <SkeletonBox height={160} radius={20} {...boxProps} staggerIndex={0} />
+            <SkeletonBox height={200} radius={20} {...boxProps} staggerIndex={1} style={{ marginTop: 14 }} />
+            <SkeletonBox height={140} radius={20} {...boxProps} staggerIndex={2} style={{ marginTop: 14 }} />
         </>
     );
 
     const renderProfile = () => (
         <>
-            <SkeletonBox height={140} radius={20} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} />
-            <SkeletonBox height={60} radius={12} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
-            <SkeletonBox height={60} radius={12} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
-            <SkeletonBox height={60} radius={12} baseColor={baseColor} shimmerColor={shimmerColor} progress={shimmerProgress} style={styles.sectionGap} />
+            {/* Avatar area */}
+            <View style={styles.profileHeader}>
+                <SkeletonBox width={80} height={80} radius={40} {...boxProps} staggerIndex={0} />
+                <SkeletonBox width={140} height={16} radius={8} {...boxProps} staggerIndex={1} style={{ marginTop: 14 }} />
+                <SkeletonBox width={100} height={11} radius={6} {...boxProps} staggerIndex={2} style={{ marginTop: 8 }} />
+            </View>
+            {/* Credit score */}
+            <SkeletonBox height={100} radius={18} {...boxProps} staggerIndex={3} style={{ marginTop: 20 }} />
+            {/* Settings */}
+            <SkeletonBox height={54} radius={14} {...boxProps} staggerIndex={4} style={{ marginTop: 14 }} />
+            <SkeletonBox height={54} radius={14} {...boxProps} staggerIndex={5} style={{ marginTop: 10 }} />
+            <SkeletonBox height={54} radius={14} {...boxProps} staggerIndex={6} style={{ marginTop: 10 }} />
+            <SkeletonBox height={54} radius={14} {...boxProps} staggerIndex={7} style={{ marginTop: 10 }} />
         </>
     );
 
     return (
         <View style={[styles.container, style]}>
-            <View style={styles.loadingHeader}>
-                <VentoSVGLoading
-                    size={110}
-                    showLabel={false}
-                    duration={1500}
-                    staggerScale={0.4}
-                    strokeWidth={9}
-                />
-            </View>
-
-            <View style={styles.skeletonStack}>
-                {variant === 'home' && renderHome()}
-                {variant === 'bnpl' && renderBnpl()}
-                {variant === 'loan' && renderLoan()}
-                {variant === 'profile' && renderProfile()}
-            </View>
+            {variant === 'home' && renderHome()}
+            {variant === 'bnpl' && renderBnpl()}
+            {variant === 'loan' && renderLoan()}
+            {variant === 'profile' && renderProfile()}
         </View>
     );
 };
@@ -187,40 +243,35 @@ const styles = StyleSheet.create({
     container: {
         width: '100%',
         paddingHorizontal: 16,
+        paddingTop: 8,
     },
-    loadingHeader: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 120,
-        marginBottom: 8,
-    },
-    skeletonStack: {},
     skeletonBox: {
         overflow: 'hidden',
     },
-    shimmer: {
+    shimmerWrap: {
         position: 'absolute',
         top: 0,
         bottom: 0,
-        width: SCREEN_WIDTH * 0.5,
-        opacity: 0.8,
+        width: SHIMMER_WIDTH,
+    },
+    shimmerGradient: {
+        flex: 1,
     },
     gridContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
-        marginTop: 16,
-        padding: 12,
-        backgroundColor: 'rgba(255,255,255,0.02)',
-        borderRadius: 20,
+        marginTop: 18,
+        paddingHorizontal: 4,
     },
     gridItem: {
         width: '23%',
         alignItems: 'center',
         marginBottom: 16,
     },
-    sectionGap: {
-        marginTop: 16,
+    profileHeader: {
+        alignItems: 'center',
+        paddingTop: 10,
     },
 });
 

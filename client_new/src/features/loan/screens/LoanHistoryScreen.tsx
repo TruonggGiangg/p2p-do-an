@@ -32,7 +32,7 @@ const { width } = Dimensions.get('window');
 
 // Status options
 const STATUS_OPTIONS = [
-    { value: null, label: 'Tất cả', color: '#F0B90B' },
+    { value: null, label: 'Tất cả', color: '#CDEA2D' },
     { value: 'waiting', label: 'Chờ duyệt', color: '#F59E0B' },
     { value: 'success', label: 'Đang vay', color: '#3B82F6' },
     { value: 'clean', label: 'Đã trả', color: '#10B981' },
@@ -109,7 +109,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress }: LoanCardProps) => 
             <View style={styles.cardHeader}>
                 <View style={styles.purposeGroup}>
                     <View style={[styles.purposeIconContainer, { backgroundColor: '#FFF5E0' }]}>
-                        <MaterialCommunityIcons name={getPurposeIcon(loan.willing) as any} size={22} color="#F0B90B" />
+                        <MaterialCommunityIcons name={getPurposeIcon(loan.willing) as any} size={22} color="#CDEA2D" />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={[styles.loanPurpose, { color: '#111827' }]} numberOfLines={1}>
@@ -148,7 +148,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress }: LoanCardProps) => 
             {isActive && (
                 <View style={styles.progressSection}>
                     <View style={[styles.progressBarBg, { backgroundColor: '#F3F4F6' }]}>
-                        <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` as any, backgroundColor: '#F0B90B' }]} />
+                        <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` as any, backgroundColor: '#CDEA2D' }]} />
                     </View>
                     <View style={styles.progressTextRow}>
                         <Text style={[styles.progressDesc, { color: '#6B7280' }]}>Đã trả {loan.paidInstallments || 0}/{loan.totalInstallments || 0} kỳ  •  {Math.round(progress)}%</Text>
@@ -165,10 +165,10 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress }: LoanCardProps) => 
                 <View style={styles.actionGroup}>
                     {isActive && (
                         <TouchableOpacity
-                            style={[styles.repayBtn, { borderColor: '#F0B90B', backgroundColor: '#FFF9E6' }]}
+                            style={[styles.repayBtn, { borderColor: '#CDEA2D', backgroundColor: '#F5FFD6' }]}
                             onPress={onRepayPress}
                         >
-                            <Text style={[styles.repayBtnText, { color: '#F0B90B' }]}>Trả nợ</Text>
+                            <Text style={[styles.repayBtnText, { color: '#CDEA2D' }]}>Trả nợ</Text>
                         </TouchableOpacity>
                     )}
                     <TouchableOpacity style={[styles.detailBtn, { backgroundColor: '#F3F4F6' }]} onPress={onPress}>
@@ -289,7 +289,7 @@ const LoanHistoryScreen = () => {
             {/* Summary Stats */}
             <View style={[styles.statsCard, { backgroundColor: '#FFF', borderColor: '#E5E7EB' }]}>
                 <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: '#F0B90B' }]}>{summary.totalActiveLoans}</Text>
+                    <Text style={[styles.statNumber, { color: '#CDEA2D' }]}>{summary.totalActiveLoans}</Text>
                     <Text style={styles.statLabel}>ĐANG VAY</Text>
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: '#F3F4F6' }]} />
@@ -523,7 +523,7 @@ const styles = StyleSheet.create({
     searchBar: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
     searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, height: 48, gap: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
     searchInput: { flex: 1, fontSize: 14, color: '#111827' },
-    filterBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0B90B', backgroundColor: '#FFF' },
+    filterBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CDEA2D', backgroundColor: '#FFF' },
     filterBadge: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFF' },
     filterBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
 

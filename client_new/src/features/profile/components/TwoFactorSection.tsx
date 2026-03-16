@@ -169,7 +169,7 @@ export const TwoFactorSection: React.FC = () => {
 
   return (
     <>
-      <CommonCard style={styles.card}>
+      <View style={styles.card}>
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.header}
@@ -278,7 +278,7 @@ export const TwoFactorSection: React.FC = () => {
             </View>
           )}
         </View>
-      </CommonCard>
+      </View>
 
       {/* QR Code Modal */}
       <Modal
@@ -603,10 +603,8 @@ export const TwoFactorSection: React.FC = () => {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
   },
   section: {
     width: '100%',

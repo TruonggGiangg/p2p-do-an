@@ -11,7 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh, VentoUltimateLoading } from '../../../components';
+import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
 
@@ -103,7 +103,7 @@ export const WalletsScreen = () => {
                                 title="Nạp tiền"
                                 variant="primary"
                                 style={{ flex: 1, height: 40 }}
-                                textStyle={{ fontSize: 13, color: '#000' }}
+                                textStyle={{ fontSize: 13, color: '#14342B' }}
                                 onPress={() => { }}
                             />
                             <CommonButton
@@ -132,14 +132,7 @@ export const WalletsScreen = () => {
                     </View>
 
                     {loading && !refreshing ? (
-                        <VentoUltimateLoading
-                            size={200}
-                            style={{
-                                ...styles.loader,
-                                marginTop: Platform.OS === 'ios' ? -10 : 100,
-                                marginVertical: Platform.OS === 'ios' ? 20 : 0
-                            }}
-                        />
+                        <FintechScreenSkeleton variant="home" />
                     ) : wallets.length > 0 ? (
                         wallets.map((wallet) => (
                             <WalletCard

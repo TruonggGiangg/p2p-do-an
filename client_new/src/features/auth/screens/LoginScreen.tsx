@@ -378,14 +378,14 @@ const styles = StyleSheet.create({
     logoBox: {
         width: 32,
         height: 32,
-        borderRadius: 4,
+        borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
     },
     logoChar: {
         fontSize: 18,
         fontWeight: '900',
-        color: '#000',
+        color: '#14342B',
     },
     brandName: {
         fontSize: 18,
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         height: 48,
-        borderRadius: 8,
+        borderRadius: 14,
         borderWidth: 1,
         gap: 10,
     },
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     footer: {
         flexDirection: 'row',
         padding: 16,
-        borderRadius: 8,
+        borderRadius: 14,
         borderWidth: 1,
     },
     lockIcon: {

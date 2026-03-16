@@ -111,7 +111,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
         return (
             <Modal visible={visible} transparent animationType="fade">
                 <View style={styles.loadingContainer}>
-                    <VentoUltimateLoading />
+                    <VentoUltimateLoading size={110} strokeWidth={9} staggerScale={0.4} showLabel={false} primaryColor={theme.colors.primary} glowColor={theme.colors.primaryLight} />
                 </View>
             </Modal>
         );
@@ -123,7 +123,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                 <BlurView intensity={80} tint="dark" style={styles.permissionContainer}>
                     <View style={styles.permissionContent}>
                         <View style={styles.iconCircle}>
-                            <Ionicons name="camera" size={40} color="#FCD535" />
+                            <Ionicons name="camera" size={40} color="#CDEA2D" />
                         </View>
                         <Text style={styles.permissionTitle}>Quyền Truy Cập Camera</Text>
                         <Text style={styles.permissionDesc}>
@@ -200,7 +200,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
                         <MaterialCommunityIcons
                             name={torch ? "flashlight" : "flashlight-off"}
                             size={24}
-                            color={torch ? "#FCD535" : "#fff"}
+                            color={torch ? "#CDEA2D" : "#fff"}
                         />
                     </TouchableOpacity>
                 </View>
@@ -280,8 +280,8 @@ const styles = StyleSheet.create({
     laser: {
         width: '100%',
         height: 3,
-        backgroundColor: '#FCD535',
-        shadowColor: '#FCD535',
+        backgroundColor: '#CDEA2D',
+        shadowColor: '#CDEA2D',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 1,
         shadowRadius: 10,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         width: 24,
         height: 24,
-        borderColor: '#FCD535',
+        borderColor: '#CDEA2D',
         borderWidth: 4,
     },
     topLeft: {
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     primaryButton: {
-        backgroundColor: '#FCD535',
+        backgroundColor: '#CDEA2D',
         width: '100%',
         paddingVertical: 16,
         borderRadius: 14,

@@ -19,7 +19,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 const { width } = Dimensions.get('window');
-const GOLD = '#F0B90B';
+const GOLD = '#CDEA2D';
 const GOLD_DARK = '#B88700';
 const WHITE = '#FFFFFF';
 
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
         width: 260,
         height: 260,
         borderRadius: 130,
-        backgroundColor: '#F0B90B22',
+        backgroundColor: '#CDEA2D22',
     },
     bgOrbBottom: {
         position: 'absolute',
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
         width: 260,
         height: 260,
         borderRadius: 130,
-        backgroundColor: '#F0B90B1A',
+        backgroundColor: '#CDEA2D1A',
     },
     closeBtn: {
         alignSelf: 'flex-end',
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: '#F0B90B55',
+        borderColor: '#CDEA2D55',
     },
     iconContainer: {
         marginTop: 20,
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
         borderRadius: 60,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#F0B90B22',
+        backgroundColor: '#CDEA2D22',
     },
     iconCircleInner: {
         width: 80,
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
         marginTop: 24,
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: '#F0B90B44',
+        borderColor: '#CDEA2D44',
     },
     infoIconRow: {
         flexDirection: 'row',
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         alignSelf: 'center',
         marginBottom: 16,
-        backgroundColor: '#F0B90B1A',
+        backgroundColor: '#CDEA2D1A',
     },
     infoStatusText: {
         fontSize: 14,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     divider: {
         height: 1,
         marginVertical: 12,
-        backgroundColor: '#F0B90B44',
+        backgroundColor: '#CDEA2D44',
     },
     infoRow: {
         flexDirection: 'row',

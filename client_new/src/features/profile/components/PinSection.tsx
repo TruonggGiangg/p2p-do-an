@@ -15,7 +15,7 @@ export const PinSection: React.FC = () => {
     const hasPin = user?.hasPin;
 
     return (
-        <CommonCard style={styles.card}>
+        <View style={styles.card}>
             <View style={styles.section}>
                 <TouchableOpacity
                     style={styles.header}
@@ -75,14 +75,14 @@ export const PinSection: React.FC = () => {
                     </View>
                 )}
             </View>
-        </CommonCard>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     card: {
-        padding: 16,
-        marginBottom: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 18,
     },
     section: {
         width: '100%',
@@ -121,8 +121,6 @@ const styles = StyleSheet.create({
     content: {
         marginTop: 16,
         paddingTop: 16,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(150,150,150,0.2)',
     },
     description: {
         fontSize: 13,
