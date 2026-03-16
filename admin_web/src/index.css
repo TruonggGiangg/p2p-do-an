@@ -20,14 +20,14 @@
   --font-size-micro: 10px;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
-  --font-size-base: 13px;
+  --font-size-base: 14px;
   --font-size-md: 15px;
-  --font-size-lg: 17px;
+  --font-size-lg: 18px;
   --font-size-xl: 22px;
   --font-size-2xl: 28px;
 
   /* For backwards compat with table references */
-  --font-size-table: 12px;
+  --font-size-table: 13px;
 
   /* Font Stacks */
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -42,6 +42,23 @@
 
 * {
   box-sizing: border-box;
+  font-family: var(--font-sans);
+}
+
+/* ── Sidebar Menu font overrides ── */
+.ant-menu {
+  font-family: var(--font-sans) !important;
+}
+
+.ant-menu-item,
+.ant-menu-item .ant-menu-title-content {
+  font-size: var(--font-size-sm) !important;
+  font-weight: var(--font-weight-medium) !important;
+  letter-spacing: -0.01em;
+}
+
+.ant-layout-header {
+  font-family: var(--font-sans) !important;
 }
 
 body {

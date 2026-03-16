@@ -3276,6 +3276,39 @@ export class AdminService {
     return { success: true };
   }
 
+  // ── User Preferences (font size, etc.) ──────────────────────────────────────
+
+  /**
+   * Lấy preferences của user hiện tại
+   */
+  async getMyPreferences(userId: string) {
+    const user = await this.userModel.findById(userId).select('preferences').lean();
+    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+    return user.preferences || { fontSize: 'default' };
+  }
+
+  /**
+   * Cập nhật preferences của user hiện tại
+   */
+  async updateMyPreferences(userId: string, prefs: { fontSize?: 'compact' | 'default' | 'large' }) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+
+    const validSizes = ['compact', 'default', 'large'];
+    if (prefs.fontSize && !validSizes.includes(prefs.fontSize)) {
+      throw new BadRequestException(`fontSize phải là một trong: ${validSizes.join(', ')}`);
+    }
+
+    user.preferences = {
+      ...(user.preferences || { fontSize: 'default' }),
+      ...(prefs.fontSize ? { fontSize: prefs.fontSize } : {}),
+    };
+    user.markModified('preferences');
+    await user.save();
+
+    return user.preferences;
+  }
+
   // =============================================
   // LOAN SUPPORT REQUESTS (WAIVE / RESCHEDULE)
   // =============================================

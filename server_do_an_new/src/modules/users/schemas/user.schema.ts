@@ -140,6 +140,19 @@ export class User extends Document {
   };
   @Prop({ type: String, required: false })
   pushToken?: string;
+
+  // UI Preferences (per-user settings for admin web)
+  @Prop({
+    type: {
+      fontSize: { type: String, enum: ['compact', 'default', 'large'], default: 'default' },
+    },
+    _id: false,
+    required: false,
+    default: { fontSize: 'default' },
+  })
+  preferences?: {
+    fontSize: 'compact' | 'default' | 'large';
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

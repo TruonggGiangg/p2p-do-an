@@ -363,6 +363,24 @@ export const adminApi = {
   changeMyPassword: (body: { currentPassword: string; newPassword: string }) =>
     api.put<{ data: any }>("/api/admin/me/password", body).then((r) => r.data),
 
+  /** Get user preferences (font size, etc.) */
+  getMyPreferences: () =>
+    api
+      .get<{
+        data: { fontSize: "compact" | "default" | "large" };
+      }>("/api/admin/me/preferences")
+      .then((r) => r.data.data),
+
+  /** Update user preferences */
+  updateMyPreferences: (prefs: {
+    fontSize?: "compact" | "default" | "large";
+  }) =>
+    api
+      .patch<{
+        data: { fontSize: "compact" | "default" | "large" };
+      }>("/api/admin/me/preferences", prefs)
+      .then((r) => r.data.data),
+
   getLoanProducts: () =>
     api
       .get<{ data: { products: LoanProductDto[] } }>("/api/admin/loan-products")

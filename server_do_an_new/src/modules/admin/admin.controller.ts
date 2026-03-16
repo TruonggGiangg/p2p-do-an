@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -108,6 +109,27 @@ export class AdminController {
       body.newPassword,
     );
     return { statusCode: 200, message: 'Đổi mật khẩu thành công', data: result };
+  }
+
+  // ── User Preferences ─────────────────────────────────────────────────────
+
+  @Get('me/preferences')
+  @ApiOperation({ summary: 'Lấy cài đặt giao diện (fontSize, v.v.) của user hiện tại' })
+  @ApiResponse({ status: 200 })
+  async getMyPreferences(@Req() req: any) {
+    const prefs = await this.adminService.getMyPreferences(req.user._id?.toString());
+    return { statusCode: 200, message: 'OK', data: prefs };
+  }
+
+  @Patch('me/preferences')
+  @ApiOperation({ summary: 'Cập nhật cài đặt giao diện (fontSize, v.v.)' })
+  @ApiResponse({ status: 200 })
+  async updateMyPreferences(
+    @Req() req: any,
+    @Body() body: { fontSize?: 'compact' | 'default' | 'large' },
+  ) {
+    const prefs = await this.adminService.updateMyPreferences(req.user._id.toString(), body);
+    return { statusCode: 200, message: 'Cập nhật thành công', data: prefs };
   }
 
   @Get('loan-products')

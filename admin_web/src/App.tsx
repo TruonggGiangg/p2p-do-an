@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import './styles/pages.css';
+import { FontSizeProvider } from './components/FontSizeProvider';
 import AppLayout from './pages/Layout';
 import LoginPage from './pages/LoginPage';
 import DocumentTypesPage from './pages/DocumentTypesPage';
@@ -139,7 +140,7 @@ export default function App() {
             borderRadiusLG: 14,
             borderRadiusSM: 8,
             fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-            fontSize: 13,
+            fontSize: 14,
             controlHeight: 40,
             controlHeightLG: 44,
             controlHeightSM: 32,
@@ -208,6 +209,7 @@ export default function App() {
         }}
       >
         <AbilityContext.Provider value={ability}>
+          <FontSizeProvider>
           <AntApp>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
@@ -258,6 +260,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </AntApp>
+          </FontSizeProvider>
         </AbilityContext.Provider>
       </ConfigProvider>
     </ThemeContext.Provider>

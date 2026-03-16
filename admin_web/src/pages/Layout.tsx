@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Typography, Avatar, Space, theme, Tooltip } from 'antd';
+import { Layout, Menu, Button, Typography, Avatar, Space, theme, Tooltip, Dropdown } from 'antd';
 import React from 'react';
 import { useAbility } from '@casl/react';
 import {
@@ -19,8 +19,10 @@ import {
   ExclamationCircleOutlined,
   SafetyCertificateOutlined,
   DollarOutlined,
+  FontSizeOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
+import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
 
@@ -48,7 +50,14 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { fontSize, setFontSize } = useFontSize();
   const ability = useAbility(AbilityContext);
+
+  const fontSizeLabel: Record<FontSizePreset, string> = {
+    compact: 'Nhỏ gọn',
+    default: 'Mặc định',
+    large: 'Lớn',
+  };
 
   const user: any = (() => {
     try { return JSON.parse(localStorage.getItem('admin_user') || '{}'); } catch { return {}; }
@@ -119,7 +128,7 @@ export default function AppLayout() {
           {!collapsed && (
             <Text strong style={{
               color: '#FFFFFF',
-              fontSize: 18,
+              fontSize: 'var(--font-size-lg)',
               letterSpacing: '0.5px',
               fontWeight: 700,
             }}>P2P Admin</Text>
@@ -134,7 +143,7 @@ export default function AppLayout() {
             items={filteredMenuItems.map((item) => ({
               key: item.key,
               icon: React.cloneElement(item.icon as React.ReactElement, {
-                style: { fontSize: 18, marginRight: 4 }
+                style: { fontSize: 16, marginRight: 4 }
               }),
               label: item.label,
               onClick: () => navigate(item.key),
@@ -142,7 +151,7 @@ export default function AppLayout() {
             style={{
               background: 'transparent',
               border: 'none',
-              fontSize: 15,
+              fontSize: 'var(--font-size-sm)',
             }}
           />
         </div>
@@ -166,10 +175,10 @@ export default function AppLayout() {
           />
           {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
-              <Text strong style={{ color: '#FFFFFF', fontSize: 14, display: 'block' }}>
+              <Text strong style={{ color: '#FFFFFF', fontSize: 'var(--font-size-base)', display: 'block' }}>
                 {user?.username || 'Admin'}
               </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, display: 'block' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'var(--font-size-xs)', display: 'block' }}>
                 {roleLabel}
               </Text>
             </div>
@@ -207,7 +216,46 @@ export default function AppLayout() {
             </Title>
           </div>
 
-          <Space size="large">
+          <Space size="middle">
+            <Dropdown
+              menu={{
+                items: (['compact', 'default', 'large'] as FontSizePreset[]).map((size) => ({
+                  key: size,
+                  label: (
+                    <Space>
+                      <span style={{
+                        fontSize: size === 'compact' ? 11 : size === 'large' ? 15 : 13,
+                        fontWeight: fontSize === size ? 600 : 400,
+                      }}>
+                        A
+                      </span>
+                      <span>{fontSizeLabel[size]}</span>
+                      {fontSize === size && <span style={{ color: token.colorPrimary }}>✓</span>}
+                    </Space>
+                  ),
+                })),
+                onClick: ({ key }) => setFontSize(key as FontSizePreset),
+              }}
+              trigger={['click']}
+              placement="bottomRight"
+            >
+              <Tooltip title="Cỡ chữ">
+                <Button
+                  type="text"
+                  icon={<FontSizeOutlined />}
+                  style={{
+                    fontSize: '18px',
+                    color: isDarkMode ? '#3B82F6' : '#1E40AF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 40,
+                    height: 40,
+                  }}
+                />
+              </Tooltip>
+            </Dropdown>
+
             <Tooltip title={isDarkMode ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
               <Button
                 type="text"
