@@ -16,14 +16,22 @@
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
 
-  /* Typography Scale */
+  /* Typography Scale — compact banking-style */
+  --font-size-micro: 10px;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
-  --font-size-table: 13px;
-  --font-size-base: 14px;
-  --font-size-lg: 18px;
-  --font-size-xl: 24px;
-  --font-size-2xl: 32px;
+  --font-size-base: 13px;
+  --font-size-md: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 22px;
+  --font-size-2xl: 28px;
+
+  /* For backwards compat with table references */
+  --font-size-table: 12px;
+
+  /* Font Stacks */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
 
   /* Font Weights */
   --font-weight-normal: 400;
@@ -38,12 +46,13 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s ease, color 0.3s ease;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  letter-spacing: -0.01em;
 }
 
 [data-theme="light"] body {
@@ -94,7 +103,7 @@ h1, h2, h3, h4, h5, h6 {
 h1 { font-size: var(--font-size-2xl); }
 h2 { font-size: var(--font-size-xl); }
 h3 { font-size: var(--font-size-lg); }
-h4 { font-size: var(--font-size-base); }
+h4 { font-size: var(--font-size-md); }
 
 p {
   margin: 0;
@@ -135,10 +144,10 @@ p {
 /* ProTable header - đồng bộ cỡ chữ */
 .ant-table-thead > tr > th {
   font-weight: var(--font-weight-semibold) !important;
-  font-size: var(--font-size-sm) !important;
+  font-size: var(--font-size-xs) !important;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 10px 12px !important;
+  letter-spacing: 0.06em;
+  padding: 8px 12px !important;
   white-space: nowrap !important;
 }
 
@@ -170,8 +179,8 @@ p {
 
 /* ProTable body - đồng bộ cỡ chữ tất cả bảng */
 .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
-  padding: 10px 12px !important;
-  font-size: var(--font-size-table) !important;
+  padding: 8px 12px !important;
+  font-size: var(--font-size-sm) !important;
 }
 /* Áp dụng cỡ chữ cho Typography, Tag, nút trong ô bảng */
 .ant-table-tbody > tr:not(.ant-table-measure-row) > td .ant-typography,
@@ -249,13 +258,13 @@ p {
 
 /* ── Dense table support (size="small") ── */
 .ant-table-small .ant-table-tbody > tr:not(.ant-table-measure-row) > td {
-  padding: 8px 12px !important;
-  font-size: var(--font-size-sm) !important;
+  padding: 6px 10px !important;
+  font-size: var(--font-size-xs) !important;
 }
 
 .ant-table-small .ant-table-thead > tr > th {
-  padding: 8px 12px !important;
-  font-size: 11px !important;
+  padding: 6px 10px !important;
+  font-size: var(--font-size-micro) !important;
 }
 
 /* ── Empty state improvements ── */
@@ -427,10 +436,25 @@ p {
   border: 1px solid #334155 !important;
 }
 
+/* ── Stat Filter Cards: override global card border ── */
+.stat-filter-card.ant-card {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.stat-filter-card.ant-card:hover {
+  transform: translateY(-3px) !important;
+  filter: brightness(1.04);
+}
+
+.stat-filter-card .ant-card-body {
+  padding: 18px 20px !important;
+}
+
 .ant-card-head {
   font-weight: var(--font-weight-semibold) !important;
-  font-size: var(--font-size-lg) !important;
-  padding: var(--spacing-xl) var(--spacing-2xl) !important;
+  font-size: var(--font-size-md) !important;
+  padding: var(--spacing-lg) var(--spacing-xl) !important;
 }
 
 [data-theme="light"] .ant-card-head {
@@ -450,7 +474,7 @@ p {
 /* ── Button Enhancements ── */
 .ant-btn {
   font-weight: var(--font-weight-medium) !important;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
@@ -464,11 +488,11 @@ p {
 
 /* ── Tag Enhancements ── */
 .ant-tag {
-  font-size: var(--font-size-xs) !important;
+  font-size: var(--font-size-micro) !important;
   font-weight: var(--font-weight-medium) !important;
-  padding: 4px 12px !important;
+  padding: 2px 10px !important;
   border: none !important;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 /* ── Input & Select Enhancements ── */
@@ -637,11 +661,11 @@ p {
 /* ── Descriptions Enhancements ── */
 .ant-descriptions-item-label {
   font-weight: 600 !important;
-  font-size: 13px !important;
+  font-size: var(--font-size-sm) !important;
 }
 
 .ant-descriptions-item-content {
-  font-size: 13px !important;
+  font-size: var(--font-size-sm) !important;
 }
 
 [data-theme="light"] .ant-descriptions-bordered .ant-descriptions-item-label {

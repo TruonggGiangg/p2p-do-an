@@ -2,11 +2,12 @@ import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import { PageWithStatsSkeleton } from '../components/PageSkeleton';
+import StatFilterCards, { type StatFilterItem } from '../components/StatFilterCards';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
-    Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
-    Card, Row, Col, Modal, Form, Input, App, Select, Popconfirm, Drawer, Table,
+    Button, Space, Avatar, Typography, Tooltip, theme, Tag,
+    Row, Col, Modal, Form, Input, App, Select, Popconfirm, Drawer, Table,
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined,
@@ -422,11 +423,11 @@ export default function StaffPage() {
         }
     };
 
-    const tabItems = [
-        { key: 'all', label: (<Space><TeamOutlined />Tất cả<Badge count={stats.total} style={{ backgroundColor: token.colorPrimary }} /></Space>) },
-        { key: 'active', label: (<Space><CheckCircleOutlined />Đang hoạt động<Badge count={stats.active} style={{ backgroundColor: token.colorSuccess }} /></Space>) },
-        { key: 'inactive', label: (<Space><StopOutlined />Không hoạt động<Badge count={stats.inactive} style={{ backgroundColor: token.colorTextTertiary }} /></Space>) },
-        { key: 'deleted', label: (<Space><LockOutlined />Đã khóa<Badge count={stats.deleted} style={{ backgroundColor: token.colorError }} /></Space>) },
+    const statCards: StatFilterItem[] = [
+        { filterKey: 'all', title: 'Tổng nhân viên', value: stats.total, color: '#1E40AF', gradient: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', icon: <TeamOutlined /> },
+        { filterKey: 'active', title: 'Đang hoạt động', value: stats.active, color: '#059669', gradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', icon: <CheckCircleOutlined /> },
+        { filterKey: 'inactive', title: 'Không hoạt động', value: stats.inactive, color: '#D97706', gradient: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)', icon: <StopOutlined /> },
+        { filterKey: 'deleted', title: 'Đã khóa', value: stats.deleted, color: '#DC2626', gradient: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', icon: <LockOutlined /> },
     ];
 
     if (initialLoading) {
@@ -449,44 +450,7 @@ export default function StaffPage() {
                 description="Danh sách nhân viên, phân quyền và trạng thái tài khoản"
                 breadcrumb={[{ label: 'Nhân viên' }]}
             />
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                {([
-                    { title: 'Tổng nhân viên', value: stats.total, gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', icon: <TeamOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Đang hoạt động', value: stats.active, gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: <CheckCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Không hoạt động', value: stats.inactive, gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', icon: <StopOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Đã khóa', value: stats.deleted, gradient: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)', icon: <LockOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                ] as const).map((s, i) => (
-                    <Col xs={24} sm={12} md={8} lg={6} key={i}>
-                        <Card
-                            bordered={false}
-                            style={{
-                                background: s.gradient,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                                height: '100%',
-                                minHeight: 100,
-                            }}
-                            styles={{ body: { padding: '20px 24px' } }}
-                        >
-                            <Space align="center" size={16} style={{ width: '100%' }}>
-                                <div style={{
-                                    width: 48, height: 48, borderRadius: 8,
-                                    background: 'rgba(255,255,255,0.2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    flexShrink: 0,
-                                }}>{s.icon}</div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>{s.title}</Text>
-                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
-                                </div>
-                            </Space>
-                        </Card>
-                    </Col>
-                ))}
-            </Row>
-
-            <Card bordered={false} style={{ borderRadius: 10, marginBottom: 24, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)', overflow: 'visible' }} bodyStyle={{ padding: 0, overflow: 'visible' }}>
-                <Tabs activeKey={viewMode} onChange={handleTabChange} items={tabItems} size="large" tabBarStyle={{ marginBottom: 0, padding: '16px 24px 12px 24px', borderBottom: `2px solid ${token.colorBorderSecondary}`, minHeight: 52 }} tabBarGutter={16} />
-            </Card>
+            <StatFilterCards items={statCards} activeKey={viewMode} onChange={handleTabChange} />
 
             <ProTable<StaffDto>
                 {...PRO_TABLE_DEFAULTS}

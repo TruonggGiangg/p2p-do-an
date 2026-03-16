@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
-    Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tabs, Tag,
+    Button, Space, Avatar, Typography, Tooltip, Badge, theme, Tag,
     Card, Row, Col, Select, DatePicker, Form, Input
 } from 'antd';
 import {
     EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
     ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
-    BankOutlined, FileSearchOutlined,
+    BankOutlined,
 } from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
@@ -17,6 +17,7 @@ import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
 import dayjs from 'dayjs';
 import PageHeader from '../components/PageHeader';
 import { PageWithStatsSkeleton } from '../components/PageSkeleton';
+import StatFilterCards, { type StatFilterItem } from '../components/StatFilterCards';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -325,47 +326,11 @@ export default function CustomersPage() {
         }
     };
 
-    const tabItems = [
-        {
-            key: 'all',
-            label: (
-                <Space>
-                    <TeamOutlined />
-                    Tất cả
-                    <Badge count={stats.total} style={{ backgroundColor: token.colorPrimary }} />
-                </Space>
-            ),
-        },
-        {
-            key: 'pending',
-            label: (
-                <Space>
-                    <ClockCircleOutlined />
-                    Có thông tin KYC, chờ duyệt
-                    <Badge count={pendingCount} style={{ backgroundColor: '#faad14' }} />
-                </Space>
-            ),
-        },
-        {
-            key: 'active',
-            label: (
-                <Space>
-                    <CheckCircleOutlined />
-                    Đang hoạt động
-                    <Badge count={stats.active} style={{ backgroundColor: token.colorSuccess }} />
-                </Space>
-            ),
-        },
-        {
-            key: 'inactive',
-            label: (
-                <Space>
-                    <BankOutlined />
-                    Chưa kích hoạt
-                    <Badge count={stats.total - stats.active} style={{ backgroundColor: token.colorTextTertiary }} />
-                </Space>
-            ),
-        },
+    const statCards: StatFilterItem[] = [
+        { filterKey: 'all', title: 'Tổng khách hàng', value: stats.total, color: '#1E40AF', gradient: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', icon: <TeamOutlined /> },
+        { filterKey: 'pending', title: 'KYC chờ duyệt', value: pendingCount, color: '#D97706', gradient: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)', icon: <ClockCircleOutlined /> },
+        { filterKey: 'active', title: 'Đang hoạt động', value: stats.active, color: '#059669', gradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', icon: <CheckCircleOutlined /> },
+        { filterKey: 'inactive', title: 'Chưa kích hoạt', value: stats.total - stats.active, color: '#6B7280', gradient: 'linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%)', icon: <BankOutlined /> },
     ];
 
     if (initialLoading) {
@@ -388,67 +353,7 @@ export default function CustomersPage() {
                 description="Quản lý danh sách khách hàng, trạng thái KYC và tài khoản Fineract"
                 breadcrumb={[{ label: 'Khách hàng' }]}
             />
-            {/* Stats Cards */}
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                {([
-                    { title: 'Tổng khách hàng', value: stats.total, gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', icon: <TeamOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Đang hoạt động', value: stats.active, gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: <CheckCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Có thông tin KYC, chờ duyệt', value: stats.pendingKyc, gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', icon: <ClockCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                    { title: 'Đã xác minh KYC', value: stats.verifiedKyc, gradient: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', icon: <FileSearchOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-                ] as const).map((s, i) => (
-                    <Col xs={24} sm={12} md={8} lg={6} key={i}>
-                        <Card
-                            bordered={false}
-                            style={{
-                                background: s.gradient,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                                height: '100%',
-                                minHeight: 100,
-                            }}
-                            styles={{ body: { padding: '20px 24px' } }}
-                        >
-                            <Space align="center" size={16} style={{ width: '100%' }}>
-                                <div style={{
-                                    width: 48, height: 48, borderRadius: 8,
-                                    background: 'rgba(255,255,255,0.2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    flexShrink: 0,
-                                }}>{s.icon}</div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>{s.title}</Text>
-                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
-                                </div>
-                            </Space>
-                        </Card>
-                    </Col>
-                ))}
-            </Row>
-
-            {/* Tabs - Enhanced */}
-            <Card
-                bordered={false}
-                style={{
-                    borderRadius: 10,
-                    marginBottom: 24,
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
-                    overflow: 'visible',
-                }}
-                bodyStyle={{ padding: 0, overflow: 'visible' }}
-            >
-                <Tabs
-                    activeKey={viewMode}
-                    onChange={handleTabChange}
-                    items={tabItems}
-                    size="large"
-                    tabBarStyle={{
-                        marginBottom: 0,
-                        padding: '16px 24px 12px 24px',
-                        borderBottom: `2px solid ${token.colorBorderSecondary}`,
-                        minHeight: 52,
-                    }}
-                    tabBarGutter={16}
-                />
-            </Card>
+            <StatFilterCards items={statCards} activeKey={viewMode} onChange={handleTabChange} />
 
             {/* Advanced Filters */}
             <Card

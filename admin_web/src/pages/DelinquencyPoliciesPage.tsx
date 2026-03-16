@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Button,
     Card,
-    Col,
     Form,
     Input,
     Modal,
     Popconfirm,
-    Row,
     Select,
     Space,
     Switch,
@@ -25,6 +23,7 @@ import { adminApi, type LoanProductDto } from '../api/admin';
 import PageHeader from '../components/PageHeader';
 import { PageWithStatsSkeleton } from '../components/PageSkeleton';
 import { FineractStatusBadge } from '../utils/fineractStatus';
+import { StatDisplayCards } from '../components/StatFilterCards';
 
 const { Text } = Typography;
 
@@ -150,10 +149,10 @@ export default function DelinquencyPoliciesPage() {
     const blockCount = policies.filter(p => p.block_new_loan).length;
 
     const statCards = [
-        { title: 'Tổng policy', value: policies.length, gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)', icon: <SafetyCertificateOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-        { title: 'Đang hoạt động', value: activeCount, gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)', icon: <CheckCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-        { title: 'Hành động pháp lý', value: legalCount, gradient: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)', icon: <ExclamationCircleOutlined style={{ fontSize: 24, color: '#fff' }} /> },
-        { title: 'Chặn vay mới', value: blockCount, gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', icon: <StopOutlined style={{ fontSize: 24, color: '#fff' }} /> },
+        { title: 'Tổng policy', value: policies.length, color: '#1E40AF', gradient: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', icon: <SafetyCertificateOutlined /> },
+        { title: 'Đang hoạt động', value: activeCount, color: '#059669', gradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', icon: <CheckCircleOutlined /> },
+        { title: 'Hành động pháp lý', value: legalCount, color: '#DC2626', gradient: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', icon: <ExclamationCircleOutlined /> },
+        { title: 'Chặn vay mới', value: blockCount, color: '#D97706', gradient: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)', icon: <StopOutlined /> },
     ];
 
     const openCreateModal = () => {
@@ -258,7 +257,16 @@ export default function DelinquencyPoliciesPage() {
     };
 
     if (initialLoading) {
-        return <PageWithStatsSkeleton statCount={4} tableRows={5} tableColumns={8} />;
+        return (
+            <div>
+                <PageHeader
+                    title="Cấu hình xử lý nợ xấu"
+                    description="Quản lý chính sách xử lý nợ quá hạn: email, SMS, notification, chặn vay mới, lãi phạt, pháp lý."
+                    breadcrumb={[{ label: 'Cấu hình xử lý nợ xấu' }]}
+                />
+                <PageWithStatsSkeleton statCount={4} tableRows={5} tableColumns={8} />
+            </div>
+        );
     }
 
     return (
@@ -280,36 +288,7 @@ export default function DelinquencyPoliciesPage() {
                 }
             />
 
-            {/* Stat Cards */}
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                {statCards.map((s, i) => (
-                    <Col xs={24} sm={12} md={8} lg={6} key={i}>
-                        <Card
-                            bordered={false}
-                            style={{
-                                background: s.gradient,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                                height: '100%',
-                                minHeight: 100,
-                            }}
-                            styles={{ body: { padding: '20px 24px' } }}
-                        >
-                            <Space align="center" size={16} style={{ width: '100%' }}>
-                                <div style={{
-                                    width: 48, height: 48, borderRadius: 8,
-                                    background: 'rgba(255,255,255,0.2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    flexShrink: 0,
-                                }}>{s.icon}</div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, display: 'block' }}>{s.title}</Text>
-                                    <Text strong style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, display: 'block' }}>{s.value}</Text>
-                                </div>
-                            </Space>
-                        </Card>
-                    </Col>
-                ))}
-            </Row>
+            <StatDisplayCards items={statCards} />
 
             {/* Table Card */}
             <Card

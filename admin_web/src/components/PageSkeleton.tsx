@@ -7,42 +7,30 @@ import { Skeleton, Card, Row, Col, Space, Divider } from 'antd';
 /* ════════════ STAT CARDS SKELETON ════════════ */
 
 export function StatCardsSkeleton({ count = 4 }: { count?: number }) {
-    const span = count >= 5 ? 4 : count === 4 ? 6 : count === 3 ? 8 : 12;
-    const gradients = [
-        'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
-        'linear-gradient(135deg, #059669 0%, #047857 100%)',
-        'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-        'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-        'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
-    ];
+    const span = count >= 5 ? Math.floor(24 / count) : count === 4 ? 6 : count === 3 ? 8 : 12;
+    const accentColors = ['#1E40AF', '#D97706', '#059669', '#6B7280', '#7C3AED', '#DC2626'];
     return (
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
             {Array.from({ length: count }).map((_, i) => (
-                <Col xs={24} sm={12} md={8} lg={span} key={i}>
+                <Col xs={12} sm={12} md={Math.min(8, Math.floor(24 / count))} lg={span} key={i}>
                     <Card
                         bordered={false}
                         style={{
-                            background: gradients[i % gradients.length],
-                            minHeight: 100,
+                            borderRadius: 10,
                             height: '100%',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                            borderLeft: `3px solid ${accentColors[i % accentColors.length]}`,
                         }}
-                        styles={{ body: { padding: '20px 24px' } }}
+                        styles={{ body: { padding: '12px 14px' } }}
+                        className="stat-filter-card"
                     >
-                        <Space align="center" size={16} style={{ width: '100%' }}>
-                            <div style={{
-                                width: 48, height: 48, borderRadius: 8,
-                                background: 'rgba(255,255,255,0.2)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0,
-                            }}>
-                                <Skeleton.Avatar active shape="square" size={24} style={{ background: 'rgba(255,255,255,0.3)' }} />
-                            </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <Skeleton.Avatar active shape="square" size={32} style={{ borderRadius: 8, flexShrink: 0 }} />
                             <div style={{ flex: 1 }}>
-                                <div style={{ width: 80, height: 12, borderRadius: 4, background: 'rgba(255,255,255,0.3)', marginBottom: 8 }} />
-                                <div style={{ width: 50, height: 26, borderRadius: 4, background: 'rgba(255,255,255,0.4)' }} />
+                                <div style={{ width: 60, height: 10, borderRadius: 3, background: '#e5e7eb', marginBottom: 6 }} />
+                                <div style={{ width: 36, height: 20, borderRadius: 4, background: '#d1d5db' }} />
                             </div>
-                        </Space>
+                        </div>
                     </Card>
                 </Col>
             ))}
@@ -260,86 +248,5 @@ export function SyncDriftSkeleton() {
         </div>
     );
 }
-/* ════════════ LOAN PAGE SHELL SKELETON ════════════ */
-/* Dùng cho LoansPage, LoanApprovalsPage — khớp layout LoanPageShell */
 
-const DEFAULT_GRADIENTS = [
-    'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
-    'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-    'linear-gradient(135deg, #059669 0%, #047857 100%)',
-    'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
-    'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
-];
 
-export function LoanPageShellSkeleton({ statCount = 5, tableRows = 6, tableColumns = 6, title, description, breadcrumbLabels }: {
-    statCount?: number;
-    tableRows?: number;
-    tableColumns?: number;
-    title?: string;
-    description?: string;
-    breadcrumbLabels?: string[];
-}) {
-    const span = statCount >= 5 ? 4 : statCount === 4 ? 6 : statCount === 3 ? 8 : 12;
-    return (
-        <div style={{ padding: 0 }}>
-            {/* Breadcrumb */}
-            {breadcrumbLabels && breadcrumbLabels.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                    <Space size={4}>
-                        <Skeleton.Input active size="small" style={{ width: 80, height: 14 }} />
-                        {breadcrumbLabels.map((_, i) => (
-                            <Skeleton.Input active size="small" style={{ width: 100, height: 14 }} key={i} />
-                        ))}
-                    </Space>
-                </div>
-            )}
-            {/* Title + Description */}
-            <div style={{ marginBottom: 24 }}>
-                {title ? (
-                    <h3 style={{ margin: 0, fontWeight: 700, fontSize: 24 }}>{title}</h3>
-                ) : (
-                    <Skeleton.Input active style={{ width: 250, height: 28, marginBottom: 4 }} />
-                )}
-                {description ? (
-                    <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 14, display: 'block', marginTop: 4 }}>{description}</span>
-                ) : (
-                    <Skeleton.Input active size="small" style={{ width: 400, height: 16, marginTop: 4 }} />
-                )}
-            </div>
-            {/* Stat Cards with gradients */}
-            <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                {Array.from({ length: statCount }).map((_, i) => (
-                    <Col xs={24} sm={12} md={8} lg={span} key={i}>
-                        <Card
-                            bordered={false}
-                            style={{
-                                background: DEFAULT_GRADIENTS[i % DEFAULT_GRADIENTS.length],
-                                minHeight: 100,
-                                height: '100%',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                            }}
-                            styles={{ body: { padding: '20px 24px' } }}
-                        >
-                            <Space align="center" size={16} style={{ width: '100%' }}>
-                                <div style={{
-                                    width: 48, height: 48, borderRadius: 8,
-                                    background: 'rgba(255,255,255,0.2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    flexShrink: 0,
-                                }}>
-                                    <Skeleton.Avatar active shape="square" size={24} style={{ background: 'rgba(255,255,255,0.3)' }} />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ width: 80, height: 12, borderRadius: 4, background: 'rgba(255,255,255,0.3)', marginBottom: 8 }} />
-                                    <div style={{ width: 50, height: 26, borderRadius: 4, background: 'rgba(255,255,255,0.4)' }} />
-                                </div>
-                            </Space>
-                        </Card>
-                    </Col>
-                ))}
-            </Row>
-            {/* Table */}
-            <TableSkeleton rows={tableRows} columns={tableColumns} />
-        </div>
-    );
-}

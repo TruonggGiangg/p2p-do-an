@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { ActionType } from '@ant-design/pro-components';
 import { Button, Popconfirm, Tooltip, theme, Form } from 'antd';
 import {
-    CheckOutlined, SendOutlined, ReloadOutlined, ClockCircleOutlined, FilterOutlined,
-    DollarOutlined, FileTextOutlined, EyeOutlined
+    CheckOutlined, SendOutlined, ReloadOutlined, FilterOutlined, EyeOutlined
 } from '@ant-design/icons';
 import { message } from 'antd';
 import { Link } from 'react-router-dom';
@@ -14,18 +13,18 @@ import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
 import LoanDetailDrawer from '../components/LoanDetailDrawer';
-import LoanPageShell, { StatCard } from '../components/LoanPageShell';
 import LoanTable from '../components/LoanTable';
 import LoanFilterForm from '../components/LoanFilterForm';
 import type { LoanTableRow } from '../config/loanTableConfig';
-import { LoanPageShellSkeleton } from '../components/PageSkeleton';
+import { SimplePageSkeleton } from '../components/PageSkeleton';
+import PageHeader from '../components/PageHeader';
 
 export default function LoanApprovalsPage() {
     const { token } = theme.useToken();
     const navigate = useNavigate();
     const ability = useAbility(AbilityContext);
     const actionRef = useRef<ActionType>();
-    const [loans, setLoans] = useState<LoanTableRow[]>([]);
+
     const [approving, setApproving] = useState<Set<number>>(new Set());
     const [disbursing, setDisbursing] = useState<Set<number>>(new Set());
     const [messageApi, contextHolder] = message.useMessage();
@@ -116,7 +115,7 @@ export default function LoanApprovalsPage() {
             });
         }
 
-        setLoans(filtered);
+
         const page = params.current ?? 1;
         const size = params.pageSize ?? 15;
         const start = (page - 1) * size;
@@ -124,33 +123,6 @@ export default function LoanApprovalsPage() {
         return { data: paged, success: true, total: filtered.length };
     }, [form]);
 
-    const totalCapital = loans.reduce((s, l) => s + (l.capital || 0), 0);
-    const productCount = new Set(loans.map(l => l.productShortName || l.productName)).size;
-
-    const statCards: StatCard[] = [
-        {
-            key: 'pending',
-            title: 'Chờ duyệt',
-            value: loans.length,
-            gradient: 'linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%)',
-            icon: <ClockCircleOutlined style={{ fontSize: 24, color: '#fff' }} />,
-        },
-        {
-            key: 'capital',
-            title: 'Tổng vốn cần duyệt',
-            value: totalCapital,
-            formatter: (v) => fmtVND(v),
-            gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-            icon: <DollarOutlined style={{ fontSize: 24, color: '#fff' }} />,
-        },
-        {
-            key: 'products',
-            title: 'Sản phẩm vay',
-            value: `${productCount} loại`,
-            gradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-            icon: <FileTextOutlined style={{ fontSize: 24, color: '#fff' }} />,
-        },
-    ];
 
     const actionColumn = (_: any, r: LoanTableRow) => {
         const id = r.fineractLoanId;
@@ -215,30 +187,31 @@ export default function LoanApprovalsPage() {
 
     if (initialLoading) {
         return (
-            <LoanPageShellSkeleton
-                statCount={3}
-                tableRows={6}
-                tableColumns={6}
-                title="Phê duyệt khoản vay"
-                description="Duyệt và giải ngân các khoản vay đã nộp hồ sơ. Kiểm tra tài liệu trước khi phê duyệt."
-                breadcrumbLabels={['Quản lý khoản vay', 'Phê duyệt khoản vay']}
-            />
+            <div>
+                <PageHeader
+                    title="Phê duyệt khoản vay"
+                    description="Duyệt và giải ngân các khoản vay đã nộp hồ sơ. Kiểm tra tài liệu trước khi phê duyệt."
+                    breadcrumb={[
+                        { label: 'Quản lý khoản vay', path: '/loans' },
+                        { label: 'Phê duyệt khoản vay' },
+                    ]}
+                />
+                <SimplePageSkeleton rows={6} columns={6} />
+            </div>
         );
     }
 
     return (
         <>
             {contextHolder}
-            <LoanPageShell
+            <PageHeader
                 title="Phê duyệt khoản vay"
                 description="Duyệt và giải ngân các khoản vay đã nộp hồ sơ. Kiểm tra tài liệu trước khi phê duyệt."
                 breadcrumb={[
                     { label: 'Quản lý khoản vay', path: '/loans' },
                     { label: 'Phê duyệt khoản vay' },
                 ]}
-                stats={statCards}
-                helpTooltip="Bấm Chi tiết để xem hồ sơ, tài liệu, lịch trả nợ. Duyệt khi đủ tài liệu bắt buộc. Giải ngân khi hợp đồng đã ký."
-            >
+            />
                 <LoanTable
                     variant="approval"
                     request={fetchData}
@@ -298,7 +271,6 @@ export default function LoanApprovalsPage() {
                     loanId={viewLoanId}
                     mode="approval"
                 />
-            </LoanPageShell>
         </>
     );
 }
