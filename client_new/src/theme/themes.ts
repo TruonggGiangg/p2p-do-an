@@ -107,12 +107,12 @@ const LightColors = {
     warningGlass: 'rgba(240, 185, 11, 0.1)',
     warningBorder: 'rgba(240, 185, 11, 0.4)',
 
-    // Text
-    text: '#1A1A1A',
-    textPrimary: '#1A1A1A',
-    textSecondary: '#6B7280',
-    textMuted: '#9CA3AF',
-    textDim: '#D1D5DB',
+    // Text — Darkened for better light-mode contrast
+    text: '#111111',
+    textPrimary: '#111111',
+    textSecondary: '#374151',
+    textMuted: '#6B7280',
+    textDim: '#9CA3AF',
 
     // Borders
     border: '#E8E8E4',

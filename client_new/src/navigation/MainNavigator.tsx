@@ -76,7 +76,7 @@ export default function MainNavigator() {
                         </View>
                     );
                 },
-                tabBarActiveTintColor: theme.colors.primary,
+                tabBarActiveTintColor: theme.mode === 'dark' ? '#8ECFB9' : '#14342B',
                 tabBarInactiveTintColor: theme.mode === 'dark' ? '#848E9C' : '#474D57', // Darker gray for light mode
                 tabBarLabelStyle: {
                     fontSize: 11,

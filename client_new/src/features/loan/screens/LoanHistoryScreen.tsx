@@ -96,83 +96,91 @@ interface LoanCardProps {
     onPress: () => void;
     onRepayPress: () => void;
     colors: any;
+    isDark: boolean;
 }
 
-const LoanCard = React.memo(({ loan, onPress, onRepayPress }: LoanCardProps) => {
+const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: LoanCardProps) => {
     const statusInfo = getStatusInfo(loan);
     const progress = loan.progress || 0;
     const isActive = loan.status === 'success' || loan.status === 'disbursed';
+    // rate from server is already annualInterestRate (%/năm)
+    const annualRate = loan.rate || 0;
 
     return (
-        <TouchableOpacity activeOpacity={0.9} style={[styles.loanCard, { backgroundColor: '#FFF', borderColor: '#F3F4F6' }]} onPress={onPress}>
-            {/* Header: Icon + Purpose + Status */}
+        <TouchableOpacity
+            activeOpacity={0.7}
+            style={[styles.loanCard, {
+                backgroundColor: isDark ? colors.backgroundSecondary : '#FFFFFF',
+                borderColor: isDark ? colors.border : '#F0F0EC',
+                ...Platform.select({
+                    ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.08 : 0.03, shadowRadius: 12 },
+                    android: { elevation: isDark ? 2 : 1 },
+                }),
+            }]}
+            onPress={onPress}
+        >
+            {/* Row 1: Icon + Name/Date + Amount/Status */}
             <View style={styles.cardHeader}>
-                <View style={styles.purposeGroup}>
-                    <View style={[styles.purposeIconContainer, { backgroundColor: '#FFF5E0' }]}>
-                        <MaterialCommunityIcons name={getPurposeIcon(loan.willing) as any} size={22} color="#CDEA2D" />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[styles.loanPurpose, { color: '#111827' }]} numberOfLines={1}>
-                            {loan.willing || loan.productName || 'Khoản vay P2P'}
-                        </Text>
-                        <Text style={[styles.loanDate, { color: '#6B7280' }]}>{formatDate(loan.createdAt)}</Text>
-                    </View>
+                <View style={[styles.purposeIconContainer, { backgroundColor: statusInfo.color + '10' }]}>
+                    <MaterialCommunityIcons name="hand-coin-outline" size={18} color={statusInfo.color} />
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-                    <View style={[styles.statusDot, { backgroundColor: statusInfo.color }]} />
-                    <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
-                </View>
-            </View>
-
-            {/* Body: Amount + Info */}
-            <View style={styles.cardBody}>
-                <View style={styles.amountWrapper}>
-                    <Text style={[styles.amountLabel, { color: '#6B7280' }]}>Số tiền vay</Text>
-                    <Text style={[styles.loanAmount, { color: '#111827' }]}>
-                        {formatMoney(loan.capital)} <Text style={[styles.currencySymbol, { color: '#6B7280' }]}>đ</Text>
+                <View style={styles.cardHeaderInfo}>
+                    <Text style={[styles.loanPurpose, { color: colors.textPrimary }]} numberOfLines={1}>
+                        {loan.productName || 'Khoản vay P2P'}
+                    </Text>
+                    <Text style={[styles.loanDate, { color: colors.textDim || colors.textMuted }]}>
+                        {formatDate(loan.createdAt)}
                     </Text>
                 </View>
-                <View style={styles.infoGrid}>
-                    <View style={styles.infoItem}>
-                        <Text style={[styles.infoItemLabel, { color: '#9CA3AF' }]}>Thời hạn</Text>
-                        <Text style={[styles.infoItemValue, { color: '#4B5563' }]}>{loan.periodMonth || 0} tháng</Text>
-                    </View>
-                    <View style={styles.infoItem}>
-                        <Text style={[styles.infoItemLabel, { color: '#9CA3AF' }]}>Lãi suất</Text>
-                        <Text style={[styles.infoItemValue, { color: '#4B5563' }]}>{(loan.rate || 0).toFixed(1)}%/th</Text>
+                <View style={styles.cardHeaderRight}>
+                    <Text style={[styles.loanAmount, { color: colors.textPrimary }]}>
+                        {formatMoney(loan.capital)} <Text style={[styles.loanCurrency, { color: colors.textMuted }]}>đ</Text>
+                    </Text>
+                    <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '10' }]}>
+                        <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
                     </View>
                 </View>
             </View>
 
-            {/* Progress Bar (active loans) */}
+            {/* Progress Bar (active loans only) */}
             {isActive && (
                 <View style={styles.progressSection}>
-                    <View style={[styles.progressBarBg, { backgroundColor: '#F3F4F6' }]}>
-                        <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` as any, backgroundColor: '#CDEA2D' }]} />
+                    <View style={[styles.progressBarBg, { backgroundColor: isDark ? colors.border : '#F3F4F6' }]}>
+                        <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` as any, backgroundColor: colors.primary }]} />
                     </View>
-                    <View style={styles.progressTextRow}>
-                        <Text style={[styles.progressDesc, { color: '#6B7280' }]}>Đã trả {loan.paidInstallments || 0}/{loan.totalInstallments || 0} kỳ  •  {Math.round(progress)}%</Text>
-                    </View>
+                    <Text style={[styles.progressDesc, { color: colors.textDim || colors.textMuted }]}>
+                        Đã trả {loan.paidInstallments || 0}/{loan.totalInstallments || 0} kỳ • {Math.round(progress)}%
+                    </Text>
                 </View>
             )}
 
-            {/* Footer: Monthly Pay + Actions */}
-            <View style={[styles.cardFooter, { borderTopColor: '#F3F4F6' }]}>
-                <View>
-                    <Text style={[styles.monthlyLabel, { color: '#9CA3AF' }]}>Gốc & Lãi hàng tháng</Text>
-                    <Text style={[styles.monthlyValue, { color: '#111827' }]}>{formatMoney(loan.monthlyPay)} đ</Text>
+            {/* Footer: Term + Monthly + Rate + Action */}
+            <View style={[styles.cardFooter, { borderTopColor: isDark ? colors.border + '60' : '#F0F0EC' }]}>
+                <View style={styles.footerStats}>
+                    <View style={styles.footerStat}>
+                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Kỳ hạn</Text>
+                        <Text style={[styles.footerValue, { color: colors.textPrimary }]}>{loan.periodMonth || 0} th</Text>
+                    </View>
+                    <View style={styles.footerStat}>
+                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Gốc & Lãi/th</Text>
+                        <Text style={[styles.footerValue, { color: colors.textPrimary }]}>{formatMoney(loan.monthlyPay)} đ</Text>
+                    </View>
+                    <View style={styles.footerStat}>
+                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Lãi suất</Text>
+                        <Text style={[styles.footerValue, { color: colors.textPrimary }]}>{annualRate.toFixed(1)}%/năm</Text>
+                    </View>
                 </View>
                 <View style={styles.actionGroup}>
                     {isActive && (
                         <TouchableOpacity
-                            style={[styles.repayBtn, { borderColor: '#CDEA2D', backgroundColor: '#F5FFD6' }]}
+                            style={[styles.repayBtn, { backgroundColor: colors.primary }]}
                             onPress={onRepayPress}
                         >
-                            <Text style={[styles.repayBtnText, { color: '#CDEA2D' }]}>Trả nợ</Text>
+                            <Text style={styles.repayBtnText}>Trả nợ</Text>
                         </TouchableOpacity>
                     )}
-                    <TouchableOpacity style={[styles.detailBtn, { backgroundColor: '#F3F4F6' }]} onPress={onPress}>
-                        <Ionicons name="chevron-forward" size={18} color="#6B7280" />
+                    <TouchableOpacity style={[styles.detailBtn, { backgroundColor: isDark ? colors.border : '#F3F4F6' }]} onPress={onPress}>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -185,6 +193,7 @@ const LoanHistoryScreen = () => {
     const navigation = useNavigation<NativeStackNavigationProp<any>>();
     const { theme } = useTheme();
     const colors = theme.colors;
+    const isDark = theme.mode === 'dark';
     const flatListRef = useRef<FlatList>(null);
 
     const [loading, setLoading] = useState(true);
@@ -286,23 +295,6 @@ const LoanHistoryScreen = () => {
                 rightComponents={<View />}
             />
 
-            {/* Summary Stats */}
-            <View style={[styles.statsCard, { backgroundColor: '#FFF', borderColor: '#E5E7EB' }]}>
-                <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: '#CDEA2D' }]}>{summary.totalActiveLoans}</Text>
-                    <Text style={styles.statLabel}>ĐANG VAY</Text>
-                </View>
-                <View style={[styles.statDivider, { backgroundColor: '#F3F4F6' }]} />
-                <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: '#111827' }]}>{formatMoney(summary.totalOutstanding)}</Text>
-                    <Text style={styles.statLabel}>TỔNG NỢ (đ)</Text>
-                </View>
-                <View style={[styles.statDivider, { backgroundColor: '#F3F4F6' }]} />
-                <View style={styles.statBox}>
-                    <Text style={[styles.statNumber, { color: '#0ECB81' }]}>{summary.totalPaidLoans}</Text>
-                    <Text style={styles.statLabel}>ĐÃ TẤT TOÁN</Text>
-                </View>
-            </View>
 
             {/* Search + Filter Bar */}
             <View style={styles.searchBar}>
@@ -344,6 +336,7 @@ const LoanHistoryScreen = () => {
                         <LoanCard
                             loan={item}
                             colors={colors}
+                            isDark={isDark}
                             onPress={() => navigateToDetail(item)}
                             onRepayPress={() => navigateToDetail(item, true)}
                         />
@@ -421,7 +414,14 @@ const LoanHistoryScreen = () => {
                                     {/* Status Filter */}
                                     <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Trạng thái</Text>
                                     <View style={styles.statusGrid}>
-                                        {STATUS_OPTIONS.map(option => (
+                                    {STATUS_OPTIONS.map(option => {
+                                            const count = option.value === null
+                                                ? totalCount
+                                                : option.value === 'success' || option.value === 'waiting'
+                                                    ? (option.value === 'success' ? summary.totalActiveLoans : summary.totalWaitingLoans)
+                                                    : option.value === 'clean' ? summary.totalPaidLoans
+                                                    : undefined;
+                                            return (
                                             <TouchableOpacity
                                                 key={String(option.value)}
                                                 style={[
@@ -436,9 +436,10 @@ const LoanHistoryScreen = () => {
                                                     styles.statusChipText,
                                                     { color: colors.textSecondary },
                                                     filters.status === option.value && { color: option.color, fontWeight: '600' }
-                                                ]}>{option.label}</Text>
+                                                ]}>{option.label}{count != null ? ` (${count})` : ''}</Text>
                                             </TouchableOpacity>
-                                        ))}
+                                        );
+                                        })}
                                     </View>
 
                                     {/* Sort By */}
@@ -512,20 +513,15 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 17, fontWeight: '700' },
     headerSubtitle: { fontSize: 12, marginTop: 2 },
 
-    // Stats
-    statsCard: { flexDirection: 'row', paddingVertical: 18, marginHorizontal: 16, marginTop: 12, marginBottom: 4, borderRadius: 16, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-    statBox: { flex: 1, alignItems: 'center' },
-    statNumber: { fontSize: 18, fontWeight: '700' },
-    statLabel: { fontSize: 11, marginTop: 4, color: '#9CA3AF', fontWeight: '500' },
-    statDivider: { width: 1, marginVertical: 6 },
+    // Stats (removed — counts now in filter modal)
 
     // Search Bar
-    searchBar: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-    searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, height: 48, gap: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
+    searchBar: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+    searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, height: 44, gap: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
     searchInput: { flex: 1, fontSize: 14, color: '#111827' },
-    filterBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CDEA2D', backgroundColor: '#FFF' },
-    filterBadge: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFF' },
-    filterBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+    filterBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CDEA2D', backgroundColor: '#FFF' },
+    filterBadge: { position: 'absolute', top: -5, right: -5, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFF' },
+    filterBadgeText: { color: '#FFF', fontSize: 9, fontWeight: 'bold' },
 
     // Loading / Empty
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
@@ -539,43 +535,35 @@ const styles = StyleSheet.create({
     // List
     listContent: { paddingBottom: 24, paddingTop: 4 },
 
-    // Loan Card
-    loanCard: { borderRadius: 16, padding: 20, marginBottom: 16, marginHorizontal: 16, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-    purposeGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    purposeIconContainer: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    loanPurpose: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-    loanDate: { fontSize: 13 },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
-    statusDot: { width: 6, height: 6, borderRadius: 3 },
-    statusText: { fontSize: 12, fontWeight: '600' },
-
-    // Card Body
-    cardBody: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    amountWrapper: { flex: 1 },
-    amountLabel: { fontSize: 12, marginBottom: 4 },
-    loanAmount: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-    currencySymbol: { fontSize: 16, fontWeight: '500' },
-    infoGrid: { alignItems: 'flex-end', gap: 6 },
-    infoItem: { alignItems: 'flex-end' },
-    infoItemLabel: { fontSize: 11, marginBottom: 2 },
-    infoItemValue: { fontSize: 13, fontWeight: '600' },
+    // Loan Card — polished
+    loanCard: { borderRadius: 16, padding: 16, marginBottom: 10, marginHorizontal: 16, borderWidth: 1, overflow: 'hidden' },
+    cardHeader: { flexDirection: 'row', alignItems: 'center' },
+    purposeIconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    cardHeaderInfo: { flex: 1, marginLeft: 12 },
+    loanPurpose: { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+    loanDate: { fontSize: 11, opacity: 0.6 },
+    cardHeaderRight: { alignItems: 'flex-end' },
+    loanAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, marginBottom: 4 },
+    loanCurrency: { fontSize: 12, fontWeight: '400' },
+    statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    statusText: { fontSize: 10, fontWeight: '600' },
 
     // Progress
-    progressSection: { marginBottom: 16, gap: 8 },
-    progressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-    progressBarFill: { height: '100%', borderRadius: 3 },
-    progressTextRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: 8 },
-    progressDesc: { fontSize: 12 },
+    progressSection: { marginTop: 12, gap: 4 },
+    progressBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
+    progressBarFill: { height: '100%', borderRadius: 2 },
+    progressDesc: { fontSize: 10, opacity: 0.6 },
 
-    // Card Footer
-    cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 16, borderTopWidth: 1, borderStyle: 'solid' },
-    monthlyLabel: { fontSize: 12, marginBottom: 4 },
-    monthlyValue: { fontSize: 15, fontWeight: '700' },
-    actionGroup: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-    repayBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-    repayBtnText: { fontSize: 14, fontWeight: '700' },
-    detailBtn: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    // Card Footer — 3-column grid
+    cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
+    footerStats: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+    footerStat: {},
+    footerLabel: { fontSize: 10, marginBottom: 3 },
+    footerValue: { fontSize: 13, fontWeight: '700' },
+    actionGroup: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+    repayBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+    repayBtnText: { fontSize: 12, fontWeight: '700', color: '#14342B' },
+    detailBtn: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
 
     // Pagination
     pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 16 },

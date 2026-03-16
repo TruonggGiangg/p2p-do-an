@@ -23,6 +23,8 @@ export interface LoanHistoryItem {
   monthlyPay?: number;
   entirelyPay?: number;
   productName?: string;
+  willing?: string;
+  rate?: number;
   disbursementDate?: string;
   createdAt: string;
   schedulePreview?: ScheduleItem[];
@@ -558,7 +560,9 @@ export class LoanService {
         disbursementDate: doc.disbursementDate,
         createdAt: (doc as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
         schedulePreview: doc.schedulePreview,
-      };
+        willing: doc.willing,
+        rate: doc.monthlyRatePercent ? doc.monthlyRatePercent * 12 : undefined,
+      } as LoanHistoryItem;
       resultMap.set(item.id, item);
       fineractLoanIds.add(doc.fineractLoanId);
     }
@@ -593,7 +597,9 @@ export class LoanService {
           existing.source = 'merged';
           existing.fineractDetails = details;
           existing.status = this.mapFineractStatus(details.status?.code) ?? existing.status;
-          existing.productName = details.productName ?? details.product?.name;
+          // DEBUG: check fineract product name fields
+          this.logger.log(`[mergeProduct] loanId=${loanId} | loanProductName="${details.loanProductName}" | productName="${details.productName}" | product.name="${details.product?.name}" | loanProductDescription="${details.loanProductDescription}"`);
+          existing.productName = details.loanProductName ?? details.productName ?? details.product?.name;
         } else {
           resultMap.set(`fineract-${loanId}`, {
             id: `fineract-${loanId}`,
@@ -705,7 +711,7 @@ export class LoanService {
       // Get willing/purpose from mongo or fineract
       willing = (loan as any).willing || details?.loanPurposeName || '';
 
-      return {
+      const enriched = {
         ...loan,
         willing,
         progress,
@@ -715,6 +721,15 @@ export class LoanService {
         rate: (loan as any).rate || details?.annualInterestRate || 0,
         statusInfo: details?.status || null,
       };
+
+      // DEBUG: log key fields
+      this.logger.log(
+        `[enrichLoan] id=${loan.id} | willing="${enriched.willing}" | productName="${loan.productName}" | ` +
+        `rate=${enriched.rate} | mongoRate=${(loan as any).rate} | fineractAnnualRate=${details?.annualInterestRate} | ` +
+        `mongoWilling="${(loan as any).willing}" | fineractPurpose="${details?.loanPurposeName}"`,
+      );
+
+      return enriched;
     });
 
     return {

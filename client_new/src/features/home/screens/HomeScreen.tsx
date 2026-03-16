@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import Animated, {
     FadeInDown,
-    FadeInUp,
     useSharedValue,
     useAnimatedStyle,
     withSpring,
@@ -24,7 +23,7 @@ import Animated, {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+// BlurView removed — not used on this screen
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -39,15 +38,10 @@ import {
     QUICK_ACTIONS,
     SERVICES_GRID,
     UTILITIES_GRID,
-    BANNERS,
-    type BannerItem,
     type ShortcutItem,
 } from '../constants/home.constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BANNER_WIDTH = SCREEN_WIDTH - 32;
-const BANNER_HEIGHT = 160;
-const BANNER_GAP = 12;
 const WALLET_CARD_W = SCREEN_WIDTH - 48;
 const WALLET_CARD_H = 210;
 
@@ -298,9 +292,8 @@ function FlippableCard({
 
     const frontStyle = useAnimatedStyle(() => {
         const rotateY = interpolate(flipAnim.value, [0, 1], [0, 180]);
-        // Smooth opacity crossfade around the midpoint
-        const opacity = interpolate(flipAnim.value, [0, 0.4, 0.5, 0.6, 1], [1, 1, 0.5, 0, 0]);
-        // Subtle scale dip at midpoint for depth effect
+        // Full opacity crossfade — Android doesn't support backfaceVisibility reliably
+        const opacity = interpolate(flipAnim.value, [0, 0.4, 0.5, 1], [1, 1, 0, 0], Extrapolate.CLAMP);
         const scale = interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]);
         return {
             transform: [
@@ -308,14 +301,13 @@ function FlippableCard({
                 { rotateY: `${rotateY}deg` },
                 { scale },
             ],
-            backfaceVisibility: 'hidden' as const,
             opacity,
         };
     });
 
     const backStyle = useAnimatedStyle(() => {
         const rotateY = interpolate(flipAnim.value, [0, 1], [180, 360]);
-        const opacity = interpolate(flipAnim.value, [0, 0.4, 0.5, 0.6, 1], [0, 0, 0.5, 1, 1]);
+        const opacity = interpolate(flipAnim.value, [0, 0.5, 0.6, 1], [0, 0, 1, 1], Extrapolate.CLAMP);
         const scale = interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]);
         return {
             transform: [
@@ -323,7 +315,6 @@ function FlippableCard({
                 { rotateY: `${rotateY}deg` },
                 { scale },
             ],
-            backfaceVisibility: 'hidden' as const,
             opacity,
         };
     });
@@ -394,12 +385,31 @@ function QuickActionButton({
 function ServiceGridItem({
     item, onPress, colors, isDark, index,
 }: { item: ShortcutItem; onPress: () => void; colors: any; isDark: boolean; index: number; }) {
+    const itemColor = item.color || colors.accent;
+    const iconBg = isDark
+        ? `${itemColor}18`   // 10% opacity in dark
+        : `${itemColor}14`;  // 8% opacity in light
+    const iconBorder = isDark
+        ? `${itemColor}25`   // subtle border dark
+        : `${itemColor}20`;  // subtle border light
+
     return (
-        <Animated.View entering={FadeInDown.delay(400 + index * 60).duration(500)}>
+        <Animated.View entering={FadeInDown.delay(400 + index * 60).duration(500)} style={styles.serviceItemWrap}>
             <TouchableOpacity style={styles.serviceItem} activeOpacity={0.6}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
-                <View style={[styles.serviceIconCircle, { backgroundColor: colors.accentGlass }]}>
-                    <MaterialCommunityIcons name={item.icon} size={24} color={isDark ? '#CDEA2D' : colors.accent} />
+                <View style={[
+                    styles.serviceIconCircle,
+                    {
+                        backgroundColor: iconBg,
+                        borderWidth: 1.5,
+                        borderColor: iconBorder,
+                    },
+                ]}>
+                    <MaterialCommunityIcons
+                        name={item.icon}
+                        size={24}
+                        color={isDark ? '#CDEA2D' : itemColor}
+                    />
                 </View>
                 <Text style={[styles.serviceLabel, { color: colors.textPrimary }]} numberOfLines={2}>
                     {item.label}
@@ -409,29 +419,7 @@ function ServiceGridItem({
     );
 }
 
-// ─────────────────────────────────────────────
-// Banner
-// ─────────────────────────────────────────────
-function BannerCard({ banner, onPress }: { banner: BannerItem; onPress: () => void; }) {
-    return (
-        <Animated.View entering={FadeInUp.duration(600)}>
-            <Pressable style={styles.bannerCard} onPress={onPress} android_ripple={{ color: 'rgba(205,234,45,0.1)' }}>
-                <LinearGradient colors={banner.gradient} style={styles.bannerGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                    <View style={styles.bannerContent}>
-                        <View style={styles.bannerText}>
-                            <Text style={styles.bannerTitle}>{banner.title}</Text>
-                            <Text style={styles.bannerSubtitle}>{banner.subtitle}</Text>
-                        </View>
-                        <View style={[styles.bannerCta, { backgroundColor: '#CDEA2D' }]}>
-                            <Text style={[styles.bannerCtaText, { color: '#14342B' }]}>Khám phá</Text>
-                            <MaterialCommunityIcons name="arrow-top-right" size={14} color="#14342B" />
-                        </View>
-                    </View>
-                </LinearGradient>
-            </Pressable>
-        </Animated.View>
-    );
-}
+
 
 // ═══════════════════════════════════════════════
 // HOME SCREEN
@@ -446,11 +434,8 @@ export default function HomeScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [walletSelectorVisible, setWalletSelectorVisible] = useState(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
-    const [bannerIndex, setBannerIndex] = useState(0);
     const [activeCardIndex, setActiveCardIndex] = useState(0);
-    const bannerScrollRef = useRef<ScrollView>(null);
     const cardScrollRef = useRef<ScrollView>(null);
-    const bannerTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const c = theme.colors;
     const isDark = themeMode === 'dark';
@@ -486,16 +471,7 @@ export default function HomeScreen() {
 
     useEffect(() => { fetchWallets(); }, []);
 
-    useEffect(() => {
-        bannerTimer.current = setInterval(() => {
-            setBannerIndex((prev) => {
-                const next = (prev + 1) % BANNERS.length;
-                bannerScrollRef.current?.scrollTo({ x: next * (BANNER_WIDTH + BANNER_GAP), animated: true });
-                return next;
-            });
-        }, 5000);
-        return () => { if (bannerTimer.current) clearInterval(bannerTimer.current); };
-    }, []);
+
 
     const handleItemPress = (item: ShortcutItem) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -503,8 +479,6 @@ export default function HomeScreen() {
         else { item.isParent ? (navigation as any).getParent()?.navigate(item.nav) : (navigation as any).navigate(item.nav); }
     };
     const handleSelectWalletForQR = (wallet: Wallet) => { setWalletSelectorVisible(false); (navigation as any).navigate('MyQR', { wallet }); };
-    const handleBannerPress = (banner: BannerItem) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); (navigation as any).navigate(banner.actionNav); };
-    const onBannerScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const idx = Math.round(e.nativeEvent.contentOffset.x / (BANNER_WIDTH + BANNER_GAP)); setBannerIndex(Math.min(idx, BANNERS.length - 1)); };
     const onCardScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const idx = Math.round(e.nativeEvent.contentOffset.x / (WALLET_CARD_W + 12));
         if (idx !== activeCardIndex && idx >= 0 && idx < (wallets.length || 1)) { setActiveCardIndex(idx); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
@@ -594,25 +568,7 @@ export default function HomeScreen() {
                         </View>
                     </Animated.View>
 
-                    {/* 5. BANNERS */}
-                    <Animated.View entering={FadeInDown.delay(700).duration(600)} style={styles.bannerSection}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Ưu đãi</Text>
-                        </View>
-                        <ScrollView ref={bannerScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-                            snapToInterval={BANNER_WIDTH + BANNER_GAP} snapToAlignment="start" decelerationRate="fast"
-                            contentContainerStyle={styles.bannerScrollContent} onMomentumScrollEnd={onBannerScroll}
-                            onScrollBeginDrag={() => { if (bannerTimer.current) clearInterval(bannerTimer.current); }}>
-                            {BANNERS.map((b) => <BannerCard key={b.id} banner={b} onPress={() => handleBannerPress(b)} />)}
-                        </ScrollView>
-                        <View style={styles.bannerDots}>
-                            {BANNERS.map((_, i) => (
-                                <View key={i} style={[styles.dot, { backgroundColor: i === bannerIndex ? '#CDEA2D' : (isDark ? c.border : '#D1D5DB'), width: i === bannerIndex ? 24 : 8 }]} />
-                            ))}
-                        </View>
-                    </Animated.View>
-
-                    {/* 6. UTILITIES */}
+                    {/* 5. UTILITIES */}
                     <Animated.View entering={FadeInDown.delay(800).duration(600)} style={styles.servicesSection}>
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích</Text>
@@ -667,7 +623,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden', position: 'relative',
         ...Platform.select({
             ios: { shadowColor: '#000', shadowOffset: { width: -6, height: 7 }, shadowOpacity: 0.3, shadowRadius: 15 },
-            android: { elevation: 12 },
+            android: { elevation: 8, shadowColor: '#000' },
         }),
     },
 
@@ -726,15 +682,15 @@ const styles = StyleSheet.create({
 
     // ── Back Card ──
     backMetalLine1: {
-        position: 'absolute', width: '140%', height: 1,
+        position: 'absolute', width: WALLET_CARD_W * 1.4, height: 1,
         backgroundColor: 'rgba(205,234,45,0.06)',
-        top: '35%', left: '-20%',
+        top: WALLET_CARD_H * 0.35, left: -WALLET_CARD_W * 0.2,
         transform: [{ rotate: '-25deg' }],
     },
     backMetalLine2: {
-        position: 'absolute', width: '140%', height: 1,
+        position: 'absolute', width: WALLET_CARD_W * 1.4, height: 1,
         backgroundColor: 'rgba(255,255,255,0.04)',
-        top: '65%', left: '-20%',
+        top: WALLET_CARD_H * 0.65, left: -WALLET_CARD_W * 0.2,
         transform: [{ rotate: '-25deg' }],
     },
     backMetalCircle: {
@@ -829,22 +785,11 @@ const styles = StyleSheet.create({
 
     // ── Services ──
     servicesSection: { paddingHorizontal: 16, marginTop: 28 },
-    servicesCard: { borderRadius: 20, paddingVertical: 18, paddingHorizontal: 10, flexDirection: 'row', flexWrap: 'wrap' },
-    serviceItem: { width: (SCREEN_WIDTH - 32 - 20) / 3, alignItems: 'center', marginBottom: 18 },
-    serviceIconCircle: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    serviceLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
+    servicesCard: { borderRadius: 20, paddingTop: 24, paddingBottom: 0, paddingHorizontal: 4, flexDirection: 'row', flexWrap: 'wrap' },
+    serviceItemWrap: { width: '25%', marginBottom: 24 },
+    serviceItem: { alignItems: 'center', paddingHorizontal: 2 },
+    serviceIconCircle: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    serviceLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center', lineHeight: 15 },
 
-    // ── Banner ──
-    bannerSection: { marginTop: 28, paddingHorizontal: 16 },
-    bannerScrollContent: { paddingRight: 0 },
-    bannerCard: { marginRight: BANNER_GAP, width: BANNER_WIDTH, height: BANNER_HEIGHT, borderRadius: 20, overflow: 'hidden', backgroundColor: '#14342B' },
-    bannerGradient: { flex: 1, padding: 20, justifyContent: 'center' },
-    bannerContent: { flexDirection: 'row', alignItems: 'center' },
-    bannerText: { flex: 1 },
-    bannerTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 4 },
-    bannerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 16 },
-    bannerCta: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
-    bannerCtaText: { fontSize: 12, fontWeight: '800' },
-    bannerDots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 14 },
-    dot: { height: 8, borderRadius: 4 },
 });
+

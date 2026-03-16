@@ -405,12 +405,15 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             <>
                 {/* Loan Info Card */}
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>THÔNG TIN CHUNG</Text>
+                    <View style={styles.cardTitleRow}>
+                        <View style={[styles.cardTitleDot, { backgroundColor: '#14342B' }]} />
+                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>THÔNG TIN CHUNG</Text>
+                    </View>
                     <InfoRow label="Mục đích vay" value={loan.willing} colors={colors} />
                     <InfoRow label="Ngày giải ngân" value={formatDate(loan.disbursementDate)} colors={colors} />
-                    <InfoRow label="Lãi suất" value={`${loan.rate}%/tháng`} colors={colors} />
+                    <InfoRow label="Lãi suất" value={`${loan.rate}%/năm`} colors={colors} />
                     <InfoRow label="Thời hạn" value={`${loan.periodMonth} tháng`} colors={colors} />
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <View style={[styles.divider, { backgroundColor: colors.border + '50' }]} />
                     <View style={styles.statusRow}>
                         <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Trạng thái</Text>
                         <View style={[styles.statusPill, { backgroundColor: statusDisplay.bgColor }]}>
@@ -421,30 +424,33 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
                 {/* Finance Card */}
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>TÀI CHÍNH</Text>
+                    <View style={styles.cardTitleRow}>
+                        <View style={[styles.cardTitleDot, { backgroundColor: '#10B981' }]} />
+                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>TÀI CHÍNH</Text>
+                    </View>
                     <View style={styles.financeRow}>
-                        <View>
+                        <View style={[styles.financeCol, { backgroundColor: colors.background, borderColor: colors.border }]}>
                             <Text style={[styles.financeLabel, { color: colors.textMuted }]}>Gốc vay</Text>
                             <Text style={[styles.financeValue, { color: colors.text }]}>{formatMoney(loan.capital)} đ</Text>
                         </View>
-                        <View style={{ alignItems: 'flex-end' }}>
+                        <View style={[styles.financeCol, { backgroundColor: colors.background, borderColor: colors.border }]}>
                             <Text style={[styles.financeLabel, { color: colors.textMuted }]}>Đã thanh toán</Text>
-                            <Text style={[styles.financeValue, { color: colors.success }]}>{formatMoney(totalPaid)} đ</Text>
+                            <Text style={[styles.financeValue, { color: '#10B981' }]}>{formatMoney(totalPaid)} đ</Text>
                         </View>
                     </View>
 
                     {outstanding && (
-                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderColor: '#FECACA' }]}>
-                            <Text style={[styles.outstandingLabel, { color: '#EF4444' }]}>DƯ NỢ CÒN LẠI</Text>
-                            <Text style={[styles.outstandingValue, { color: '#EF4444' }]}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
+                        <View style={[styles.outstandingBox, { backgroundColor: '#14342B' }]}>
+                            <Text style={[styles.outstandingLabel, { color: 'rgba(255,255,255,0.6)' }]}>DƯ NỢ CÒN LẠI</Text>
+                            <Text style={[styles.outstandingValue, { color: '#FFFFFF' }]}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
                             <View style={styles.outstandingDetail}>
-                                <Text style={[styles.outstandingDetailText, { color: '#EF4444' }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
-                                <Text style={[styles.outstandingDetailText, { color: '#EF4444' }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
+                                <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
+                                <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
                             </View>
                         </View>
                     )}
                     {(outstanding?.totalOverdue ?? 0) > 0 && (
-                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderColor: '#EF4444', marginTop: 12 }]}>
+                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderWidth: 1, borderColor: '#FECACA', marginTop: 12 }]}>
                             <Text style={[styles.outstandingLabel, { color: '#EF4444' }]}>NỢ QUÁ HẠN</Text>
                             <Text style={[styles.outstandingValue, { color: '#EF4444', fontSize: 18 }]}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
                             {(outstanding!.delinquentDays ?? 0) > 0 && (
@@ -490,16 +496,20 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
                 {/* Contract Button */}
                 <TouchableOpacity
-                    style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.primary + '40', flexDirection: 'row', alignItems: 'center', padding: 16 }]}
+                    style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', padding: 16 }]}
                     onPress={() => navigation.navigate('LoanContractDetail' as any, { loanId: loan.id, fineractLoanId: loan.fineractLoanId })}
                     activeOpacity={0.7}
                 >
-                    <MaterialCommunityIcons name="file-document-check-outline" size={24} color={colors.primary} />
+                    <View style={[styles.contractIcon, { backgroundColor: '#14342B10' }]}>
+                        <MaterialCommunityIcons name="file-document-check-outline" size={20} color="#14342B" />
+                    </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text }]}>Hợp đồng vay</Text>
                         <Text style={[{ fontSize: 12, color: colors.textMuted, marginTop: 2 }]}>Xem và ký hợp đồng vay</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                    <View style={[styles.contractChevron, { backgroundColor: colors.background }]}>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                    </View>
                 </TouchableOpacity>
             </>
         );
@@ -585,13 +595,18 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             />
 
             {/* Amount Hero */}
-            <View style={[styles.heroCard, { backgroundColor: '#F5FFD6', borderColor: '#CDEA2D20' }]}>
-                <Text style={[styles.heroLabel, { color: '#6B7280' }]}>Số tiền vay</Text>
-                <Text style={[styles.heroAmount, { color: '#111827' }]}>{formatMoney(loan.capital)} <Text style={{ fontSize: 18, fontWeight: '700' }}>đ</Text></Text>
+            <View style={[styles.heroCard, { backgroundColor: '#14342B' }]}>
+                <View style={styles.heroIconRow}>
+                    <View style={styles.heroIconCircle}>
+                        <MaterialCommunityIcons name="hand-coin-outline" size={20} color="#CDEA2D" />
+                    </View>
+                    <Text style={[styles.heroLabel, { color: 'rgba(255,255,255,0.6)' }]}>Số tiền vay</Text>
+                </View>
+                <Text style={styles.heroAmount}>{formatMoney(loan.capital)} <Text style={{ fontSize: 16, fontWeight: '500', color: 'rgba(255,255,255,0.5)' }}>đ</Text></Text>
                 {outstanding && isActive && (
                     <View style={styles.heroSub}>
-                        <Ionicons name="alert-circle-outline" size={14} color="#EF4444" />
-                        <Text style={[styles.heroSubText, { color: '#EF4444' }]}>Còn lại: {formatMoney(outstanding.totalOutstanding)} đ</Text>
+                        <View style={styles.heroSubDot} />
+                        <Text style={styles.heroSubText}>Dư nợ: {formatMoney(outstanding.totalOutstanding)} đ</Text>
                     </View>
                 )}
             </View>
@@ -601,10 +616,10 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
-                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#CDEA2D' }]]}
+                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#14342B' }]]}
                         onPress={() => setActiveTab(tab.key)}
                     >
-                        <Text style={[styles.tabText, { color: '#6B7280' }, activeTab === tab.key && { color: '#CDEA2D', fontWeight: '700' }]}>
+                        <Text style={[styles.tabText, { color: colors.textMuted }, activeTab === tab.key && { color: '#14342B', fontWeight: '700' }]}>
                             {tab.label}
                         </Text>
                     </TouchableOpacity>
@@ -634,9 +649,9 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
             {/* Footer Actions */}
             {isActive && (
-                <View style={[styles.footer, { backgroundColor: '#FFF', borderTopColor: '#F3F4F6' }]}>
+                <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnOutline, { borderColor: '#CDEA2D' }]}
+                        style={[styles.actionBtn, styles.btnOutline, { borderColor: '#14342B' }]}
                         onPress={() => {
                             let amount = loan.monthlyPay || 0;
                             if (amount === 0 && schedule?.periods) {
@@ -650,19 +665,19 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         }}
                         disabled={paymentLoading}
                     >
-                        <Ionicons name="cash-outline" size={18} color="#CDEA2D" />
-                        <Text style={[styles.btnOutlineText, { color: '#CDEA2D' }]}>TRẢ MỘT PHẦN</Text>
+                        <Ionicons name="cash-outline" size={18} color="#14342B" />
+                        <Text style={[styles.btnOutlineText, { color: '#14342B' }]}>TRẢ MỘT PHẦN</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#CDEA2D' }]}
+                        style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#14342B' }]}
                         onPress={handlePrepayment}
                         disabled={paymentLoading}
                     >
                         {paymentLoading
-                            ? <ActivityIndicator size="small" color="#000" />
+                            ? <ActivityIndicator size="small" color="#FFF" />
                             : <>
-                                <Ionicons name="checkmark-done-circle-outline" size={18} color="#000" />
-                                <Text style={styles.btnPrimaryText}>TẤT TOÁN</Text>
+                                <Ionicons name="checkmark-done-circle-outline" size={18} color="#FFFFFF" />
+                                <Text style={[styles.btnPrimaryText, { color: '#FFFFFF' }]}>TẤT TOÁN</Text>
                             </>
                         }
                     </TouchableOpacity>
@@ -805,44 +820,54 @@ const styles = StyleSheet.create({
     headerSubtitle: { fontSize: 12, marginTop: 2 },
 
     // Hero
-    heroCard: { marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 16, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
-    heroLabel: { fontSize: 12, marginBottom: 4 },
-    heroAmount: { fontSize: 30, fontWeight: '800' },
-    heroSub: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-    heroSubText: { fontSize: 13, fontWeight: '500' },
+    heroCard: { marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 20, borderRadius: 18, alignItems: 'center' },
+    heroIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    heroIconCircle: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(205,234,45,0.15)', justifyContent: 'center', alignItems: 'center' },
+    heroLabel: { fontSize: 12, fontWeight: '500' },
+    heroAmount: { fontSize: 32, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
+    heroSub: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+    heroSubDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CDEA2D' },
+    heroSubText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
 
     // Tab Bar
     tabBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16, marginTop: 4 },
-    tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+    tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
     tabItemActive: {},
-    tabText: { fontSize: 14, fontWeight: '500' },
+    tabText: { fontSize: 14, fontWeight: '600' },
 
     content: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 80, gap: 12 },
     loadingText: { fontSize: 14 },
 
     // Cards
-    card: { borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-    cardTitle: { fontSize: 12, fontWeight: '700', marginBottom: 14, letterSpacing: 0.6 },
+    card: { borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
+    cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+    cardTitleDot: { width: 4, height: 16, borderRadius: 2 },
+    cardTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6 },
 
     // Info rows
-    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
     infoLabel: { fontSize: 14 },
     infoValue: { fontSize: 14, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
     divider: { height: 1, marginVertical: 10 },
     statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    statusPill: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
     statusPillText: { fontSize: 12, fontWeight: '700' },
 
     // Finance
-    financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-    financeLabel: { fontSize: 12, marginBottom: 4 },
-    financeValue: { fontSize: 18, fontWeight: '700' },
-    outstandingBox: { padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
-    outstandingLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 },
+    financeRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+    financeCol: { flex: 1, borderRadius: 12, padding: 12, borderWidth: 1 },
+    financeLabel: { fontSize: 11, marginBottom: 6, fontWeight: '500' },
+    financeValue: { fontSize: 17, fontWeight: '700' },
+    outstandingBox: { padding: 16, borderRadius: 14, alignItems: 'center' },
+    outstandingLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
     outstandingValue: { fontSize: 26, fontWeight: '800' },
-    outstandingDetail: { flexDirection: 'row', gap: 16, marginTop: 6 },
-    outstandingDetailText: { fontSize: 12, opacity: 0.9 },
+    outstandingDetail: { flexDirection: 'row', gap: 16, marginTop: 8 },
+    outstandingDetailText: { fontSize: 12 },
+
+    // Contract button
+    contractIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    contractChevron: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
 
     // Schedule
     scheduleItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
