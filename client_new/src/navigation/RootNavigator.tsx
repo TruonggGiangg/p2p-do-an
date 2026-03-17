@@ -23,10 +23,12 @@ import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
 import PinSetupScreen from '../features/auth/screens/PinSetupScreen';
 import PinChangeScreen from '../features/auth/screens/PinChangeScreen';
 import CreditScoreDetailScreen from '../features/profile/screens/CreditScoreDetailScreen';
+import { HomeScreen } from '../features';
 
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
+    Home: undefined;
     PinSetup: undefined;
     PinChange: undefined;
     CreditScoreDetail: undefined;
@@ -74,11 +76,11 @@ export default function RootNavigator() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             {!isAuthenticated ? (
                 <Stack.Screen name="Auth" component={AuthNavigator} />
-            ) : needsPinSetup ? (
-                <Stack.Screen name="PinSetup" component={PinSetupScreen} />
             ) : (
                 <>
+                    {needsPinSetup && <Stack.Screen name="PinSetup" component={PinSetupScreen} />}
                     <Stack.Screen name="Main" component={MainNavigator} />
+                    <Stack.Screen name="Home" component={HomeScreen} />
                     <Stack.Screen name="PinChange" component={PinChangeScreen} />
                     <Stack.Screen name="CreditScoreDetail" component={CreditScoreDetailScreen} />
                     <Stack.Screen name="Transfer" component={TransferScreen} />

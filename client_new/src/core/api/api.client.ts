@@ -84,6 +84,31 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
 
+    const requestUrl = originalRequest?.url || "";
+    const responseMessage = ((error.response?.data as any)?.message || "")
+      .toString()
+      .toLowerCase();
+    const isIdentityEndpoint =
+      requestUrl.includes("/api/auth/me") ||
+      requestUrl.includes("/api/auth/pin") ||
+      requestUrl.includes("/api/2fa") ||
+      requestUrl.includes("/api/otp");
+    const isAccountMissing =
+      responseMessage.includes("user not found") ||
+      responseMessage.includes("account not found") ||
+      responseMessage.includes("user account not found");
+
+    if (isIdentityEndpoint && isAccountMissing) {
+      if (__DEV__) {
+        console.warn(
+          "Account record missing. Clearing session and logging out.",
+        );
+      }
+      await authStorage.clearAll();
+      authEvents.emitSessionExpired();
+      return Promise.reject(error);
+    }
+
     // Only handle 401 errors
     const isPublicEndpoint = PUBLIC_ENDPOINTS.some((endpoint) =>
       originalRequest.url?.includes(endpoint),

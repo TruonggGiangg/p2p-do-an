@@ -1,18 +1,47 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { CommonButton, CommonCard } from '../../../components';
+import { pinAPI } from '../../auth/api/pin.api';
 
 export const PinSection: React.FC = () => {
     const { theme } = useTheme();
     const { user } = useAuth();
     const navigation = useNavigation();
     const [expanded, setExpanded] = useState(false);
+    const [hasPinState, setHasPinState] = useState<boolean>(!!user?.hasPin);
 
-    const hasPin = user?.hasPin;
+    useEffect(() => {
+        setHasPinState(!!user?.hasPin);
+    }, [user?.hasPin]);
+
+    useFocusEffect(
+        useCallback(() => {
+            let mounted = true;
+
+            const syncPinStatus = async () => {
+                try {
+                    const status = await pinAPI.getStatus();
+                    if (mounted) {
+                        setHasPinState(!!status.hasPin);
+                    }
+                } catch {
+                    // Keep current state when status API fails.
+                }
+            };
+
+            syncPinStatus();
+
+            return () => {
+                mounted = false;
+            };
+        }, []),
+    );
+
+    const hasPin = hasPinState;
 
     return (
         <View style={styles.card}>

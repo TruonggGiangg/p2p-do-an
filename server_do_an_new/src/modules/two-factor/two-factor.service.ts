@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { generateSecret, generateURI, verifySync } from 'otplib';
@@ -19,15 +19,12 @@ export class TwoFactorService {
   constructor(
     @InjectModel(User.name)
     private userModel: Model<User>,
-  ) { }
+  ) {}
 
   /**
    * Generate 2FA secret và QR code
    */
-  async generateSecret(
-    userId: string,
-    email?: string,
-  ): Promise<Generate2faResponseDto> {
+  async generateSecret(userId: string, email?: string): Promise<Generate2faResponseDto> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
@@ -62,7 +59,7 @@ export class TwoFactorService {
       this.logger.log('QR Code (ASCII):');
       // Display QR code as ASCII art in console (like @p2p/server)
       try {
-        qrcodeTerminal.generate(otpauthUrl, { small: true }, (qrcode) => {
+        qrcodeTerminal.generate(otpauthUrl, { small: true }, qrcode => {
           console.log('\n📱 SCAN THIS QR CODE WITH GOOGLE AUTHENTICATOR:\n');
           console.log(qrcode);
         });
@@ -87,11 +84,7 @@ export class TwoFactorService {
    * Enable 2FA cho user (verify token trước)
    * Flow: User gọi /2fa/secret -> nhận secret -> nhập OTP từ app -> gọi /2fa/enable với secret và token
    */
-  async enable2fa(
-    userId: string,
-    secret: string,
-    token: string,
-  ): Promise<boolean> {
+  async enable2fa(userId: string, secret: string, token: string): Promise<boolean> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
@@ -234,7 +227,7 @@ export class TwoFactorService {
     const user = await this.userModel.findById(queryId);
     if (!user) {
       this.logger.warn(`User not found for 2FA status check: ${userId} (ObjectId: ${queryId})`);
-      return false;
+      throw new UnauthorizedException('User account not found');
     }
 
     const twoFactorData = (user as any)?.twoFactor;

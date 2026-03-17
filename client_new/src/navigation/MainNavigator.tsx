@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePin } from '../contexts/PinContext';
+import { useAuth } from '../contexts/AuthContext';
 import { PinVerifyModal } from '../components';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import LoanScreen from '../features/loan/screens/LoanScreen';
@@ -16,8 +17,19 @@ import ProfileScreen from '../features/profile/screens/ProfileScreen';
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
     return function PinGatedScreen(props: P) {
         const { pinVerified, markPinVerified } = usePin();
+        const { user } = useAuth();
         const navigation = useNavigation();
         const isFocused = useIsFocused();
+
+        useEffect(() => {
+            if (isFocused && user?.hasPin === false) {
+                (navigation as any).getParent()?.navigate('PinSetup');
+            }
+        }, [isFocused, navigation, user?.hasPin]);
+
+        if (user?.hasPin === false) {
+            return <View style={{ flex: 1 }} />;
+        }
 
         if (!pinVerified) {
             return (

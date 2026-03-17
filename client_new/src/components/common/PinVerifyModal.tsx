@@ -164,6 +164,14 @@ export function PinVerifyModal({
         setVerifying(true);
         setError('');
         try {
+            const status = await pinAPI.getStatus();
+            if (!status.hasPin) {
+                triggerShake();
+                setError('Bạn chưa thiết lập mã PIN. Vui lòng thiết lập mã PIN trước.');
+                setTimeout(() => setPin(''), 300);
+                return;
+            }
+
             const res = await pinAPI.verifyPin(fullPin);
             if (res.success) {
                 setPin('');

@@ -196,6 +196,7 @@ export default function PinSetupScreen() {
             setSubmitting(true);
             try {
                 await pinAPI.setupPin({ pin, sessionId });
+
                 // Refresh user để cập nhật hasPin = true
                 await refreshUser();
                 setStep('success');
@@ -225,7 +226,10 @@ export default function PinSetupScreen() {
     );
 
     const handleSuccessDone = useCallback(() => {
-        navigation.replace('Main');
+        navigation.reset({
+            index: 0,
+            routes: [{ name: 'Main' }],
+        });
     }, [navigation]);
 
     const [biometricSupported, setBiometricSupported] = useState(false);
