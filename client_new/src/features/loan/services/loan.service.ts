@@ -134,6 +134,7 @@ export interface ProductCharge {
 
 export interface DelinquencyPolicyItem {
   _id: string;
+  loan_product_id?: number;
   debt_group: number;
   debt_group_name: string;
   min_days: number | null;
@@ -626,14 +627,32 @@ class LoanService {
     return response.data.data?.charges ?? [];
   }
 
-  /** Lấy chính sách quá hạn đang áp dụng để hiển thị trước khi gửi đơn vay */
-  async getDelinquencyPolicies(): Promise<DelinquencyPolicyItem[]> {
+  /** Lấy chính sách quá hạn theo sản phẩm vay để hiển thị trước khi gửi đơn vay */
+  async getDelinquencyPolicies(
+    loanProductId?: number,
+  ): Promise<DelinquencyPolicyItem[]> {
     try {
       const response = await api.get<{ data: DelinquencyPolicyItem[] }>(
         "/api/delinquency/policies",
-        { params: { is_active: true } },
+        {
+          params: {
+            is_active: true,
+            ...(Number.isFinite(loanProductId)
+              ? { loan_product_id: loanProductId }
+              : {}),
+          },
+        },
       );
-      return response.data.data ?? [];
+      const policies = response.data.data ?? [];
+
+      // Safety net: never render cross-product policies when product id is known.
+      if (Number.isFinite(loanProductId)) {
+        return policies.filter(
+          (p) => Number(p.loan_product_id) === Number(loanProductId),
+        );
+      }
+
+      return policies;
     } catch {
       return [];
     }

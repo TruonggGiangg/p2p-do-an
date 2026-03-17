@@ -46,33 +46,22 @@ export class ContractService {
       .lean()
       .exec();
 
-    // Backward compatibility for old contracts when policies were global (no product attached).
-    if (!policies.length) {
-      policies = await this.delinquencyPolicyModel
-        .find({
-          is_active: true,
-          $or: [{ loan_product_id: { $exists: false } }, { loan_product_id: null }],
-        })
-        .sort({ debt_group: 1 })
-        .lean()
-        .exec();
-    }
-
     const ranges = await this.fineractLoanService.getDelinquencyRanges().catch(() => []);
-    const rangeMap = new Map<number, { min_days: number; max_days: number | null }>();
+    const rangeMap = new Map<number, { min_days: number; max_days: number | null; debt_group_name?: string }>();
     for (const range of ranges || []) {
       const id = Number(range?.id);
       if (!Number.isFinite(id)) continue;
       rangeMap.set(id, {
         min_days: Number(range?.minimumAgeDays ?? 0),
         max_days: range?.maximumAgeDays != null ? Number(range.maximumAgeDays) : null,
+        debt_group_name: String(range?.classification ?? range?.name ?? '').trim() || undefined,
       });
     }
 
     return (policies as any[]).map(policy => ({
       ...(rangeMap.get(Number(policy.debt_group)) ?? { min_days: 0, max_days: null }),
       debt_group: Number(policy.debt_group ?? 0),
-      debt_group_name: String(policy.debt_group_name ?? ''),
+      debt_group_name: rangeMap.get(Number(policy.debt_group))?.debt_group_name || String(policy.debt_group_name ?? ''),
       send_email: !!policy.send_email,
       send_sms: !!policy.send_sms,
       send_notification: !!policy.send_notification,

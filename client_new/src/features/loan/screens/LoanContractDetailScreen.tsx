@@ -334,10 +334,14 @@ export default function LoanContractDetailScreen() {
                             return (
                                 <View key={`${policy.debt_group}-${idx}`} style={[styles.policyDataRow, { borderBottomColor: colors.border }]}>
                                     <Text style={[styles.policyDataCell, styles.policyGroupCol, { color: colors.textPrimary }]}>
-                                        Nhóm {policy.debt_group}
+                                        {policy.debt_group_name?.trim()
+                                            ? `#${policy.debt_group} - ${policy.debt_group_name}`
+                                            : `#${policy.debt_group}`}
                                     </Text>
                                     <Text style={[styles.policyDataCell, styles.policyDaysCol, { color: colors.textPrimary }]}>
-                                        {policy.min_days}-{policy.max_days}
+                                        {policy.max_days == null || policy.max_days >= 99999
+                                            ? `>= ${policy.min_days} ngày`
+                                            : `${policy.min_days} - ${policy.max_days} ngày`}
                                     </Text>
                                     <Text style={[styles.policyDataCell, styles.policyActionCol, { color: colors.textPrimary }]}>
                                         {actions.length ? actions.join(', ') : 'Theo chính sách nội bộ'}
