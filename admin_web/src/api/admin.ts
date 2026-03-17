@@ -316,6 +316,15 @@ export interface PermissionDto {
   allowed: boolean;
 }
 
+export interface CreditScoreWeightConfigDto {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+  total: number;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     api.post<{
@@ -379,6 +388,26 @@ export const adminApi = {
       .patch<{
         data: { fontSize: "compact" | "default" | "large" };
       }>("/api/admin/me/preferences", prefs)
+      .then((r) => r.data.data),
+
+  getCreditScoreWeightConfig: () =>
+    api
+      .get<{
+        data: CreditScoreWeightConfigDto;
+      }>("/api/admin/credit-score/weights")
+      .then((r) => r.data.data),
+
+  updateCreditScoreWeightConfig: (body: {
+    paymentHistory: number;
+    debtLevel: number;
+    creditAge: number;
+    creditMix: number;
+    newCredit: number;
+  }) =>
+    api
+      .put<{
+        data: CreditScoreWeightConfigDto;
+      }>("/api/admin/credit-score/weights", body)
       .then((r) => r.data.data),
 
   getLoanProducts: () =>

@@ -124,12 +124,36 @@ export class AdminController {
   @Patch('me/preferences')
   @ApiOperation({ summary: 'Cập nhật cài đặt giao diện (fontSize, v.v.)' })
   @ApiResponse({ status: 200 })
-  async updateMyPreferences(
-    @Req() req: any,
-    @Body() body: { fontSize?: 'compact' | 'default' | 'large' },
-  ) {
+  async updateMyPreferences(@Req() req: any, @Body() body: { fontSize?: 'compact' | 'default' | 'large' }) {
     const prefs = await this.adminService.updateMyPreferences(req.user._id.toString(), body);
     return { statusCode: 200, message: 'Cập nhật thành công', data: prefs };
+  }
+
+  @Get('credit-score/weights')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Lấy cấu hình trọng số chấm điểm tín dụng' })
+  @ApiResponse({ status: 200 })
+  async getCreditScoreWeights() {
+    const data = await this.adminService.getCreditScoreWeightConfig();
+    return { statusCode: 200, message: 'OK', data };
+  }
+
+  @Put('credit-score/weights')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Cập nhật cấu hình trọng số chấm điểm tín dụng' })
+  @ApiResponse({ status: 200 })
+  async updateCreditScoreWeights(
+    @Body()
+    body: {
+      paymentHistory: number;
+      debtLevel: number;
+      creditAge: number;
+      creditMix: number;
+      newCredit: number;
+    },
+  ) {
+    const data = await this.adminService.updateCreditScoreWeightConfig(body);
+    return { statusCode: 200, message: 'Cập nhật thành công', data };
   }
 
   @Get('loan-products')

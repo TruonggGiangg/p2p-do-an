@@ -8,21 +8,18 @@ import {
     ActivityIndicator,
     Alert,
     TextInput,
-    Animated,
     LayoutAnimation,
     Platform,
     UIManager,
     Image,
-    Modal,
-    Dimensions,
     Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, CommonButton, OTPProtectedAction, PinVerifyModal } from '../../../components';
+import { BinanceHeader, CommonCard, OTPProtectedAction, PinVerifyModal } from '../../../components';
 import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
@@ -117,10 +114,6 @@ export default function LoanConfirmScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [scheduleExpanded, setScheduleExpanded] = useState(false);
-    const [showSuccess, setShowSuccess] = useState(false);
-    const [successData, setSuccessData] = useState<{ entirelyPay: number } | null>(null);
-    const successScaleAnim = useRef(new Animated.Value(0)).current;
-    const successOpacityAnim = useRef(new Animated.Value(0)).current;
 
     // PIN verification trước OTP
     const [showPinVerify, setShowPinVerify] = useState(false);
@@ -202,23 +195,12 @@ export default function LoanConfirmScreen() {
                 await Promise.all(uploadPromises);
             }
 
-            // Show success modal instead of Alert
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setSuccessData({ entirelyPay: result.entirelyPay });
-            setShowSuccess(true);
-            Animated.parallel([
-                Animated.spring(successScaleAnim, {
-                    toValue: 1,
-                    friction: 5,
-                    tension: 40,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(successOpacityAnim, {
-                    toValue: 1,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-            ]).start();
+            navigation.replace('LoanApplySuccess', {
+                capital,
+                periodMonth,
+                entirelyPay: result.entirelyPay,
+            });
         } catch (e: any) {
             Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể tạo đơn vay');
         } finally {
@@ -597,72 +579,6 @@ export default function LoanConfirmScreen() {
                 subtitle="Nhập mã PIN trước khi xác nhận khoản vay"
             />
 
-            {/* ── Success Modal ── */}
-            <Modal visible={showSuccess} transparent animationType="fade" statusBarTranslucent>
-                <View style={styles.successOverlay}>
-                    <Animated.View style={[
-                        styles.successCard,
-                        { backgroundColor: theme.colors.surface },
-                        {
-                            opacity: successOpacityAnim,
-                            transform: [{ scale: successScaleAnim }],
-                        },
-                    ]}>
-                        {/* Animated check circle */}
-                        <View style={[styles.successIconCircle, { backgroundColor: theme.colors.success + '18' }]}>
-                            <View style={[styles.successIconInner, { backgroundColor: theme.colors.success + '30' }]}>
-                                <Ionicons name="checkmark-circle" size={72} color={theme.colors.success} />
-                            </View>
-                        </View>
-
-                        <Text style={[styles.successTitle, { color: theme.colors.textPrimary }]}>
-                            Đăng ký thành công!
-                        </Text>
-                        <Text style={[styles.successSubtitle, { color: theme.colors.textSecondary }]}>
-                            Đơn vay của bạn đã được gửi thành công và đang chờ xét duyệt.
-                        </Text>
-
-                        {successData && (
-                            <View style={[styles.successAmountBox, { backgroundColor: theme.colors.primary + '10', borderColor: theme.colors.primary + '25' }]}>
-                                <Text style={[styles.successAmountLabel, { color: theme.colors.textSecondary }]}>Tổng trả</Text>
-                                <Text style={[styles.successAmountValue, { color: theme.colors.primary }]}>
-                                    {formatCurrency(successData.entirelyPay)}
-                                </Text>
-                            </View>
-                        )}
-
-                        <View style={[styles.successInfoRow, { backgroundColor: theme.colors.surfaceLight || theme.colors.background }]}>
-                            <Ionicons name="time-outline" size={18} color={theme.colors.textSecondary} />
-                            <Text style={[styles.successInfoText, { color: theme.colors.textSecondary }]}>
-                                Thời gian xét duyệt: 1-3 ngày làm việc
-                            </Text>
-                        </View>
-
-                        <TouchableOpacity
-                            style={[styles.successPrimaryBtn, { backgroundColor: theme.colors.primary }]}
-                            onPress={() => {
-                                setShowSuccess(false);
-                                navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-                            }}
-                            activeOpacity={0.85}
-                        >
-                            <Ionicons name="home-outline" size={20} color="#000" />
-                            <Text style={styles.successPrimaryBtnText}>Về trang chủ</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.successSecondaryBtn, { borderColor: theme.colors.border }]}
-                            onPress={() => {
-                                setShowSuccess(false);
-                                navigation.goBack();
-                            }}
-                            activeOpacity={0.85}
-                        >
-                            <Text style={[styles.successSecondaryBtnText, { color: theme.colors.textSecondary }]}>Quay lại</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                </View>
-            </Modal>
         </View >
     );
 }
@@ -817,91 +733,4 @@ const styles = StyleSheet.create({
     feeRate: { fontSize: 13, fontWeight: '600' },
     feeAmountText: { fontSize: 12, marginTop: 2 },
 
-    // Success Modal
-    successOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-    },
-    successCard: {
-        width: '100%',
-        maxWidth: 380,
-        borderRadius: 24,
-        padding: 32,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.25,
-        shadowRadius: 24,
-        elevation: 12,
-    },
-    successIconCircle: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    successIconInner: {
-        width: 96,
-        height: 96,
-        borderRadius: 48,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    successTitle: {
-        fontSize: 22,
-        fontWeight: '800',
-        marginBottom: 8,
-        textAlign: 'center',
-    },
-    successSubtitle: {
-        fontSize: 14,
-        textAlign: 'center',
-        lineHeight: 20,
-        marginBottom: 20,
-    },
-    successAmountBox: {
-        width: '100%',
-        padding: 16,
-        borderRadius: 14,
-        borderWidth: 1,
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    successAmountLabel: { fontSize: 12, marginBottom: 4 },
-    successAmountValue: { fontSize: 24, fontWeight: '800' },
-    successInfoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 10,
-        marginBottom: 24,
-        width: '100%',
-    },
-    successInfoText: { fontSize: 13, flex: 1 },
-    successPrimaryBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        width: '100%',
-        paddingVertical: 16,
-        borderRadius: 14,
-        marginBottom: 10,
-    },
-    successPrimaryBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
-    successSecondaryBtn: {
-        width: '100%',
-        paddingVertical: 14,
-        borderRadius: 14,
-        alignItems: 'center',
-        borderWidth: 1,
-    },
-    successSecondaryBtnText: { fontSize: 14, fontWeight: '600' },
 });

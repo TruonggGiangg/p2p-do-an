@@ -16,6 +16,7 @@ import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
 import LoansPage from './pages/LoansPage';
 import DelinquencyPoliciesPage from './pages/DelinquencyPoliciesPage';
+import CreditScoreWeightsPage from './pages/CreditScoreWeightsPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
@@ -210,56 +211,57 @@ export default function App() {
       >
         <AbilityContext.Provider value={ability}>
           <FontSizeProvider>
-          <AntApp>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <AppLayout />
-                  </RequireAuth>
-                }
-              >
-                <Route index element={<DocumentTypesPage />} />
-                <Route path="loan-products" element={<LoanProductsPage />} />
-                <Route path="savings-products" element={<SavingsProductsPage />} />
-                <Route path="loans" element={<LoansPage />} />
-                <Route path="delinquency-policies" element={<DelinquencyPoliciesPage />} />
-                <Route path="loan-approvals" element={<LoanApprovalsPage />} />
-                <Route path="overdue-loans" element={<Navigate to="/loans?tab=overdue" replace />} />
-                <Route path="loan-support-requests" element={
-                  <ProtectedRoute action={Action.Read} subject="LoanApplication">
-                    <LoanSupportRequestsPage />
-                  </ProtectedRoute>
-                } />
-                <Route path="customers" element={<CustomersPage />} />
-                <Route path="customers/:id" element={<CustomerDetailPage />} />
-                <Route path="staff" element={
-                  <ProtectedRoute action={Action.Read} subject="Staff">
-                    <StaffPage />
-                  </ProtectedRoute>
-                } />
-                <Route path="staff/:id" element={
-                  <ProtectedRoute action={Action.Read} subject="Staff">
-                    <StaffDetailPage />
-                  </ProtectedRoute>
-                } />
-                <Route path="roles-permissions" element={
-                  <ProtectedRoute action={Action.Manage} subject="all">
-                    <RolesPermissionsPage />
-                  </ProtectedRoute>
-                } />
-                <Route path="profile" element={<StaffProfilePage />} />
-                <Route path="sync-drift" element={
-                  <ProtectedRoute action={Action.Read} subject="SyncDrift">
-                    <SyncDriftPage />
-                  </ProtectedRoute>
-                } />
-              </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </AntApp>
+            <AntApp>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/"
+                  element={
+                    <RequireAuth>
+                      <AppLayout />
+                    </RequireAuth>
+                  }
+                >
+                  <Route index element={<DocumentTypesPage />} />
+                  <Route path="loan-products" element={<LoanProductsPage />} />
+                  <Route path="savings-products" element={<SavingsProductsPage />} />
+                  <Route path="loans" element={<LoansPage />} />
+                  <Route path="delinquency-policies" element={<DelinquencyPoliciesPage />} />
+                  <Route path="credit-score-weights" element={<CreditScoreWeightsPage />} />
+                  <Route path="loan-approvals" element={<LoanApprovalsPage />} />
+                  <Route path="overdue-loans" element={<Navigate to="/loans?tab=overdue" replace />} />
+                  <Route path="loan-support-requests" element={
+                    <ProtectedRoute action={Action.Read} subject="LoanApplication">
+                      <LoanSupportRequestsPage />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="customers" element={<CustomersPage />} />
+                  <Route path="customers/:id" element={<CustomerDetailPage />} />
+                  <Route path="staff" element={
+                    <ProtectedRoute action={Action.Read} subject="Staff">
+                      <StaffPage />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="staff/:id" element={
+                    <ProtectedRoute action={Action.Read} subject="Staff">
+                      <StaffDetailPage />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="roles-permissions" element={
+                    <ProtectedRoute action={Action.Manage} subject="all">
+                      <RolesPermissionsPage />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="profile" element={<StaffProfilePage />} />
+                  <Route path="sync-drift" element={
+                    <ProtectedRoute action={Action.Read} subject="SyncDrift">
+                      <SyncDriftPage />
+                    </ProtectedRoute>
+                  } />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </AntApp>
           </FontSizeProvider>
         </AbilityContext.Provider>
       </ConfigProvider>

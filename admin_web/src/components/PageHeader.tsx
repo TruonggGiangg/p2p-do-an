@@ -50,7 +50,10 @@ export default function PageHeader({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                     <Space align="start" size={12}>
-                        <Typography.Title level={3} style={{ margin: 0, fontWeight: 700 }}>
+                        <Typography.Title
+                            level={3}
+                            style={{ margin: 0, fontWeight: 700, fontSize: 'var(--font-size-xl)', lineHeight: 1.25 }}
+                        >
                             {title}
                         </Typography.Title>
                         {helpTooltip && (
@@ -60,7 +63,7 @@ export default function PageHeader({
                         )}
                     </Space>
                     {description && (
-                        <Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 14 }}>
+                        <Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 'var(--font-size-base)' }}>
                             {description}
                         </Text>
                     )}

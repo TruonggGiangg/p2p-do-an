@@ -54,6 +54,11 @@ import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import { CreateDelinquencyPolicyDto } from '../delinquency/dto/create-delinquency-policy.dto';
 import { UpdateDelinquencyPolicyDto } from '../delinquency/dto/update-delinquency-policy.dto';
 import { Role } from '../rbac/schemas/role.schema';
+import {
+  CreditScoreService,
+  CreditScoreWeightConfigInput,
+  CreditScoreWeightConfigValue,
+} from '../credit-score/credit-score.service';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -114,7 +119,16 @@ export class AdminService {
     private readonly keycloakAuthService: KeycloakAuthService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly ekycService: EkycService,
+    private readonly creditScoreService: CreditScoreService,
   ) {}
+
+  async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
+    return this.creditScoreService.getWeightConfig();
+  }
+
+  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigValue> {
+    return this.creditScoreService.upsertWeightConfig(input);
+  }
 
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
