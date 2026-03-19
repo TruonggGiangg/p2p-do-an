@@ -423,6 +423,22 @@ export default function BNPLScreen() {
         return actions.join(', ');
     };
 
+    const formatPolicyGroup = (policy: DelinquencyPolicyItem) => {
+        if (policy.debt_group_name?.trim()) {
+            return `#${policy.debt_group} - ${policy.debt_group_name}`;
+        }
+        return `#${policy.debt_group}`;
+    };
+
+    const formatPolicyDays = (policy: DelinquencyPolicyItem) => {
+        const min = policy.min_days ?? 0;
+        const max = policy.max_days;
+        if (max == null || max >= 99999) {
+            return `>= ${min} ngày`;
+        }
+        return `${min} - ${max} ngày`;
+    };
+
     // ── Render: No Wallet
     const renderNoWallet = () => (
         <View style={styles.flowContainer}>
@@ -632,10 +648,10 @@ export default function BNPLScreen() {
                         delinquencyPolicies.map((policy) => (
                             <View key={policy._id} style={[styles.policyDataRow, { borderBottomColor: c.border }]}>
                                 <Text style={[styles.policyCellText, styles.policyColGroup, { color: c.textPrimary }]}>
-                                    Nhóm {policy.debt_group}
+                                    {formatPolicyGroup(policy)}
                                 </Text>
                                 <Text style={[styles.policyCellText, styles.policyColRange, { color: c.textPrimary }]}>
-                                    {policy.min_days != null ? policy.min_days : '?'}-{policy.max_days != null ? policy.max_days : '?'}
+                                    {formatPolicyDays(policy)}
                                 </Text>
                                 <Text style={[styles.policyCellText, styles.policyColAction, { color: c.textPrimary }]}>
                                     {mapPolicyActions(policy)}

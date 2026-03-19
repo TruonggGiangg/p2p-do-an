@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreditScore } from './schemas/credit-score.schema';
 import { CreditScoreHistory } from './schemas/credit-score-history.schema';
+import { CreditScoreWeightConfig } from './schemas/credit-score-weight-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 
 const SCORE_MIN = 150;
@@ -61,9 +62,29 @@ interface CreditFactorScores {
   newCredit: number;
 }
 
+export interface CreditScoreWeightConfigInput {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
+export interface CreditScoreWeightConfigValue extends CreditScoreWeightConfigInput {
+  total: number;
+}
+
 @Injectable()
 export class CreditScoreService {
   private readonly logger = new Logger(CreditScoreService.name);
+  private readonly configKey = 'default';
+  private readonly defaultWeights: CreditScoreWeightConfigInput = {
+    paymentHistory: 35,
+    debtLevel: 30,
+    creditAge: 15,
+    creditMix: 10,
+    newCredit: 10,
+  };
 
   private readonly riskTable: CreditRiskClassification[] = [
     {
@@ -108,9 +129,87 @@ export class CreditScoreService {
     private readonly creditScoreModel: Model<CreditScore>,
     @InjectModel(CreditScoreHistory.name)
     private readonly creditScoreHistoryModel: Model<CreditScoreHistory>,
+    @InjectModel(CreditScoreWeightConfig.name)
+    private readonly creditScoreWeightConfigModel: Model<CreditScoreWeightConfig>,
     @InjectModel(LoanApplication.name)
     private readonly loanApplicationModel: Model<LoanApplication>,
   ) {}
+
+  private normalizeWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
+    const sanitized: CreditScoreWeightConfigInput = {
+      paymentHistory: this.clampPercent(Number(weights.paymentHistory || 0)),
+      debtLevel: this.clampPercent(Number(weights.debtLevel || 0)),
+      creditAge: this.clampPercent(Number(weights.creditAge || 0)),
+      creditMix: this.clampPercent(Number(weights.creditMix || 0)),
+      newCredit: this.clampPercent(Number(weights.newCredit || 0)),
+    };
+
+    const total =
+      sanitized.paymentHistory + sanitized.debtLevel + sanitized.creditAge + sanitized.creditMix + sanitized.newCredit;
+
+    if (total <= 0) {
+      return { ...this.defaultWeights };
+    }
+
+    return {
+      paymentHistory: (sanitized.paymentHistory / total) * 100,
+      debtLevel: (sanitized.debtLevel / total) * 100,
+      creditAge: (sanitized.creditAge / total) * 100,
+      creditMix: (sanitized.creditMix / total) * 100,
+      newCredit: (sanitized.newCredit / total) * 100,
+    };
+  }
+
+  private toWeightValue(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigValue {
+    const normalized = this.normalizeWeights(weights);
+    const total =
+      normalized.paymentHistory +
+      normalized.debtLevel +
+      normalized.creditAge +
+      normalized.creditMix +
+      normalized.newCredit;
+
+    return {
+      ...normalized,
+      total: Number(total.toFixed(4)),
+    };
+  }
+
+  async getWeightConfig(): Promise<CreditScoreWeightConfigValue> {
+    const config = await this.creditScoreWeightConfigModel
+      .findOne({ key: this.configKey })
+      .select('paymentHistory debtLevel creditAge creditMix newCredit')
+      .lean();
+
+    if (!config) {
+      return this.toWeightValue(this.defaultWeights);
+    }
+
+    return this.toWeightValue({
+      paymentHistory: Number(config.paymentHistory || 0),
+      debtLevel: Number(config.debtLevel || 0),
+      creditAge: Number(config.creditAge || 0),
+      creditMix: Number(config.creditMix || 0),
+      newCredit: Number(config.newCredit || 0),
+    });
+  }
+
+  async upsertWeightConfig(input: CreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigValue> {
+    const normalized = this.normalizeWeights(input);
+
+    await this.creditScoreWeightConfigModel.findOneAndUpdate(
+      { key: this.configKey },
+      {
+        $set: {
+          ...normalized,
+          key: this.configKey,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return this.toWeightValue(normalized);
+  }
 
   private toObjectId(userId: string | Types.ObjectId): Types.ObjectId {
     return typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
@@ -158,13 +257,13 @@ export class CreditScoreService {
     return this.clampPercent(score);
   }
 
-  private calculateCompositeScore(factors: CreditFactorScores): number {
+  private calculateCompositeScore(factors: CreditFactorScores, weights: CreditScoreWeightConfigValue): number {
     const weighted100 =
-      factors.paymentHistory * 0.35 +
-      factors.debtLevel * 0.3 +
-      factors.creditAge * 0.15 +
-      factors.creditMix * 0.1 +
-      factors.newCredit * 0.1;
+      factors.paymentHistory * (weights.paymentHistory / 100) +
+      factors.debtLevel * (weights.debtLevel / 100) +
+      factors.creditAge * (weights.creditAge / 100) +
+      factors.creditMix * (weights.creditMix / 100) +
+      factors.newCredit * (weights.newCredit / 100);
 
     return this.clampScore(SCORE_MIN + (weighted100 / 100) * (SCORE_MAX - SCORE_MIN));
   }
@@ -334,9 +433,10 @@ export class CreditScoreService {
     const isLatePayment = !!input.isLatePayment;
     const isPrepayment = !!input.isPrepayment;
     const factors = await this.buildWeightedFactors(uid, input);
+    const weights = await this.getWeightConfig();
 
     const beforeScore = scoreDoc.score;
-    const afterScore = this.calculateCompositeScore(factors);
+    const afterScore = this.calculateCompositeScore(factors, weights);
 
     const reason: CreditScoreHistory['reason'] = isLatePayment
       ? 'late_payment'

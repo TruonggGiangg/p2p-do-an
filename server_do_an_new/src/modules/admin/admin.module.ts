@@ -26,6 +26,7 @@ import { AuthModule } from 'src/modules/auth/auth.module';
 import { CaslModule } from '../casl/casl.module';
 import { PushNotificationService } from '../loan/services/push-notification.service';
 import { UsersModule } from '../users/users.module';
+import { CreditScoreModule } from '../credit-score/credit-score.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { UsersModule } from '../users/users.module';
     EkycModule,
     CaslModule,
     UsersModule,
+    CreditScoreModule,
     forwardRef(() => LoanModule),
     MongooseModule.forFeature([
       { name: DocumentType.name, schema: DocumentTypeSchema },

@@ -62,7 +62,7 @@ export class LoanService {
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
-  ) { }
+  ) {}
 
   async getLoanProducts() {
     this.logger.log('Fetching loan products from Fineract');
@@ -598,7 +598,9 @@ export class LoanService {
           existing.fineractDetails = details;
           existing.status = this.mapFineractStatus(details.status?.code) ?? existing.status;
           // DEBUG: check fineract product name fields
-          this.logger.log(`[mergeProduct] loanId=${loanId} | loanProductName="${details.loanProductName}" | productName="${details.productName}" | product.name="${details.product?.name}" | loanProductDescription="${details.loanProductDescription}"`);
+          this.logger.log(
+            `[mergeProduct] loanId=${loanId} | loanProductName="${details.loanProductName}" | productName="${details.productName}" | product.name="${details.product?.name}" | loanProductDescription="${details.loanProductDescription}"`,
+          );
           existing.productName = details.loanProductName ?? details.productName ?? details.product?.name;
         } else {
           resultMap.set(`fineract-${loanId}`, {
@@ -725,8 +727,8 @@ export class LoanService {
       // DEBUG: log key fields
       this.logger.log(
         `[enrichLoan] id=${loan.id} | willing="${enriched.willing}" | productName="${loan.productName}" | ` +
-        `rate=${enriched.rate} | mongoRate=${(loan as any).rate} | fineractAnnualRate=${details?.annualInterestRate} | ` +
-        `mongoWilling="${(loan as any).willing}" | fineractPurpose="${details?.loanPurposeName}"`,
+          `rate=${enriched.rate} | mongoRate=${(loan as any).rate} | fineractAnnualRate=${details?.annualInterestRate} | ` +
+          `mongoWilling="${(loan as any).willing}" | fineractPurpose="${details?.loanPurposeName}"`,
       );
 
       return enriched;
@@ -774,15 +776,34 @@ export class LoanService {
 
     this.logger.log(`[uploadDocument] Uploading file for loan ${app.fineractLoanId}`);
 
+    const normalizeExt = (originalName: string, mimeType?: string) => {
+      const originalExt =
+        String(originalName || '')
+          .split('.')
+          .pop()
+          ?.toLowerCase() || '';
+      if (['jpg', 'jpeg', 'png', 'pdf'].includes(originalExt)) {
+        return originalExt === 'jpeg' ? 'jpg' : originalExt;
+      }
+      if (mimeType?.includes('pdf')) return 'pdf';
+      if (mimeType?.startsWith('image/')) return 'jpg';
+      return 'jpg';
+    };
+
+    const ext = normalizeExt(file?.originalname, file?.mimetype);
+    const safeBase = `loan_doc_${String(documentTypeId)}_${Date.now()}`;
+    const safeFilename = `${safeBase}.${ext}`;
+    const safeContentType = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg';
+
     // Sử dụng FormData để gửi file lên Fineract
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const FormData = require('form-data');
     const form = new FormData();
     form.append('file', file.buffer, {
-      filename: file.originalname,
-      contentType: file.mimetype,
+      filename: safeFilename,
+      contentType: safeContentType,
     });
-    form.append('name', file.originalname);
+    form.append('name', safeBase);
     form.append('description', `Document for loan application ${loanId}`);
 
     const result = await this.fineractLoanService.uploadDocument(app.fineractLoanId, form);
@@ -837,15 +858,19 @@ export class LoanService {
   /**
    * Submit Support Request for an overdue loan
    */
-  async submitSupportRequest(userId: string, loanId: string, dto: {
-    requestType: SupportRequestType;
-    reason: string;
-    proposedRescheduleDate?: string;
-    proposedExtraPeriods?: number;
-  }) {
+  async submitSupportRequest(
+    userId: string,
+    loanId: string,
+    dto: {
+      requestType: SupportRequestType;
+      reason: string;
+      proposedRescheduleDate?: string;
+      proposedExtraPeriods?: number;
+    },
+  ) {
     const loan = await this.loanApplicationModel.findOne({
       _id: new Types.ObjectId(loanId),
-      userId: new Types.ObjectId(userId)
+      userId: new Types.ObjectId(userId),
     });
 
     if (!loan || !loan.fineractLoanId) {
@@ -859,7 +884,7 @@ export class LoanService {
     // Check if there is already a pending request
     const existing = await this.supportRequestModel.findOne({
       loanId: new Types.ObjectId(loanId),
-      status: 'PENDING'
+      status: 'PENDING',
     });
 
     if (existing) {
@@ -874,7 +899,7 @@ export class LoanService {
       reason: dto.reason,
       proposedRescheduleDate: dto.proposedRescheduleDate,
       proposedExtraPeriods: dto.proposedExtraPeriods,
-      status: 'PENDING'
+      status: 'PENDING',
     });
 
     return request;

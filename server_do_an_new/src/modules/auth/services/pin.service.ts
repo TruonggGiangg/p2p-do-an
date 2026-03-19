@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -26,6 +26,9 @@ export class PinService {
    */
   async getStatus(userId: string): Promise<{ hasPin: boolean; pinSetAt?: Date }> {
     const user = await this.userModel.findById(userId).select('pin').lean();
+    if (!user) {
+      throw new UnauthorizedException('User account not found');
+    }
     const hasPin = !!(user as any)?.pin?.hash;
     const pinSetAt = hasPin ? (user as any).pin.setAt : undefined;
     return { hasPin, pinSetAt };
@@ -47,12 +50,16 @@ export class PinService {
     const hash = await bcrypt.hash(pin, this.BCRYPT_ROUNDS);
 
     // 3. Lưu hashed PIN vào MongoDB
-    await this.userModel.findByIdAndUpdate(userId, {
+    const updatedUser = await this.userModel.findByIdAndUpdate(userId, {
       $set: {
         'pin.hash': hash,
         'pin.setAt': new Date(),
       },
     });
+
+    if (!updatedUser) {
+      throw new UnauthorizedException('User account not found');
+    }
 
     this.logger.log(`[PIN] User ${userId} setup PIN successfully`);
   }
@@ -62,6 +69,9 @@ export class PinService {
    */
   async verifyPin(userId: string, pin: string): Promise<boolean> {
     const user = await this.userModel.findById(userId).select('pin').lean();
+    if (!user) {
+      throw new UnauthorizedException('User account not found');
+    }
     const pinHash = user?.pin?.hash;
     if (!pinHash) return false;
     return bcrypt.compare(pin, pinHash);
@@ -87,12 +97,16 @@ export class PinService {
     const hash = await bcrypt.hash(newPin, this.BCRYPT_ROUNDS);
 
     // 4. Save
-    await this.userModel.findByIdAndUpdate(userId, {
+    const updatedUser = await this.userModel.findByIdAndUpdate(userId, {
       $set: {
         'pin.hash': hash,
         'pin.setAt': new Date(),
       },
     });
+
+    if (!updatedUser) {
+      throw new UnauthorizedException('User account not found');
+    }
 
     this.logger.log(`[PIN] User ${userId} changed PIN successfully`);
   }

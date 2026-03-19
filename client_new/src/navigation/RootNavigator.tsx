@@ -8,6 +8,7 @@ import { NotificationScreen } from '../features/notifications';
 import LoanProductDetailScreen from '../features/loan/screens/LoanProductDetailScreen';
 import LoanCreateScreen from '../features/loan/screens/LoanCreateScreen';
 import LoanConfirmScreen from '../features/loan/screens/LoanConfirmScreen';
+import LoanApplySuccessScreen from '../features/loan/screens/LoanApplySuccessScreen';
 import LoanHistoryScreen from '../features/loan/screens/LoanHistoryScreen';
 import LoanDetailScreen from '../features/loan/screens/LoanDetailScreen';
 import LoanContractListScreen from '../features/loan/screens/LoanContractListScreen';
@@ -23,10 +24,12 @@ import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
 import PinSetupScreen from '../features/auth/screens/PinSetupScreen';
 import PinChangeScreen from '../features/auth/screens/PinChangeScreen';
 import CreditScoreDetailScreen from '../features/profile/screens/CreditScoreDetailScreen';
+import { HomeScreen } from '../features';
 
 export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
+    Home: undefined;
     PinSetup: undefined;
     PinChange: undefined;
     CreditScoreDetail: undefined;
@@ -45,6 +48,11 @@ export type RootStackParamList = {
         willing?: string;
         monthlyRatePercent?: number;
         schedule: LoanScheduleResult;
+    };
+    LoanApplySuccess: {
+        capital: number;
+        periodMonth: number;
+        entirelyPay: number;
     };
     LoanContractList: undefined;
     LoanContractDetail: { contractId?: string; loanId?: string };
@@ -74,11 +82,11 @@ export default function RootNavigator() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             {!isAuthenticated ? (
                 <Stack.Screen name="Auth" component={AuthNavigator} />
-            ) : needsPinSetup ? (
-                <Stack.Screen name="PinSetup" component={PinSetupScreen} />
             ) : (
                 <>
+                    {needsPinSetup && <Stack.Screen name="PinSetup" component={PinSetupScreen} />}
                     <Stack.Screen name="Main" component={MainNavigator} />
+                    <Stack.Screen name="Home" component={HomeScreen} />
                     <Stack.Screen name="PinChange" component={PinChangeScreen} />
                     <Stack.Screen name="CreditScoreDetail" component={CreditScoreDetailScreen} />
                     <Stack.Screen name="Transfer" component={TransferScreen} />
@@ -89,6 +97,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="LoanProductDetail" component={LoanProductDetailScreen} />
                     <Stack.Screen name="LoanCreate" component={LoanCreateScreen} />
                     <Stack.Screen name="LoanConfirm" component={LoanConfirmScreen} />
+                    <Stack.Screen name="LoanApplySuccess" component={LoanApplySuccessScreen} />
                     <Stack.Screen name="LoanContractList" component={LoanContractListScreen} />
                     <Stack.Screen name="LoanContractDetail" component={LoanContractDetailScreen} />
                     <Stack.Screen name="SigningSuccess" component={SigningSuccessScreen} />

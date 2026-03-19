@@ -540,15 +540,24 @@ export default function LoanCreateScreen() {
     useEffect(() => {
         let isMounted = true;
         (async () => {
-            const policies = await loanService.getDelinquencyPolicies();
+            if (!product?.id) {
+                if (isMounted) {
+                    setDelinquencyPolicies([]);
+                    setAcceptedDelinquencyPolicy(false);
+                }
+                return;
+            }
+
+            const policies = await loanService.getDelinquencyPolicies(product.id);
             if (!isMounted) return;
             setDelinquencyPolicies((policies || []).sort((a, b) => a.debt_group - b.debt_group));
+            setAcceptedDelinquencyPolicy(false);
         })();
 
         return () => {
             isMounted = false;
         };
-    }, []);
+    }, [product?.id]);
 
     const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
         const actions: string[] = [];
@@ -568,6 +577,22 @@ export default function LoanCreateScreen() {
         actions.push(stageLabel[policy.collection_stage] || policy.collection_stage);
         if (policy.legal_escalation) actions.push('Escalation pháp lý');
         return actions.join(', ');
+    };
+
+    const formatPolicyGroup = (policy: DelinquencyPolicyItem) => {
+        if (policy.debt_group_name?.trim()) {
+            return `#${policy.debt_group} - ${policy.debt_group_name}`;
+        }
+        return `#${policy.debt_group}`;
+    };
+
+    const formatPolicyDays = (policy: DelinquencyPolicyItem) => {
+        const min = policy.min_days ?? 0;
+        const max = policy.max_days;
+        if (max == null || max >= 99999) {
+            return `>= ${min} ngày`;
+        }
+        return `${min} - ${max} ngày`;
     };
 
     const handleNext = () => {
@@ -901,10 +926,10 @@ export default function LoanCreateScreen() {
                                 {delinquencyPolicies.map((policy) => (
                                     <View key={policy._id} style={[styles.policyDataRow, { borderBottomColor: theme.colors.border + '40' }]}>
                                         <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textPrimary }]}>
-                                            Nhóm {policy.debt_group}
+                                            {formatPolicyGroup(policy)}
                                         </Text>
                                         <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textSecondary }]}>
-                                            {`${policy.min_days ?? 0} - ${policy.max_days ?? '99999+'} ngày`}
+                                            {formatPolicyDays(policy)}
                                         </Text>
                                         <Text style={[styles.policyCellText, { flex: 2, color: theme.colors.textSecondary }]}>
                                             {mapPolicyActions(policy)}

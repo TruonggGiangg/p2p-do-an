@@ -16,6 +16,18 @@ export interface ChangePinRequest {
   sessionId: string;
 }
 
+function unwrapData(payload: any): any {
+  let current = payload;
+  for (let i = 0; i < 4; i++) {
+    if (current && typeof current === "object" && "data" in current) {
+      current = current.data;
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
 // Server có TransformInterceptor wrap response thành { success, data, ... }
 // Cần truy cập response.data.data để lấy dữ liệu thực
 
@@ -23,8 +35,19 @@ export const pinAPI = {
   /** Kiểm tra trạng thái PIN */
   getStatus: async (): Promise<PinStatusResponse> => {
     const response = await api.get("/api/auth/pin/status");
-    const result = response.data?.data ?? response.data;
-    return { hasPin: result.hasPin, pinSetAt: result.pinSetAt };
+    const result = unwrapData(response.data);
+
+    const hasPin =
+      typeof result?.hasPin === "boolean"
+        ? result.hasPin
+        : typeof response.data?.hasPin === "boolean"
+          ? response.data.hasPin
+          : false;
+
+    return {
+      hasPin,
+      pinSetAt: result?.pinSetAt,
+    };
   },
 
   /** Thiết lập mã PIN (sau khi Smart OTP đã xác thực) */
@@ -32,7 +55,14 @@ export const pinAPI = {
     data: SetupPinRequest,
   ): Promise<{ success: boolean; message: string }> => {
     const response = await api.post("/api/auth/pin/setup", data);
-    return response.data?.data ?? response.data;
+    const result = unwrapData(response.data);
+    return {
+      success: result?.success !== false,
+      message:
+        result?.message ||
+        response.data?.message ||
+        "Thiết lập mã PIN thành công",
+    };
   },
 
   /** Xác thực mã PIN */
@@ -40,7 +70,27 @@ export const pinAPI = {
     pin: string,
   ): Promise<{ success: boolean; message: string }> => {
     const response = await api.post("/api/auth/pin/verify", { pin });
-    return response.data?.data ?? response.data;
+    const result = unwrapData(response.data);
+
+    if (typeof result?.success === "boolean") {
+      return {
+        success: result.success,
+        message: result.message || "",
+      };
+    }
+
+    if (typeof result?.valid === "boolean") {
+      return {
+        success: result.valid,
+        message: result.message || "",
+      };
+    }
+
+    return {
+      success: false,
+      message:
+        result?.message || response.data?.message || "Xác thực mã PIN thất bại",
+    };
   },
 
   /** Đổi mã PIN (cần PIN cũ + Smart OTP) */
@@ -48,6 +98,11 @@ export const pinAPI = {
     data: ChangePinRequest,
   ): Promise<{ success: boolean; message: string }> => {
     const response = await api.post("/api/auth/pin/change", data);
-    return response.data?.data ?? response.data;
+    const result = unwrapData(response.data);
+    return {
+      success: result?.success !== false,
+      message:
+        result?.message || response.data?.message || "Đổi mã PIN thành công",
+    };
   },
 };
