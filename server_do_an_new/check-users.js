@@ -4,7 +4,7 @@ require('dotenv').config();
 async function checkUsers() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ Connected to MongoDB:', process.env.MONGODB_URI.replace(/\/\/.*:.*@/, '//***:***@'));
+        console.log(' Connected to MongoDB:', process.env.MONGODB_URI.replace(/\/\/.*:.*@/, '//***:***@'));
 
         const User = mongoose.model('User', new mongoose.Schema({}, { strict: false }), 'users');
 
@@ -22,7 +22,7 @@ async function checkUsers() {
             console.log('\n❌ User "mifos" ĐÃ TỒN TẠI:');
             console.log(JSON.stringify(mifosUser, null, 2));
         } else {
-            console.log('\n✅ User "mifos" CHƯA TỒN TẠI');
+            console.log('\n User "mifos" CHƯA TỒN TẠI');
         }
 
         await mongoose.disconnect();

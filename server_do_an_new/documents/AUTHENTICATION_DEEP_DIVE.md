@@ -133,7 +133,7 @@ sequenceDiagram
         alt ❌ Tạo User Thất bại
             K-->>G: 4xx/5xx Error
             G-->>C: 400 Bad Request
-        else ✅ Tạo User Thành công
+        else  Tạo User Thành công
             K-->>G: 201 Created {UUID}
             
             %% Step 2: Role Mapping
@@ -147,7 +147,7 @@ sequenceDiagram
                 Note over G: 🔄 ROLLBACK: Xóa User Keycloak
                 G->>K: DELETE /users/{UUID}
                 G-->>C: 500 Internal Server Error
-            else ✅ Tạo Client Thành công
+            else  Tạo Client Thành công
                 F-->>G: 200 OK {clientId: 100}
                 
                 %% Step 4: Account
@@ -194,7 +194,7 @@ sequenceDiagram
         
         alt ❌ Verify Thất bại
             G-->>C: 500 Internal Error (Untrusted IdP)
-        else ✅ Verify Thành công
+        else  Verify Thành công
             G->>G: 4. Extract User Info (Sub, Roles, Email)
             G->>G: 5. Generate Internal Token (HS256)<br/>Signed with JWT_SECRET
         end
@@ -234,7 +234,7 @@ sequenceDiagram
         
         alt ❌ Token Invalid / Expired
             G-->>C: 403 Forbidden (Force Logout)
-        else ✅ Signature Valid
+        else  Signature Valid
             G->>DB: Check if Token is Revoked/Reused?
             
             alt ☠️ REPLAY ATTACK DETECTED (Token đã dùng)

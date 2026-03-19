@@ -123,7 +123,7 @@ async function main() {
         console.log('   ' + '─'.repeat(50));
     }
 
-    console.log('\n✅ Hoàn tất.');
+    console.log('\n Hoàn tất.');
 }
 
 main().catch(err => {

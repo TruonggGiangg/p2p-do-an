@@ -39,7 +39,7 @@ async function getAdminToken() {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
 
-        console.log('✅ Lấy token thành công!');
+        console.log(' Lấy token thành công!');
         return response.data.access_token;
     } catch (error: any) {
         console.error('❌ Lỗi lấy token:', error?.response?.data || error.message);
@@ -96,11 +96,11 @@ async function setupWebhook() {
         if (existingHook) {
             console.log(`♻️ Webhook "${displayName}" đã tồn tại (ID: ${existingHook.id}). Đang cập nhật...`);
             await axiosInstance.put(`/hooks/${existingHook.id}`, payload);
-            console.log(`✅ Cập nhật Webhook thành công!`);
+            console.log(` Cập nhật Webhook thành công!`);
         } else {
             console.log(`➕ Đang tạo mới Webhook "${displayName}"...`);
             await axiosInstance.post(`/hooks`, payload);
-            console.log(`✅ Tạo mới Webhook thành công!`);
+            console.log(` Tạo mới Webhook thành công!`);
         }
 
         console.log(`\n🔔 Payload URL đã được lưu là: ${WEBHOOK_PAYLOAD_URL}`);

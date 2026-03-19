@@ -69,7 +69,7 @@ async function createFineractClient(): Promise<AxiosInstance> {
             console.log(`🔐 Đang lấy token từ Keycloak (${CONFIG.keycloakUrl})...`);
             const token = await getKeycloakToken();
             headers['Authorization'] = `Bearer ${token}`;
-            console.log('✅ Keycloak token obtained.');
+            console.log(' Keycloak token obtained.');
         } catch (err) {
             console.log('⚠️  Keycloak failed, falling back to Basic Auth...');
             const basicAuth = Buffer.from(`${CONFIG.username}:${CONFIG.password}`).toString('base64');
@@ -314,7 +314,7 @@ async function main() {
 
         try {
             const result = await createFDProduct(client, payload);
-            console.log(`  ✅ Tạo thành công! FD Product ID: ${result.resourceId}`);
+            console.log(`   Tạo thành công! FD Product ID: ${result.resourceId}`);
             created++;
         } catch (err: any) {
             const errData = err.response?.data;

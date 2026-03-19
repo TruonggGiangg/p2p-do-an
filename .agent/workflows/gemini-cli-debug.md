@@ -81,7 +81,7 @@ g "Find LoanStatus enum in src/"
     └─────────┘                        └─────────┘
 ```
 
-## ✅ Best Practices
+##  Best Practices
 
 // turbo-all
 1. **Hỏi cụ thể**: "Return only..." / "List file paths only"

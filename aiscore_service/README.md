@@ -14,13 +14,13 @@ Service chấm điểm tín dụng dùng mô hình **XGBoost** để đánh giá
 
 | Feature                | Mô tả                      | Bắt buộc          |
 | ---------------------- | -------------------------- | ----------------- |
-| `age`                  | Tuổi người vay             | ✅                |
-| `monthly_income`       | Thu nhập hàng tháng (VND)  | ✅                |
+| `age`                  | Tuổi người vay             |                 |
+| `monthly_income`       | Thu nhập hàng tháng (VND)  |                 |
 | `employment_years`     | Số năm đi làm              | ❌ (default: 0)   |
 | `avg_account_balance`  | Số dư TK trung bình (VND)  | ❌ (auto)         |
-| `monthly_spending`     | Chi tiêu hàng tháng (VND)  | ✅                |
-| `loan_amount`          | Số tiền vay (VND)          | ✅                |
-| `loan_term`            | Kỳ hạn vay (tháng)         | ✅                |
+| `monthly_spending`     | Chi tiêu hàng tháng (VND)  |                 |
+| `loan_amount`          | Số tiền vay (VND)          |                 |
+| `loan_term`            | Kỳ hạn vay (tháng)         |                 |
 | `loan_to_income_ratio` | Tỷ lệ vay/thu nhập năm     | ❌ (auto)         |
 | `previous_loans_count` | Số khoản vay trước         | ❌ (default: 0)   |
 | `late_payment_count`   | Số lần trả trễ             | ❌ (default: 0)   |

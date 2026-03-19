@@ -53,7 +53,7 @@ const investmentContract = new InvestmentContract({
         capital: capitalVND,
         serviceFee: Math.round(serviceFee),
         entirelyProfit: Math.round(entirelyProfit),
-        // ✅ LƯU CHÍNH XÁC SCHEDULE TỪ TÍNH TOÁN (CÙNG SỐ LIỆU UI)
+        //  LƯU CHÍNH XÁC SCHEDULE TỪ TÍNH TOÁN (CÙNG SỐ LIỆU UI)
         schedule: lenderFinancials.schedulePreview || []
     }
 });
@@ -68,7 +68,7 @@ async distributeRepayment(loanId, repaymentPeriod) {
     const investments = await InvestmentContract.find({ loanContract: loanId });
     
     for (const invest of investments) {
-        // ✅ ĐỌC TỪ SCHEDULE ĐÃ LƯU, KHÔNG TÍNH LẠI
+        //  ĐỌC TỪ SCHEDULE ĐÃ LƯU, KHÔNG TÍNH LẠI
         const periodData = invest.info.schedule.find(s => s.period === repaymentPeriod);
         if (periodData) {
             await transferToLender(invest.lender, periodData.principal, periodData.interest);
@@ -243,7 +243,7 @@ Lợi nhuận = 623,000 - 100,000 = 523,000đ
 
 ## 6. Kế Hoạch Tiếp Theo (Roadmap)
 
-### Phase 1: Kiểm Tra Dữ Liệu MongoDB ✅ (Đang làm)
+### Phase 1: Kiểm Tra Dữ Liệu MongoDB  (Đang làm)
 - [ ] Kiểm tra `InvestmentContract.info.schedule` có được lưu đầy đủ không.
 - [ ] So sánh `SUM(schedule.total)` với `entirelyPay`.
 

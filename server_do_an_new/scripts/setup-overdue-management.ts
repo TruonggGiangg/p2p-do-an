@@ -106,7 +106,7 @@ async function setupDelinquencyRanges(client: AxiosInstance) {
     for (const r of rangesToCreate) {
         const found = existing.find((ex: any) => ex.classification === r.classification);
         if (found) {
-            console.log(`  ✅ Range "${r.classification}" đã tồn tại (ID: ${found.id})`);
+            console.log(`   Range "${r.classification}" đã tồn tại (ID: ${found.id})`);
             rangeIds.push(found.id);
         } else {
             console.log(`  🔨 Đang tạo Range: ${r.classification}...`);
@@ -114,7 +114,7 @@ async function setupDelinquencyRanges(client: AxiosInstance) {
                 ...r,
                 locale: 'en',
             });
-            console.log(`  ✅ Tạo thành công (ID: ${res.data.resourceId})`);
+            console.log(`   Tạo thành công (ID: ${res.data.resourceId})`);
             rangeIds.push(res.data.resourceId);
         }
     }
@@ -133,7 +133,7 @@ async function setupDelinquencyBucket(client: AxiosInstance, rangeIds: number[])
     const found = existing.find((ex: any) => ex.name === bucketName);
 
     if (found) {
-        console.log(`  ✅ Bucket "${bucketName}" đã tồn tại (ID: ${found.id})`);
+        console.log(`   Bucket "${bucketName}" đã tồn tại (ID: ${found.id})`);
         return found.id;
     }
 
@@ -142,7 +142,7 @@ async function setupDelinquencyBucket(client: AxiosInstance, rangeIds: number[])
         ranges: rangeIds,
         locale: 'en',
     });
-    console.log(`  ✅ Tạo Bucket thành công (ID: ${res.data.resourceId})`);
+    console.log(`   Tạo Bucket thành công (ID: ${res.data.resourceId})`);
     return res.data.resourceId;
 }
 
@@ -205,7 +205,7 @@ async function updateLoanProducts(client: AxiosInstance, bucketId: number) {
 
         try {
             await client.put(`/loanproducts/${p.id}`, updatePayload);
-            console.log(`     ✅ Cập nhật thành công! (Delinquency Bucket ID: ${bucketId})`);
+            console.log(`      Cập nhật thành công! (Delinquency Bucket ID: ${bucketId})`);
         } catch (err: any) {
             console.error(`     ❌ Lỗi khi cập nhật sản phẩm ${p.id}: ${err.message}`);
             if (err.response?.data) {

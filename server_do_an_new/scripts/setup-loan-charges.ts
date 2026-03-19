@@ -175,7 +175,7 @@ async function removeChargesFromAllProducts(client: AxiosInstance) {
 
             try {
                 await client.put(`/loanproducts/${p.id}`, updatePayload);
-                console.log(`     ✅ Đã gỡ charges khỏi "${p.name}"`);
+                console.log(`      Đã gỡ charges khỏi "${p.name}"`);
             } catch (err: any) {
                 console.error(`     ❌ Lỗi khi gỡ charges từ "${p.name}": ${err.message}`);
                 if (err.response?.data) {
@@ -183,7 +183,7 @@ async function removeChargesFromAllProducts(client: AxiosInstance) {
                 }
             }
         } else {
-            console.log(`  ✅ "${p.name}" không có charges nào.`);
+            console.log(`   "${p.name}" không có charges nào.`);
         }
     }
 }
@@ -199,7 +199,7 @@ async function deleteAllCharges(client: AxiosInstance) {
     const charges: any[] = chargesRes.data || [];
 
     if (charges.length === 0) {
-        console.log('  ✅ Không có charges cũ nào.');
+        console.log('   Không có charges cũ nào.');
         return;
     }
 
@@ -232,7 +232,7 @@ async function createNewCharges(client: AxiosInstance): Promise<number[]> {
             const res = await client.post('/charges', chargeDef);
             const chargeId = res.data.resourceId;
             createdIds.push(chargeId);
-            console.log(`  ✅ Tạo thành công: "${chargeDef.name}" (ID: ${chargeId})`);
+            console.log(`   Tạo thành công: "${chargeDef.name}" (ID: ${chargeId})`);
             console.log(`     - Loại: ${chargeDef.penalty ? '⚠️  PENALTY' : '💰 FEE'}`);
             console.log(`     - Cách tính: ${[2, 3, 4, 5].includes(chargeDef.chargeCalculationType) ? chargeDef.amount + '%' : chargeDef.amount.toLocaleString() + ' VND'}`);
         } catch (err: any) {
@@ -302,7 +302,7 @@ async function applyChargesToProducts(client: AxiosInstance, chargeIds: number[]
 
         try {
             await client.put(`/loanproducts/${p.id}`, updatePayload);
-            console.log(`  ✅ Đã áp dụng ${chargeIds.length} charges cho "${p.name}" (${p.shortName})`);
+            console.log(`   Đã áp dụng ${chargeIds.length} charges cho "${p.name}" (${p.shortName})`);
         } catch (err: any) {
             console.error(`  ❌ Lỗi áp dụng charges cho "${p.name}": ${err.message}`);
             if (err.response?.data) {

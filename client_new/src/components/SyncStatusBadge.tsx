@@ -13,7 +13,7 @@ const getStatusConfig = (status?: string): { color: string; bgColor: string; lab
     switch (status) {
         case 'complete':
         case 'synced':
-            return { color: '#10b981', bgColor: '#064e3b', label: 'Đã đồng bộ', icon: '✅' };
+            return { color: '#10b981', bgColor: '#064e3b', label: 'Đã đồng bộ', icon: '' };
         case 'registered':
             return { color: '#3b82f6', bgColor: '#1e3a5f', label: 'Đã đăng ký', icon: '📝' };
         case 'partial':

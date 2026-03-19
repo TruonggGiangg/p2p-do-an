@@ -197,7 +197,7 @@ card: {
 | `loading` | `boolean` | `false` |
 
 ```tsx
-// ✅ Đúng
+//  Đúng
 <CommonButton title="Xác nhận" variant="primary" size="lg" />
 <CommonButton title="Hủy" variant="outline" />
 

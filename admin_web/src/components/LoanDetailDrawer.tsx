@@ -331,7 +331,7 @@ export default function LoanDetailDrawer({
                                     </Space>
                                     {mode === 'approval' && contractStatus?.hasContract && (
                                         <Tag color={contractStatus.contractStatus === 'signed' ? 'blue' : contractStatus.contractStatus === 'active' ? 'green' : contractStatus.contractStatus === 'pending_signature' ? 'orange' : 'default'}>
-                                            {contractStatus.contractStatus === 'pending_signature' ? '📝 Chờ ký hợp đồng' : contractStatus.contractStatus === 'signed' ? '✅ Đã ký hợp đồng' : contractStatus.contractStatus === 'active' ? '📄 HĐ đang hiệu lực' : `HĐ: ${contractStatus.contractStatus}`}
+                                            {contractStatus.contractStatus === 'pending_signature' ? '📝 Chờ ký hợp đồng' : contractStatus.contractStatus === 'signed' ? ' Đã ký hợp đồng' : contractStatus.contractStatus === 'active' ? '📄 HĐ đang hiệu lực' : `HĐ: ${contractStatus.contractStatus}`}
                                         </Tag>
                                     )}
                                     <Row gutter={32}>
@@ -462,11 +462,13 @@ export default function LoanDetailDrawer({
                                 rowClassName={(record) => `schedule-row-${getInstallmentStatus(record)}`}
                                 columns={[
                                     { title: '#', dataIndex: 'period', width: 50, fixed: 'left' },
-                                    { title: 'Tình trạng', key: 'status', width: 120, fixed: 'left', render: (_: any, record: any) => {
-                                        const s = getInstallmentStatus(record);
-                                        const config = { paid: { color: 'success', label: 'Đã trả' }, overdue: { color: 'error', label: 'Quá hạn' }, current: { color: 'processing', label: 'Đang đến hạn' }, upcoming: { color: 'default', label: 'Chưa đến hạn' } };
-                                        return <Tag color={config[s].color}>{config[s].label}</Tag>;
-                                    }},
+                                    {
+                                        title: 'Tình trạng', key: 'status', width: 120, fixed: 'left', render: (_: any, record: any) => {
+                                            const s = getInstallmentStatus(record);
+                                            const config = { paid: { color: 'success', label: 'Đã trả' }, overdue: { color: 'error', label: 'Quá hạn' }, current: { color: 'processing', label: 'Đang đến hạn' }, upcoming: { color: 'default', label: 'Chưa đến hạn' } };
+                                            return <Tag color={config[s].color}>{config[s].label}</Tag>;
+                                        }
+                                    },
                                     { title: 'Ngày', dataIndex: 'dueDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
                                     { title: 'Ngày trả', dataIndex: 'obligationsMetOnDate', width: 110, render: (v: any) => v ? [...v].reverse().join('/') : '–' },
                                     { title: 'Dư nợ khoản vay', dataIndex: 'principalLoanBalanceOutstanding', align: 'right', width: 140, render: (v: any) => fmtVND(v) },

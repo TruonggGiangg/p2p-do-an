@@ -10,10 +10,10 @@ Workflow này mô tả cách phối hợp các AI tools miễn phí để phát 
 
 | Tool | Vai trò | Chi phí |
 |------|---------|---------|
-| **Gemini CLI** | Đọc code, debug, explore | ✅ FREE (OAuth Google) |
-| **Antigravity (IDE Agent)** | Viết code, implementation | ✅ FREE |
-| **Aider** | Refactor lớn, rename | ✅ FREE (local) |
-| **Git** | Version control | ✅ FREE |
+| **Gemini CLI** | Đọc code, debug, explore |  FREE (OAuth Google) |
+| **Antigravity (IDE Agent)** | Viết code, implementation |  FREE |
+| **Aider** | Refactor lớn, rename |  FREE (local) |
+| **Git** | Version control |  FREE |
 
 ## ⚡ Quy tắc vàng
 
@@ -21,8 +21,8 @@ Workflow này mô tả cách phối hợp các AI tools miễn phí để phát 
 ❌ Không dùng GEMINI_API_KEY
 ❌ Không bật Google Cloud billing
 ❌ Không dùng OpenAI API
-✅ Gemini CLI = OAuth Google account
-✅ Developer = final decision-maker
+ Gemini CLI = OAuth Google account
+ Developer = final decision-maker
 ```
 
 ## 📋 Phân chia công việc
@@ -88,7 +88,7 @@ aider src/loan/loan.service.ts src/loan/loan.controller.ts
 4. [Aider] Refactor (if needed)
 ```
 
-## ✅ Checklist Trước Mỗi Buổi
+##  Checklist Trước Mỗi Buổi
 
 // turbo-all
 - [ ] `gemini login` (OAuth, không API key)

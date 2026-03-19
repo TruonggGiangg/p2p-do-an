@@ -307,7 +307,7 @@ export default function BNPLScreen() {
             });
 
             Alert.alert(
-                '✅ Thành công',
+                ' Thành công',
                 `Đã tạo khoản vay ${formatCurrency(loan.principal)}\nTổng phải trả: ${formatCurrency(loan.totalRepayment)}`,
                 [
                     {

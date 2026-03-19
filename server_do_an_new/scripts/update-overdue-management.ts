@@ -175,7 +175,7 @@ async function updateDelinquencyRanges(client: AxiosInstance): Promise<number[]>
             locale: 'vi',
         });
 
-        console.log(`     ✅ Đã cập nhật (ID: ${existing.id})`);
+        console.log(`      Đã cập nhật (ID: ${existing.id})`);
         rangeIds.push(existing.id);
     }
 
@@ -193,7 +193,7 @@ async function updateDelinquencyRanges(client: AxiosInstance): Promise<number[]>
 
         const newRangeId = createRes.data.resourceId;
         rangeIds.push(newRangeId);
-        console.log(`     ✅ Tạo thành công (ID: ${newRangeId})`);
+        console.log(`      Tạo thành công (ID: ${newRangeId})`);
     }
 
     return rangeIds;
@@ -217,7 +217,7 @@ async function updateDelinquencyBucket(client: AxiosInstance, rangeIds: number[]
         locale: 'vi',
     });
 
-    console.log(`  ✅ Bucket "${bucketName}" (ID: ${bucket.id}) đã được cập nhật với 5 ranges.`);
+    console.log(`   Bucket "${bucketName}" (ID: ${bucket.id}) đã được cập nhật với 5 ranges.`);
     return bucket.id;
 }
 

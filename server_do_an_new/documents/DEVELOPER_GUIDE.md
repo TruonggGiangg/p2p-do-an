@@ -149,10 +149,10 @@ export class AuthModule {}
 ```
 
 **Nguyên tắc:**
-- ✅ 1 module = 1 feature domain
-- ✅ Modules communicate qua exports/imports
-- ✅ Shared logic → `common/`
-- ✅ Config → `ConfigService` (global)
+-  1 module = 1 feature domain
+-  Modules communicate qua exports/imports
+-  Shared logic → `common/`
+-  Config → `ConfigService` (global)
 
 ### 2. Layered Architecture
 
@@ -207,8 +207,8 @@ export class AuthService {
 ```
 
 **Best Practices:**
-- ✅ Inject qua constructor
-- ✅ Use interfaces for testability
+-  Inject qua constructor
+-  Use interfaces for testability
 - ❌ Không `new Service()` manually
 
 ### 4. DTO Pattern (Data Transfer Object)
@@ -837,13 +837,13 @@ npm install --save-dev @types/node @types/express
 
 ### Code Review Focus:
 
-- ✅ Follows NestJS patterns
-- ✅ Proper error handling
-- ✅ Type safety (no `any` unless necessary)
-- ✅ Security (no secrets in code)
-- ✅ Performance (efficient queries)
-- ✅ Testability (dependency injection)
-- ✅ Documentation (Swagger, comments)
+-  Follows NestJS patterns
+-  Proper error handling
+-  Type safety (no `any` unless necessary)
+-  Security (no secrets in code)
+-  Performance (efficient queries)
+-  Testability (dependency injection)
+-  Documentation (Swagger, comments)
 
 ---
 
