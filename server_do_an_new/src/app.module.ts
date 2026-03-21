@@ -26,6 +26,8 @@ import { validate } from './config/validation';
 import { SmartCAModule } from './modules/digital-signature/smartca.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { CreditScoreModule } from './modules/credit-score/credit-score.module';
+import { InvestModule } from './modules/invest/invest.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -68,6 +70,8 @@ import { CreditScoreModule } from './modules/credit-score/credit-score.module';
     SmartCAModule,
     RbacModule,
     CreditScoreModule,
+    InvestModule,
+    JobsModule,
   ],
 
   controllers: [AppController],

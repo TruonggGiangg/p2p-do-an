@@ -9,7 +9,7 @@ import LoginPage from './pages/LoginPage';
 import DocumentTypesPage from './pages/DocumentTypesPage';
 import LoanProductsPage from './pages/LoanProductsPage';
 import SavingsProductsPage from './pages/SavingsProductsPage';
-import SyncDriftPage from './pages/SyncDriftPage';
+
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import LoanApprovalsPage from './pages/LoanApprovalsPage';
@@ -20,6 +20,7 @@ import CreditScoreWeightsPage from './pages/CreditScoreWeightsPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
+import BackgroundJobsPage from './pages/BackgroundJobsPage';
 import RolesPermissionsPage from './pages/RolesPermissionsPage';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from './AbilityContext';
@@ -253,9 +254,9 @@ export default function App() {
                     </ProtectedRoute>
                   } />
                   <Route path="profile" element={<StaffProfilePage />} />
-                  <Route path="sync-drift" element={
-                    <ProtectedRoute action={Action.Read} subject="SyncDrift">
-                      <SyncDriftPage />
+                  <Route path="background-jobs" element={
+                    <ProtectedRoute action={Action.Manage} subject="all">
+                      <BackgroundJobsPage />
                     </ProtectedRoute>
                   } />
                 </Route>

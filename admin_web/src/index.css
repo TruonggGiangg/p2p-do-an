@@ -319,12 +319,67 @@ p {
   margin-bottom: 0;
 }
 
-/* Cột Thao tác/Hành động cố định - tránh bị che, ép sát */
+/* Cột cố định (ghim) - background opaque để không bị đè content bên dưới */
 .ant-table-cell-fix-right-first,
-.ant-table-cell-fix-right-last {
+.ant-table-cell-fix-right-last,
+.ant-table-cell-fix-left-first,
+.ant-table-cell-fix-left-last {
   padding-left: 20px !important;
   padding-right: 20px !important;
 }
+
+/* Fixed columns: Header */
+[data-theme="light"] .ant-table-thead > tr > th.ant-table-cell-fix-left,
+[data-theme="light"] .ant-table-thead > tr > th.ant-table-cell-fix-right,
+[data-theme="light"] .ant-table-thead > tr > th[class*="ant-table-cell-fix"] {
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-table-thead > tr > th.ant-table-cell-fix-left,
+[data-theme="dark"] .ant-table-thead > tr > th.ant-table-cell-fix-right,
+[data-theme="dark"] .ant-table-thead > tr > th[class*="ant-table-cell-fix"] {
+  background: #1E293B !important;
+}
+
+/* Fixed columns: Body rows — MUST be fully opaque (no rgba!) */
+[data-theme="light"] .ant-table-tbody > tr > td.ant-table-cell-fix-left,
+[data-theme="light"] .ant-table-tbody > tr > td.ant-table-cell-fix-right,
+[data-theme="light"] .ant-table-tbody > tr > td[class*="ant-table-cell-fix"] {
+  background: #fff !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr > td.ant-table-cell-fix-left,
+[data-theme="dark"] .ant-table-tbody > tr > td.ant-table-cell-fix-right,
+[data-theme="dark"] .ant-table-tbody > tr > td[class*="ant-table-cell-fix"] {
+  background: #0f172a !important;
+}
+
+/* Fixed columns: Even rows (zebra) — fully opaque! */
+[data-theme="light"] .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-left,
+[data-theme="light"] .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-right,
+[data-theme="light"] .ant-table-tbody > tr:nth-child(even) > td[class*="ant-table-cell-fix"] {
+  background: #F8FAFC !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-left,
+[data-theme="dark"] .ant-table-tbody > tr:nth-child(even) > td.ant-table-cell-fix-right,
+[data-theme="dark"] .ant-table-tbody > tr:nth-child(even) > td[class*="ant-table-cell-fix"] {
+  background: #141e2e !important;
+}
+
+/* Fixed columns: Hover state */
+[data-theme="light"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
+[data-theme="light"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right,
+[data-theme="light"] .ant-table-tbody > tr:hover > td[class*="ant-table-cell-fix"] {
+  background: #EFF6FF !important;
+}
+
+[data-theme="dark"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix-left,
+[data-theme="dark"] .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right,
+[data-theme="dark"] .ant-table-tbody > tr:hover > td[class*="ant-table-cell-fix"] {
+  background: #334155 !important;
+}
+
 .ant-pro-table .ant-table-wrapper {
   overflow-x: auto !important;
 }

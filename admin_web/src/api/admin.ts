@@ -922,6 +922,13 @@ export const adminApi = {
       }>(`/api/admin/loans/${fineractLoanId}/documents/${documentId}/reject`)
       .then((r) => r.data.data),
 
+  classifyDocument: (fineractLoanId: number, documentId: number, documentTypeId: string) =>
+    api
+      .patch<{
+        data: { documentId: number; documentTypeId: string };
+      }>(`/api/admin/loans/${fineractLoanId}/documents/${documentId}/classify`, { documentTypeId })
+      .then((r) => r.data.data),
+
   canApproveLoan: (fineractLoanId: number) =>
     api
       .get<{

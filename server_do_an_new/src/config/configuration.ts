@@ -74,6 +74,11 @@ export default () => ({
     maxRetries: parseInt(process.env.SMARTCA_MAX_RETRIES || '3', 10),
   },
 
+  // Invest (WaitingRoom matching)
+  invest: {
+    baseUnitPrice: parseInt(process.env.INVEST_BASE_UNIT_PRICE || '500000', 10),
+  },
+
   security: {
     corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['*'],
     cookieSecure: process.env.COOKIE_SECURE === 'true',

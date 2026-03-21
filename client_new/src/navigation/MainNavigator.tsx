@@ -12,6 +12,7 @@ import HomeScreen from '../features/home/screens/HomeScreen';
 import LoanScreen from '../features/loan/screens/LoanScreen';
 import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
+import InvestmentOrderListScreen from '../features/invest/screens/InvestmentOrderListScreen';
 
 /** HOC: bọc screen yêu cầu PIN 1 lần/phiên */
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
@@ -50,10 +51,12 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
 
 const PinGatedLoanScreen = withPinGate(LoanScreen);
 const PinGatedBNPLScreen = withPinGate(BNPLScreen);
+const PinGatedInvestScreen = withPinGate(InvestmentOrderListScreen);
 
 export type MainTabParamList = {
     Home: undefined;
     Loan: undefined;
+    Invest: undefined;
     BNPL: undefined;
     Profile: undefined;
 };
@@ -62,7 +65,13 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainNavigator() {
     const { theme } = useTheme();
+    const { user } = useAuth();
     const insets = useSafeAreaInsets();
+
+    // Phân quyền: chỉ lender mới thấy tab Đầu tư
+    const isLender =
+        user?.metadata?.userType === 'lender' ||
+        (user?.roles || []).some(r => r.toLowerCase() === 'lender');
 
     const bottomTabHeight = Platform.OS === 'ios' ? 60 + insets.bottom : Math.max(70, 56 + insets.bottom);
 
@@ -80,6 +89,8 @@ export default function MainNavigator() {
                         iconName = focused ? 'wallet' : 'wallet-outline';
                     } else if (route.name === 'BNPL') {
                         iconName = focused ? 'card' : 'card-outline';
+                    } else if (route.name === 'Invest') {
+                        iconName = focused ? 'trending-up' : 'trending-up-outline';
                     }
 
                     return (
@@ -89,7 +100,7 @@ export default function MainNavigator() {
                     );
                 },
                 tabBarActiveTintColor: theme.mode === 'dark' ? '#8ECFB9' : '#14342B',
-                tabBarInactiveTintColor: theme.mode === 'dark' ? '#848E9C' : '#474D57', // Darker gray for light mode
+                tabBarInactiveTintColor: theme.mode === 'dark' ? '#848E9C' : '#474D57',
                 tabBarLabelStyle: {
                     fontSize: 11,
                     fontFamily: 'Poppins_600SemiBold',
@@ -116,16 +127,27 @@ export default function MainNavigator() {
                 component={HomeScreen}
                 options={{ tabBarLabel: 'Trang chủ' }}
             />
-            <Tab.Screen
-                name="Loan"
-                component={PinGatedLoanScreen}
-                options={{ tabBarLabel: 'Vay vốn' }}
-            />
-            <Tab.Screen
-                name="BNPL"
-                component={PinGatedBNPLScreen}
-                options={{ tabBarLabel: 'Trả góp' }}
-            />
+            {!isLender && (
+                <Tab.Screen
+                    name="Loan"
+                    component={PinGatedLoanScreen}
+                    options={{ tabBarLabel: 'Vay vốn' }}
+                />
+            )}
+            {!isLender && (
+                <Tab.Screen
+                    name="BNPL"
+                    component={PinGatedBNPLScreen}
+                    options={{ tabBarLabel: 'Trả góp' }}
+                />
+            )}
+            {isLender && (
+                <Tab.Screen
+                    name="Invest"
+                    component={PinGatedInvestScreen}
+                    options={{ tabBarLabel: 'Đầu tư' }}
+                />
+            )}
             <Tab.Screen
                 name="Profile"
                 component={ProfileScreen}

@@ -120,7 +120,7 @@ export class AdminService {
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly ekycService: EkycService,
     private readonly creditScoreService: CreditScoreService,
-  ) {}
+  ) { }
 
   async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
     return this.creditScoreService.getWeightConfig();
@@ -1222,6 +1222,21 @@ export class AdminService {
     app.totalFeeExpected = summary.feeChargesOverdue || 0;
     app.totalOverdue = summary.totalOverdue || 0;
 
+    // 4a. Sync loan purpose (willing) from Fineract
+    const purposeName = fl.loanPurposeName || fl.loanPurpose?.name;
+    if (purposeName && !app.willing) {
+      app.willing = purposeName;
+    }
+
+    // 4b. Sync client display name
+    if (fl.clientName || fl.clientDisplayName) {
+      app.clientDisplayName = fl.clientName || fl.clientDisplayName;
+    }
+
+    // 4c. Ensure capital & periodMonth reflect Fineract data
+    if (fl.principal && fl.principal > 0) app.capital = fl.principal;
+    if (fl.numberOfRepayments && fl.numberOfRepayments > 0) app.periodMonth = fl.numberOfRepayments;
+
     this.logger.debug(`[syncLoan] DELINQUENCY DATA for loan ${fineractLoanId}: ${JSON.stringify(dData)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY TAGS for loan ${fineractLoanId}: ${JSON.stringify(dTags)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY ACTIONS for loan ${fineractLoanId}: ${JSON.stringify(dActions)}`);
@@ -1271,7 +1286,7 @@ export class AdminService {
       if (firstDueStr && firstDueStr < app.disbursementDate) {
         this.logger.error(
           `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
-            'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+          'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
         );
       }
     }
@@ -1681,26 +1696,26 @@ export class AdminService {
         };
       })
       .filter(Boolean) as Array<{
-      _id: string;
-      loanId: string;
-      fineractLoanId: number;
-      borrowerId: string;
-      userId: string;
-      customerName: string;
-      customerUsername: string;
-      fineractClientId?: string;
-      capital: number;
-      overdueAmount: number;
-      debtGroup: number;
-      firstOverdueDate: Date | null;
-      lastOverdueDate: Date | null;
-      status: LoanDelinquencyStatus;
-      collectionStage: LoanCollectionStage;
-      totalOverdue: number;
-      delinquentDays: number;
-      delinquencyClassification: string | null;
-      lastSyncedAt: Date | null;
-    }>;
+        _id: string;
+        loanId: string;
+        fineractLoanId: number;
+        borrowerId: string;
+        userId: string;
+        customerName: string;
+        customerUsername: string;
+        fineractClientId?: string;
+        capital: number;
+        overdueAmount: number;
+        debtGroup: number;
+        firstOverdueDate: Date | null;
+        lastOverdueDate: Date | null;
+        status: LoanDelinquencyStatus;
+        collectionStage: LoanCollectionStage;
+        totalOverdue: number;
+        delinquentDays: number;
+        delinquencyClassification: string | null;
+        lastSyncedAt: Date | null;
+      }>;
 
     // Khi clientDisplayName trống (sync cũ hoặc lỗi), lấy tên từ Fineract để luôn hiện đúng tên khoản vay
     const needFineractName = items
@@ -1729,7 +1744,7 @@ export class AdminService {
           this.loanApplicationModel
             .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
             .exec()
-            .catch(() => {});
+            .catch(() => { });
         }
       });
     }
@@ -1919,11 +1934,11 @@ export class AdminService {
         };
       })
       .filter(Boolean) as Array<{
-      debt_group: number;
-      debt_group_name: string;
-      min_days: number;
-      max_days: number | null;
-    }>;
+        debt_group: number;
+        debt_group_name: string;
+        min_days: number;
+        max_days: number | null;
+      }>;
   }
 
   private async resolveDebtGroupMetadata(debtGroup: number): Promise<{
@@ -2575,6 +2590,50 @@ export class AdminService {
     app.markModified('documents');
     await app.save();
     return { documentId, reviewStatus: 'rejected' };
+  }
+
+  /** Phân loại lại tài liệu (staff gán documentTypeId cho doc unknown) */
+  async classifyDocument(fineractLoanId: number, documentId: number, documentTypeId: string) {
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
+    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+
+    let doc = app.documents?.find(d => String(d.fineractDocumentId) === String(documentId));
+
+    if (!doc) {
+      // Document exists in Fineract but not in MongoDB — create it
+      this.logger.warn(
+        `[classifyDocument] Document #${documentId} not found in MongoDB for loan #${fineractLoanId}. Fetching from Fineract...`,
+      );
+      const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
+      const fd = fineractDocs.find((d: any) => d.id == documentId);
+      if (!fd) {
+        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+      }
+
+      const newDoc = {
+        fineractDocumentId: Number(documentId),
+        name: fd.name || fd.fileName || 'Fineract Document',
+        documentTypeId,
+        uploadedAt: new Date(),
+        reviewStatus: 'pending' as const,
+      };
+      if (!app.documents) app.documents = [];
+      app.documents.push(newDoc as any);
+      doc = newDoc as any;
+      this.logger.log(
+        `[classifyDocument] Created new doc record from Fineract: fineractDocumentId=${documentId} type=${documentTypeId}`,
+      );
+    } else {
+      this.logger.log(
+        `[classifyDocument] fineractLoanId=${fineractLoanId} documentId=${documentId} oldType=${doc.documentTypeId} -> newType=${documentTypeId}`,
+      );
+      doc.documentTypeId = documentTypeId;
+    }
+
+    app.markModified('documents');
+    await app.save();
+
+    return { documentId, documentTypeId };
   }
 
   /** Kiểm tra khoản vay đã duyệt đủ tài liệu bắt buộc chưa */

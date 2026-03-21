@@ -7,7 +7,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Drawer, Tabs, Table, Descriptions, Row, Col, Statistic, Tag, Typography, Badge,
+    Drawer, Tabs, Table, Descriptions, Row, Col, Statistic, Tag, Typography, Badge, Select,
     Skeleton, Empty, Button, Space, Card, Alert, message, theme, Avatar, Popconfirm, Tooltip
 } from 'antd';
 import {
@@ -21,6 +21,7 @@ import { getInstallmentStatus } from '../utils/scheduleStatus';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from '../AbilityContext';
 import { Action } from '../ability';
+import { useTheme } from '../App';
 
 const { Text } = Typography;
 
@@ -46,6 +47,7 @@ export default function LoanDetailDrawer({
     mode = 'view',
 }: LoanDetailDrawerProps) {
     const { token } = theme.useToken();
+    const { isDarkMode } = useTheme();
     const navigate = useNavigate();
     const ability = useAbility(AbilityContext);
 
@@ -59,6 +61,8 @@ export default function LoanDetailDrawer({
     const [documentReviewing, setDocumentReviewing] = useState<Set<number>>(new Set());
     const [approving, setApproving] = useState(false);
     const [disbursing, setDisbursing] = useState(false);
+    const [availableDocTypes, setAvailableDocTypes] = useState<Array<{ _id: string; name: string }>>([]); 
+    const [classifyingDocs, setClassifyingDocs] = useState<Set<number>>(new Set());
 
     const fetchData = useCallback(async (id: number, sync = false) => {
         setLoading(true);
@@ -93,11 +97,15 @@ export default function LoanDetailDrawer({
     useEffect(() => {
         if (open && loanId) {
             fetchData(loanId);
+            // Fetch available document types for reclassification
+            if (mode === 'approval') {
+                adminApi.getDocumentTypes().then(types => setAvailableDocTypes(types as any)).catch(() => {});
+            }
         } else {
             setLoanDetails(null);
             setLoanDocuments([]);
         }
-    }, [open, loanId, fetchData]);
+    }, [open, loanId, fetchData, mode]);
 
     const handleSync = useCallback(() => {
         if (loanId) fetchData(loanId, true);
@@ -170,6 +178,20 @@ export default function LoanDetailDrawer({
             message.error(e?.response?.data?.message || 'Từ chối tài liệu thất bại');
         } finally {
             setDocumentReviewing(s => { const n = new Set(s); n.delete(documentId); return n; });
+        }
+    }, [loanId, refreshDocumentsAndCanApprove]);
+
+    const handleClassifyDocument = useCallback(async (documentId: number, documentTypeId: string) => {
+        if (!loanId) return;
+        setClassifyingDocs(s => new Set(s).add(documentId));
+        try {
+            await adminApi.classifyDocument(loanId, documentId, documentTypeId);
+            message.success('Đã phân loại tài liệu');
+            await refreshDocumentsAndCanApprove();
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || 'Phân loại tài liệu thất bại');
+        } finally {
+            setClassifyingDocs(s => { const n = new Set(s); n.delete(documentId); return n; });
         }
     }, [loanId, refreshDocumentsAndCanApprove]);
 
@@ -515,7 +537,7 @@ export default function LoanDetailDrawer({
                                         />
                                     </Col>
                                     <Col span={24}>
-                                        <Card size="small" title={<Space><ClockCircleOutlined /> Lịch sử thẻ nợ (Delinquency Tags)</Space>} bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                        <Card size="small" title={<Space><ClockCircleOutlined /> Lịch sử thẻ nợ (Delinquency Tags)</Space>} bordered={false} style={{ boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)' }}>
                                             <Table
                                                 size="small"
                                                 pagination={false}
@@ -530,7 +552,7 @@ export default function LoanDetailDrawer({
                                         </Card>
                                     </Col>
                                     <Col span={12}>
-                                        <Card size="small" title="Quá hạn theo kỳ trả nợ" bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                                        <Card size="small" title="Quá hạn theo kỳ trả nợ" bordered={false} style={{ boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
                                             <Table
                                                 size="small"
                                                 pagination={false}
@@ -548,7 +570,7 @@ export default function LoanDetailDrawer({
                                         </Card>
                                     </Col>
                                     <Col span={12}>
-                                        <Card size="small" title="Phân bổ tiền quá hạn (Phổ nợ)" bordered={false} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
+                                        <Card size="small" title="Phân bổ tiền quá hạn (Phổ nợ)" bordered={false} style={{ boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)', height: '100%' }}>
                                             <Table
                                                 size="small"
                                                 pagination={false}
@@ -615,7 +637,23 @@ export default function LoanDetailDrawer({
                                     size="small"
                                     rowKey="id"
                                     columns={[
-                                        { title: 'Loại tài liệu', dataIndex: 'documentTypeName', width: 200, render: (v: any) => v || <Text type="secondary">Chưa phân loại</Text> },
+                                        { title: 'Loại tài liệu', dataIndex: 'documentTypeName', width: 200, render: (v: any, r: any) => {
+                                            if (v && v !== 'Chưa phân loại') return v;
+                                            // Show Select for unknown docs in approval mode
+                                            if (mode === 'approval' && availableDocTypes.length > 0) {
+                                                return (
+                                                    <Select
+                                                        size="small"
+                                                        placeholder="Chọn loại tài liệu"
+                                                        loading={classifyingDocs.has(r.id)}
+                                                        style={{ width: '100%', minWidth: 160 }}
+                                                        onChange={(typeId: string) => handleClassifyDocument(r.id, typeId)}
+                                                        options={availableDocTypes.map(t => ({ value: t._id, label: t.name }))}
+                                                    />
+                                                );
+                                            }
+                                            return <Text type="secondary">Chưa phân loại</Text>;
+                                        }},
                                         { title: 'Tên file gốc', dataIndex: 'originalName', ellipsis: true, render: (v: any, r: any) => v || r.fileName },
                                         ...(mode === 'approval' ? [{
                                             title: 'Trạng thái',
@@ -633,7 +671,7 @@ export default function LoanDetailDrawer({
                                         {
                                             title: 'Hành động',
                                             key: 'action',
-                                            width: mode === 'approval' ? 220 : 150,
+                                            width: mode === 'approval' ? 300 : 150,
                                             align: 'right' as const,
                                             render: (_: any, r: any) => (
                                                 <Space size={4}>
@@ -662,10 +700,32 @@ export default function LoanDetailDrawer({
                 ]} />
             )}
             <style>{`
-                .mifos-tabs .ant-tabs-nav { background: #f4f4f4; margin: 0 !important; padding: 0 24px; }
-                .mifos-tabs .ant-tabs-tab { border: none !important; background: transparent !important; margin: 0 !important; padding: 12px 20px !important; }
-                .mifos-tabs .ant-tabs-tab-active { background: #fff !important; border-top: 3px solid #0071b9 !important; }
-                .mifos-tabs .ant-tabs-content-holder { background: #fff; }
+                .mifos-tabs .ant-tabs-nav {
+                    background: ${isDarkMode ? '#1e293b' : '#f4f4f4'};
+                    margin: 0 !important;
+                    padding: 0 24px;
+                }
+                .mifos-tabs .ant-tabs-tab {
+                    border: none !important;
+                    background: transparent !important;
+                    margin: 0 !important;
+                    padding: 12px 20px !important;
+                    color: ${isDarkMode ? '#94a3b8' : 'inherit'} !important;
+                }
+                .mifos-tabs .ant-tabs-tab:hover {
+                    color: ${isDarkMode ? '#e2e8f0' : 'inherit'} !important;
+                }
+                .mifos-tabs .ant-tabs-tab-active {
+                    background: ${isDarkMode ? '#0f172a' : '#fff'} !important;
+                    border-top: 3px solid ${isDarkMode ? '#3b82f6' : '#0071b9'} !important;
+                    color: ${isDarkMode ? '#f1f5f9' : 'inherit'} !important;
+                }
+                .mifos-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+                    color: ${isDarkMode ? '#f1f5f9' : 'inherit'} !important;
+                }
+                .mifos-tabs .ant-tabs-content-holder {
+                    background: ${isDarkMode ? '#0f172a' : '#fff'};
+                }
             `}</style>
         </Drawer>
     );

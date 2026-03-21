@@ -7,7 +7,6 @@ import {
   FileTextOutlined,
   BankOutlined,
   WalletOutlined,
-  SyncOutlined,
   UserOutlined,
   CheckCircleOutlined,
   LogoutOutlined,
@@ -21,6 +20,7 @@ import {
   DollarOutlined,
   FontSizeOutlined,
   LineChartOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
@@ -42,7 +42,7 @@ const menuItems = [
   { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
   { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
   { key: '/roles-permissions', icon: <SafetyCertificateOutlined />, label: 'Vai trò & Phân quyền' },
-  { key: '/sync-drift', icon: <SyncOutlined />, label: 'Đồng bộ / Cảnh báo' },
+  { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
   { key: '/profile', icon: <IdcardOutlined />, label: 'Hồ sơ cá nhân' },
 ];
 
@@ -72,7 +72,7 @@ export default function AppLayout() {
   const filteredMenuItems = menuItems.filter(item => {
     if (item.key === '/staff') return ability.can(Action.Read, 'Staff');
     if (item.key === '/roles-permissions') return ability.can(Action.Manage, 'all');
-    if (item.key === '/sync-drift') return ability.can(Action.Read, 'SyncDrift');
+    if (item.key === '/background-jobs') return ability.can(Action.Manage, 'all');
     if (item.key === '/loan-support-requests') return ability.can(Action.Read, 'LoanApplication');
     if (item.key === '/profile') return !userRoles.includes('admin'); // Staff only
     return true;

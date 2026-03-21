@@ -511,6 +511,19 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: result };
   }
 
+  @Patch('loans/:fineractLoanId/documents/:documentId/classify')
+  @CheckPolicies(ability => ability.can(Action.Update, 'LoanDocument'))
+  @ApiOperation({ summary: 'Phân loại lại tài liệu (gán document type)' })
+  @ApiResponse({ status: 200 })
+  async classifyDocument(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Body('documentTypeId') documentTypeId: string,
+  ) {
+    const result = await this.adminService.classifyDocument(fineractLoanId, documentId, documentTypeId);
+    return { statusCode: 200, message: 'OK', data: result };
+  }
+
   @Get('loans/:fineractLoanId/can-approve')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Kiểm tra đã duyệt đủ tài liệu bắt buộc chưa' })

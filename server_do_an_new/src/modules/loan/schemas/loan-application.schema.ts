@@ -47,6 +47,24 @@ export class LoanApplication extends Document {
   @Prop({ type: String, default: 'pending' })
   status: LoanApplicationStatus;
 
+  // ── Investment tracking fields (như HD-AMC) ──
+
+  /** Tổng số notes (= Math.ceil(capital / baseUnitPrice)), tính khi tạo khoản vay */
+  @Prop({ required: false, default: 0 })
+  totalNotes: number;
+
+  /** Số notes đã được đầu tư (confirmed invest) */
+  @Prop({ required: false, default: 0 })
+  investedNotes: number;
+
+  /** Số notes tạm match từ lệnh đầu tư (chưa confirm) */
+  @Prop({ required: false, default: 0 })
+  nodeMatch: number;
+
+  /** true nếu investedNotes >= totalNotes (fully funded) */
+  @Prop({ required: false, default: false })
+  isFullMatch: boolean;
+
   @Prop({ type: [Object], default: [] })
   schedulePreview: ScheduleItem[];
 
@@ -217,3 +235,5 @@ export const LoanApplicationSchema = SchemaFactory.createForClass(LoanApplicatio
 LoanApplicationSchema.index({ userId: 1, status: 1 });
 LoanApplicationSchema.index({ productId: 1 });
 LoanApplicationSchema.index({ createdAt: -1 });
+// Index cho query available loans (lọc khoản vay chưa đầu tư đủ)
+LoanApplicationSchema.index({ status: 1, isFullMatch: 1 });

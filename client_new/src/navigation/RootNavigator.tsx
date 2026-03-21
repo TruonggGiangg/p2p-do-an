@@ -24,6 +24,11 @@ import { KYCUpdate, FaceDetection, KYCIntro } from '../features/kyc';
 import PinSetupScreen from '../features/auth/screens/PinSetupScreen';
 import PinChangeScreen from '../features/auth/screens/PinChangeScreen';
 import CreditScoreDetailScreen from '../features/profile/screens/CreditScoreDetailScreen';
+import InvestmentOrderCreateScreen from '../features/invest/screens/InvestmentOrderCreateScreen';
+import InvestmentOrderDetailScreen from '../features/invest/screens/InvestmentOrderDetailScreen';
+import AvailableLoansScreen from '../features/invest/screens/AvailableLoansScreen';
+import InvestmentContractListScreen from '../features/invest/screens/InvestmentContractListScreen';
+import InvestmentContractDetailScreen from '../features/invest/screens/InvestmentContractDetailScreen';
 import { HomeScreen } from '../features';
 
 export type RootStackParamList = {
@@ -68,6 +73,11 @@ export type RootStackParamList = {
         onComplete?: (result: any) => void;
         onSave?: () => void;
     };
+    InvestmentOrderCreate: undefined;
+    InvestmentOrderDetail: { orderId: string };
+    AvailableLoans: undefined;
+    InvestmentContractList: undefined;
+    InvestmentContractDetail: { contractId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -108,6 +118,11 @@ export default function RootNavigator() {
                     <Stack.Screen name="KYCIntro" component={KYCIntro} />
                     <Stack.Screen name="MyQR" component={require('../features/wallet/screens/MyQRScreen').default} />
                     <Stack.Screen name="FaceDetection" component={FaceDetection} />
+                    <Stack.Screen name="InvestmentOrderCreate" component={InvestmentOrderCreateScreen} />
+                    <Stack.Screen name="InvestmentOrderDetail" component={InvestmentOrderDetailScreen} />
+                    <Stack.Screen name="AvailableLoans" component={AvailableLoansScreen} />
+                    <Stack.Screen name="InvestmentContractList" component={InvestmentContractListScreen} />
+                    <Stack.Screen name="InvestmentContractDetail" component={InvestmentContractDetailScreen} />
                 </>
             )}
         </Stack.Navigator>
