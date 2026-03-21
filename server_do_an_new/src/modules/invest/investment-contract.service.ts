@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { InvestmentContract, LenderScheduleItem } from './schemas/investment-contract.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { InvestmentOrder } from './schemas/investment-order.schema';
+import { FineractFDService } from '../fineract/services/fineract-fd.service';
 
 @Injectable()
 export class InvestmentContractService {
@@ -21,6 +22,7 @@ export class InvestmentContractService {
     @InjectModel(InvestmentContract.name) private readonly contractModel: Model<InvestmentContract>,
     @InjectModel(LoanApplication.name) private readonly loanModel: Model<LoanApplication>,
     @InjectModel(InvestmentOrder.name) private readonly orderModel: Model<InvestmentOrder>,
+    private readonly fineractFDService: FineractFDService,
     private readonly configService: ConfigService,
   ) {
     this.baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
@@ -145,10 +147,29 @@ export class InvestmentContractService {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }
 
+    // Resolve FD Interest Rate (Investor's Rate)
+    let annualRatePercent = 0;
+    try {
+      const loanProdRes = await (this.fineractFDService as any).client.get(`/loanproducts/${loan.productId}`);
+      const shortName = loanProdRes.data?.shortName;
+      if (shortName) {
+        const fdRate = await this.fineractFDService.getFDProductAnnualRate(shortName);
+        if (fdRate !== null) {
+           annualRatePercent = fdRate;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed to resolve FD rate for loan ${loan._id}: ${err.message}`);
+    }
+
+    // Fallback to loan rate if FD rate not found
+    if (!annualRatePercent) {
+       annualRatePercent = loan.monthlyRatePercent * 12;
+    }
+    const monthlyRatePercent = +(annualRatePercent / 12).toFixed(2);
+
     // 3. Calculate financials
     const capital = numNotes * this.baseUnitPrice;
-    const monthlyRatePercent = loan.monthlyRatePercent;
-    const annualRatePercent = monthlyRatePercent * 12;
     const periodMonth = loan.periodMonth;
 
     // Simple declining balance calculation
@@ -304,9 +325,28 @@ export class InvestmentContractService {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }
 
+    // Resolve FD Interest Rate (Investor's Rate)
+    let annualRatePercent = 0;
+    try {
+      const loanProdRes = await (this.fineractFDService as any).client.get(`/loanproducts/${loan.productId}`);
+      const shortName = loanProdRes.data?.shortName;
+      if (shortName) {
+        const fdRate = await this.fineractFDService.getFDProductAnnualRate(shortName);
+        if (fdRate !== null) {
+           annualRatePercent = fdRate;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed to resolve FD rate for preview loan ${loan._id}: ${err.message}`);
+    }
+
+    // Fallback to loan rate if FD rate not found
+    if (!annualRatePercent) {
+       annualRatePercent = loan.monthlyRatePercent * 12;
+    }
+    const monthlyRatePercent = +(annualRatePercent / 12).toFixed(2);
+
     const capital = numNotes * this.baseUnitPrice;
-    const monthlyRatePercent = loan.monthlyRatePercent;
-    const annualRatePercent = monthlyRatePercent * 12;
     const periodMonth = loan.periodMonth;
 
     // PMT calculation

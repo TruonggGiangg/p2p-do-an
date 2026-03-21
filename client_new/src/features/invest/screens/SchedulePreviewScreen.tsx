@@ -149,7 +149,7 @@ export default function SchedulePreviewScreen() {
 
           <View style={styles.summaryMeta}>
             <Text style={[styles.summaryMetaText, { color: HERO_TEXT_DIM }]}>
-              {data.periodMonth} tháng · {data.monthlyRatePercent}%/tháng · {data.numNotes} notes
+              {data.periodMonth} tháng · Lãi suất đầu tư: {data.annualRatePercent}%/năm · {data.numNotes} notes
             </Text>
           </View>
 

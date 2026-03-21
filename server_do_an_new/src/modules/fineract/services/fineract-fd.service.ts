@@ -86,6 +86,26 @@ export class FineractFDService extends FineractBaseService {
   }
 
   /**
+   * Helper: Get FD product detailed annual rate from shortName
+   */
+  async getFDProductAnnualRate(shortName: string): Promise<number | null> {
+    const fdProductId = await this.findFDProductByShortName(shortName);
+    if (!fdProductId) return null;
+    try {
+      const res = await this.client.get(`/fixeddepositproducts/${fdProductId}`);
+      const data = res.data;
+      if (data) {
+        const activeChart = data.activeChart || data.interestRateCharts?.[0];
+        const chartSlabs = activeChart?.chartSlabs || [];
+        return chartSlabs[0]?.annualInterestRate ?? data.nominalAnnualInterestRate ?? 0;
+      }
+    } catch {
+      // Ignored
+    }
+    return null;
+  }
+
+  /**
    * Resolve FD product ID from a Loan Product ID.
    * Strategy: Get loan product → extract shortName → find FD product with same shortName.
    */

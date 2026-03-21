@@ -70,6 +70,9 @@ export interface AvailableLoanItem {
   disbursementDate: string;
   monthlyPay: number;
   entirelyPay: number;
+  // FD Interest (What investor earns)
+  fdInterestRate?: number;
+  fdMonthlyRate?: number;
   // Investment tracking
   totalNotes: number;
   investedNotes: number;
