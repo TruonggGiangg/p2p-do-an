@@ -4,9 +4,11 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection, Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { InvestmentOrder } from './schemas/investment-order.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { MatchingService } from './matching.service';
+import { FineractFDService } from '../fineract/services/fineract-fd.service';
 import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 
@@ -34,6 +36,8 @@ export class InvestService {
     @InjectModel(LoanApplication.name) private readonly loanModel: Model<LoanApplication>,
     @InjectConnection() private readonly connection: Connection,
     private readonly matchingService: MatchingService,
+    private readonly configService: ConfigService,
+    private readonly fineractFDService: FineractFDService,
   ) {}
 
   // ═══════════════════════════════════════════════════════
@@ -204,14 +208,9 @@ export class InvestService {
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrderVal };
 
     const filters: Record<string, any> = {
+      // Chỉ hiện khoản vay đã phê duyệt, đang chờ giải ngân
       status: 'approved',
       isFullMatch: { $ne: true },
-      // Chỉ hiện khoản vay còn slot đầu tư (investedNotes < totalNotes hoặc totalNotes chưa set)
-      $or: [
-        { totalNotes: { $exists: false } },
-        { totalNotes: 0 },
-        { $expr: { $lt: ['$investedNotes', '$totalNotes'] } },
-      ],
     };
 
     if (query.minRate !== undefined || query.maxRate !== undefined) {
@@ -237,13 +236,70 @@ export class InvestService {
         .exec(),
     ]);
 
-    // Remove borrower private info
+    const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
+
+    // ── Resolve FD product interest rates ──
+    // Build map: loanProductId → FD annual interest rate
+    const fdRateMap = await this.buildFDRateMap(loans);
+
+    // Enrich with investment progress (like HD-AMC)
     const safeLoans = loans.map(loan => {
       const obj = loan.toObject();
       delete (obj as any).userId;
       delete (obj as any).disbursementWalletId;
       delete (obj as any).fineractLoanId;
       delete (obj as any).clientDisplayName;
+
+      // ── FD interest rate (what investor earns) ──
+      const loanProductId = (obj as any).productId;
+      const fdRate = fdRateMap.get(loanProductId);
+      if (fdRate !== undefined) {
+        (obj as any).fdInterestRate = fdRate;                    // % năm (e.g. 18)
+        (obj as any).fdMonthlyRate = +(fdRate / 12).toFixed(2);  // % tháng (e.g. 1.5)
+      }
+
+      // Compute entirelyPay nếu chưa có (backward compat cho loans synced từ Fineract)
+      // Dùng FD rate nếu có, nếu không fallback loan rate
+      const effectiveMonthlyRate = (obj as any).fdMonthlyRate || (obj as any).monthlyRatePercent || 0;
+      if (!(obj as any).entirelyPay || (obj as any).entirelyPay === 0) {
+        const schedule = (obj as any).schedulePreview || [];
+        if (schedule.length > 0) {
+          (obj as any).entirelyPay = schedule.reduce((s: number, it: any) => s + (it.total || 0), 0);
+        } else {
+          const capital = (obj as any).capital || 0;
+          const rate = effectiveMonthlyRate / 100;
+          const period = (obj as any).periodMonth || 1;
+          if (rate > 0 && capital > 0) {
+            const emi = (capital * rate * Math.pow(1 + rate, period)) / (Math.pow(1 + rate, period) - 1);
+            (obj as any).entirelyPay = Math.round(emi * period);
+          }
+        }
+      }
+      if (!(obj as any).monthlyPay || (obj as any).monthlyPay === 0) {
+        const ep = (obj as any).entirelyPay || 0;
+        const pm = (obj as any).periodMonth || 1;
+        if (ep > 0) (obj as any).monthlyPay = Math.round(ep / pm);
+      }
+
+      // Compute totalNotes nếu chưa có (backward compat)
+      const computedTotalNotes = (obj as any).totalNotes > 0
+        ? (obj as any).totalNotes
+        : Math.ceil((obj as any).capital / baseUnitPrice);
+      (obj as any).totalNotes = computedTotalNotes;
+
+      // Ensure nodeMatch + investedNotes fields
+      const nodeMatch = (obj as any).nodeMatch || 0;
+      const investedNotes = (obj as any).investedNotes || 0;
+      const totalClaimed = nodeMatch + investedNotes;
+      const availableNotes = Math.max(0, computedTotalNotes - totalClaimed);
+
+      (obj as any).nodeMatch = nodeMatch;
+      (obj as any).investedNotes = investedNotes;
+      (obj as any).availableNotes = availableNotes;
+      (obj as any).investedPercent = computedTotalNotes > 0
+        ? Math.round((totalClaimed / computedTotalNotes) * 100)
+        : 0;
+
       return obj;
     });
 
@@ -254,6 +310,68 @@ export class InvestService {
       pageSize,
       loans: safeLoans,
     };
+  }
+
+  /**
+   * Build a map: loanProductId → FD annual interest rate (%)
+   * Strategy:
+   *   1. Fetch all FD products (with details for interestRateCharts)
+   *   2. Build shortName → FD rate map
+   *   3. Get unique loanProductIds from loans
+   *   4. For each loanProductId, get loan product shortName from Fineract
+   *   5. Match shortName → FD rate
+   */
+  private async buildFDRateMap(loans: any[]): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    try {
+      // 1. Get all FD products with interest rate details
+      const fdProducts = await this.fineractFDService.getFDProducts();
+      if (!fdProducts.length) return map;
+
+      // Get detailed info for each FD product (need activeChart for real rates)
+      const fdClient = (this.fineractFDService as any).client;
+      const fdDetailedPromises = fdProducts.map(async (p: any) => {
+        try {
+          const res = await fdClient.get(`/fixeddepositproducts/${p.id}`);
+          return res.data;
+        } catch {
+          return p;
+        }
+      });
+      const fdDetailed = await Promise.all(fdDetailedPromises);
+
+      // 2. Build shortName → FD annual rate map
+      const shortNameToFDRate = new Map<string, number>();
+      for (const fd of fdDetailed) {
+        const sn = (fd.shortName || '').toUpperCase().trim();
+        if (!sn) continue;
+        const activeChart = fd.activeChart || fd.interestRateCharts?.[0];
+        const chartSlabs = activeChart?.chartSlabs || [];
+        const rate = chartSlabs[0]?.annualInterestRate ?? fd.nominalAnnualInterestRate ?? 0;
+        shortNameToFDRate.set(sn, rate);
+      }
+
+      // 3. Get unique loan product IDs
+      const uniqueProductIds = [...new Set(loans.map(l => (l as any).productId as number).filter(Boolean))];
+
+      // 4. For each loan product, get shortName from Fineract and match
+      for (const pid of uniqueProductIds) {
+        try {
+          const loanProd = await fdClient.get(`/loanproducts/${pid}`);
+          const sn = (loanProd.data?.shortName || '').toUpperCase().trim();
+          if (sn && shortNameToFDRate.has(sn)) {
+            map.set(pid, shortNameToFDRate.get(sn)!);
+          }
+        } catch {
+          // Ignore — loan product may not exist in Fineract
+        }
+      }
+
+      this.logger.log(`[buildFDRateMap] Resolved ${map.size} FD rates for ${uniqueProductIds.length} loan products`);
+    } catch (err: any) {
+      this.logger.warn(`[buildFDRateMap] Failed to build FD rate map: ${err.message}`);
+    }
+    return map;
   }
 
   // ═══════════════════════════════════════════════════════

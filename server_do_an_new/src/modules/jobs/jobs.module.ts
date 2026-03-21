@@ -19,6 +19,7 @@ import { SyncLoanStatusJob } from './sync-loan-status.job';
 import { SyncLoanDataJob } from './sync-loan-data.job';
 import { SyncLoanProductsJob } from './sync-loan-products.job';
 import { SyncSavingsProductsJob } from './sync-savings-products.job';
+import { SyncFDProductsJob } from './sync-fd-products.job';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
 
@@ -64,6 +65,15 @@ import { AdminService } from '../admin/admin.service';
       provide: 'SYNC_SAVINGS_PRODUCTS_JOB',
       useFactory: (adminService: AdminService, jobManager: JobManagerService) => {
         const job = new SyncSavingsProductsJob(adminService);
+        jobManager.register(job);
+        return job;
+      },
+      inject: [AdminService, JobManagerService],
+    },
+    {
+      provide: 'SYNC_FD_PRODUCTS_JOB',
+      useFactory: (adminService: AdminService, jobManager: JobManagerService) => {
+        const job = new SyncFDProductsJob(adminService);
         jobManager.register(job);
         return job;
       },

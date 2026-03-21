@@ -32,6 +32,21 @@ export interface SavingsProductDto {
   currency?: { code?: string };
 }
 
+export interface FDProductDto {
+  id: number;
+  name: string;
+  shortName: string;
+  description?: string;
+  nominalAnnualInterestRate?: number;
+  minDepositAmount?: number;
+  maxDepositAmount?: number;
+  minDepositTerm?: number;
+  maxDepositTerm?: number;
+  minDepositTermType?: number;
+  currency?: { code?: string };
+  preClosurePenalApplicable?: boolean;
+}
+
 export interface FieldChangeDto {
   field: string;
   label: string;
@@ -496,6 +511,25 @@ export const adminApi = {
       .post<{
         data: { added: unknown[]; removed: unknown[]; modified: unknown[] };
       }>("/api/admin/sync-compare-savings")
+      .then((r) => r.data.data),
+
+  getFDProducts: () =>
+    api
+      .get<{
+        data: { products: FDProductDto[] };
+      }>("/api/admin/fd-products")
+      .then((r) => r.data.data.products),
+
+  getFDProductDetails: (productId: number) =>
+    api
+      .get<{ data: any }>(`/api/admin/fd-products/${productId}/details`)
+      .then((r) => r.data.data),
+
+  syncCompareFD: () =>
+    api
+      .post<{
+        data: { added: unknown[]; removed: unknown[]; modified: unknown[] };
+      }>("/api/admin/sync-compare-fd")
       .then((r) => r.data.data),
 
   // ── Customers (Head Office) ────────────────────────────────────────────────

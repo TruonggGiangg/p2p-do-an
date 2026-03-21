@@ -5,6 +5,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { InvestService } from './invest.service';
 import { InvestmentContractService } from './investment-contract.service';
+import { InvestPaymentService } from './invest-payment.service';
+import { InvestStatsService } from './invest-stats.service';
 import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -19,6 +21,8 @@ export class InvestController {
   constructor(
     private readonly investService: InvestService,
     private readonly contractService: InvestmentContractService,
+    private readonly paymentService: InvestPaymentService,
+    private readonly statsService: InvestStatsService,
   ) {}
 
   // ═══════════════════════════════════════════════════════
@@ -168,8 +172,8 @@ export class InvestController {
   // ═══════════════════════════════════════════════════════
 
   @Post('contract')
-  @ApiOperation({ summary: 'Tạo hợp đồng ký quỹ đầu tư' })
-  @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo' })
+  @ApiOperation({ summary: 'Tạo hợp đồng ký quỹ đầu tư (với thanh toán Fineract)' })
+  @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo + thanh toán + FD' })
   async createContract(
     @Req() req: any,
     @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
@@ -177,7 +181,7 @@ export class InvestController {
     const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
     if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
 
-    const contract = await this.contractService.createContract(
+    const contract = await this.paymentService.processInvestment(
       userId, body.loanApplicationId, body.numNotes, body.investmentOrderId,
     );
 
@@ -186,6 +190,41 @@ export class InvestController {
       message: 'Hợp đồng ký quỹ đã tạo thành công',
       data: contract,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  SCHEDULE PREVIEW & STATS
+  // ═══════════════════════════════════════════════════════
+
+  @Post('schedule-preview')
+  @ApiOperation({ summary: 'Preview lịch nhận tiền trước khi đầu tư' })
+  async schedulePreview(
+    @Body() body: { loanApplicationId: string; numNotes: number },
+  ) {
+    const preview = await this.contractService.getSchedulePreview(
+      body.loanApplicationId, body.numNotes,
+    );
+    return { statusCode: HttpStatus.OK, message: 'OK', data: preview };
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Thống kê đầu tư của lender' })
+  async getStats(@Req() req: any) {
+    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+
+    const stats = await this.statsService.getLenderStats(userId);
+    return { statusCode: HttpStatus.OK, message: 'OK', data: stats };
+  }
+
+  @Get('my-balance')
+  @ApiOperation({ summary: 'Số dư ví đầu tư của lender' })
+  async getMyBalance(@Req() req: any) {
+    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+
+    const balance = await this.paymentService.getLenderBalance(userId);
+    return { statusCode: HttpStatus.OK, message: 'OK', data: balance };
   }
 
   @Get('contracts')

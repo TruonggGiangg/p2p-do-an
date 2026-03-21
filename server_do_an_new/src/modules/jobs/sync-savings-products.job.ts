@@ -12,8 +12,8 @@ export class SyncSavingsProductsJob extends BaseJob {
       name: 'SyncSavingsProducts',
       description: 'So sánh danh sách sản phẩm tiết kiệm giữa Fineract và MongoDB, phát hiện thay đổi (thêm / xóa / sửa)',
       intervalMs: 30 * 60 * 1000, // 30 phút
-      enabled: false,
-      runOnStart: false,
+      enabled: true,
+      runOnStart: true,
       params: {},
       paramsSchema: [
         {

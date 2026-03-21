@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  RefreshControl, StyleSheet, StatusBar,
+  RefreshControl, StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { BinanceHeader } from '../../../components';
 import investService, { InvestmentContractItem } from '../services/invest.service';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -135,16 +136,19 @@ export default function InvestmentContractListScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
-
-      <View style={[styles.header, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Hợp đồng đầu tư</Text>
-        {totalCount > 0 && (
-          <View style={[styles.countBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-            <Text style={[styles.countText, { color: theme.colors.primary }]}>{totalCount}</Text>
-          </View>
-        )}
-      </View>
+      {/* Shared Header */}
+      <BinanceHeader
+        mode="standard"
+        title="Hợp đồng đầu tư"
+        showBack={true}
+        rightComponents={
+          totalCount > 0 ? (
+            <View style={[styles.countBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+              <Text style={[styles.countText, { color: theme.colors.primary }]}>{totalCount}</Text>
+            </View>
+          ) : undefined
+        }
+      />
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -168,11 +172,6 @@ export default function InvestmentContractListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16,
-  },
-  headerTitle: { fontSize: 22, fontWeight: '700' },
   countBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
   countText: { fontSize: 14, fontWeight: '700' },
   listContent: { padding: 16, paddingBottom: 32 },

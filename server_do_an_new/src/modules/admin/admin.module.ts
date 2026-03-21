@@ -28,6 +28,13 @@ import { PushNotificationService } from '../loan/services/push-notification.serv
 import { UsersModule } from '../users/users.module';
 import { CreditScoreModule } from '../credit-score/credit-score.module';
 
+import {
+  AdminProductService,
+  AdminCustomerService,
+  AdminKycService,
+  AdminStaffService,
+} from './services';
+
 @Module({
   imports: [
     FineractModule,
@@ -56,7 +63,16 @@ import { CreditScoreModule } from '../credit-score/credit-score.module';
     ]),
   ],
   controllers: [AdminController],
-  providers: [AdminService, LoanSyncScheduler, ReminderScheduler, PushNotificationService],
+  providers: [
+    AdminService,
+    AdminProductService,
+    AdminCustomerService,
+    AdminKycService,
+    AdminStaffService,
+    LoanSyncScheduler,
+    ReminderScheduler,
+    PushNotificationService,
+  ],
   exports: [AdminService],
 })
 export class AdminModule {}

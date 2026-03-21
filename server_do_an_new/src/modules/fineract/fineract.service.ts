@@ -6,6 +6,7 @@ import { FINERACT_AXIOS_CLIENT } from './fineract.constants';
 import { FineractClientService, FineractClientData } from './services/fineract-client.service';
 import { FineractLoanService } from './services/fineract-loan.service';
 import { FineractSavingsService } from './services/fineract-savings.service';
+import { FineractFDService, FDAccountResult, FDAccountDetails } from './services/fineract-fd.service';
 
 /**
  * FineractService - Facade for backward compatibility
@@ -19,6 +20,7 @@ export class FineractService {
     private readonly clientService: FineractClientService,
     private readonly loanService: FineractLoanService,
     private readonly savingsService: FineractSavingsService,
+    private readonly fdService: FineractFDService,
   ) { }
 
   // ==================== CLIENT OPERATIONS ====================
@@ -152,5 +154,30 @@ export class FineractService {
     }>;
   }> {
     return this.loanService.calculateBnplSchedule(data);
+  }
+
+  // ==================== FIXED DEPOSIT OPERATIONS ====================
+
+  async findFDProductByShortName(shortName: string): Promise<number | null> {
+    return this.fdService.findFDProductByShortName(shortName);
+  }
+
+  async resolveFDProductFromLoanProduct(loanProductId: number): Promise<number | null> {
+    return this.fdService.resolveFDProductFromLoanProduct(loanProductId);
+  }
+
+  async createFixedDeposit(
+    clientId: number, productId: number, depositAmount: number,
+    periodMonths: number, externalId?: string,
+  ): Promise<FDAccountResult> {
+    return this.fdService.createFixedDeposit(clientId, productId, depositAmount, periodMonths, externalId);
+  }
+
+  async getFixedDepositDetails(accountId: number): Promise<FDAccountDetails> {
+    return this.fdService.getFixedDepositDetails(accountId);
+  }
+
+  async closeFixedDeposit(accountId: number, transferToSavingsId: number) {
+    return this.fdService.closeFixedDeposit(accountId, transferToSavingsId);
   }
 }

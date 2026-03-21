@@ -286,6 +286,35 @@ export class AdminController {
     return { statusCode: 200, message: 'OK', data: diff };
   }
 
+  // ── FD Products ("Quỹ đầu tư có kỳ hạn") ────────────────────────────────
+
+  @Get('fd-products')
+  @CheckPolicies(ability => ability.can(Action.Read, 'SavingsProduct'))
+  @ApiOperation({ summary: 'Danh sách sản phẩm quỹ đầu tư có kỳ hạn từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async getFDProducts() {
+    const products = await this.adminService.getFDProductsForAdmin();
+    return { statusCode: 200, message: 'OK', data: { products } };
+  }
+
+  @Get('fd-products/:productId/details')
+  @CheckPolicies(ability => ability.can(Action.Read, 'SavingsProduct'))
+  @ApiOperation({ summary: 'Chi tiết cấu hình sản phẩm quỹ đầu tư có kỳ hạn từ Fineract' })
+  @ApiResponse({ status: 200 })
+  async getFDProductDetails(@Param('productId', ParseIntPipe) productId: number) {
+    const details = await this.adminService.getFDProductDetails(productId);
+    return { statusCode: 200, message: 'OK', data: details };
+  }
+
+  @Post('sync-compare-fd')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'SyncDrift'))
+  @ApiOperation({ summary: 'So sánh danh sách sản phẩm quỹ đầu tư có kỳ hạn với Fineract (và ghi log)' })
+  @ApiResponse({ status: 200 })
+  async syncCompareFD() {
+    const diff = await this.adminService.compareAndSyncFD(true);
+    return { statusCode: 200, message: 'OK', data: diff };
+  }
+
   // ── Customers ──────────────────────────────────────────────────────────────
 
   @Get('customers')

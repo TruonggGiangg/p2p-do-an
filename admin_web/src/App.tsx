@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import DocumentTypesPage from './pages/DocumentTypesPage';
 import LoanProductsPage from './pages/LoanProductsPage';
 import SavingsProductsPage from './pages/SavingsProductsPage';
+import FDProductsPage from './pages/FDProductsPage';
 
 import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
@@ -226,6 +227,7 @@ export default function App() {
                   <Route index element={<DocumentTypesPage />} />
                   <Route path="loan-products" element={<LoanProductsPage />} />
                   <Route path="savings-products" element={<SavingsProductsPage />} />
+                  <Route path="fd-products" element={<FDProductsPage />} />
                   <Route path="loans" element={<LoansPage />} />
                   <Route path="delinquency-policies" element={<DelinquencyPoliciesPage />} />
                   <Route path="credit-score-weights" element={<CreditScoreWeightsPage />} />

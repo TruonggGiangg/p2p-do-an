@@ -12,17 +12,7 @@ import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { FineractClientService } from '../fineract/services/fineract-client.service';
 import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
-import { KeycloakService } from '../auth/services/keycloak.service';
-import { KeycloakAuthService } from '../auth/services/keycloak-auth.service';
-import { DocumentType } from './schemas/document-type.schema';
 import { LoanProductDocumentType } from './schemas/loan-product-document-type.schema';
-import { LoanProductSnapshot, SnapshotProductItem } from './schemas/loan-product-snapshot.schema';
-import {
-  SavingsProductSnapshot,
-  SnapshotSavingsProductItem,
-  SAVINGS_SNAPSHOT_SCOPE,
-} from './schemas/savings-product-snapshot.schema';
-import { SyncDriftLog, ProductDiffItem } from './schemas/sync-drift-log.schema';
 import { LoanSyncRun, type LoanSyncRunDetailItem, type LoanSyncChangeItem } from './schemas/loan-sync-run.schema';
 import {
   LoanDelinquency,
@@ -30,35 +20,29 @@ import {
   LoanDelinquencyStatus,
 } from '../delinquency/entities/loan-delinquency.schema';
 import { DelinquencyCollectionStage, DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
-import {
-  flattenLoanProduct,
-  flattenSavingsProduct,
-  diffProducts,
-  LOAN_PRODUCT_FIELDS,
-  SAVINGS_PRODUCT_FIELDS,
-} from './utils/product-sync-fields';
-import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
-import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
-import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication, LoanApplicationStatus } from '../loan/schemas/loan-application.schema';
-import { LoanSupportRequest } from '../loan/schemas/loan-support-request.schema';
 import { Wallet } from '../wallets/schemas/wallet.schema';
 import { Notification } from '../loan/schemas/notification.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { ContractService } from '../loan/contract.service';
-import { EkycService } from '../ekyc/ekyc.service';
-import { FineractSignupService } from 'src/modules/auth/services/fineract-signup.service';
-import { RegisterDto } from 'src/modules/auth/dto/register.dto';
-import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
+import { DocumentType } from './schemas/document-type.schema';
 import { CreateDelinquencyPolicyDto } from '../delinquency/dto/create-delinquency-policy.dto';
 import { UpdateDelinquencyPolicyDto } from '../delinquency/dto/update-delinquency-policy.dto';
-import { Role } from '../rbac/schemas/role.schema';
+import { ProductDiffItem } from './schemas/sync-drift-log.schema';
+import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
+import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
+import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto';
+import { RegisterDto } from 'src/modules/auth/dto/register.dto';
+import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import {
-  CreditScoreService,
   CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
 } from '../credit-score/credit-score.service';
+import { AdminProductService } from './services/admin-product.service';
+import { AdminCustomerService } from './services/admin-customer.service';
+import { AdminKycService } from './services/admin-kyc.service';
+import { AdminStaffService } from './services/admin-staff.service';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -96,39 +80,34 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(
-    @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
+    // â”€â”€ Mongoose models (kept for loan/delinquency methods) â”€â”€
     @InjectModel(LoanProductDocumentType.name) private loanProductDocModel: Model<LoanProductDocumentType>,
-    @InjectModel(LoanProductSnapshot.name) private snapshotModel: Model<LoanProductSnapshot>,
-    @InjectModel(SavingsProductSnapshot.name) private savingsSnapshotModel: Model<SavingsProductSnapshot>,
-    @InjectModel(SyncDriftLog.name) private syncDriftLogModel: Model<SyncDriftLog>,
     @InjectModel(LoanSyncRun.name) private loanSyncRunModel: Model<LoanSyncRun>,
     @InjectModel(LoanDelinquency.name) private loanDelinquencyModel: Model<LoanDelinquency>,
     @InjectModel(DelinquencyPolicy.name) private delinquencyPolicyModel: Model<DelinquencyPolicy>,
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(LoanApplication.name) private loanApplicationModel: Model<LoanApplication>,
-    @InjectModel(LoanSupportRequest.name) private supportRequestModel: Model<LoanSupportRequest>,
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
-    @InjectModel(Role.name) private roleModel: Model<Role>,
-    private readonly fineractSignupService: FineractSignupService,
+    @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
+    // â”€â”€ External services â”€â”€
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
-    private readonly keycloakService: KeycloakService,
-    private readonly keycloakAuthService: KeycloakAuthService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
-    private readonly ekycService: EkycService,
-    private readonly creditScoreService: CreditScoreService,
+    // â”€â”€ Sub-services â”€â”€
+    private readonly productService: AdminProductService,
+    private readonly customerService: AdminCustomerService,
+    private readonly kycService: AdminKycService,
+    private readonly staffService: AdminStaffService,
   ) { }
 
-  async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
-    return this.creditScoreService.getWeightConfig();
-  }
-
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigValue> {
-    return this.creditScoreService.upsertWeightConfig(input);
-  }
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FACADE DELEGATES â€” Products
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> { return this.staffService.getCreditScoreWeightConfig(); }
+  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) { return this.staffService.updateCreditScoreWeightConfig(input); }
 
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
@@ -232,585 +211,76 @@ export class AdminService {
     }
   }
 
-  // ---------- Loan products (from Fineract) ----------
-  async getLoanProductsForAdmin() {
-    const products = await this.fineractLoanService.getLoanProducts();
-    return products.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      shortName: p.shortName,
-      interestRatePerPeriod: p.interestRatePerPeriod,
-      interestRateFrequencyType: p.interestRateFrequencyType,
-      interestType: p.interestType,
-    }));
-  }
-
-  async getLoanProductDetails(productId: number) {
-    return this.fineractLoanService.getLoanProductDetails(productId);
-  }
-
-  // ---------- Document types CRUD ----------
-  async createDocumentType(dto: CreateDocumentTypeDto) {
-    const doc = await this.documentTypeModel.create({
-      name: dto.name,
-      required: dto.required ?? false,
-      description: dto.description,
-      fileFormat: dto.fileFormat ?? 'any',
-    });
-    return doc.toObject();
-  }
-
-  async findAllDocumentTypes() {
-    const list = await this.documentTypeModel.find().sort({ name: 1 }).lean();
-    return list;
-  }
-
-  async findOneDocumentType(id: string) {
-    const doc = await this.documentTypeModel.findById(id).lean();
-    if (!doc) throw new NotFoundException('Loại tài liệu không tồn tại');
-    return doc;
-  }
-
-  async updateDocumentType(id: string, dto: UpdateDocumentTypeDto) {
-    const doc = await this.documentTypeModel.findByIdAndUpdate(id, { $set: dto }, { new: true }).lean();
-    if (!doc) throw new NotFoundException('Loại tài liệu không tồn tại');
-    return doc;
-  }
-
-  async removeDocumentType(id: string) {
-    const doc = await this.documentTypeModel.findByIdAndDelete(id);
-    if (!doc) throw new NotFoundException('Loại tài liệu không tồn tại');
-    await this.loanProductDocModel.deleteMany({ documentTypeId: new Types.ObjectId(id) });
-    return { deleted: true };
-  }
-
-  // ---------- Loan product <-> Document types ----------
-  async getDocumentTypesByProduct(fineractProductId: number) {
-    const links = await this.loanProductDocModel
-      .find({ fineractProductId })
-      .populate('documentTypeId')
-      .sort({ name: 1 })
-      .lean();
-    return links.map((l: any) => ({
-      documentTypeId: l.documentTypeId?._id,
-      documentType: l.documentTypeId,
-      required: l.required,
-    }));
-  }
-
-  async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) {
-    await this.loanProductDocModel.deleteMany({ fineractProductId });
-    if (items.length === 0) return { fineractProductId, count: 0 };
-    const operations = items.map(item => ({
-      updateOne: {
-        filter: { fineractProductId, documentTypeId: new Types.ObjectId(item.documentTypeId) },
-        update: {
-          $set: {
-            required: item.required ?? false,
-          },
-        },
-        upsert: true,
-      },
-    }));
-    await this.loanProductDocModel.bulkWrite(operations);
-    return { fineractProductId, count: operations.length };
-  }
-
-  // ---------- Sync & drift ----------
-  async getSnapshot(): Promise<SnapshotProductItem[]> {
-    const snap = await this.snapshotModel.findOne({ scope: SNAPSHOT_SCOPE }).lean();
-    return snap?.products ?? [];
-  }
-
-  async saveSnapshot(products: SnapshotProductItem[]) {
-    await this.snapshotModel.findOneAndUpdate(
-      { scope: SNAPSHOT_SCOPE },
-      { products, updatedAtSnapshot: new Date() },
-      { upsert: true },
-    );
-  }
-
-  async logSyncDrift(
-    added: ProductDiffItem[],
-    removed: ProductDiffItem[],
-    modified: ProductDiffItem[],
-    scope: 'loan' | 'savings' = 'loan',
-  ) {
-    const hasDrift = added.length > 0 || removed.length > 0 || modified.length > 0;
-    await this.syncDriftLogModel.create({
-      scope,
-      syncedAt: new Date(),
-      added,
-      removed,
-      modified,
-      hasDrift,
-    });
-  }
-
-  async getSyncDriftLogs(limit = 20, scope?: 'loan' | 'savings') {
-    const filter: any = {};
-    if (scope === 'savings') filter.scope = 'savings';
-    else if (scope === 'loan') filter.$or = [{ scope: 'loan' }, { scope: { $exists: false } }, { scope: null }];
-    const logs = await this.syncDriftLogModel.find(filter).sort({ syncedAt: -1 }).limit(limit).lean();
-    return logs;
-  }
-
-  /**
-   * Compare given products with snapshot and return diff. Optionally persist snapshot and log.
-   * So sánh từng trường thông tin, ghi chi tiết fieldChanges cho modified.
-   */
-  async compareAndSync(
-    persist = true,
-    currentProducts?: any[],
-  ): Promise<{ added: ProductDiffItem[]; removed: ProductDiffItem[]; modified: ProductDiffItem[] }> {
-    const raw = currentProducts ?? (await this.fineractLoanService.getLoanProducts());
-    const currentNormalized: SnapshotProductItem[] = raw.map((p: any) => flattenLoanProduct(p));
-
-    const previous = await this.getSnapshot();
-    const prevMap = new Map(previous.map(p => [p.id, p]));
-    const currMap = new Map(currentNormalized.map(p => [p.id, p]));
-
-    const added: ProductDiffItem[] = [];
-    const removed: ProductDiffItem[] = [];
-    const modified: ProductDiffItem[] = [];
-
-    for (const [id, curr] of currMap) {
-      const prev = prevMap.get(id);
-      if (!prev) {
-        added.push({ id: curr.id, name: curr.name, shortName: curr.shortName });
-      } else {
-        const fieldChanges = diffProducts(prev, curr, LOAN_PRODUCT_FIELDS);
-        if (fieldChanges.length > 0) {
-          modified.push({
-            id: curr.id,
-            name: curr.name,
-            shortName: curr.shortName,
-            fieldChanges,
-          });
-        }
-      }
-    }
-    for (const [id] of prevMap) {
-      if (!currMap.has(id)) {
-        const p = previous.find(x => x.id === id)!;
-        removed.push({ id: p.id, name: p.name, shortName: p.shortName });
-      }
-    }
-
-    if (persist) {
-      await this.saveSnapshot(currentNormalized);
-      await this.logSyncDrift(added, removed, modified, 'loan');
-    }
-    return { added, removed, modified };
-  }
-
-  // ---------- Savings products (from Fineract) ----------
-  async getSavingsProductsForAdmin() {
-    const products = await this.fineractSavingsService.getSavingsProducts();
-    return products.map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      shortName: p.shortName,
-      nominalAnnualInterestRate: p.nominalAnnualInterestRate,
-      description: p.description,
-      currency: p.currency,
-    }));
-  }
-
-  async getSavingsProductDetails(productId: number) {
-    return this.fineractSavingsService.getSavingsProductDetails(productId);
-  }
-
-  async getSavingsSnapshot(): Promise<SnapshotSavingsProductItem[]> {
-    const snap = await this.savingsSnapshotModel.findOne({ scope: SAVINGS_SNAPSHOT_SCOPE }).lean();
-    return snap?.products ?? [];
-  }
-
-  async saveSavingsSnapshot(products: SnapshotSavingsProductItem[]) {
-    await this.savingsSnapshotModel.findOneAndUpdate(
-      { scope: SAVINGS_SNAPSHOT_SCOPE },
-      { products, updatedAtSnapshot: new Date() },
-      { upsert: true },
-    );
-  }
-
-  async compareAndSyncSavings(
-    persist = true,
-    currentProducts?: any[],
-  ): Promise<{ added: ProductDiffItem[]; removed: ProductDiffItem[]; modified: ProductDiffItem[] }> {
-    const raw = currentProducts ?? (await this.fineractSavingsService.getSavingsProducts());
-    const currentNormalized: SnapshotSavingsProductItem[] = raw.map((p: any) => flattenSavingsProduct(p));
-
-    const previous = await this.getSavingsSnapshot();
-    const prevMap = new Map(previous.map(p => [p.id, p]));
-    const currMap = new Map(currentNormalized.map(p => [p.id, p]));
-
-    const added: ProductDiffItem[] = [];
-    const removed: ProductDiffItem[] = [];
-    const modified: ProductDiffItem[] = [];
-
-    for (const [id, curr] of currMap) {
-      const prev = prevMap.get(id);
-      if (!prev) {
-        added.push({ id: curr.id, name: curr.name, shortName: curr.shortName });
-      } else {
-        const fieldChanges = diffProducts(prev, curr, SAVINGS_PRODUCT_FIELDS);
-        if (fieldChanges.length > 0) {
-          modified.push({
-            id: curr.id,
-            name: curr.name,
-            shortName: curr.shortName,
-            fieldChanges,
-          });
-        }
-      }
-    }
-    for (const [id] of prevMap) {
-      if (!currMap.has(id)) {
-        const p = previous.find(x => x.id === id)!;
-        removed.push({ id: p.id, name: p.name, shortName: p.shortName });
-      }
-    }
-
-    if (persist) {
-      await this.saveSavingsSnapshot(currentNormalized);
-      await this.logSyncDrift(added, removed, modified, 'savings');
-    }
-    return { added, removed, modified };
-  }
-
-  // ---------- Customers (Fineract-First) ----------
-
-  /**
-   * Get inactive Fineract clients (pending approval) enriched with MongoDB data.
-   * These are clients with active=false status in Fineract.
-   */
-  async getPendingApprovalClients(page = 1, limit = 20, keyword?: string) {
-    // 1. Fetch all Head Office clients from Fineract
-    const headOfficeClientsMap = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
-
-    // Filter unique clients and only inactive ones (active === false)
-    let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
-      (c, index, self) => self.findIndex(t => t.id === c.id) === index,
-    );
-
-    // Filter only inactive clients (pending approval)
-    uniqueClients = uniqueClients.filter((fc: any) => fc.active === false);
-
-    // Filter by keyword (displayName, username, email, firstname, lastname, externalId)
-    if (keyword) {
-      const q = keyword.toLowerCase();
-      uniqueClients = uniqueClients.filter((fc: any) => {
-        const first = (fc.firstname || '').toLowerCase();
-        const last = (fc.lastname || '').toLowerCase();
-        const ext = (fc.externalId || '').toLowerCase();
-        const email = (fc.emailAddress || '').toLowerCase();
-        const display = `${first} ${last}`.trim() || ext;
-        return first.includes(q) || last.includes(q) || ext.includes(q) || email.includes(q) || display.includes(q);
-      });
-    }
-
-    // 2. Fetch MongoDB users associated with these clients to enrich data
-    const clientIds = uniqueClients.map(c => c.id);
-    const mongoUsers = await this.userModel
-      .find({ fineractClientId: { $in: clientIds.map(String) } })
-      .select('username email profile fineractClientId status kycStatus createdAt kycData')
-      .lean();
-
-    const userMap = new Map<string, any>();
-    for (const u of mongoUsers) {
-      if (u.fineractClientId) userMap.set(String(u.fineractClientId), u);
-    }
-
-    // 3. Paginate the list (after keyword filter)
-    const total = uniqueClients.length;
-    const skip = (page - 1) * limit;
-    const pagedClients = uniqueClients.slice(skip, skip + limit);
-
-    // 4. Transform and enrich
-    const users = pagedClients.map((fc: any) => {
-      const u = userMap.get(String(fc.id));
-      return {
-        _id: u?._id?.toString() ?? null,
-        username: u?.username ?? fc?.externalId ?? `FC_${fc.id}`,
-        email: u?.email ?? (fc?.emailAddress || null),
-        profile: u?.profile ?? {
-          firstName: fc?.firstname,
-          lastName: fc?.lastname,
-          avatar: null,
-        },
-        fineractClientId: String(fc.id),
-        status: u?.status ?? 'inactive',
-        kycStatus: u?.kycStatus ?? 'NONE',
-        createdAt: u?.createdAt ?? fc?.submittedOnDate ?? null,
-        // Fineract enrichment
-        fineractStatus: fc?.status ?? null,
-        officeName: fc?.officeName ?? 'Head Office',
-        activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-        displayName:
-          (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
-          fc?.externalId ||
-          String(fc?.id),
-        // KYC data if available
-        kycCompletedAt: u?.kycData?.metadata?.kycCompletedAt ?? null,
-        hasKycData: !!u?.kycData,
-      };
-    });
-
-    return { users, total, page, limit };
-  }
-
-  /**
-   * Get all Fineract clients from Head Office (officeId=1) as primary list.
-   * Enriches each client with MongoDB user data (profiles, emails) where available.
-   */
-  async getCustomers(page = 1, limit = 20, keyword?: string) {
-    // 1. Fetch Head Office client map from Fineract
-    const headOfficeClientsMap = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
-
-    // Filter unique clients (Map contains both externalId and id keys)
-    let uniqueClients = Array.from(headOfficeClientsMap.values()).filter(
-      (c, index, self) => self.findIndex(t => t.id === c.id) === index,
-    );
-
-    // Filter by keyword (displayName, username, email, firstname, lastname, externalId)
-    if (keyword) {
-      const q = keyword.toLowerCase();
-      uniqueClients = uniqueClients.filter((fc: any) => {
-        const first = (fc.firstname || '').toLowerCase();
-        const last = (fc.lastname || '').toLowerCase();
-        const ext = (fc.externalId || '').toLowerCase();
-        const email = (fc.emailAddress || '').toLowerCase();
-        const display = `${first} ${last}`.trim() || ext;
-        return first.includes(q) || last.includes(q) || ext.includes(q) || email.includes(q) || display.includes(q);
-      });
-    }
-
-    // 2. Fetch MongoDB users associated with these clients to enrich data
-    const clientIds = uniqueClients.map(c => c.id);
-    const mongoUsers = await this.userModel
-      .find({ fineractClientId: { $in: clientIds.map(String) } })
-      .select('username email profile fineractClientId status kycStatus createdAt')
-      .lean();
-
-    const userMap = new Map<string, any>();
-    for (const u of mongoUsers) {
-      if (u.fineractClientId) userMap.set(String(u.fineractClientId), u);
-    }
-
-    // 2b. Lọc bỏ các client thuộc staff hoặc admin (chỉ hiện khách hàng)
-    const staffAdminIds = await this.userModel
-      .find({ 'metadata.userType': { $in: ['staff', 'admin'] }, fineractClientId: { $exists: true, $ne: null } })
-      .select('fineractClientId')
-      .lean();
-    const excludeClientIds = new Set(staffAdminIds.map((u: any) => String(u.fineractClientId)));
-    uniqueClients = uniqueClients.filter((c: any) => !excludeClientIds.has(String(c.id)));
-
-    // 3. Paginate the Fineract list (after keyword filter)
-    const total = uniqueClients.length;
-    const skip = (page - 1) * limit;
-    const pagedClients = uniqueClients.slice(skip, skip + limit);
-
-    // 4. Transform and enrich
-    const users = pagedClients.map((fc: any) => {
-      const u = userMap.get(String(fc.id));
-      return {
-        _id: u?._id?.toString() ?? null,
-        username: u?.username ?? fc?.externalId ?? `FC_${fc.id}`,
-        email: u?.email ?? (fc?.emailAddress || null),
-        profile: u?.profile ?? {
-          firstName: fc?.firstname,
-          lastName: fc?.lastname,
-          avatar: null,
-        },
-        fineractClientId: String(fc.id),
-        status: u?.status ?? 'active',
-        createdAt: u?.createdAt ?? fc?.activationDate ?? null,
-        // Fineract enrichment
-        fineractStatus: fc?.status ?? null,
-        officeName: fc?.officeName ?? 'Head Office',
-        activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-        displayName:
-          (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
-          fc?.externalId ||
-          String(fc?.id),
-        kycStatus: u?.kycStatus ?? 'NONE',
-        mobileNo: fc?.mobileNo ?? null,
-        staffName: fc?.staffName ?? fc?.staffDisplayName ?? null,
-        externalId: fc?.externalId ?? null,
-      };
-    });
-
-    return { users, total, page, limit };
-  }
-
-  async getCustomerById(userId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel
-        .findById(userId)
-        .select('username email profile fineractClientId status kycStatus createdAt metadata')
-        .lean();
-    }
-
-    // If not found by Mongo ID, maybe userId is actually a fineractClientId
-    if (!user) {
-      user = await this.userModel
-        .findOne({ fineractClientId: userId })
-        .select('username email profile fineractClientId status kycStatus createdAt metadata')
-        .lean();
-    }
-
-    // Enrich with Fineract client data
-    const map = await this.fineractClientService.getClientsByOffice(HEAD_OFFICE_ID);
-    const fineractClientId = user?.fineractClientId ?? userId;
-    const fc: any = map.get(String(fineractClientId)) ?? (user ? map.get(user.username) : null);
-
-    if (!user && !fc) throw new NotFoundException('Khách hàng không tồn tại');
-
-    return {
-      _id: user?._id?.toString() ?? `FC_${fineractClientId}`,
-      username: user?.username ?? fc?.externalId ?? `FC_${fineractClientId}`,
-      email: user?.email ?? fc?.emailAddress ?? null,
-      profile: user?.profile ?? { firstName: fc?.firstname, lastName: fc?.lastname },
-      fineractClientId: user?.fineractClientId ?? String(fineractClientId),
-      status: user?.status ?? 'active',
-      kycStatus: user?.kycStatus ?? 'NONE',
-      createdAt: user?.createdAt ?? null,
-      // Fineract enrichment
-      fineractStatus: fc?.status ?? null,
-      officeName: fc?.officeName ?? 'Head Office',
-      activationDate: parseFineractDate(fc?.timeline?.activationDate ?? fc?.activationDate) ?? null,
-      displayName:
-        (fc?.displayName ?? `${fc?.firstname || ''} ${fc?.lastname || ''}`.trim()) ||
-        user?.username ||
-        `FC_${fineractClientId}`,
-      mobileNo: fc?.mobileNo ?? fc?.phoneNumber ?? null,
-      staffName: fc?.staffName ?? fc?.staffDisplayName ?? 'Chưa phân công',
-      externalId: fc?.externalId ?? null,
-    };
-  }
-
-  /**
-   * Get full customer detail (client info + summary + savings + charges + KYC) - like Mifos.
-   */
-  async getCustomerDetail(userId: string) {
-    const customer = await this.getCustomerById(userId);
-    const loans = await this.getCustomerLoans(userId);
-    // KYC is optional - may not exist for all customers
-    let kycDetail: any = null;
-    try {
-      kycDetail = await this.getKycDetail(userId);
-    } catch {
-      // Ignore KYC not found errors
-    }
-    const clientId = customer.fineractClientId ? parseInt(customer.fineractClientId) : null;
-
-    let savingsAccounts: any[] = [];
-    let charges: any[] = [];
-
-    if (clientId) {
-      try {
-        const accountsRes = await this.fineractSavingsService.getSavingsAccounts(clientId);
-        savingsAccounts = Array.isArray(accountsRes) ? accountsRes : [];
-      } catch {
-        /* ignore */
-      }
-      try {
-        charges = await this.fineractClientService.getClientCharges(clientId, true);
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const activeLoans = loans.filter((l: any) => {
-      const code = l.status?.code ?? l.status;
-      return String(code || '').includes('active') || String(code || '').includes('disbursed');
-    });
-    const totalSavings = savingsAccounts
-      .filter((s: any) => s.status?.active)
-      .reduce((sum: number, s: any) => sum + (Number(s.accountBalance) || 0), 0);
-    const lastLoanAmount = loans.length > 0 ? Math.max(...loans.map((l: any) => l.capital || 0)) : 0;
-
-    const summary = {
-      loanCycles: loans.length,
-      activeLoans: activeLoans.length,
-      lastLoanAmount,
-      activeSavings: savingsAccounts.filter((s: any) => s.status?.active).length,
-      totalSavings,
-    };
-
-    return {
-      customer,
-      loans,
-      summary,
-      savingsAccounts,
-      charges,
-      kyc: kycDetail,
-    };
-  }
-
-  /**
-   * Get loans for a customer - only P* products, FETCHED DIRECTLY FROM FINERACT.
-   * Enriches with MongoDB data for internal IDs if available.
-   */
-  async getCustomerLoans(userId: string) {
-    // 1. Get user to find fineractClientId
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId).lean();
-    }
-
-    if (!user) {
-      // maybe userId is fineractClientId
-      user = await this.userModel.findOne({ fineractClientId: userId }).lean();
-    }
-
-    const fineractClientId = user?.fineractClientId ?? (userId.startsWith('FC_') ? userId.split('_')[1] : userId);
-    if (!fineractClientId) return [];
-
-    // 2. Fetch all loans for this client from Fineract
-    const fineractLoans = await this.fineractLoanService.getLoansByClientId(Number(fineractClientId));
-
-    // 3. Get products to filter by 'P*'
-    const products = await this.fineractLoanService.getLoanProducts();
-    const productMap = new Map(products.map((p: any) => [p.id, p]));
-
-    // 4. Fetch local loan applications to map internal IDs and static data
-    const localLoans = user ? await this.loanApplicationModel.find({ userId: user._id }).lean() : [];
-    const localLoanMap = new Map<number, any>();
-    for (const ll of localLoans) {
-      if (ll.fineractLoanId) localLoanMap.set(ll.fineractLoanId, ll);
-    }
-
-    // 5. Transform
-    this.logger.log(
-      `[getCustomerLoans] fineractClientId=${fineractClientId} | Found ${fineractLoans.length} total loans in Fineract`,
-    );
-
-    return fineractLoans.map(fl => {
-      const productId = fl.productId || fl.loanProductId;
-      const p: any = productMap.get(productId);
-      const ll: any = localLoanMap.get(fl.id);
-      const annualRate = fl.annualInterestRate ?? 0;
-      return {
-        _id: ll?._id?.toString() ?? `FL_${fl.id}`,
-        productId: productId,
-        productName: p?.name ?? String(productId),
-        productShortName: p?.shortName ?? '',
-        capital: fl.principal ?? ll?.capital ?? 0,
-        periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
-        monthlyPay: ll?.monthlyPay ?? 0,
-        entirelyPay: ll?.entirelyPay ?? 0,
-        monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
-        status: fl.status ?? { value: ll?.status ?? 'active', code: ll?.status ?? 'active' },
-        fineractLoanId: fl.id,
-        disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
-        createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
-        willing: ll?.willing ?? '',
-      };
-    });
-  }
+  async getLoanProductsForAdmin() { return this.productService.getLoanProductsForAdmin(); }
+  async getLoanProductDetails(productId: number) { return this.productService.getLoanProductDetails(productId); }
+  async createDocumentType(dto: CreateDocumentTypeDto) { return this.productService.createDocumentType(dto); }
+  async findAllDocumentTypes() { return this.productService.findAllDocumentTypes(); }
+  async findOneDocumentType(id: string) { return this.productService.findOneDocumentType(id); }
+  async updateDocumentType(id: string, dto: UpdateDocumentTypeDto) { return this.productService.updateDocumentType(id, dto); }
+  async removeDocumentType(id: string) { return this.productService.removeDocumentType(id); }
+  async getDocumentTypesByProduct(fineractProductId: number) { return this.productService.getDocumentTypesByProduct(fineractProductId); }
+  async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) { return this.productService.setDocumentTypesForProduct(fineractProductId, items); }
+  async getSnapshot() { return this.productService.getSnapshot(); }
+  async saveSnapshot(products: any[]) { return this.productService.saveSnapshot(products); }
+  async logSyncDrift(added: ProductDiffItem[], removed: ProductDiffItem[], modified: ProductDiffItem[], scope: 'loan' | 'savings' = 'loan') { return this.productService.logSyncDrift(added, removed, modified, scope); }
+  async getSyncDriftLogs(limit = 20, scope?: 'loan' | 'savings') { return this.productService.getSyncDriftLogs(limit, scope); }
+  async compareAndSync(persist = true, currentProducts?: any[]) { return this.productService.compareAndSync(persist, currentProducts); }
+  async getSavingsProductsForAdmin() { return this.productService.getSavingsProductsForAdmin(); }
+  async getSavingsProductDetails(productId: number) { return this.productService.getSavingsProductDetails(productId); }
+  async compareAndSyncSavings(persist = true, currentProducts?: any[]) { return this.productService.compareAndSyncSavings(persist, currentProducts); }
+  async getFDProductsForAdmin() { return this.productService.getFDProductsForAdmin(); }
+  async getFDProductDetails(productId: number) { return this.productService.getFDProductDetails(productId); }
+  async compareAndSyncFD(persist = true) { return this.productService.compareAndSyncFD(persist); }
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FACADE DELEGATES â€” Customers
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  async getPendingApprovalClients(page = 1, limit = 20, keyword?: string) { return this.customerService.getPendingApprovalClients(page, limit, keyword); }
+  async getCustomers(page = 1, limit = 20, keyword?: string) { return this.customerService.getCustomers(page, limit, keyword); }
+  async getCustomerById(userId: string) { return this.customerService.getCustomerById(userId); }
+  async getCustomerDetail(userId: string) { return this.customerService.getCustomerDetail(userId, (uid) => this.kycService.getKycDetail(uid)); }
+  async getCustomerLoans(userId: string) { return this.customerService.getCustomerLoans(userId); }
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FACADE DELEGATES â€” KYC
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  async getPendingKycUsers() { return this.kycService.getPendingKycUsers(); }
+  async getKycDetail(userId: string) { return this.kycService.getKycDetail(userId); }
+  async approveKyc(userId: string) { return this.kycService.approveKyc(userId); }
+  async rejectKyc(userId: string) { return this.kycService.rejectKyc(userId); }
+  async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) { return this.kycService.getKycDocumentStream(userId, entityType, entityId, documentId); }
+  async ocrFrontForUser(userId: string, imageBuffer: Buffer, filename = 'front.jpg') { return this.kycService.ocrFrontForUser(userId, imageBuffer, filename); }
+  async ocrBackForUser(userId: string, imageBuffer: Buffer, filename = 'back.jpg') { return this.kycService.ocrBackForUser(userId, imageBuffer, filename); }
+  async saveKycForUser(userId: string, frontOCRData: any, backOCRData: any, frontImageBuffer: Buffer | null, backImageBuffer: Buffer | null) { return this.kycService.saveKycForUser(userId, frontOCRData, backOCRData, frontImageBuffer, backImageBuffer); }
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FACADE DELEGATES â€” Staff / Support / Profile / Preferences
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  async createStaff(dto: RegisterDto) { return this.staffService.createStaff(dto); }
+  async getStaffList(page = 1, limit = 20, keyword?: string) { return this.staffService.getStaffList(page, limit, keyword); }
+  async getDeletedStaffList(page = 1, limit = 20) { return this.staffService.getDeletedStaffList(page, limit); }
+  async getStaffById(staffId: string) { return this.staffService.getStaffById(staffId); }
+  async updateStaff(staffId: string, dto: UpdateStaffDto) { return this.staffService.updateStaff(staffId, dto); }
+  async deleteStaff(staffId: string) { return this.staffService.deleteStaff(staffId); }
+  async restoreStaff(staffId: string) { return this.staffService.restoreStaff(staffId); }
+  async migratePhoneNumbers() { return this.staffService.migratePhoneNumbers(); }
+  async getMyProfile(userId: string) { return this.staffService.getMyProfile(userId); }
+  async updateMyProfile(userId: string, dto: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string }) { return this.staffService.updateMyProfile(userId, dto); }
+  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) { return this.staffService.changeMyPassword(userId, currentPassword, newPassword); }
+  async getMyPreferences(userId: string) { return this.staffService.getMyPreferences(userId); }
+  async updateMyPreferences(userId: string, prefs: { fontSize?: 'compact' | 'default' | 'large' }) { return this.staffService.updateMyPreferences(userId, prefs); }
+  async getSupportRequests(query: any) { return this.staffService.getSupportRequests(query); }
+  async approveWaivePenalty(requestId: string, adminId: string) { return this.staffService.approveWaivePenalty(requestId, adminId); }
+  async approveReschedule(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveReschedule(requestId, adminId, adminNote); }
+  async approveWriteOff(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveWriteOff(requestId, adminId, adminNote); }
+  async approveWaiveInterest(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveWaiveInterest(requestId, adminId, adminNote); }
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // LOAN + DELINQUENCY METHODS (remain in this file)
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // NOTE: This file previously had the above methods inline (3634 lines).
+  // Products, Customers, KYC, Staff, Support requests are now delegated.
+  // Only Loan + Delinquency methods remain below (~1900 lines).
 
   /**
    * Get all pending loans (status 100 in Fineract) for admin approval.
@@ -883,14 +353,14 @@ export class AdminService {
 
   /**
    * Admin approve loan: Fineract approve + update MongoDB status.
-   * Yêu cầu: đã duyệt đủ tất cả tài liệu bắt buộc.
+   * YÃªu cáº§u: Ä‘Ã£ duyá»‡t Ä‘á»§ táº¥t cáº£ tÃ i liá»‡u báº¯t buá»™c.
    */
   async approveLoan(fineractLoanId: number) {
     this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
 
     // Auto-approve all pending documents that have been uploaded
     const app = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+    if (!app) throw new BadRequestException('Khoáº£n vay khÃ´ng tá»“n táº¡i');
 
     let docAutoApproved = 0;
     if (app.documents?.length) {
@@ -910,7 +380,7 @@ export class AdminService {
     // Now check if all required doc types are satisfied
     const { canApprove, missingRequired } = await this.canApproveLoan(fineractLoanId);
     if (!canApprove) {
-      throw new BadRequestException(`Chưa upload đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
+      throw new BadRequestException(`ChÆ°a upload Ä‘á»§ tÃ i liá»‡u báº¯t buá»™c: ${missingRequired.join(', ')}`);
     }
 
     // Fineract requires: approvedOnDate >= submittedOnDate AND approvedOnDate <= expectedDisbursementDate
@@ -946,15 +416,15 @@ export class AdminService {
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
     await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'approved' } });
 
-    // Tạo hợp đồng vay + gửi thông báo cho người vay
+    // Táº¡o há»£p Ä‘á»“ng vay + gá»­i thÃ´ng bÃ¡o cho ngÆ°á»i vay
     try {
       await this.contractService.createContractOnApproval(fineractLoanId);
     } catch (err) {
       this.logger.warn(`[approveLoan] Failed to create contract: ${err?.message}`);
-      // Không block việc approve nếu tạo contract thất bại
+      // KhÃ´ng block viá»‡c approve náº¿u táº¡o contract tháº¥t báº¡i
     }
 
-    // Lấy thông tin người vay
+    // Láº¥y thÃ´ng tin ngÆ°á»i vay
     let borrowerName = '';
     let borrowerUsername = '';
     try {
@@ -977,16 +447,16 @@ export class AdminService {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan) throw new BadRequestException(`Khoản vay Fineract #${fineractLoanId} không tồn tại trong hệ thống`);
+    if (!loan) throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
 
     // 0. Check contract is signed before allowing disbursement
     const contract = await this.loanContractModel.findOne({ loanId: loan._id });
     if (!contract) {
-      throw new BadRequestException(`Khoản vay #${fineractLoanId} chưa có hợp đồng. Không thể giải ngân.`);
+      throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`);
     }
     if (contract.status !== 'signed') {
       throw new BadRequestException(
-        `Hợp đồng khoản vay #${fineractLoanId} chưa được ký (trạng thái: ${contract.status}). Người vay cần ký hợp đồng trước khi giải ngân.`,
+        `Há»£p Ä‘á»“ng khoáº£n vay #${fineractLoanId} chÆ°a Ä‘Æ°á»£c kÃ½ (tráº¡ng thÃ¡i: ${contract.status}). NgÆ°á»i vay cáº§n kÃ½ há»£p Ä‘á»“ng trÆ°á»›c khi giáº£i ngÃ¢n.`,
       );
     }
 
@@ -1022,7 +492,7 @@ export class AdminService {
       this.logger.warn(`[disburseLoan] Failed to create notification: ${err?.message}`);
     }
 
-    // Lấy thông tin người vay
+    // Láº¥y thÃ´ng tin ngÆ°á»i vay
     let borrowerName = '';
     let borrowerUsername = '';
     try {
@@ -1058,8 +528,8 @@ export class AdminService {
   }
 
   /**
-   * Tính từng kỳ trả nợ (có tiền quá hạn/còn nợ) rơi vào nhóm/thẻ quá hạn nào.
-   * Dựa trên ngày đến hạn kỳ vs ngày tham chiếu (lastSyncedAt hoặc hôm nay) → số ngày quá hạn → map vào delinquency ranges.
+   * TÃ­nh tá»«ng ká»³ tráº£ ná»£ (cÃ³ tiá»n quÃ¡ háº¡n/cÃ²n ná»£) rÆ¡i vÃ o nhÃ³m/tháº» quÃ¡ háº¡n nÃ o.
+   * Dá»±a trÃªn ngÃ y Ä‘áº¿n háº¡n ká»³ vs ngÃ y tham chiáº¿u (lastSyncedAt hoáº·c hÃ´m nay) â†’ sá»‘ ngÃ y quÃ¡ háº¡n â†’ map vÃ o delinquency ranges.
    */
   private async computePeriodDelinquency(
     periods: any[],
@@ -1107,13 +577,13 @@ export class AdminService {
       const daysOverdue = dueDate
         ? Math.max(0, Math.floor((referenceDate.getTime() - dueDate.getTime()) / 86400000))
         : 0;
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : '–';
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : 'â€“';
       const range = sorted.find((r: any) => daysOverdue >= r.min && (r.max == null || daysOverdue <= r.max));
       result.push({
         period: periodNum,
         dueDate: dueDateStr,
         daysOverdue,
-        classification: range?.classification ?? (daysOverdue > 0 ? `Quá hạn ${daysOverdue} ngày` : '–'),
+        classification: range?.classification ?? (daysOverdue > 0 ? `QuÃ¡ háº¡n ${daysOverdue} ngÃ y` : 'â€“'),
         totalOverdue,
         totalOutstandingForPeriod: totalOutstanding,
       });
@@ -1176,7 +646,7 @@ export class AdminService {
     // Prefer fl.summary; fallback to fl.collection (often has post-allocation totals/delinquency)
     const summary = fl.summary || fl.collection || summaryInfo || {};
 
-    // 2. Map status (active = đã giải ngân -> disbursed để trang Khoản vay quá hạn lấy đúng)
+    // 2. Map status (active = Ä‘Ã£ giáº£i ngÃ¢n -> disbursed Ä‘á»ƒ trang Khoáº£n vay quÃ¡ háº¡n láº¥y Ä‘Ãºng)
     const fStatus = fl.status || {};
     let internalStatus: LoanApplicationStatus = 'pending';
     if (fStatus.active) internalStatus = 'disbursed';
@@ -1222,8 +692,8 @@ export class AdminService {
     app.totalFeeExpected = summary.feeChargesOverdue || 0;
     app.totalOverdue = summary.totalOverdue || 0;
 
-    // 4a. Sync loan purpose (willing) from Fineract
-    const purposeName = fl.loanPurposeName || fl.loanPurpose?.name;
+    // 4a. Sync loan purpose (willing) from Fineract — fallback to product name
+    const purposeName = fl.loanPurposeName || fl.loanPurpose?.name || fl.loanProductName || '';
     if (purposeName && !app.willing) {
       app.willing = purposeName;
     }
@@ -1237,6 +707,14 @@ export class AdminService {
     if (fl.principal && fl.principal > 0) app.capital = fl.principal;
     if (fl.numberOfRepayments && fl.numberOfRepayments > 0) app.periodMonth = fl.numberOfRepayments;
 
+    // 4d. Sync entirelyPay / monthlyPay from Fineract if not set
+    const totalExpected = summary.totalExpectedRepayment || summary.totalRepayment || 0;
+    if (totalExpected > 0 && (!app.entirelyPay || app.entirelyPay === 0)) {
+      app.entirelyPay = totalExpected;
+    }
+    if (app.entirelyPay > 0 && app.periodMonth > 0 && (!app.monthlyPay || app.monthlyPay === 0)) {
+      app.monthlyPay = Math.round(app.entirelyPay / app.periodMonth);
+    }
     this.logger.debug(`[syncLoan] DELINQUENCY DATA for loan ${fineractLoanId}: ${JSON.stringify(dData)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY TAGS for loan ${fineractLoanId}: ${JSON.stringify(dTags)}`);
     this.logger.debug(`[syncLoan] DELINQUENCY ACTIONS for loan ${fineractLoanId}: ${JSON.stringify(dActions)}`);
@@ -1286,7 +764,7 @@ export class AdminService {
       if (firstDueStr && firstDueStr < app.disbursementDate) {
         this.logger.error(
           `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
-          'First due date is BEFORE disbursement — loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+          'First due date is BEFORE disbursement â€” loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
         );
       }
     }
@@ -1342,7 +820,7 @@ export class AdminService {
     app.lastPaymentDate = summary.lastPaymentDate;
     app.lastPaymentAmount = summary.lastPaymentAmount;
 
-    // Tên khách hàng từ Fineract (để hiển thị đúng trong danh sách nợ quá hạn)
+    // TÃªn khÃ¡ch hÃ ng tá»« Fineract (Ä‘á»ƒ hiá»ƒn thá»‹ Ä‘Ãºng trong danh sÃ¡ch ná»£ quÃ¡ háº¡n)
     const clientId = fl.clientId ?? fl.client?.id;
     if (clientId) {
       try {
@@ -1392,7 +870,7 @@ export class AdminService {
   async syncClientLoansFromFineract(userId: string): Promise<any> {
     const customer = await this.getCustomerById(userId);
     const clientId = customer.fineractClientId;
-    if (!clientId) throw new BadRequestException('Khách hàng chưa có ID Fineract');
+    if (!clientId) throw new BadRequestException('KhÃ¡ch hÃ ng chÆ°a cÃ³ ID Fineract');
 
     this.logger.log(`[syncClientLoansFromFineract] userId=${userId} clientId=${clientId}`);
 
@@ -1412,19 +890,19 @@ export class AdminService {
     return { total: loans.length, processed: results };
   }
 
-  /** Các trường theo dõi khi đồng bộ khoản vay (để báo cáo thay đổi nhỏ nhất) */
+  /** CÃ¡c trÆ°á»ng theo dÃµi khi Ä‘á»“ng bá»™ khoáº£n vay (Ä‘á»ƒ bÃ¡o cÃ¡o thay Ä‘á»•i nhá» nháº¥t) */
   private static LOAN_SYNC_TRACK_FIELDS: Array<{ key: string; label: string }> = [
-    { key: 'status', label: 'Trạng thái' },
-    { key: 'outstandingAmount', label: 'Dư nợ' },
-    { key: 'totalOverdue', label: 'Tổng quá hạn' },
-    { key: 'delinquentDays', label: 'Số ngày quá hạn' },
-    { key: 'delinquencyClassification', label: 'Nhóm nợ' },
-    { key: 'principalPaid', label: 'Gốc đã trả' },
-    { key: 'interestPaid', label: 'Lãi đã trả' },
-    { key: 'totalPaid', label: 'Tổng đã trả' },
-    // lastSyncedAt bỏ khỏi báo cáo vì mỗi lần sync đều cập nhật → luôn "thay đổi", gây nhiễu
-    { key: 'schedulePeriodsCount', label: 'Số kỳ trả nợ' },
-    { key: 'period1PrincipalPaid', label: 'Kỳ 1 gốc đã trả' },
+    { key: 'status', label: 'Tráº¡ng thÃ¡i' },
+    { key: 'outstandingAmount', label: 'DÆ° ná»£' },
+    { key: 'totalOverdue', label: 'Tá»•ng quÃ¡ háº¡n' },
+    { key: 'delinquentDays', label: 'Sá»‘ ngÃ y quÃ¡ háº¡n' },
+    { key: 'delinquencyClassification', label: 'NhÃ³m ná»£' },
+    { key: 'principalPaid', label: 'Gá»‘c Ä‘Ã£ tráº£' },
+    { key: 'interestPaid', label: 'LÃ£i Ä‘Ã£ tráº£' },
+    { key: 'totalPaid', label: 'Tá»•ng Ä‘Ã£ tráº£' },
+    // lastSyncedAt bá» khá»i bÃ¡o cÃ¡o vÃ¬ má»—i láº§n sync Ä‘á»u cáº­p nháº­t â†’ luÃ´n "thay Ä‘á»•i", gÃ¢y nhiá»…u
+    { key: 'schedulePeriodsCount', label: 'Sá»‘ ká»³ tráº£ ná»£' },
+    { key: 'period1PrincipalPaid', label: 'Ká»³ 1 gá»‘c Ä‘Ã£ tráº£' },
   ];
 
   private snapshotLoanForSyncDiff(doc: any): Record<string, any> {
@@ -1458,16 +936,16 @@ export class AdminService {
   }
 
   /**
-   * Lấy tất cả khoản vay đã giải ngân từ Fineract (status 300 = Active) và sync vào Mongo.
-   * Ghi từng thay đổi (field-level) vào loan_sync_runs.details để truy vết.
-   * @param limit số khoản tối đa mỗi lần chạy
+   * Láº¥y táº¥t cáº£ khoáº£n vay Ä‘Ã£ giáº£i ngÃ¢n tá»« Fineract (status 300 = Active) vÃ  sync vÃ o Mongo.
+   * Ghi tá»«ng thay Ä‘á»•i (field-level) vÃ o loan_sync_runs.details Ä‘á»ƒ truy váº¿t.
+   * @param limit sá»‘ khoáº£n tá»‘i Ä‘a má»—i láº§n cháº¡y
    * @param options.trigger 'cron' | 'manual'
    */
   async syncDisbursedLoansFromFineract(
     limit = 300,
     options?: { trigger?: 'cron' | 'manual' },
-  ): Promise<{ synced: number; errors: number; skipped: number; runId?: string }> {
-    // Lấy tất cả khoản vay (mọi trạng thái), không chỉ Active
+  ): Promise<{ synced: number; errors: number; skipped: number; orphansRemoved: number; runId?: string }> {
+    // Láº¥y táº¥t cáº£ khoáº£n vay (má»i tráº¡ng thÃ¡i), khÃ´ng chá»‰ Active
     const loans = await this.fineractLoanService.getAllLoans(limit);
     const toSync = (loans || []).map((l: any) => l.id ?? l.loanId).filter((id: any) => id != null);
     let synced = 0;
@@ -1492,11 +970,11 @@ export class AdminService {
         if (err instanceof BadRequestException && err?.message?.includes('No local user found')) {
           skipped++;
           this.logger.debug(`[syncDisbursedLoansFromFineract] Loan ${loanId} skipped (no user for client)`);
-          details.push({ fineractLoanId: fid, status: 'skipped', message: 'Không có user local cho client' });
+          details.push({ fineractLoanId: fid, status: 'skipped', message: 'KhÃ´ng cÃ³ user local cho client' });
         } else {
           this.logger.warn(`[syncDisbursedLoansFromFineract] Loan ${loanId}: ${err?.message}`);
           errors++;
-          details.push({ fineractLoanId: fid, status: 'error', message: err?.message ?? 'Lỗi đồng bộ' });
+          details.push({ fineractLoanId: fid, status: 'error', message: err?.message ?? 'Lá»—i Ä‘á»“ng bá»™' });
         }
       }
     }
@@ -1504,6 +982,42 @@ export class AdminService {
     this.logger.log(
       `[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`,
     );
+
+    // â”€â”€ Orphan cleanup: xÃ³a khoáº£n vay trong Mongo mÃ  Fineract khÃ´ng cÃ²n â”€â”€
+    let orphansRemoved = 0;
+    try {
+      const fineractIdSet = new Set(toSync.map((id: any) => Number(id)));
+      // TÃ¬m táº¥t cáº£ khoáº£n vay trong Mongo cÃ³ fineractLoanId mÃ  Fineract khÃ´ng cÃ²n
+      const allLocalLoans = await this.loanApplicationModel
+        .find({ fineractLoanId: { $exists: true, $ne: null } })
+        .select('fineractLoanId status')
+        .lean();
+      const orphanIds: number[] = [];
+      for (const ll of allLocalLoans) {
+        const fid = Number(ll.fineractLoanId);
+        if (Number.isFinite(fid) && !fineractIdSet.has(fid)) {
+          orphanIds.push(fid);
+        }
+      }
+      if (orphanIds.length > 0) {
+        // ÄÃ¡nh dáº¥u khoáº£n vay orphan â€” khÃ´ng xÃ³a cá»©ng, chá»‰ Ä‘á»•i status
+        const updateResult = await this.loanApplicationModel.updateMany(
+          { fineractLoanId: { $in: orphanIds } },
+          { $set: { status: 'removed_from_fineract' } },
+        );
+        orphansRemoved = updateResult.modifiedCount ?? 0;
+        this.logger.warn(
+          `[syncDisbursedLoansFromFineract] Removed ${orphansRemoved} orphan loans (fineractLoanIds: ${orphanIds.join(', ')})`,
+        );
+        details.push(...orphanIds.map(fid => ({
+          fineractLoanId: fid,
+          status: 'orphan_removed' as const,
+          message: 'Khoáº£n vay khÃ´ng cÃ²n trÃªn Fineract, Ä‘Ã£ Ä‘Ã¡nh dáº¥u removed_from_fineract',
+        })));
+      }
+    } catch (orphanErr: any) {
+      this.logger.warn(`[syncDisbursedLoansFromFineract] Orphan cleanup failed: ${orphanErr?.message}`);
+    }
 
     const trigger = options?.trigger ?? 'manual';
     let runId: string | undefined;
@@ -1515,6 +1029,7 @@ export class AdminService {
         synced,
         errorCount: errors,
         skipped,
+        orphansRemoved,
         details,
       });
       runId = run._id?.toString();
@@ -1522,11 +1037,11 @@ export class AdminService {
       this.logger.warn(`[syncDisbursedLoansFromFineract] Failed to write loan_sync_runs: ${logErr?.message}`);
     }
 
-    return { synced, errors, skipped, runId };
+    return { synced, errors, skipped, orphansRemoved, runId };
   }
 
   /**
-   * Lấy danh sách lần chạy đồng bộ khoản vay (loan_sync_runs) để hiển thị và truy vết.
+   * Láº¥y danh sÃ¡ch láº§n cháº¡y Ä‘á»“ng bá»™ khoáº£n vay (loan_sync_runs) Ä‘á»ƒ hiá»ƒn thá»‹ vÃ  truy váº¿t.
    */
   async getLoanSyncRuns(limit = 30): Promise<any[]> {
     const runs = await this.loanSyncRunModel.find().sort({ ranAt: -1 }).limit(limit).lean().exec();
@@ -1535,7 +1050,7 @@ export class AdminService {
 
   /**
    * Batch sync: sync all active (disbursed) loans from Fineract to MongoDB.
-   * Chỉ sync các khoản đã có trong Mongo. Để gồm cả khoản tạo trên Fineract, dùng syncDisbursedLoansFromFineract.
+   * Chá»‰ sync cÃ¡c khoáº£n Ä‘Ã£ cÃ³ trong Mongo. Äá»ƒ gá»“m cáº£ khoáº£n táº¡o trÃªn Fineract, dÃ¹ng syncDisbursedLoansFromFineract.
    * @param limit max loans per run (default 200)
    */
   async syncAllActiveLoansFromFineract(limit = 200): Promise<{ synced: number; errors: number; details: any[] }> {
@@ -1565,8 +1080,8 @@ export class AdminService {
   }
 
   /**
-   * Lấy danh sách nhóm quá hạn (delinquency ranges) từ Fineract để dùng cho filter.
-   * Fallback: distinct classification từ Mongo nếu Fineract lỗi.
+   * Láº¥y danh sÃ¡ch nhÃ³m quÃ¡ háº¡n (delinquency ranges) tá»« Fineract Ä‘á»ƒ dÃ¹ng cho filter.
+   * Fallback: distinct classification tá»« Mongo náº¿u Fineract lá»—i.
    */
   async getDelinquencyRangesForFilter(): Promise<
     Array<{ id: number; classification: string; minimumAgeDays?: number }>
@@ -1590,8 +1105,8 @@ export class AdminService {
   }
 
   /**
-   * Lọc khoản vay quá hạn chi tiết: nhóm quá hạn, khoản quá hạn (từ–đến), số ngày quá hạn (từ–đến).
-   * Data từ Mongo (đã sync từ Fineract hằng ngày).
+   * Lá»c khoáº£n vay quÃ¡ háº¡n chi tiáº¿t: nhÃ³m quÃ¡ háº¡n, khoáº£n quÃ¡ háº¡n (tá»«â€“Ä‘áº¿n), sá»‘ ngÃ y quÃ¡ háº¡n (tá»«â€“Ä‘áº¿n).
+   * Data tá»« Mongo (Ä‘Ã£ sync tá»« Fineract háº±ng ngÃ y).
    */
   async getOverdueLoans(filters?: {
     classification?: string;
@@ -1671,8 +1186,8 @@ export class AdminService {
 
         const user = app.userId;
         const profile = user?.profile ?? {};
-        const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
-        // Ưu tiên tên trên Fineract (clientDisplayName); chỉ dùng fallback khi chưa có
+        const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || 'â€“';
+        // Æ¯u tiÃªn tÃªn trÃªn Fineract (clientDisplayName); chá»‰ dÃ¹ng fallback khi chÆ°a cÃ³
         return {
           _id: delinquency._id.toString(),
           loanId: app._id.toString(),
@@ -1680,7 +1195,7 @@ export class AdminService {
           borrowerId: (delinquency.borrowerId ?? app.userId?._id ?? app.userId)?.toString?.() ?? '',
           userId: app.userId?._id?.toString() ?? '',
           customerName: app.clientDisplayName ?? fallbackName,
-          customerUsername: user?.username ?? '–',
+          customerUsername: user?.username ?? 'â€“',
           fineractClientId: user?.fineractClientId,
           capital: app.capital ?? 0,
           overdueAmount: delinquency.overdueAmount ?? 0,
@@ -1717,10 +1232,10 @@ export class AdminService {
         lastSyncedAt: Date | null;
       }>;
 
-    // Khi clientDisplayName trống (sync cũ hoặc lỗi), lấy tên từ Fineract để luôn hiện đúng tên khoản vay
+    // Khi clientDisplayName trá»‘ng (sync cÅ© hoáº·c lá»—i), láº¥y tÃªn tá»« Fineract Ä‘á»ƒ luÃ´n hiá»‡n Ä‘Ãºng tÃªn khoáº£n vay
     const needFineractName = items
       .map((item, idx) => ({ item, idx }))
-      .filter(({ item }) => !item.customerName || item.customerName === '–');
+      .filter(({ item }) => !item.customerName || item.customerName === 'â€“');
     if (needFineractName.length > 0) {
       const results = await Promise.all(
         needFineractName.map(async ({ item, idx }) => {
@@ -1740,7 +1255,7 @@ export class AdminService {
       results.forEach(({ idx, name, loanId }) => {
         if (name) {
           items[idx].customerName = name;
-          // Lưu vào Mongo để lần sau không cần gọi Fineract
+          // LÆ°u vÃ o Mongo Ä‘á»ƒ láº§n sau khÃ´ng cáº§n gá»i Fineract
           this.loanApplicationModel
             .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
             .exec()
@@ -1753,8 +1268,8 @@ export class AdminService {
   }
 
   /**
-   * API riêng cho bảng loan_delinquency.
-   * Mặc định sync từ Fineract trước khi đọc để dữ liệu luôn đồng bộ.
+   * API riÃªng cho báº£ng loan_delinquency.
+   * Máº·c Ä‘á»‹nh sync tá»« Fineract trÆ°á»›c khi Ä‘á»c Ä‘á»ƒ dá»¯ liá»‡u luÃ´n Ä‘á»“ng bá»™.
    */
   async getLoanDelinquencyList(params?: {
     page?: number;
@@ -1843,7 +1358,7 @@ export class AdminService {
       const user = app?.userId;
       const profile = user?.profile ?? {};
       const borrowerName =
-        [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || user?.username || '–';
+        [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || user?.username || 'â€“';
 
       return {
         _id: doc._id.toString(),
@@ -1851,7 +1366,7 @@ export class AdminService {
         fineractLoanId: doc.fineractLoanId,
         borrowerId: doc.borrowerId?.toString?.() ?? '',
         borrowerName,
-        borrowerUsername: user?.username ?? '–',
+        borrowerUsername: user?.username ?? 'â€“',
         debtGroup: doc.debtGroup,
         delinquentDays: doc.delinquentDays,
         overdueAmount: doc.overdueAmount,
@@ -1869,7 +1384,7 @@ export class AdminService {
   }
 
   /**
-   * Đồng bộ dữ liệu nợ xấu cho một khoản vay cụ thể (API riêng).
+   * Äá»“ng bá»™ dá»¯ liá»‡u ná»£ xáº¥u cho má»™t khoáº£n vay cá»¥ thá»ƒ (API riÃªng).
    */
   async syncOneLoanDelinquency(fineractLoanId: number): Promise<any> {
     await this.syncLoanFromFineract(fineractLoanId);
@@ -1879,7 +1394,7 @@ export class AdminService {
   }
 
   /**
-   * Đồng bộ dữ liệu nợ xấu cho tất cả khoản vay đã giải ngân (API riêng).
+   * Äá»“ng bá»™ dá»¯ liá»‡u ná»£ xáº¥u cho táº¥t cáº£ khoáº£n vay Ä‘Ã£ giáº£i ngÃ¢n (API riÃªng).
    */
   async syncLoanDelinquencyBatch(
     limit = 200,
@@ -1928,7 +1443,7 @@ export class AdminService {
         if (!Number.isFinite(id)) return null;
         return {
           debt_group: id,
-          debt_group_name: String(range.classification ?? range.name ?? `Nhóm ${id}`),
+          debt_group_name: String(range.classification ?? range.name ?? `NhÃ³m ${id}`),
           min_days: Number(range.minimumAgeDays ?? 0),
           max_days: range.maximumAgeDays != null ? Number(range.maximumAgeDays) : null,
         };
@@ -1948,7 +1463,7 @@ export class AdminService {
     const matched = groups.find(group => group.debt_group === debtGroup);
     if (!matched) {
       throw new BadRequestException(
-        `debt_group=${debtGroup} không tồn tại trên Fineract delinquency ranges. Vui lòng đồng bộ cấu hình nhóm nợ trước.`,
+        `debt_group=${debtGroup} khÃ´ng tá»“n táº¡i trÃªn Fineract delinquency ranges. Vui lÃ²ng Ä‘á»“ng bá»™ cáº¥u hÃ¬nh nhÃ³m ná»£ trÆ°á»›c.`,
       );
     }
     return {
@@ -2005,7 +1520,7 @@ export class AdminService {
       .exec();
     if (existing) {
       throw new BadRequestException(
-        `Đã tồn tại policy cho product=${dto.loan_product_id}, debt_group=${dto.debt_group}. Dùng API cập nhật thay vì tạo mới.`,
+        `ÄÃ£ tá»“n táº¡i policy cho product=${dto.loan_product_id}, debt_group=${dto.debt_group}. DÃ¹ng API cáº­p nháº­t thay vÃ¬ táº¡o má»›i.`,
       );
     }
 
@@ -2030,7 +1545,7 @@ export class AdminService {
     } catch (error: any) {
       if (error?.code === 11000) {
         throw new ConflictException(
-          `product=${dto.loan_product_id}, debt_group=${dto.debt_group} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+          `product=${dto.loan_product_id}, debt_group=${dto.debt_group} Ä‘Ã£ cÃ³ policy. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
         );
       }
       throw error;
@@ -2040,12 +1555,12 @@ export class AdminService {
   async updateDelinquencyPolicy(id: string, dto: UpdateDelinquencyPolicyDto) {
     const existing = await this.delinquencyPolicyModel.findById(id);
     if (!existing) {
-      throw new NotFoundException('Delinquency policy không tồn tại');
+      throw new NotFoundException('Delinquency policy khÃ´ng tá»“n táº¡i');
     }
 
     const nextProductId = dto.loan_product_id ?? existing.loan_product_id;
     if (nextProductId == null) {
-      throw new BadRequestException('Policy cũ chưa có loan_product_id. Vui lòng tạo lại policy theo từng sản phẩm.');
+      throw new BadRequestException('Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.');
     }
 
     const nextDebtGroup = dto.debt_group ?? existing.debt_group;
@@ -2062,7 +1577,7 @@ export class AdminService {
       .exec();
     if (duplicate) {
       throw new ConflictException(
-        `product=${nextProductId}, debt_group=${nextDebtGroup} đã có policy khác. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+        `product=${nextProductId}, debt_group=${nextDebtGroup} Ä‘Ã£ cÃ³ policy khÃ¡c. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
       );
     }
 
@@ -2089,7 +1604,7 @@ export class AdminService {
     } catch (error: any) {
       if (error?.code === 11000) {
         throw new ConflictException(
-          `product=${nextProductId}, debt_group=${nextDebtGroup} đã có policy. Mỗi nhóm nợ chỉ được có 1 policy trong 1 sản phẩm.`,
+          `product=${nextProductId}, debt_group=${nextDebtGroup} Ä‘Ã£ cÃ³ policy. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
         );
       }
       throw error;
@@ -2099,14 +1614,14 @@ export class AdminService {
   async removeDelinquencyPolicy(id: string) {
     const doc = await this.delinquencyPolicyModel.findByIdAndDelete(id).lean().exec();
     if (!doc) {
-      throw new NotFoundException('Delinquency policy không tồn tại');
+      throw new NotFoundException('Delinquency policy khÃ´ng tá»“n táº¡i');
     }
     return { deleted: true };
   }
 
   /**
-   * Danh sách khoản vay thống nhất với filter đầy đủ.
-   * Kết hợp Mongo (disbursed/closed) + Fineract (pending/approved).
+   * Danh sÃ¡ch khoáº£n vay thá»‘ng nháº¥t vá»›i filter Ä‘áº§y Ä‘á»§.
+   * Káº¿t há»£p Mongo (disbursed/closed) + Fineract (pending/approved).
    */
   async getLoans(filters: {
     page?: number;
@@ -2156,7 +1671,7 @@ export class AdminService {
     const mapAppToItem = (app: any): any => {
       const user = app.userId as any;
       const profile = user?.profile ?? {};
-      const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || '–';
+      const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || 'â€“';
       const totalOverdue = Number(app.totalOverdue ?? 0);
       const normalizedStatus = app.status === 'disbursed' && totalOverdue > 0 ? 'overdue' : (app.status ?? 'disbursed');
       return {
@@ -2164,7 +1679,7 @@ export class AdminService {
         fineractLoanId: app.fineractLoanId,
         userId: app.userId?._id?.toString() ?? '',
         customerName: app.clientDisplayName ?? fallbackName,
-        customerUsername: user?.username ?? '–',
+        customerUsername: user?.username ?? 'â€“',
         fineractClientId: user?.fineractClientId,
         productId: app.productId ?? 0,
         productName: app.productName ?? String(app.productId),
@@ -2208,8 +1723,8 @@ export class AdminService {
         _id: fl._id,
         fineractLoanId: fl.fineractLoanId,
         userId: fl.userId ?? '',
-        customerName: fl.clientName ?? '–',
-        customerUsername: '–',
+        customerName: fl.clientName ?? 'â€“',
+        customerUsername: 'â€“',
         productId: fl.productId,
         productName: fl.productName ?? '',
         productShortName: (fl as any).productShortName ?? '',
@@ -2253,8 +1768,8 @@ export class AdminService {
           _id: ll?._id?.toString() ?? `FL_${fl.id}`,
           fineractLoanId: fl.id,
           userId: u?._id?.toString() ?? '',
-          customerName: fl.clientName ?? u?.username ?? '–',
-          customerUsername: u?.username ?? '–',
+          customerName: fl.clientName ?? u?.username ?? 'â€“',
+          customerUsername: u?.username ?? 'â€“',
           productId: fl.productId || fl.loanProductId,
           productName: p.name ?? '',
           productShortName: p.shortName ?? '',
@@ -2401,7 +1916,7 @@ export class AdminService {
   }
 
   /**
-   * Thống kê nhanh khoản vay theo trạng thái.
+   * Thá»‘ng kÃª nhanh khoáº£n vay theo tráº¡ng thÃ¡i.
    */
   async getLoansStats(): Promise<{
     total: number;
@@ -2499,7 +2014,7 @@ export class AdminService {
 
   async approveDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
 
     this.logger.log(`[approveDocument] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
 
@@ -2529,7 +2044,7 @@ export class AdminService {
         const fd = fineractDocs.find(d => d.id == documentId);
         if (!fd) {
           throw new BadRequestException(
-            `Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`,
+            `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
           );
         }
 
@@ -2560,7 +2075,7 @@ export class AdminService {
 
   async rejectDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
 
     let doc = app.documents?.find(d => d.fineractDocumentId === documentId);
 
@@ -2568,7 +2083,7 @@ export class AdminService {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find(d => d.id === documentId);
       if (!fd) {
-        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
       }
 
       const newDoc = {
@@ -2592,22 +2107,22 @@ export class AdminService {
     return { documentId, reviewStatus: 'rejected' };
   }
 
-  /** Phân loại lại tài liệu (staff gán documentTypeId cho doc unknown) */
+  /** PhÃ¢n loáº¡i láº¡i tÃ i liá»‡u (staff gÃ¡n documentTypeId cho doc unknown) */
   async classifyDocument(fineractLoanId: number, documentId: number, documentTypeId: string) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
+    if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
 
     let doc = app.documents?.find(d => String(d.fineractDocumentId) === String(documentId));
 
     if (!doc) {
-      // Document exists in Fineract but not in MongoDB — create it
+      // Document exists in Fineract but not in MongoDB â€” create it
       this.logger.warn(
         `[classifyDocument] Document #${documentId} not found in MongoDB for loan #${fineractLoanId}. Fetching from Fineract...`,
       );
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find((d: any) => d.id == documentId);
       if (!fd) {
-        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
+        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
       }
 
       const newDoc = {
@@ -2636,10 +2151,10 @@ export class AdminService {
     return { documentId, documentTypeId };
   }
 
-  /** Kiểm tra khoản vay đã duyệt đủ tài liệu bắt buộc chưa */
+  /** Kiá»ƒm tra khoáº£n vay Ä‘Ã£ duyá»‡t Ä‘á»§ tÃ i liá»‡u báº¯t buá»™c chÆ°a */
   async canApproveLoan(fineractLoanId: number): Promise<{ canApprove: boolean; missingRequired: string[] }> {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) return { canApprove: false, missingRequired: ['Khoản vay không tồn tại'] };
+    if (!app) return { canApprove: false, missingRequired: ['Khoáº£n vay khÃ´ng tá»“n táº¡i'] };
 
     // HEAL ON THE FLY: If we have an 'unknown' approved doc and a pending typed doc, merge them.
     // Or if we have an 'unknown' approved doc and it's the ONLY one, and we're missing exactly one requirement.
@@ -2684,7 +2199,7 @@ export class AdminService {
     const missingRequired: string[] = [];
     for (const r of requiredDocTypes) {
       const typeId = (r.documentTypeId as any)?._id?.toString();
-      const typeName = (r.documentTypeId as any)?.name || 'Tài liệu bắt buộc';
+      const typeName = (r.documentTypeId as any)?.name || 'TÃ i liá»‡u báº¯t buá»™c';
       this.logger.log(
         `[canApproveLoan] Checking required: ${typeName} (${typeId}) -> found: ${approvedDocTypeIds.has(typeId)}`,
       );
@@ -2696,818 +2211,5 @@ export class AdminService {
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
     this.logger.log(`[getLoanDocumentStream] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
     return this.fineractLoanService.downloadDocument(fineractLoanId, documentId);
-  }
-
-  // ---------- KYC Approvals ----------
-
-  /** Danh sách user có kycStatus = PENDING */
-  async getPendingKycUsers() {
-    const users = await this.userModel
-      .find({ kycStatus: 'PENDING' })
-      .select('username email profile fineractClientId kycStatus kycData createdAt')
-      .sort({ 'kycData.metadata.kycCompletedAt': -1 })
-      .lean();
-
-    return users.map((u: any) => ({
-      _id: u._id?.toString(),
-      username: u.username,
-      email: u.email,
-      profile: u.profile,
-      fineractClientId: u.fineractClientId,
-      kycStatus: u.kycStatus,
-      kycCompletedAt: u.kycData?.metadata?.kycCompletedAt,
-      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
-    }));
-  }
-
-  /** Chi tiết KYC của user (OCR + danh sách tài liệu từ Fineract) */
-  async getKycDetail(userId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId).lean();
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ fineractClientId: userId }).lean();
-    }
-    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-
-    const kycData = user.kycData || {};
-    const metadata = kycData.metadata || {};
-    const fineractClientDocs = metadata.fineractClientDocs || {};
-
-    const documents: { id: number; name: string; entityType: string; entityId: number; label: string }[] = [];
-
-    const clientId = user.fineractClientId ? parseInt(user.fineractClientId) : null;
-    if (clientId) {
-      const clientDocs = await this.fineractClientService.getEntityDocuments('clients', clientId);
-      for (const d of clientDocs || []) {
-        documents.push({
-          id: d.id,
-          name: d.name || d.fileName || 'document',
-          entityType: 'clients',
-          entityId: clientId,
-          label: d.description || d.name || 'CCCD',
-        });
-      }
-    }
-
-    return {
-      user: {
-        _id: user._id?.toString(),
-        username: user.username,
-        email: user.email,
-        profile: user.profile,
-        fineractClientId: user.fineractClientId,
-        kycStatus: user.kycStatus,
-      },
-      ocr: {
-        fullName: kycData.fullName,
-        ssn: kycData.ssn,
-        dateOfBirth: kycData.dateOfBirth,
-        address: kycData.address,
-        sex: kycData.sex,
-        issueDate: kycData.issueDate,
-      },
-      metadata: {
-        kycCompletedAt: metadata.kycCompletedAt,
-        fineractClientDocs,
-      },
-      documents,
-    };
-  }
-
-  /** Phê duyệt KYC: kích hoạt client trên Fineract + tạo savings account + cập nhật MongoDB + Keycloak */
-  async approveKyc(userId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId);
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ fineractClientId: userId });
-    }
-    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    // Cho phép phê duyệt khi PENDING (eKYC) hoặc NONE (KYC trực tiếp tại chỗ)
-    if (!['PENDING', 'NONE'].includes(user.kycStatus || 'NONE')) {
-      throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}, không thể phê duyệt`);
-    }
-
-    // 1. Activate client on Fineract
-    if (user.fineractClientId) {
-      try {
-        const clientIdNum = parseInt(user.fineractClientId);
-        await this.fineractClientService.activateClient(clientIdNum);
-        this.logger.log(`[approveKyc] Activated Fineract client ${clientIdNum}`);
-      } catch (err: any) {
-        this.logger.error(`[approveKyc] Failed to activate Fineract client: ${err.message}`);
-        throw new BadRequestException(`Không thể kích hoạt client trên Fineract: ${err.message}`);
-      }
-    }
-
-    // 2. Create savings account (e-wallet) after client is activated (if not already exists)
-    let savingsAccountId: number | null = null;
-    if (user.fineractClientId) {
-      const existingWallet = await this.walletModel.findOne({ userId: user._id }).lean();
-      if (existingWallet) {
-        this.logger.log(`[approveKyc] User already has wallet ${existingWallet.fineractSavingsId}, skipping creation`);
-        const parsed = parseInt(existingWallet.fineractSavingsId, 10);
-        savingsAccountId = Number.isFinite(parsed) ? parsed : null;
-      } else {
-        try {
-          const clientIdNum = parseInt(user.fineractClientId);
-          savingsAccountId = await this.fineractSavingsService.createSavingsAccount(clientIdNum);
-          this.logger.log(`[approveKyc] Created savings account ${savingsAccountId} for client ${clientIdNum}`);
-
-          // Create wallet reference in MongoDB
-          await this.walletModel.create({
-            userId: user._id,
-            fineractSavingsId: savingsAccountId.toString(),
-          });
-          this.logger.log(`[approveKyc] Created wallet reference in MongoDB for savings account ${savingsAccountId}`);
-        } catch (err: any) {
-          this.logger.error(`[approveKyc] Failed to create savings account: ${err.message}`);
-          // Don't fail the approval if wallet creation fails, but log it
-        }
-      }
-    }
-
-    // 3. Update MongoDB
-    user.kycStatus = 'VERIFIED';
-    user.status = 'active';
-    await user.save();
-
-    // 4. Update Keycloak
-    if (user.keycloakId) {
-      try {
-        await this.keycloakService.updateUser(user.keycloakId, {
-          kycStatus: 'verified',
-          clientStatus: 'active',
-        });
-        this.logger.log(`[approveKyc] Updated Keycloak kycStatus and clientStatus for ${user.keycloakId}`);
-      } catch (err: any) {
-        this.logger.warn(`[approveKyc] Keycloak update failed: ${err.message}`);
-      }
-    }
-
-    return {
-      kycStatus: 'VERIFIED',
-      status: 'active',
-      userId: user._id?.toString(),
-      savingsAccountId: savingsAccountId?.toString() || null,
-    };
-  }
-
-  /** Từ chối KYC */
-  async rejectKyc(userId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId);
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ fineractClientId: userId });
-    }
-    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    // Cho phép từ chối khi PENDING (eKYC) hoặc NONE (KYC trực tiếp)
-    if (!['PENDING', 'NONE'].includes(user.kycStatus || 'NONE')) {
-      throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}`);
-    }
-
-    user.kycStatus = 'REJECTED';
-    await user.save();
-
-    if (user.keycloakId) {
-      try {
-        await this.keycloakService.updateUser(user.keycloakId, { kycStatus: 'rejected' });
-      } catch (err: any) {
-        this.logger.warn(`[rejectKyc] Keycloak update failed: ${err.message}`);
-      }
-    }
-
-    return { kycStatus: 'REJECTED', userId: user._id?.toString() };
-  }
-
-  /** Stream tài liệu KYC từ Fineract */
-  async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) {
-    const detail = await this.getKycDetail(userId);
-    const doc = detail.documents.find(
-      (d: any) =>
-        d.entityType === entityType && Number(d.entityId) === Number(entityId) && Number(d.id) === Number(documentId),
-    );
-    if (!doc) throw new NotFoundException('Tài liệu không tồn tại');
-    return this.fineractClientService.downloadDocument(entityType, entityId, documentId);
-  }
-
-  /** OCR mặt trước CCCD (nhân viên chụp/thêm giúp khách hàng) */
-  async ocrFrontForUser(userId: string, imageBuffer: Buffer, filename = 'front.jpg') {
-    await this.resolveUser(userId);
-    return this.ekycService.ocrFrontID(imageBuffer, filename);
-  }
-
-  /** OCR mặt sau CCCD */
-  async ocrBackForUser(userId: string, imageBuffer: Buffer, filename = 'back.jpg') {
-    await this.resolveUser(userId);
-    return this.ekycService.ocrBackID(imageBuffer, filename);
-  }
-
-  /** Lưu KYC cho user (nhân viên làm giúp - không cần face matching/liveness) */
-  async saveKycForUser(
-    userId: string,
-    frontOCRData: any,
-    backOCRData: any,
-    frontImageBuffer: Buffer | null,
-    backImageBuffer: Buffer | null,
-  ) {
-    const user = await this.resolveUser(userId);
-    const mongoId = user._id?.toString();
-    return this.ekycService.saveKycData(
-      mongoId,
-      frontOCRData,
-      backOCRData,
-      frontImageBuffer,
-      backImageBuffer,
-      null,
-      null,
-    );
-  }
-
-  private async resolveUser(userId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(userId)) {
-      user = await this.userModel.findById(userId);
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ fineractClientId: userId });
-    }
-    if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    return user;
-  }
-
-  // ========== STAFF MANAGEMENT (CRUD) ==========
-
-  /**
-   * Tạo nhân viên: 1) Keycloak → 2) Fineract staff → 3) MongoDB
-   */
-  async createStaff(dto: RegisterDto) {
-    dto.userType = 'staff'; // Luôn ép userType = staff khi tạo qua admin
-    if (!dto.roleId) {
-      throw new BadRequestException('Thiếu roleId khi tạo nhân viên');
-    }
-
-    const role = await this.roleModel.findById(dto.roleId).lean();
-    if (!role || !role.isActive) {
-      throw new BadRequestException('Vai trò không hợp lệ hoặc đã bị vô hiệu hóa');
-    }
-
-    this.logger.log(`[createStaff] Creating staff: ${dto.phoneNumber}`);
-    const result = await this.fineractSignupService.signup(dto);
-
-    // Cập nhật phoneNumber = username (phoneNumber) cho user vừa tạo
-    try {
-      const user = await this.userModel.findOne({ username: dto.phoneNumber });
-      if (user) {
-        user.phoneNumber = dto.phoneNumber;
-        user.set('roles', [role.name]);
-        user.metadata = {
-          ...(user.metadata || {}),
-          roleId: role._id?.toString(),
-          roleIds: [role._id?.toString()],
-          roleName: role.name,
-          roleNames: [role.name],
-        };
-        user.markModified('metadata');
-        await user.save();
-      }
-    } catch (err: any) {
-      this.logger.warn(`[createStaff] Failed to set phoneNumber: ${err.message}`);
-    }
-
-    return { message: 'Đăng ký thành công', data: result };
-  }
-
-  /**
-   * Lấy danh sách nhân viên (từ MongoDB, lọc userType=staff)
-   */
-  async getStaffList(page = 1, limit = 20, keyword?: string) {
-    const filter: any = { 'metadata.userType': 'staff', isDeleted: { $ne: true } };
-
-    if (keyword) {
-      const q = keyword.toLowerCase();
-      filter.$or = [
-        { username: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
-        { phoneNumber: { $regex: q, $options: 'i' } },
-        { 'profile.firstName': { $regex: q, $options: 'i' } },
-        { 'profile.lastName': { $regex: q, $options: 'i' } },
-      ];
-    }
-
-    const total = await this.userModel.countDocuments(filter);
-    const skip = (page - 1) * limit;
-    const users = await this.userModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-
-    const staffList = users.map((u: any) => ({
-      _id: u._id?.toString(),
-      username: u.username,
-      email: u.email || null,
-      profile: u.profile || {},
-      status: u.status,
-      keycloakId: u.keycloakId,
-      fineractClientId: u.fineractClientId || null,
-      fineractStaffId: u.metadata?.fineractStaffId ?? null,
-      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
-      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
-      phoneNumber: u.phoneNumber || u.username || null,
-      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
-      createdAt: u.createdAt,
-      updatedAt: u.updatedAt,
-      isDeleted: u.isDeleted || false,
-    }));
-
-    // Đếm thêm số deleted (cho stats)
-    const deletedCount = await this.userModel.countDocuments({ 'metadata.userType': 'staff', isDeleted: true });
-
-    return { staff: staffList, total, page, limit, deletedCount };
-  }
-
-  /**
-   * Lấy danh sách nhân viên đã bị khóa (isDeleted=true)
-   */
-  async getDeletedStaffList(page = 1, limit = 20) {
-    const filter: any = { 'metadata.userType': 'staff', isDeleted: true };
-    const total = await this.userModel.countDocuments(filter);
-    const skip = (page - 1) * limit;
-    const users = await this.userModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean();
-
-    const staffList = users.map((u: any) => ({
-      _id: u._id?.toString(),
-      username: u.username,
-      email: u.email || null,
-      profile: u.profile || {},
-      status: u.status,
-      keycloakId: u.keycloakId,
-      fineractClientId: u.fineractClientId || null,
-      fineractStaffId: u.metadata?.fineractStaffId ?? null,
-      roleId: u.metadata?.roleId ?? (Array.isArray(u.metadata?.roleIds) ? u.metadata.roleIds[0] : null),
-      roleName: u.metadata?.roleName ?? (Array.isArray(u.metadata?.roleNames) ? u.metadata.roleNames[0] : null),
-      phoneNumber: u.phoneNumber || u.username || null,
-      displayName: [u.profile?.firstName, u.profile?.lastName].filter(Boolean).join(' ') || u.username,
-      createdAt: u.createdAt,
-      updatedAt: u.updatedAt,
-      isDeleted: true,
-    }));
-
-    return { staff: staffList, total, page, limit };
-  }
-
-  /**
-   * Lấy chi tiết nhân viên theo ID
-   */
-  async getStaffById(staffId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(staffId)) {
-      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' }).lean();
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' }).lean();
-    }
-    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
-
-    return {
-      _id: user._id?.toString(),
-      username: user.username,
-      email: user.email || null,
-      profile: user.profile || {},
-      status: user.status,
-      keycloakId: user.keycloakId,
-      fineractClientId: user.fineractClientId || null,
-      fineractStaffId: user.metadata?.fineractStaffId ?? null,
-      roleId: user.metadata?.roleId ?? (Array.isArray(user.metadata?.roleIds) ? user.metadata.roleIds[0] : null),
-      roleName:
-        user.metadata?.roleName ?? (Array.isArray(user.metadata?.roleNames) ? user.metadata.roleNames[0] : null),
-      phoneNumber: user.phoneNumber || user.username || null,
-      displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      metadata: user.metadata,
-      isDeleted: user.isDeleted || false,
-    };
-  }
-
-  /**
-   * Cập nhật nhân viên: MongoDB + Keycloak (nếu cần)
-   * Không cho cập nhật phoneNumber / username
-   */
-  async updateStaff(staffId: string, dto: UpdateStaffDto) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(staffId)) {
-      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' });
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' });
-    }
-    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
-
-    // Cập nhật MongoDB (firstName, lastName, email, status, phoneNumber)
-    if (dto.firstName !== undefined || dto.lastName !== undefined) {
-      if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
-      if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
-    }
-    if (dto.email !== undefined) user.email = dto.email;
-    if (dto.status !== undefined) user.status = dto.status;
-    // phoneNumber là riêng biệt với username — không ảnh hưởng đăng nhập
-    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
-
-    user.markModified('profile');
-    await user.save();
-
-    // Cập nhật Keycloak (nếu có thay đổi tên / email)
-    if (user.keycloakId && (dto.firstName || dto.lastName || dto.email)) {
-      try {
-        const token = await (this.keycloakService as any).getAdminToken();
-        const realm = (this.keycloakService as any).realm;
-
-        const userRes = await (this.keycloakService as any).httpClient.get(
-          `/admin/realms/${realm}/users/${user.keycloakId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const kcUser = userRes.data;
-        if (dto.firstName) kcUser.firstName = dto.firstName;
-        if (dto.lastName) kcUser.lastName = dto.lastName;
-        if (dto.email) kcUser.email = dto.email;
-
-        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        this.logger.log(`[updateStaff] Updated Keycloak user ${user.keycloakId}`);
-      } catch (err: any) {
-        this.logger.warn(`[updateStaff] Keycloak update failed: ${err.message}`);
-      }
-    }
-
-    // Cập nhật Fineract staff (nếu có fineractStaffId)
-    const fineractStaffId = user.metadata?.fineractStaffId;
-    if (fineractStaffId && (dto.firstName || dto.lastName || dto.email)) {
-      try {
-        const fineractClient = this.fineractClientService['client'];
-        const payload: any = {};
-        if (dto.firstName) payload.firstname = dto.firstName;
-        if (dto.lastName) payload.lastname = dto.lastName;
-        if (dto.email) payload.emailAddress = dto.email;
-
-        await fineractClient.put(`/staff/${fineractStaffId}`, payload);
-        this.logger.log(`[updateStaff] Updated Fineract staff ${fineractStaffId}`);
-      } catch (err: any) {
-        this.logger.warn(`[updateStaff] Fineract staff update failed: ${err.message}`);
-      }
-    }
-
-    return this.getStaffById(user._id.toString());
-  }
-
-  /**
-   * Xóa nhân viên (soft delete): Disable Keycloak + isDeleted=true
-   */
-  async deleteStaff(staffId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(staffId)) {
-      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff' });
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff' });
-    }
-    if (!user) throw new NotFoundException('Nhân viên không tồn tại');
-
-    // Disable trên Keycloak (không xóa hẳn)
-    if (user.keycloakId) {
-      try {
-        const token = await (this.keycloakService as any).getAdminToken();
-        const realm = (this.keycloakService as any).realm;
-
-        const userRes = await (this.keycloakService as any).httpClient.get(
-          `/admin/realms/${realm}/users/${user.keycloakId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const kcUser = userRes.data;
-        kcUser.enabled = false;
-
-        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        this.logger.log(`[deleteStaff] Disabled Keycloak user ${user.keycloakId}`);
-      } catch (err: any) {
-        this.logger.warn(`[deleteStaff] Keycloak disable failed: ${err.message}`);
-      }
-    }
-
-    // Soft delete: đánh dấu isDeleted = true
-    user.isDeleted = true;
-    user.status = 'suspended';
-    await user.save();
-    this.logger.log(`[deleteStaff] Soft deleted staff ${user._id}`);
-
-    return { deleted: true, staffId: user._id?.toString() };
-  }
-
-  /**
-   * Khôi phục nhân viên: Enable Keycloak + isDeleted=false
-   */
-  async restoreStaff(staffId: string) {
-    let user: any = null;
-    if (Types.ObjectId.isValid(staffId)) {
-      user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff', isDeleted: true });
-    }
-    if (!user) {
-      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff', isDeleted: true });
-    }
-    if (!user) throw new NotFoundException('Nhân viên không tồn tại hoặc chưa bị khóa');
-
-    // Re-enable trên Keycloak
-    if (user.keycloakId) {
-      try {
-        const token = await (this.keycloakService as any).getAdminToken();
-        const realm = (this.keycloakService as any).realm;
-
-        const userRes = await (this.keycloakService as any).httpClient.get(
-          `/admin/realms/${realm}/users/${user.keycloakId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const kcUser = userRes.data;
-        kcUser.enabled = true;
-
-        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        this.logger.log(`[restoreStaff] Re-enabled Keycloak user ${user.keycloakId}`);
-      } catch (err: any) {
-        this.logger.warn(`[restoreStaff] Keycloak re-enable failed: ${err.message}`);
-      }
-    }
-
-    user.isDeleted = false;
-    user.status = 'active';
-    await user.save();
-    this.logger.log(`[restoreStaff] Restored staff ${user._id}`);
-
-    return this.getStaffById(user._id.toString());
-  }
-
-  /**
-   * Migration: Set phoneNumber = username cho tất cả user chưa có phoneNumber
-   */
-  async migratePhoneNumbers() {
-    const result = await this.userModel.updateMany(
-      { $or: [{ phoneNumber: { $exists: false } }, { phoneNumber: null }, { phoneNumber: '' }] },
-      [{ $set: { phoneNumber: '$username' } }],
-    );
-    this.logger.log(`[migratePhoneNumbers] Updated ${result.modifiedCount} users`);
-    return { modifiedCount: result.modifiedCount };
-  }
-
-  // ── Self-service Profile & Password ────────────────────────────────────────
-
-  /**
-   * Lấy hồ sơ đầy đủ từ DB (không dùng JWT payload)
-   */
-  async getMyProfile(userId: string) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
-    return {
-      _id: user._id?.toString(),
-      username: user.username,
-      email: user.email || '',
-      phoneNumber: user.phoneNumber || user.username || '',
-      profile: user.profile || {},
-      roles: (user as any).roles || [],
-    };
-  }
-
-  /**
-   * Cập nhật hồ sơ cá nhân (staff tự cập nhật)
-   */
-  async updateMyProfile(
-    userId: string,
-    dto: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string },
-  ) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
-
-    if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
-    if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
-    if (dto.email !== undefined) user.email = dto.email;
-    if (dto.phoneNumber !== undefined) user.phoneNumber = dto.phoneNumber;
-    user.markModified('profile');
-    await user.save();
-
-    // Sync Keycloak
-    if (user.keycloakId && (dto.firstName || dto.lastName || dto.email)) {
-      try {
-        const token = await (this.keycloakService as any).getAdminToken();
-        const realm = (this.keycloakService as any).realm;
-        const userRes = await (this.keycloakService as any).httpClient.get(
-          `/admin/realms/${realm}/users/${user.keycloakId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const kcUser = userRes.data;
-        if (dto.firstName) kcUser.firstName = dto.firstName;
-        if (dto.lastName) kcUser.lastName = dto.lastName;
-        if (dto.email) kcUser.email = dto.email;
-        await (this.keycloakService as any).httpClient.put(`/admin/realms/${realm}/users/${user.keycloakId}`, kcUser, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        this.logger.log(`[updateMyProfile] Synced Keycloak user ${user.keycloakId}`);
-      } catch (err: any) {
-        this.logger.warn(`[updateMyProfile] Keycloak sync failed: ${err.message}`);
-      }
-    }
-
-    return {
-      _id: user._id?.toString(),
-      username: user.username,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
-      profile: user.profile,
-    };
-  }
-
-  /**
-   * Đổi mật khẩu: xác thực mật khẩu hiện tại qua Keycloak, rồi đặt mật khẩu mới
-   */
-  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
-    if (!user.keycloakId) throw new BadRequestException('Tài khoản không liên kết Keycloak');
-
-    // Xác thực mật khẩu hiện tại bằng cách gọi Keycloak token endpoint
-    try {
-      await this.keycloakAuthService.loginWithPassword(user.username, currentPassword);
-    } catch {
-      throw new BadRequestException('Mật khẩu hiện tại không đúng');
-    }
-
-    // Đặt mật khẩu mới qua Admin API
-    await this.keycloakService.resetUserPassword(user.keycloakId, newPassword);
-
-    return { success: true };
-  }
-
-  // ── User Preferences (font size, etc.) ──────────────────────────────────────
-
-  /**
-   * Lấy preferences của user hiện tại
-   */
-  async getMyPreferences(userId: string) {
-    const user = await this.userModel.findById(userId).select('preferences').lean();
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
-    return user.preferences || { fontSize: 'default' };
-  }
-
-  /**
-   * Cập nhật preferences của user hiện tại
-   */
-  async updateMyPreferences(userId: string, prefs: { fontSize?: 'compact' | 'default' | 'large' }) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
-
-    const validSizes = ['compact', 'default', 'large'];
-    if (prefs.fontSize && !validSizes.includes(prefs.fontSize)) {
-      throw new BadRequestException(`fontSize phải là một trong: ${validSizes.join(', ')}`);
-    }
-
-    user.preferences = {
-      ...(user.preferences || { fontSize: 'default' }),
-      ...(prefs.fontSize ? { fontSize: prefs.fontSize } : {}),
-    };
-    user.markModified('preferences');
-    await user.save();
-
-    return user.preferences;
-  }
-
-  // =============================================
-  // LOAN SUPPORT REQUESTS (WAIVE / RESCHEDULE)
-  // =============================================
-
-  async getSupportRequests(query: any) {
-    const filter: any = {};
-    if (query.status) filter.status = query.status;
-    if (query.requestType) filter.requestType = query.requestType;
-
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 20;
-
-    const [items, total] = await Promise.all([
-      this.supportRequestModel
-        .find(filter)
-        .populate('userId', 'username email fullName phoneNumber')
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean()
-        .exec(),
-      this.supportRequestModel.countDocuments(filter),
-    ]);
-
-    return { items, total, page, limit };
-  }
-
-  async approveWaivePenalty(requestId: string, adminId: string) {
-    const request = await this.supportRequestModel.findById(requestId);
-    if (!request || request.requestType !== 'WAIVE_PENALTY' || request.status !== 'PENDING') {
-      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
-    }
-
-    // Call fineract to waive penalties
-    await this.fineractLoanService.waiveAllPenalties(request.fineractLoanId);
-
-    // Mark request as approved
-    request.status = 'APPROVED';
-    request.resolvedBy = new Types.ObjectId(adminId);
-    request.resolvedAt = new Date();
-    await request.save();
-
-    return request;
-  }
-
-  async approveReschedule(requestId: string, adminId: string, adminNote?: string) {
-    const request = await this.supportRequestModel.findById(requestId);
-    if (!request || request.requestType !== 'RESCHEDULE' || request.status !== 'PENDING') {
-      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
-    }
-
-    if (!request.proposedRescheduleDate) {
-      throw new BadRequestException('Thiếu thông tin ngày đến hạn mới để cơ cấu nợ');
-    }
-
-    // Get loan details to find current schedule
-    const loanDetails = await this.fineractLoanService.getLoanDetails(String(request.fineractLoanId));
-    let rescheduleFromDate = new Date().toISOString().split('T')[0]; // fallback
-
-    // Find the first unpaid period to reschedule from
-    if (loanDetails && loanDetails.repaymentSchedule && loanDetails.repaymentSchedule.periods) {
-      const firstUnpaid = loanDetails.repaymentSchedule.periods.find((p: any) => p.period > 0 && !p.complete);
-      if (firstUnpaid && firstUnpaid.dueDate) {
-        const dateArr = firstUnpaid.dueDate;
-        rescheduleFromDate = Array.isArray(dateArr)
-          ? `${dateArr[0]}-${String(dateArr[1]).padStart(2, '0')}-${String(dateArr[2]).padStart(2, '0')}`
-          : dateArr;
-      }
-    }
-
-    // Call fineract to reschedule
-    await this.fineractLoanService.rescheduleLoan(request.fineractLoanId, {
-      rescheduleFromDate: rescheduleFromDate,
-      adjustedDueDate: request.proposedRescheduleDate,
-      rescheduleReasonId: 1, // Default "Other" reason in standard config
-    });
-
-    // Mark request as approved
-    request.status = 'APPROVED';
-    request.resolvedBy = new Types.ObjectId(adminId);
-    request.resolvedAt = new Date();
-    request.adminNote = adminNote || 'Approved Reschedule';
-    await request.save();
-
-    return request;
-  }
-
-  async approveWriteOff(requestId: string, adminId: string, adminNote?: string) {
-    const request = await this.supportRequestModel.findById(requestId);
-    if (!request || request.requestType !== 'WRITE_OFF' || request.status !== 'PENDING') {
-      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
-    }
-
-    await this.fineractLoanService.writeOffLoan(request.fineractLoanId, adminNote || request.reason);
-
-    request.status = 'APPROVED';
-    request.resolvedBy = new Types.ObjectId(adminId);
-    request.resolvedAt = new Date();
-    request.adminNote = adminNote || 'Approved Write-off';
-    await request.save();
-
-    const app = await this.loanApplicationModel.findOne({ fineractLoanId: request.fineractLoanId });
-    if (app) {
-      app.status = 'closed' as any;
-      await app.save();
-    }
-
-    return request;
-  }
-
-  async approveWaiveInterest(requestId: string, adminId: string, adminNote?: string) {
-    const request = await this.supportRequestModel.findById(requestId);
-    if (!request || request.requestType !== 'WAIVE_INTEREST' || request.status !== 'PENDING') {
-      throw new BadRequestException('Yêu cầu không hợp lệ hoặc đã được xử lý');
-    }
-
-    await this.fineractLoanService.waiveInterest(request.fineractLoanId, {
-      note: adminNote || request.reason,
-    });
-
-    request.status = 'APPROVED';
-    request.resolvedBy = new Types.ObjectId(adminId);
-    request.resolvedAt = new Date();
-    request.adminNote = adminNote || 'Approved Interest Waiver';
-    await request.save();
-
-    return request;
   }
 }

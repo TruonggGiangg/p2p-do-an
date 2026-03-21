@@ -269,4 +269,72 @@ export class InvestmentContractService {
       .sort({ createdAt: -1 })
       .exec();
   }
+
+  // ═══════════════════════════════════════════════════════
+  //  SCHEDULE PREVIEW (không tạo contract)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Preview lender schedule trước khi đầu tư.
+   * Tính toán schedule dựa trên loan và số notes, nhưng KHÔNG tạo contract.
+   */
+  async getSchedulePreview(
+    loanApplicationId: string,
+    numNotes: number,
+  ): Promise<{
+    capital: number;
+    numNotes: number;
+    periodMonth: number;
+    monthlyRatePercent: number;
+    annualRatePercent: number;
+    monthlyIncome: number;
+    entirelyProfit: number;
+    entirelyPay: number;
+    schedule: LenderScheduleItem[];
+    summary: { totalPrincipal: number; totalInterest: number; totalIncome: number; periodCount: number };
+  }> {
+    const loan = await this.loanModel.findById(loanApplicationId);
+    if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
+
+    // Check available
+    const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
+    const investedSoFar = (loan as any).investedNotes || 0;
+    const availableNotes = totalLoanNotes - investedSoFar;
+    if (numNotes > availableNotes) {
+      throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
+    }
+
+    const capital = numNotes * this.baseUnitPrice;
+    const monthlyRatePercent = loan.monthlyRatePercent;
+    const annualRatePercent = monthlyRatePercent * 12;
+    const periodMonth = loan.periodMonth;
+
+    // PMT calculation
+    const monthlyRate = monthlyRatePercent / 100;
+    let entirelyPay = 0;
+    if (monthlyRate > 0 && periodMonth > 0) {
+      const factor = Math.pow(1 + monthlyRate, periodMonth);
+      const monthlyPay = capital * (monthlyRate * factor) / (factor - 1);
+      entirelyPay = this.roundToCurrency(monthlyPay * periodMonth, loan.inMultiplesOf || 1000);
+    } else {
+      entirelyPay = capital;
+    }
+    const entirelyProfit = entirelyPay - capital;
+    const monthlyIncome = this.roundToCurrency(entirelyPay / Math.max(1, periodMonth), loan.inMultiplesOf || 1000);
+
+    const { schedule, summary } = this.calculateLenderSchedule(loan, capital);
+
+    return {
+      capital,
+      numNotes,
+      periodMonth,
+      monthlyRatePercent,
+      annualRatePercent,
+      monthlyIncome,
+      entirelyProfit,
+      entirelyPay,
+      schedule,
+      summary,
+    };
+  }
 }

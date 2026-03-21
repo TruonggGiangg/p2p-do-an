@@ -306,6 +306,47 @@ class InvestService {
     }>(`/api/invest/contract/${id}`);
     return response.data.data;
   }
+
+  // ═══════════════════════════════════════════════════════
+  //  STATS, BALANCE, SCHEDULE PREVIEW
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Thống kê đầu tư của lender
+   */
+  async getStats(): Promise<any> {
+    const response = await api.get<{
+      statusCode: number;
+      data: any;
+    }>('/api/invest/stats');
+    return response.data.data;
+  }
+
+  /**
+   * Số dư ví đầu tư
+   */
+  async getMyBalance(): Promise<{
+    walletBalance: number;
+    totalInvested: number;
+    availableBalance: number;
+  }> {
+    const response = await api.get<{
+      statusCode: number;
+      data: { walletBalance: number; totalInvested: number; availableBalance: number };
+    }>('/api/invest/my-balance');
+    return response.data.data;
+  }
+
+  /**
+   * Preview lịch nhận tiền trước khi đầu tư
+   */
+  async getSchedulePreview(loanApplicationId: string, numNotes: number): Promise<any> {
+    const response = await api.post<{
+      statusCode: number;
+      data: any;
+    }>('/api/invest/schedule-preview', { loanApplicationId, numNotes });
+    return response.data.data;
+  }
 }
 
 export const investService = new InvestService();

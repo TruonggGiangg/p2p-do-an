@@ -12,7 +12,7 @@ export interface LoanSyncChangeItem {
 /** Chi tiết đồng bộ từng khoản vay */
 export interface LoanSyncRunDetailItem {
   fineractLoanId: number;
-  status: 'synced' | 'skipped' | 'error';
+  status: 'synced' | 'skipped' | 'error' | 'orphan_removed';
   message?: string;
   changes?: LoanSyncChangeItem[];
 }
@@ -41,6 +41,9 @@ export class LoanSyncRun extends Document {
 
   @Prop({ required: true, default: 0 })
   skipped: number;
+
+  @Prop({ required: false, default: 0 })
+  orphansRemoved?: number;
 
   @Prop({ required: false })
   message?: string;

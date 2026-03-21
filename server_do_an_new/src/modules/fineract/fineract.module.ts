@@ -10,6 +10,7 @@ import { FineractBaseService } from './services/fineract-base.service';
 import { FineractClientService } from './services/fineract-client.service';
 import { FineractLoanService } from './services/fineract-loan.service';
 import { FineractSavingsService } from './services/fineract-savings.service';
+import { FineractFDService } from './services/fineract-fd.service';
 
 // Legacy facade for backward compatibility
 import { FineractService } from './fineract.service';
@@ -47,6 +48,7 @@ import { FineractService } from './fineract.service';
     FineractClientService,
     FineractLoanService,
     FineractSavingsService,
+    FineractFDService,
     // Legacy facade (backward compatible)
     FineractService,
   ],
@@ -56,6 +58,7 @@ import { FineractService } from './fineract.service';
     FineractClientService,
     FineractLoanService,
     FineractSavingsService,
+    FineractFDService,
     FineractService, // Keep for backward compatibility
   ],
 })
