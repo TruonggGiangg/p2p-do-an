@@ -77,7 +77,7 @@ export class InvestService {
 
     const availableLoans = await this.loanModel
       .find({
-        status: { $in: ['approved', 'disbursed'] },
+        status: 'approved',
         isFullMatch: { $ne: true },
         monthlyRatePercent: { $gte: interestRange.min, $lte: interestRange.max },
         periodMonth: { $gte: periodRange.min, $lte: periodRange.max },
@@ -128,6 +128,16 @@ export class InvestService {
               nodeMatch: nodesToMatch,
               isInvested: false,
               matchedAt: new Date(),
+              loanDetails: {
+                willing: loan.willing,
+                capital: loan.capital,
+                periodMonth: loan.periodMonth,
+                monthlyRatePercent: loan.monthlyRatePercent,
+                productId: loan.productId,
+                aiScore: (loan as any).aiScore || 0,
+                creditScore: (loan as any).creditScore || 0,
+                status: loan.status,
+              },
             },
           },
           $set: {

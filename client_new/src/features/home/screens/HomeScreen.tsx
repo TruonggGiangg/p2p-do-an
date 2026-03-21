@@ -32,7 +32,13 @@ import { BinanceHeader, FintechPullToRefresh, FintechScreenSkeleton } from '../.
 import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import type { Wallet } from '../../../types/auth.types';
+import {
+    Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
+    CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
+    UserCircle, Translate, Question, Headset,
+    type IconProps,
+} from 'phosphor-react-native';
+import type { Wallet as WalletType } from '../../../types/auth.types';
 import { formatCurrency } from '../../../shared/utils';
 import {
     QUICK_ACTIONS,
@@ -40,6 +46,21 @@ import {
     UTILITIES_GRID,
     type ShortcutItem,
 } from '../constants/home.constants';
+
+// Phosphor Icon Map — duotone weight for premium fintech look
+const PHOSPHOR_MAP: Record<string, React.ComponentType<IconProps>> = {
+    Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
+    CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
+    UserCircle, Translate, Question, Headset,
+};
+
+function PIcon({ name, size = 22, color = '#CDEA2D', weight = 'duotone' }: {
+    name: string; size?: number; color?: string; weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
+}) {
+    const Comp = PHOSPHOR_MAP[name];
+    if (!Comp) return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
+    return <Comp size={size} color={color} weight={weight} />;
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WALLET_CARD_W = SCREEN_WIDTH - 48;
@@ -70,7 +91,7 @@ function CardFront({
     isDefault,
     userName,
 }: {
-    wallet: Wallet;
+    wallet: WalletType;
     gradientColors: [string, string, ...string[]];
     isDefault: boolean;
     userName: string;
@@ -154,7 +175,7 @@ function CardBack({
     balanceVisible,
     phone,
 }: {
-    wallet: Wallet;
+    wallet: WalletType;
     balanceVisible: boolean;
     phone: string;
 }) {
@@ -260,7 +281,7 @@ function FlippableCard({
     phone,
     onSetDefault,
 }: {
-    wallet: Wallet;
+    wallet: WalletType;
     index: number;
     balanceVisible: boolean;
     isDefault: boolean;
@@ -371,7 +392,7 @@ function QuickActionButton({
             <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
                 <View style={[styles.quickActionCircle, { backgroundColor: colors.accent }]}>
-                    <MaterialCommunityIcons name={item.icon} size={22} color="#CDEA2D" />
+                    <PIcon name={item.icon} size={24} color="#CDEA2D" weight="duotone" />
                 </View>
                 <Text style={[styles.quickActionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
             </TouchableOpacity>
@@ -387,33 +408,40 @@ function ServiceGridItem({
 }: { item: ShortcutItem; onPress: () => void; colors: any; isDark: boolean; index: number; }) {
     const itemColor = item.color || colors.accent;
     const iconBg = isDark
-        ? `${itemColor}18`   // 10% opacity in dark
-        : `${itemColor}14`;  // 8% opacity in light
-    const iconBorder = isDark
-        ? `${itemColor}25`   // subtle border dark
-        : `${itemColor}20`;  // subtle border light
+        ? `${itemColor}18`
+        : `${itemColor}14`;
 
     return (
         <Animated.View entering={FadeInDown.delay(400 + index * 60).duration(500)} style={styles.serviceItemWrap}>
-            <TouchableOpacity style={styles.serviceItem} activeOpacity={0.6}
+            <TouchableOpacity style={[styles.serviceItem, {
+                backgroundColor: isDark ? 'rgba(37,57,51,0.5)' : '#FFF',
+                ...Platform.select({
+                    ios: { shadowColor: isDark ? '#000' : '#14342B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.25 : 0.06, shadowRadius: 12 },
+                    android: { elevation: isDark ? 3 : 2 },
+                }),
+            }]} activeOpacity={0.6}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
                 <View style={[
                     styles.serviceIconCircle,
-                    {
-                        backgroundColor: iconBg,
-                        borderWidth: 1.5,
-                        borderColor: iconBorder,
-                    },
+                    { backgroundColor: colors.accent || '#14342B' },
                 ]}>
-                    <MaterialCommunityIcons
+                    <PIcon
                         name={item.icon}
-                        size={24}
-                        color={isDark ? '#CDEA2D' : itemColor}
+                        size={22}
+                        color="#CDEA2D"
+                        weight="duotone"
                     />
                 </View>
-                <Text style={[styles.serviceLabel, { color: colors.textPrimary }]} numberOfLines={2}>
-                    {item.label}
-                </Text>
+                <View style={styles.serviceLabelWrap}>
+                    <Text style={[styles.serviceLabel, { color: colors.textPrimary }]} numberOfLines={1}>
+                        {item.label}
+                    </Text>
+                    {item.description && (
+                        <Text style={[styles.serviceDesc, { color: colors.textMuted || colors.textSecondary }]} numberOfLines={1}>
+                            {item.description}
+                        </Text>
+                    )}
+                </View>
             </TouchableOpacity>
         </Animated.View>
     );
@@ -429,7 +457,7 @@ export default function HomeScreen() {
     const { user, refreshUser } = useAuth();
     const { theme, themeMode } = useTheme();
     const insets = useSafeAreaInsets();
-    const [wallets, setWallets] = useState<Wallet[]>([]);
+    const [wallets, setWallets] = useState<WalletType[]>([]);
     const [walletsLoading, setWalletsLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [walletSelectorVisible, setWalletSelectorVisible] = useState(false);
@@ -451,7 +479,7 @@ export default function HomeScreen() {
                 const syncResponse = await walletAPI.getWallets();
                 walletData = syncResponse.wallets || [];
             }
-            setWallets(walletData.filter((w: Wallet) => w.type === 'e_wallet'));
+            setWallets(walletData.filter((w: WalletType) => w.type === 'e_wallet'));
         } catch (error) {
             console.error('Failed to fetch wallets:', error);
         } finally {
@@ -478,7 +506,7 @@ export default function HomeScreen() {
         if (item.nav === 'QR') { setWalletSelectorVisible(true); }
         else { item.isParent ? (navigation as any).getParent()?.navigate(item.nav) : (navigation as any).navigate(item.nav); }
     };
-    const handleSelectWalletForQR = (wallet: Wallet) => { setWalletSelectorVisible(false); (navigation as any).navigate('MyQR', { wallet }); };
+    const handleSelectWalletForQR = (wallet: WalletType) => { setWalletSelectorVisible(false); (navigation as any).navigate('MyQR', { wallet }); };
     const onCardScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const idx = Math.round(e.nativeEvent.contentOffset.x / (WALLET_CARD_W + 12));
         if (idx !== activeCardIndex && idx >= 0 && idx < (wallets.length || 1)) { setActiveCardIndex(idx); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
@@ -560,8 +588,7 @@ export default function HomeScreen() {
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Dịch vụ</Text>
                         </View>
-                        <View style={[styles.servicesCard, { backgroundColor: isDark ? c.surface : '#FFF',
-                            ...Platform.select({ ios: { shadowColor: '#14342B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.2 : 0.06, shadowRadius: 16 }, android: { elevation: isDark ? 4 : 2 } }) }]}>
+                        <View style={styles.servicesCard}>
                             {SERVICES_GRID.map((item, idx) => (
                                 <ServiceGridItem key={idx} item={item} onPress={() => handleItemPress(item)} colors={c} isDark={isDark} index={idx} />
                             ))}
@@ -573,8 +600,7 @@ export default function HomeScreen() {
                         <View style={styles.sectionHeader}>
                             <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích</Text>
                         </View>
-                        <View style={[styles.servicesCard, { backgroundColor: isDark ? c.surface : '#FFF',
-                            ...Platform.select({ ios: { shadowColor: '#14342B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.2 : 0.06, shadowRadius: 16 }, android: { elevation: isDark ? 4 : 2 } }) }]}>
+                        <View style={styles.servicesCard}>
                             {UTILITIES_GRID.map((item, idx) => (
                                 <ServiceGridItem key={idx} item={item} onPress={() => handleItemPress(item)} colors={c} isDark={isDark} index={idx} />
                             ))}
@@ -604,7 +630,7 @@ const styles = StyleSheet.create({
     greetingName: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
 
     // ── Section Headers ──
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingHorizontal: 2 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
     sectionTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
 
     // ── Card Carousel ──
@@ -778,18 +804,23 @@ const styles = StyleSheet.create({
     swipeHintText: { fontSize: 11, fontWeight: '500' },
 
     // ── Quick Actions ──
-    quickActionsSection: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 16, marginTop: 24 },
+    quickActionsSection: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, marginTop: 24 },
     quickActionBtn: { alignItems: 'center', width: 72 },
     quickActionCircle: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
     quickActionLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
 
-    // ── Services ──
-    servicesSection: { paddingHorizontal: 16, marginTop: 28 },
-    servicesCard: { borderRadius: 20, paddingTop: 24, paddingBottom: 0, paddingHorizontal: 4, flexDirection: 'row', flexWrap: 'wrap' },
-    serviceItemWrap: { width: '25%', marginBottom: 24 },
-    serviceItem: { alignItems: 'center', paddingHorizontal: 2 },
-    serviceIconCircle: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    serviceLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center', lineHeight: 15 },
+    // ── Services — Stitch "Bioluminescent Vault" 2-column card grid ──
+    servicesSection: { paddingHorizontal: 20, marginTop: 28 },
+    servicesCard: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+    serviceItemWrap: { width: '50%', padding: 4 },
+    serviceItem: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingVertical: 14, paddingHorizontal: 12, borderRadius: 16,
+    },
+    serviceIconCircle: { width: 42, height: 42, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+    serviceLabelWrap: { flex: 1 },
+    serviceLabel: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
+    serviceDesc: { fontSize: 10, fontWeight: '500', marginTop: 1, lineHeight: 14, opacity: 0.7 },
 
 });
 

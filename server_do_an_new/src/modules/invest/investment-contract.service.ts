@@ -284,6 +284,19 @@ export class InvestmentContractService {
     return contract;
   }
 
+  async getContractByLoanId(loanApplicationId: string, lenderId: string): Promise<InvestmentContract> {
+    const contract = await this.contractModel
+      .findOne({
+        loanApplicationId: new Types.ObjectId(loanApplicationId),
+        lenderId: new Types.ObjectId(lenderId),
+      })
+      .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status disbursementDate')
+      .exec();
+
+    if (!contract) throw new NotFoundException('Không tìm thấy hợp đồng đầu tư cho khoản vay này');
+    return contract;
+  }
+
   async getContractsByLoan(loanApplicationId: string) {
     return this.contractModel
       .find({ loanApplicationId: new Types.ObjectId(loanApplicationId) })

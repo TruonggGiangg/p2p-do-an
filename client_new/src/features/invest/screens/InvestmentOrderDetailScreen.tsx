@@ -66,6 +66,27 @@ export default function InvestmentOrderDetailScreen() {
     ]);
   };
 
+  const handleLoanPress = async (item: any) => {
+    if (item.isInvested) {
+      try {
+        const contract = await investService.getContractByLoanId(item.loanId);
+        if (contract) {
+          navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
+        } else {
+          Alert.alert('Chưa sẵn sàng', 'Hợp đồng đầu tư đang được tạo, vui lòng thử lại sau.');
+        }
+      } catch (error: any) {
+        Alert.alert('Lỗi', error?.message || 'Không thể mở chi tiết hợp đồng.');
+      }
+    } else {
+      navigation.navigate('SchedulePreview', {
+        loanApplicationId: item.loanId,
+        numNotes: item.nodeMatch,
+        readonly: true,
+      });
+    }
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { backgroundColor: theme.colors.background }]}>
@@ -160,12 +181,17 @@ export default function InvestmentOrderDetailScreen() {
         data={order.loans || []}
         keyExtractor={(item, index) => item.loanId + index}
         renderItem={({ item }) => (
-          <View style={[styles.loanCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
+          <TouchableOpacity 
+            style={[styles.loanCard, { backgroundColor: theme.colors.backgroundSecondary }]}
+            activeOpacity={0.7}
+            onPress={() => handleLoanPress(item)}
+          >
             <View style={styles.loanRow}>
               <Ionicons name="document-text" size={18} color={theme.colors.primary} />
               <Text style={[styles.loanId, { color: theme.colors.text }]} numberOfLines={1}>
                 {item.loanId}
               </Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
             </View>
             <View style={styles.loanInfoRow}>
               <Text style={[styles.loanInfoLabel, { color: theme.colors.textSecondary }]}>Nodes ghép</Text>
@@ -175,7 +201,7 @@ export default function InvestmentOrderDetailScreen() {
               <Text style={[styles.loanInfoLabel, { color: theme.colors.textSecondary }]}>Đã đầu tư</Text>
               <Ionicons name={item.isInvested ? 'checkmark-circle' : 'time-outline'} size={16} color={item.isInvested ? '#10B981' : '#F59E0B'} />
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={styles.emptyLoans}>

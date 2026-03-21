@@ -143,8 +143,10 @@ export default function InvestmentContractListScreen() {
         showBack={true}
         rightComponents={
           totalCount > 0 ? (
-            <View style={[styles.countBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Text style={[styles.countText, { color: theme.colors.primary }]}>{totalCount}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={[styles.countBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+                <Text style={[styles.countText, { color: theme.colors.primary }]}>{totalCount}</Text>
+              </View>
             </View>
           ) : undefined
         }

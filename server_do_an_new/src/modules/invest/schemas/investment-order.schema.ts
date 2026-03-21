@@ -7,6 +7,7 @@ export interface MatchedLoanItem {
   nodeMatch: number;
   isInvested: boolean;
   matchedAt: Date;
+  loanDetails?: any;
 }
 
 // ── Main Schema ───────────────────────────────────────────────
@@ -63,6 +64,7 @@ export class InvestmentOrder extends Document {
         nodeMatch: { type: Number, required: true },
         isInvested: { type: Boolean, default: false },
         matchedAt: { type: Date, default: Date.now },
+        loanDetails: { type: Object, required: false },
       },
     ],
     default: [],

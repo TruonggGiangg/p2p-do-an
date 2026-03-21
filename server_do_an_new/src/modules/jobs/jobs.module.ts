@@ -7,10 +7,11 @@
  *  - SyncLoanData: Đồng bộ toàn bộ dữ liệu khoản vay (nặng, batch)
  *  - SyncLoanProducts: So sánh sản phẩm vay Fineract ↔ MongoDB
  *  - SyncSavingsProducts: So sánh sản phẩm tiết kiệm Fineract ↔ MongoDB
+ *  - Disbursement: Tự động giải ngân khoản vay đủ match + đến ngày (HD-AMC)
  */
 
 import { Module, forwardRef } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
+import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { JobConfig, JobConfigSchema } from './schemas/job-config.schema';
 import { JobRunHistory, JobRunHistorySchema } from './schemas/job-run-history.schema';
 import { JobManagerService } from './job-manager.service';
@@ -20,16 +21,22 @@ import { SyncLoanDataJob } from './sync-loan-data.job';
 import { SyncLoanProductsJob } from './sync-loan-products.job';
 import { SyncSavingsProductsJob } from './sync-savings-products.job';
 import { SyncFDProductsJob } from './sync-fd-products.job';
+import { DisbursementJob } from './disbursement.job';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
+import { FineractModule } from '../fineract/fineract.module';
+import { FineractLoanService } from '../fineract/services/fineract-loan.service';
+import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: JobConfig.name, schema: JobConfigSchema },
       { name: JobRunHistory.name, schema: JobRunHistorySchema },
+      { name: LoanApplication.name, schema: LoanApplicationSchema },
     ]),
     forwardRef(() => AdminModule),
+    FineractModule,
   ],
   controllers: [JobsController],
   providers: [
@@ -78,6 +85,19 @@ import { AdminService } from '../admin/admin.service';
         return job;
       },
       inject: [AdminService, JobManagerService],
+    },
+    {
+      provide: 'DISBURSEMENT_JOB',
+      useFactory: (
+        loanModel: any,
+        fineractLoanService: FineractLoanService,
+        jobManager: JobManagerService,
+      ) => {
+        const job = new DisbursementJob(loanModel, fineractLoanService);
+        jobManager.register(job);
+        return job;
+      },
+      inject: [getModelToken(LoanApplication.name), FineractLoanService, JobManagerService],
     },
   ],
   exports: [JobManagerService],

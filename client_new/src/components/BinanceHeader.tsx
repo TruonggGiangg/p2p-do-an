@@ -166,14 +166,14 @@ const styles = StyleSheet.create({
     dashboardContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
         gap: 12,
     },
     standardContent: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 12,
+        paddingHorizontal: 20,
         height: 48,
     },
     leftRow: {
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     rightIcons: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 16,
+        gap: 14,
     },
     iconBtn: {
         position: 'relative',
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     rightActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 14,
     },
 });
 

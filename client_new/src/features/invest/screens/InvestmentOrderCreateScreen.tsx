@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   ActivityIndicator, Alert, StyleSheet, StatusBar, KeyboardAvoidingView, Platform,
@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import investService, { CreateInvestmentOrderPayload, CreateOrderResult } from '../services/invest.service';
+import { loanService, LoanProduct } from '../../loan/services/loan.service';
 
 export default function InvestmentOrderCreateScreen() {
   const { theme } = useTheme();
@@ -20,7 +21,20 @@ export default function InvestmentOrderCreateScreen() {
   const [interestMax, setInterestMax] = useState('3');
   const [periodMin, setPeriodMin] = useState('3');
   const [periodMax, setPeriodMax] = useState('12');
-  const [purpose, setPurpose] = useState('Kinh doanh');
+  
+  // Products
+  const [loanProducts, setLoanProducts] = useState<LoanProduct[]>([]);
+  const [selectedPurposes, setSelectedPurposes] = useState<string[]>([]);
+
+  useEffect(() => {
+    loanService.getLoanProducts().then(setLoanProducts).catch(console.error);
+  }, []);
+
+  const togglePurpose = (name: string) => {
+    setSelectedPurposes(prev =>
+      prev.includes(name) ? prev.filter(p => p !== name) : [...prev, name]
+    );
+  };
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -31,7 +45,7 @@ export default function InvestmentOrderCreateScreen() {
     if (!maxCapital || Number(maxCapital) < 100000) return 'Vốn tối đa phải >= 100,000 VND';
     if (!interestMin || !interestMax) return 'Vui lòng nhập khoảng lãi suất';
     if (!periodMin || !periodMax) return 'Vui lòng nhập khoảng kỳ hạn';
-    if (!purpose.trim()) return 'Vui lòng nhập mục đích đầu tư';
+    if (selectedPurposes.length === 0) return 'Vui lòng chọn ít nhất 1 sản phẩm vay';
     return null;
   };
 
@@ -61,7 +75,7 @@ export default function InvestmentOrderCreateScreen() {
         maxCapital: Number(maxCapital),
         interestRange: { min: Number(interestMin), max: Number(interestMax) },
         periodRange: { min: Number(periodMin), max: Number(periodMax) },
-        purpose: purpose.split(',').map(s => s.trim()).filter(Boolean),
+        purpose: selectedPurposes,
       };
 
       const res = await investService.createInvestmentOrder(payload);
@@ -169,8 +183,33 @@ export default function InvestmentOrderCreateScreen() {
         </View>
 
         {/* Purpose */}
-        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Mục đích đầu tư * (phân cách bằng dấu phẩy)</Text>
-        <TextInput style={[...inputStyle, styles.multiline]} value={purpose} onChangeText={setPurpose} placeholder="Kinh doanh, Mua xe" placeholderTextColor={theme.colors.textSecondary} multiline />
+        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Sản phẩm vay đầu tư *</Text>
+        <View style={styles.chipContainer}>
+          {loanProducts.length === 0 ? <ActivityIndicator size="small" color={theme.colors.primary} /> : null}
+          {loanProducts.map(p => {
+            const isSelected = selectedPurposes.includes(p.name);
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.chip,
+                  isSelected 
+                    ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+                    : { borderColor: theme.colors.border || '#E5E7EB' }
+                ]}
+                onPress={() => togglePurpose(p.name)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.chipText,
+                  isSelected ? { color: theme.colors.onPrimary || '#fff' } : { color: theme.colors.text }
+                ]}>
+                  {p.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         {/* Submit */}
         <TouchableOpacity
@@ -203,6 +242,9 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: '500', marginTop: 16, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   multiline: { minHeight: 60, textAlignVertical: 'top' },
+  chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
+  chipText: { fontSize: 13, fontWeight: '500' },
   rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rangeInput: { flex: 1 },
   rangeDash: { fontSize: 18 },

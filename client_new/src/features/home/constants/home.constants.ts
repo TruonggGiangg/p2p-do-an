@@ -6,38 +6,43 @@
 import type { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type ShortcutItem = {
-    icon: keyof typeof MaterialCommunityIcons.glyphMap;
+    /** Phosphor icon identifier */
+    icon: string;
+    /** Legacy MaterialCommunityIcons name (fallback) */
+    mciIcon?: keyof typeof MaterialCommunityIcons.glyphMap;
     label: string;
     nav: string;
     isParent: boolean;
     /** Accent color for icon circle (light mode) */
     color?: string;
+    /** Short description shown under the label */
+    description?: string;
 };
 
 /** Quick Actions (Balance card bottom) */
 export const QUICK_ACTIONS: ShortcutItem[] = [
-    { icon: 'cash-plus', label: 'Nạp tiền', nav: 'Wallets', isParent: true, color: '#0ECB81' },
-    { icon: 'swap-horizontal', label: 'Chuyển tiền', nav: 'Transfer', isParent: true, color: '#3B82F6' },
-    { icon: 'qrcode-scan', label: 'My QR', nav: 'MyQR', isParent: false, color: '#8B5CF6' },
-    { icon: 'history', label: 'Lịch sử', nav: 'LoanHistory', isParent: true, color: '#F59E0B' },
+    { icon: 'CurrencyDollar', mciIcon: 'cash-plus', label: 'Nạp tiền', nav: 'Wallets', isParent: true, color: '#0D9488' },
+    { icon: 'ArrowsLeftRight', mciIcon: 'swap-horizontal', label: 'Chuyển tiền', nav: 'Transfer', isParent: true, color: '#0D9488' },
+    { icon: 'QrCode', mciIcon: 'qrcode-scan', label: 'My QR', nav: 'MyQR', isParent: false, color: '#0D9488' },
+    { icon: 'ClockCounterClockwise', mciIcon: 'history', label: 'Lịch sử', nav: 'LoanHistory', isParent: true, color: '#0D9488' },
 ];
 
 /** Main Services Grid */
 export const SERVICES_GRID: ShortcutItem[] = [
-    { icon: 'wallet-outline', label: 'Ví P2P', nav: 'Wallets', isParent: true, color: '#0ECB81' },
-    { icon: 'hand-coin-outline', label: 'Vay P2P', nav: 'Loan', isParent: false, color: '#3B82F6' },
-    { icon: 'credit-card-clock-outline', label: 'Trả góp BNPL', nav: 'BNPL', isParent: false, color: '#8B5CF6' },
-    { icon: 'file-document-check-outline', label: 'Hợp đồng', nav: 'LoanContractList', isParent: true, color: '#F59E0B' },
-    { icon: 'shield-check-outline', label: 'Xác thực KYC', nav: 'KYCIntro', isParent: true, color: '#10B981' },
-    { icon: 'bell-outline', label: 'Thông báo', nav: 'Notifications', isParent: true, color: '#EF4444' },
+    { icon: 'Wallet', mciIcon: 'wallet-outline', label: 'Ví P2P', description: 'Quản lý nguồn vốn', nav: 'Wallets', isParent: true, color: '#0D9488' },
+    { icon: 'HandCoins', mciIcon: 'hand-coin-outline', label: 'Vay P2P', description: 'Kết nối vay vốn', nav: 'Loan', isParent: false, color: '#0E8C7F' },
+    { icon: 'CreditCard', mciIcon: 'credit-card-clock-outline', label: 'Trả góp BNPL', description: 'Mua trước trả sau', nav: 'BNPL', isParent: false, color: '#0D9488' },
+    { icon: 'FileText', mciIcon: 'file-document-check-outline', label: 'Hợp đồng', description: 'Ký kết số an toàn', nav: 'LoanContractList', isParent: true, color: '#0E8C7F' },
+    { icon: 'ShieldCheck', mciIcon: 'shield-check-outline', label: 'Xác thực KYC', description: 'Định danh sinh trắc', nav: 'KYCIntro', isParent: true, color: '#10B981' },
+    { icon: 'BellRinging', mciIcon: 'bell-outline', label: 'Thông báo', description: 'Biến động số dư', nav: 'Notifications', isParent: true, color: '#0D9488' },
 ];
 
 /** Utility / Settings Grid */
 export const UTILITIES_GRID: ShortcutItem[] = [
-    { icon: 'account-circle-outline', label: 'Tài khoản', nav: 'Profile', isParent: false, color: '#3B82F6' },
-    { icon: 'translate', label: 'Ngôn ngữ', nav: 'Profile', isParent: false, color: '#8B5CF6' },
-    { icon: 'help-circle-outline', label: 'Trợ giúp', nav: 'Profile', isParent: false, color: '#F59E0B' },
-    { icon: 'headset', label: 'Chat hỗ trợ', nav: 'Profile', isParent: false, color: '#0ECB81' },
+    { icon: 'UserCircle', mciIcon: 'account-circle-outline', label: 'Tài khoản', description: 'Thông tin cá nhân', nav: 'Profile', isParent: false, color: '#0D9488' },
+    { icon: 'Translate', mciIcon: 'translate', label: 'Ngôn ngữ', description: 'Tiếng Việt / English', nav: 'Profile', isParent: false, color: '#0E8C7F' },
+    { icon: 'Question', mciIcon: 'help-circle-outline', label: 'Trợ giúp', description: 'Câu hỏi thường gặp', nav: 'Profile', isParent: false, color: '#0D9488' },
+    { icon: 'Headset', mciIcon: 'headset', label: 'Chat hỗ trợ', description: 'Liên hệ 24/7', nav: 'Profile', isParent: false, color: '#10B981' },
 ];
 
 /** MoMo-style unified grid (kept for backward compat) */

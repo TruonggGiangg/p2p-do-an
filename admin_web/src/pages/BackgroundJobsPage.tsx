@@ -115,15 +115,15 @@ function useThemeColors(): ThemeColors {
   const { isDarkMode } = useTheme();
   return {
     isDarkMode,
-    cardBg: isDarkMode ? '#1e293b' : '#fff',
-    cardBorder: isDarkMode ? '#334155' : '#e2e8f0',
-    subtleBg: isDarkMode ? '#0f172a' : '#f8fafc',
-    textPrimary: isDarkMode ? '#f1f5f9' : '#1e293b',
-    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    textTertiary: isDarkMode ? '#64748b' : '#94a3b8',
-    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+    cardBg: isDarkMode ? '#1e293b' : '#ffffff',
+    cardBorder: isDarkMode ? 'rgba(51,65,85,0.4)' : 'rgba(199,197,206,0.10)',
+    subtleBg: isDarkMode ? '#0f172a' : '#f3f2ff',
+    textPrimary: isDarkMode ? '#f1f5f9' : '#151a32',
+    textSecondary: isDarkMode ? '#94a3b8' : '#585d78',
+    textTertiary: isDarkMode ? '#64748b' : '#77767e',
+    borderColor: isDarkMode ? 'rgba(51,65,85,0.4)' : 'rgba(199,197,206,0.10)',
     errorBg: isDarkMode ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.06)',
-    errorBorder: isDarkMode ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.2)',
+    errorBorder: isDarkMode ? 'rgba(239,68,68,0.3)' : 'rgba(186,26,26,0.15)',
   };
 }
 
@@ -471,14 +471,13 @@ function ParamsEditor({ job, colors }: { job: JobStatus; colors: ThemeColors }) 
 
   return (
     <div style={{
-      borderRadius: 8, overflow: 'hidden',
-      border: `1px solid ${colors.borderColor}`,
+      borderRadius: 12, overflow: 'hidden',
       background: colors.subtleBg,
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 12px',
-        borderBottom: `1px solid ${colors.borderColor}`,
+        padding: '10px 14px',
+        borderBottom: 'none',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <SettingOutlined style={{ fontSize: 12, color: colors.textTertiary }} />
@@ -567,56 +566,61 @@ function JobCard({ job, isLoading, onStart, onStop, onRun, onShowHistory, colors
 
   return (
     <div style={{
-      position: 'relative', borderRadius: 12, padding: 20,
-      transition: 'all 0.2s',
-      border: `1px solid ${hasError ? colors.errorBorder : colors.cardBorder}`,
+      position: 'relative', borderRadius: 16, padding: 24,
+      transition: 'all 0.25s ease',
+      border: hasError ? `1px solid ${colors.errorBorder}` : 'none',
       background: hasError
         ? (colors.isDarkMode ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.02)')
         : colors.cardBg,
-      boxShadow: colors.isDarkMode ? '0 1px 3px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.04)',
+      boxShadow: colors.isDarkMode
+        ? '0 4px 24px rgba(0,0,0,0.25)'
+        : '0 12px 40px rgba(21, 26, 50, 0.06)',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column' as const,
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: colors.textPrimary }}>{job.name}</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: colors.textPrimary, fontFamily: "'Plus Jakarta Sans', sans-serif", letterSpacing: '-0.01em' }}>{job.name}</h3>
             <StatusBadge job={job} isDarkMode={colors.isDarkMode} />
           </div>
           <p style={{ fontSize: 12, color: colors.textSecondary, margin: 0, lineHeight: 1.5 }}>{job.description}</p>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+      {/* Stats Grid — Lumina Ledger tonal layering */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
         {[
           {
             label: 'Tần suất',
             value: job.scheduleTime ? `Hàng ngày ${job.scheduleTime}` : (job.intervalMs ? formatInterval(job.intervalMs) : '—'),
-            icon: <FieldTimeOutlined style={{ fontSize: 12, color: colors.textTertiary }} />,
+            icon: <FieldTimeOutlined style={{ fontSize: 13, color: colors.textTertiary }} />,
           },
           {
             label: 'Lần cuối',
             value: timeAgo(job.lastRunAt),
-            icon: <ClockCircleOutlined style={{ fontSize: 12, color: colors.textTertiary }} />,
+            icon: <ClockCircleOutlined style={{ fontSize: 13, color: colors.textTertiary }} />,
           },
           {
             label: 'Chạy / Lỗi',
-            value: <>{job.runCount} <span style={{ color: colors.textTertiary }}>/</span> <span style={{ color: job.errorCount > 0 ? '#ef4444' : undefined }}>{job.errorCount}</span></>,
-            icon: <DashboardOutlined style={{ fontSize: 12, color: colors.textTertiary }} />,
+            value: <>{job.runCount} <span style={{ color: colors.textTertiary }}>/</span> <span style={{ color: job.errorCount > 0 ? '#ba1a1a' : undefined }}>{job.errorCount}</span></>,
+            icon: <DashboardOutlined style={{ fontSize: 13, color: colors.textTertiary }} />,
           },
           {
             label: 'Thời gian chạy',
             value: job.lastRunDuration || '—',
-            icon: <ThunderboltOutlined style={{ fontSize: 12, color: colors.textTertiary }} />,
+            icon: <ThunderboltOutlined style={{ fontSize: 13, color: colors.textTertiary }} />,
           },
         ].map((stat, i) => (
           <div key={i} style={{
-            borderRadius: 8, padding: 10,
+            borderRadius: 12, padding: '10px 14px',
             background: colors.subtleBg,
-            border: `1px solid ${colors.borderColor}`,
+            transition: 'background 0.15s',
           }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: colors.textTertiary, marginBottom: 2 }}>{stat.label}</div>
-            <div style={{ fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, color: colors.textPrimary }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: colors.textTertiary, marginBottom: 4, fontFamily: "'Inter', sans-serif", textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>{stat.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, color: colors.textPrimary, fontVariantNumeric: 'tabular-nums' }}>
               {stat.icon} {stat.value}
             </div>
           </div>
@@ -676,7 +680,7 @@ function JobCard({ job, isLoading, onStart, onStop, onRun, onShowHistory, colors
       <ParamsEditor job={job} colors={colors} />
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 16 }}>
         {job.isStarted || job.enabled ? (
           <Button
             size="small"
@@ -859,22 +863,26 @@ export default function BackgroundJobsPage() {
       />
 
       {/* Summary Cards */}
+      {/* Summary Cards — Lumina Ledger tonal layering, no borders */}
       {data && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
+        <Row gutter={[16, 16]} style={{ marginBottom: 28 }}>
           {[
             { label: 'Tổng tác vụ', value: data.totalJobs, color: colors.textPrimary },
-            { label: 'Đang bật', value: data.enabledJobs, color: colors.isDarkMode ? '#34d399' : '#10b981' },
+            { label: 'Đang bật', value: data.enabledJobs, color: colors.isDarkMode ? '#34d399' : '#0d9488' },
             { label: 'Đang chạy', value: data.runningJobs, color: colors.isDarkMode ? '#60a5fa' : '#3b82f6' },
             { label: 'Server hoạt động', value: data.startedAt ? timeAgo(data.startedAt) : '—', color: colors.textTertiary },
           ].map((s, i) => (
             <Col key={i} xs={12} sm={6}>
               <div style={{
-                borderRadius: 12, padding: 16,
-                border: `1px solid ${colors.borderColor}`,
+                borderRadius: 16, padding: '18px 20px',
                 background: colors.cardBg,
+                boxShadow: colors.isDarkMode
+                  ? '0 4px 24px rgba(0,0,0,0.2)'
+                  : '0 12px 40px rgba(21, 26, 50, 0.06)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
               }}>
-                <div style={{ fontSize: 12, fontWeight: 500, color: colors.textTertiary, marginBottom: 4 }}>{s.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: colors.textTertiary, marginBottom: 6, fontFamily: "'Inter', sans-serif", textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{s.label}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: s.color, fontFamily: "'Plus Jakarta Sans', sans-serif", letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
               </div>
             </Col>
           ))}
@@ -885,8 +893,9 @@ export default function BackgroundJobsPage() {
       {jobs.length === 0 ? (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256,
-          borderRadius: 12, border: `2px dashed ${colors.borderColor}`,
+          borderRadius: 16,
           background: colors.cardBg,
+          boxShadow: colors.isDarkMode ? '0 4px 24px rgba(0,0,0,0.2)' : '0 12px 40px rgba(21, 26, 50, 0.06)',
         }}>
           <div style={{ textAlign: 'center' }}>
             <FieldTimeOutlined style={{ fontSize: 32, color: colors.textTertiary, marginBottom: 8 }} />

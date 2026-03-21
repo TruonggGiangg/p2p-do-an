@@ -161,13 +161,20 @@ export class FineractSavingsService extends FineractBaseService {
      */
     async getActiveEWalletAccount(clientId: number): Promise<any | null> {
         const accounts = await this.getSavingsAccounts(clientId);
-        return (
-            accounts.find((acc: any) => {
-                const isActive = acc.status?.value === 'Active';
-                const isEWallet = this.getWalletType(acc) === 'e_wallet';
-                return isActive && isEWallet;
-            }) || null
-        );
+        const match = accounts.find((acc: any) => {
+            const isActive = acc.status?.value === 'Active';
+            const isEWallet = this.getWalletType(acc) === 'e_wallet';
+            return isActive && isEWallet;
+        });
+        if (!match) return null;
+
+        // Fetch full details to get actual balance (summary list doesn't include balance)
+        try {
+            const details = await this.getSavingsAccountDetails(String(match.id));
+            return details || match;
+        } catch {
+            return match;
+        }
     }
 
     /**

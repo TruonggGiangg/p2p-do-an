@@ -59,7 +59,7 @@ export default function SchedulePreviewScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
-  const { loanApplicationId, numNotes, loanTitle } = route.params || {};
+  const { loanApplicationId, numNotes, loanTitle, readonly } = route.params || {};
 
   const [data, setData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -227,22 +227,29 @@ export default function SchedulePreviewScreen() {
           </View>
         </View>
 
-        {/* ── CTA Button — Lime green pill, black text ── */}
-        <TouchableOpacity
-          style={[styles.ctaButton, { backgroundColor: theme.colors.primary, opacity: investing ? 0.6 : 1 }]}
-          onPress={handleInvest}
-          disabled={investing}
-          activeOpacity={0.7}
-        >
-          {investing ? (
-            <ActivityIndicator color={theme.colors.onPrimary} />
-          ) : (
-            <>
-              <Ionicons name="wallet-outline" size={20} color={theme.colors.onPrimary} />
-              <Text style={[styles.ctaText, { color: theme.colors.onPrimary }]}>Đầu tư ngay</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* ── CTA Button / Readonly State ── */}
+        {readonly ? (
+          <View style={[styles.ctaButton, { backgroundColor: theme.colors.surfaceLight }]}>
+            <Ionicons name="time-outline" size={20} color={theme.colors.textSecondary} />
+            <Text style={[styles.ctaText, { color: theme.colors.textSecondary }]}>Đang chờ giải ngân</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.ctaButton, { backgroundColor: theme.colors.primary, opacity: investing ? 0.6 : 1 }]}
+            onPress={handleInvest}
+            disabled={investing}
+            activeOpacity={0.7}
+          >
+            {investing ? (
+              <ActivityIndicator color={theme.colors.onPrimary} />
+            ) : (
+              <>
+                <Ionicons name="wallet-outline" size={20} color={theme.colors.onPrimary} />
+                <Text style={[styles.ctaText, { color: theme.colors.onPrimary }]}>Đầu tư ngay</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );

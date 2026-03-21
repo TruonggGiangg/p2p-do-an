@@ -13,6 +13,7 @@ import LoanScreen from '../features/loan/screens/LoanScreen';
 import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import InvestmentOrderListScreen from '../features/invest/screens/InvestmentOrderListScreen';
+import AvailableLoansScreen from '../features/invest/screens/AvailableLoansScreen';
 
 /** HOC: bọc screen yêu cầu PIN 1 lần/phiên */
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
@@ -51,11 +52,13 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
 
 const PinGatedLoanScreen = withPinGate(LoanScreen);
 const PinGatedBNPLScreen = withPinGate(BNPLScreen);
-const PinGatedInvestScreen = withPinGate(InvestmentOrderListScreen);
+const PinGatedOrderScreen = withPinGate(InvestmentOrderListScreen);
+const PinGatedInvestScreen = withPinGate(AvailableLoansScreen);
 
 export type MainTabParamList = {
     Home: undefined;
     Loan: undefined;
+    Order: undefined;
     Invest: undefined;
     BNPL: undefined;
     Profile: undefined;
@@ -91,6 +94,8 @@ export default function MainNavigator() {
                         iconName = focused ? 'card' : 'card-outline';
                     } else if (route.name === 'Invest') {
                         iconName = focused ? 'trending-up' : 'trending-up-outline';
+                    } else if (route.name === 'Order') {
+                        iconName = focused ? 'list' : 'list-outline';
                     }
 
                     return (
@@ -139,6 +144,13 @@ export default function MainNavigator() {
                     name="BNPL"
                     component={PinGatedBNPLScreen}
                     options={{ tabBarLabel: 'Trả góp' }}
+                />
+            )}
+            {isLender && (
+                <Tab.Screen
+                    name="Order"
+                    component={PinGatedOrderScreen}
+                    options={{ tabBarLabel: 'Đặt lệnh' }}
                 />
             )}
             {isLender && (

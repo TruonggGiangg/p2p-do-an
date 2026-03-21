@@ -231,10 +231,10 @@ export function PinVerifyModal({
                 >
                     <View style={styles.headerRow}>
                         <TouchableOpacity onPress={handleClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+                            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFF" />
                         </TouchableOpacity>
                         <View style={styles.headerCenter}>
-                            <MaterialCommunityIcons name="shield-lock" size={32} color="#000" />
+                            <MaterialCommunityIcons name="shield-lock" size={32} color="#FFF" />
                         </View>
                         <View style={styles.backBtn} />
                     </View>
@@ -336,13 +336,13 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: '700',
-        color: '#000',
+        color: '#FFF',
         marginTop: 4,
         letterSpacing: 0.3,
     },
     headerSub: {
         fontSize: 13,
-        color: 'rgba(0,0,0,0.65)',
+        color: 'rgba(255,255,255,0.75)',
         marginTop: 6,
         textAlign: 'center',
         paddingHorizontal: 16,

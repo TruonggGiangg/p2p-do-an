@@ -75,7 +75,7 @@ export default function BNPLLoanDetailScreen() {
                 title="Chi tiết khoản vay"
                 showBack
                 rightComponents={
-                    <TouchableOpacity onPress={() => setMenuVisible(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ marginRight: 16 }}>
+                    <TouchableOpacity onPress={() => setMenuVisible(v => !v)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                         <MaterialCommunityIcons name="dots-vertical" size={22} color={c.textPrimary} />
                     </TouchableOpacity>
                 }

@@ -310,6 +310,21 @@ class InvestService {
     return response.data.data;
   }
 
+  /**
+   * Lấy hợp đồng ký quỹ theo khoản vay (dành cho khoản vay đã ghép)
+   */
+  async getContractByLoanId(loanId: string): Promise<InvestmentContractItem | null> {
+    try {
+      const response = await api.get<{
+        statusCode: number;
+        data: InvestmentContractItem;
+      }>(`/api/invest/contract/loan/${loanId}`);
+      return response.data.data;
+    } catch {
+      return null;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════
   //  STATS, BALANCE, SCHEDULE PREVIEW
   // ═══════════════════════════════════════════════════════

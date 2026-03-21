@@ -260,6 +260,16 @@ export class InvestController {
     return { statusCode: HttpStatus.OK, message: 'OK', data: contract };
   }
 
+  @Get('contract/loan/:loanId')
+  @ApiOperation({ summary: 'Chi tiết hợp đồng ký quỹ theo khoản vay' })
+  async getContractByLoanId(@Req() req: any, @Param('loanId') loanId: string) {
+    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
+
+    const contract = await this.contractService.getContractByLoanId(loanId, userId);
+    return { statusCode: HttpStatus.OK, message: 'OK', data: contract };
+  }
+
   // ═══════════════════════════════════════════════════════
   //  UPDATE / DELETE / CLOSE
   // ═══════════════════════════════════════════════════════
