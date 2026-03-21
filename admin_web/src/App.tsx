@@ -6,6 +6,7 @@ import './styles/pages.css';
 import { FontSizeProvider } from './components/FontSizeProvider';
 import AppLayout from './pages/Layout';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
 import DocumentTypesPage from './pages/DocumentTypesPage';
 import LoanProductsPage from './pages/LoanProductsPage';
 import SavingsProductsPage from './pages/SavingsProductsPage';
@@ -224,7 +225,9 @@ export default function App() {
                     </RequireAuth>
                   }
                 >
-                  <Route index element={<DocumentTypesPage />} />
+                  <Route index element={<DashboardPage />} />
+                  <Route path="dashboard" element={<DashboardPage />} />
+                  <Route path="document-types" element={<DocumentTypesPage />} />
                   <Route path="loan-products" element={<LoanProductsPage />} />
                   <Route path="savings-products" element={<SavingsProductsPage />} />
                   <Route path="fd-products" element={<FDProductsPage />} />

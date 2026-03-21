@@ -11,7 +11,7 @@ export interface WalletInfo {
   accountNo: string;
   productId: number;
   productName: string;
-  type: 'e_wallet'; // Digital Wallet only
+  type: 'e_wallet' | 'fixed_deposit' | 'recurring_deposit';
   balance: number;
   currency: string;
   status: string;
@@ -119,9 +119,12 @@ export class WalletsService {
     );
 
     const wallets = results.filter((w): w is WalletInfo => w !== null);
-    this.logger.log(`[getWalletsByUserId] Successfully loaded ${wallets.length}/${walletRefs.length} wallets.`);
 
-    return wallets;
+    // Only return e-wallet accounts (exclude FD/recurring deposit)
+    const eWallets = wallets.filter(w => w.type === 'e_wallet');
+    this.logger.log(`[getWalletsByUserId] Successfully loaded ${wallets.length}/${walletRefs.length} wallets, ${eWallets.length} are e-wallets.`);
+
+    return eWallets;
   }
 
   /**

@@ -83,12 +83,16 @@ export class InvestController {
   @ApiOperation({ summary: 'Danh sách khoản vay đang cho phép đầu tư' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth'] })
+  @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth', 'entirelyPay'] })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'minRate', required: false, type: Number })
   @ApiQuery({ name: 'maxRate', required: false, type: Number })
   @ApiQuery({ name: 'minPeriod', required: false, type: Number })
   @ApiQuery({ name: 'maxPeriod', required: false, type: Number })
+  @ApiQuery({ name: 'minCapital', required: false, type: Number })
+  @ApiQuery({ name: 'maxCapital', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'riskLevel', required: false, enum: ['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH'] })
   async getAvailableLoans(
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
@@ -98,6 +102,10 @@ export class InvestController {
     @Query('maxRate') maxRate?: string,
     @Query('minPeriod') minPeriod?: string,
     @Query('maxPeriod') maxPeriod?: string,
+    @Query('minCapital') minCapital?: string,
+    @Query('maxCapital') maxCapital?: string,
+    @Query('search') search?: string,
+    @Query('riskLevel') riskLevel?: string,
   ) {
     const result = await this.investService.getAvailableLoans({
       page: page ? parseInt(page, 10) : undefined,
@@ -108,6 +116,10 @@ export class InvestController {
       maxRate: maxRate ? parseFloat(maxRate) : undefined,
       minPeriod: minPeriod ? parseInt(minPeriod, 10) : undefined,
       maxPeriod: maxPeriod ? parseInt(maxPeriod, 10) : undefined,
+      minCapital: minCapital ? parseFloat(minCapital) : undefined,
+      maxCapital: maxCapital ? parseFloat(maxCapital) : undefined,
+      search,
+      riskLevel,
     });
 
     return {

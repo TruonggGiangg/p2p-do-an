@@ -79,10 +79,23 @@ export class InvestPaymentService {
       );
     }
 
-    // ── 4. Check available notes ──
+    // ── 4. Check available notes (must consider BOTH nodeMatch and investedNotes) ──
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
     const investedSoFar = (loan as any).investedNotes || 0;
-    const availableNotes = totalLoanNotes - investedSoFar;
+    const nodeMatchSoFar = (loan as any).nodeMatch || 0;
+
+    // If investing from an order, the matched nodes will be released
+    let effectiveNodeMatch = nodeMatchSoFar;
+    if (investmentOrderId) {
+      const order = await this.orderModel.findById(investmentOrderId);
+      if (order) {
+        const matchedLoan = (order as any).loans?.find((l: any) => String(l.loanId) === String(loan._id));
+        const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+      }
+    }
+
+    const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
     if (numNotes > availableNotes) {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }

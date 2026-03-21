@@ -240,6 +240,10 @@ class InvestService {
     maxRate?: number;
     minPeriod?: number;
     maxPeriod?: number;
+    minCapital?: number;
+    maxCapital?: number;
+    search?: string;
+    riskLevel?: string;
   }): Promise<AvailableLoansResponse> {
     const query = new URLSearchParams();
     if (params?.page) query.append('page', String(params.page));
@@ -250,6 +254,10 @@ class InvestService {
     if (params?.maxRate !== undefined) query.append('maxRate', String(params.maxRate));
     if (params?.minPeriod !== undefined) query.append('minPeriod', String(params.minPeriod));
     if (params?.maxPeriod !== undefined) query.append('maxPeriod', String(params.maxPeriod));
+    if (params?.minCapital !== undefined) query.append('minCapital', String(params.minCapital));
+    if (params?.maxCapital !== undefined) query.append('maxCapital', String(params.maxCapital));
+    if (params?.search) query.append('search', params.search);
+    if (params?.riskLevel) query.append('riskLevel', params.riskLevel);
     const qs = query.toString() ? `?${query.toString()}` : '';
 
     const response = await api.get<{

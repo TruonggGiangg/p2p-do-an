@@ -47,7 +47,7 @@ export class FineractService {
     return this.savingsService.getSavingsAccountDetails(savingsId);
   }
 
-  getWalletType(savingsData: any): 'e_wallet' {
+  getWalletType(savingsData: any): 'e_wallet' | 'fixed_deposit' | 'recurring_deposit' {
     return this.savingsService.getWalletType(savingsData);
   }
 

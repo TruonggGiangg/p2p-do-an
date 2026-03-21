@@ -82,9 +82,29 @@ export class FineractSavingsService extends FineractBaseService {
     }
 
     /**
-     * Determine wallet type based on Fineract account data
+     * Determine wallet type based on Fineract account data.
+     * Fineract depositType: { id: 100 } = Savings, { id: 200 } = Fixed Deposit, { id: 300 } = Recurring Deposit
+     * Also checks productName for fallback detection.
      */
-    getWalletType(savingsData: any): 'e_wallet' {
+    getWalletType(savingsData: any): 'e_wallet' | 'fixed_deposit' | 'recurring_deposit' {
+        // 1. Check Fineract depositType (most reliable)
+        const depositTypeId = savingsData?.depositType?.id;
+        if (depositTypeId === 200) return 'fixed_deposit';
+        if (depositTypeId === 300) return 'recurring_deposit';
+        if (depositTypeId === 100) return 'e_wallet';
+
+        // 2. Check accountType field (some Fineract versions)
+        const accountType = savingsData?.accountType?.id;
+        if (accountType === 200) return 'fixed_deposit';
+        if (accountType === 300) return 'recurring_deposit';
+
+        // 3. Fallback: check product name for FD keywords
+        const productName = (savingsData?.productName || savingsData?.savingsProductName || '').toLowerCase();
+        if (productName.includes('đầu tư') || productName.includes('fixed deposit') || productName.includes('dau tu') || productName.includes('fd ')) {
+            return 'fixed_deposit';
+        }
+
+        // Default: regular savings = e-wallet
         return 'e_wallet';
     }
 

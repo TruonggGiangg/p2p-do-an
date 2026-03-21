@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Typography, Avatar, Space, theme, Tooltip, Dropdown } from 'antd';
+import { Layout, Button, Typography, Avatar, Space, theme, Tooltip, Dropdown } from 'antd';
 import React from 'react';
 import { useAbility } from '@casl/react';
 import {
@@ -22,6 +22,9 @@ import {
   FontSizeOutlined,
   LineChartOutlined,
   ThunderboltOutlined,
+  DashboardOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
@@ -31,23 +34,71 @@ import { Action } from '../ability';
 const { Sider, Header, Content } = Layout;
 const { Text, Title } = Typography;
 
-const menuItems = [
-  { key: '/', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
-  { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
-  { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
-  { key: '/fd-products', icon: <FundOutlined />, label: 'Quỹ đầu tư có kỳ hạn' },
-  { key: '/loans', icon: <DollarOutlined />, label: 'Quản lý khoản vay' },
-  { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
-  { key: '/credit-score-weights', icon: <LineChartOutlined />, label: 'Trọng số điểm tín dụng' },
-  { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
-  { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
-  { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
-  { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
-  { key: '/roles-permissions', icon: <SafetyCertificateOutlined />, label: 'Vai trò & Phân quyền' },
-  { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
+/* ── Menu group definitions ────────────────────────────── */
+interface MenuItem {
+  key: string;
+  icon: React.ReactNode;
+  label: string;
+}
+
+interface MenuGroup {
+  groupLabel: string;
+  items: MenuItem[];
+}
+
+const menuGroups: MenuGroup[] = [
+  {
+    groupLabel: 'TỔNG QUAN',
+    items: [
+      { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+    ],
+  },
+  {
+    groupLabel: 'QUẢN LÝ SẢN PHẨM',
+    items: [
+      { key: '/document-types', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
+      { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
+      { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
+      { key: '/fd-products', icon: <FundOutlined />, label: 'Quỹ đầu tư có kỳ hạn' },
+    ],
+  },
+  {
+    groupLabel: 'QUẢN LÝ VAY',
+    items: [
+      { key: '/loans', icon: <DollarOutlined />, label: 'Quản lý khoản vay' },
+      { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
+      { key: '/loan-support-requests', icon: <ToolOutlined />, label: 'Yêu cầu hỗ trợ nợ' },
+    ],
+  },
+  {
+    groupLabel: 'CẤU HÌNH',
+    items: [
+      { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
+      { key: '/credit-score-weights', icon: <LineChartOutlined />, label: 'Trọng số điểm tín dụng' },
+    ],
+  },
+  {
+    groupLabel: 'NGƯỜI DÙNG',
+    items: [
+      { key: '/customers', icon: <UserOutlined />, label: 'Khách hàng' },
+      { key: '/staff', icon: <TeamOutlined />, label: 'Nhân viên' },
+      { key: '/roles-permissions', icon: <SafetyCertificateOutlined />, label: 'Vai trò & Phân quyền' },
+    ],
+  },
+  {
+    groupLabel: 'HỆ THỐNG',
+    items: [
+      { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
+    ],
+  },
+];
+
+/* Hidden from sidebar but still valid routes */
+const hiddenMenuItems: MenuItem[] = [
   { key: '/profile', icon: <IdcardOutlined />, label: 'Hồ sơ cá nhân' },
 ];
 
+/* ── Component ─────────────────────────────────────────── */
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,28 +121,45 @@ export default function AppLayout() {
   const userRoles: string[] = user?.roles || [];
   const roleLabel = userRoles.includes('admin') ? 'Quản trị viên' : 'Nhân viên';
 
-  // Filter menu items based on CASL ability
-  const filteredMenuItems = menuItems.filter(item => {
-    if (item.key === '/staff') return ability.can(Action.Read, 'Staff');
-    if (item.key === '/roles-permissions') return ability.can(Action.Manage, 'all');
-    if (item.key === '/background-jobs') return ability.can(Action.Manage, 'all');
-    if (item.key === '/loan-support-requests') return ability.can(Action.Read, 'LoanApplication');
-    if (item.key === '/profile') return !userRoles.includes('admin'); // Staff only
+  /* ── Permission filter ── */
+  const canSee = (key: string): boolean => {
+    if (key === '/staff') return ability.can(Action.Read, 'Staff');
+    if (key === '/roles-permissions') return ability.can(Action.Manage, 'all');
+    if (key === '/background-jobs') return ability.can(Action.Manage, 'all');
+    if (key === '/loan-support-requests') return ability.can(Action.Read, 'LoanApplication');
+    if (key === '/profile') return !userRoles.includes('admin');
     return true;
-  });
+  };
+
+  /* ── Active key resolution ── */
+  const allItems = menuGroups.flatMap(g => g.items).concat(hiddenMenuItems);
+  const selectedKey = allItems
+    .slice()
+    .reverse()
+    .find(item =>
+      location.pathname === item.key ||
+      (item.key !== '/' && location.pathname.startsWith(item.key))
+    )?.key ?? '/dashboard';
+
+  /* ── Derived page title ── */
+  const currentLabel = allItems.find(i => i.key === selectedKey)?.label || 'Dashboard';
 
   const logout = () => {
     localStorage.removeItem('admin_access_token');
     localStorage.removeItem('admin_user');
-    ability.update([]); // Clear CASL permissions
+    ability.update([]);
     navigate('/login', { replace: true });
   };
 
-  const selectedKey = filteredMenuItems
-    .slice()
-    .reverse()
-    .find((item) => location.pathname === item.key || (item.key !== '/' && location.pathname.startsWith(item.key)))
-    ?.key ?? '/';
+  /* ── Styles ── */
+  const siderBg = isDarkMode ? '#070d1f' : '#0F172A';
+  const activeItemBg = isDarkMode ? 'rgba(77, 142, 255, 0.12)' : 'rgba(59, 130, 246, 0.15)';
+  const activeGlow = isDarkMode ? '0 0 12px rgba(77, 142, 255, 0.25)' : '0 0 12px rgba(59, 130, 246, 0.2)';
+  const hoverBg = isDarkMode ? 'rgba(77, 142, 255, 0.06)' : 'rgba(59, 130, 246, 0.08)';
+  const groupLabelColor = isDarkMode ? '#8c909f' : '#94A3B8';
+  const inactiveFg = isDarkMode ? '#b9c8de' : '#94A3B8';
+  const activeFg = '#FFFFFF';
+  const activeAccent = isDarkMode ? '#4d8eff' : '#3B82F6';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -99,99 +167,224 @@ export default function AppLayout() {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
+        trigger={null}
         theme="dark"
-        width={260}
+        width={264}
+        collapsedWidth={72}
         style={{
-          background: isDarkMode ? '#020617' : '#0F172A',
-          borderRight: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
+          background: siderBg,
           height: '100vh',
           position: 'fixed',
           left: 0,
           top: 0,
           bottom: 0,
           zIndex: 100,
-          boxShadow: '4px 0 24px rgba(0, 0, 0, 0.06)',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        {/* Logo */}
+        {/* ── Logo ── */}
         <div style={{
-          padding: collapsed ? '24px 0' : '28px 20px',
+          padding: collapsed ? '20px 0' : '24px 20px',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          borderBottom: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
-          marginBottom: 8,
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          marginBottom: 4,
+          transition: 'all 0.3s ease',
         }}>
           <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`,
+            width: 38, height: 38, borderRadius: 10,
+            background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, color: '#fff', fontSize: 16, flexShrink: 0,
-            boxShadow: '0 4px 12px rgba(30, 64, 175, 0.3)',
+            fontWeight: 800, color: '#fff', fontSize: 14, flexShrink: 0,
+            boxShadow: '0 4px 14px rgba(77, 142, 255, 0.35)',
+            letterSpacing: '0.5px',
           }}>P2</div>
           {!collapsed && (
             <Text strong style={{
               color: '#FFFFFF',
-              fontSize: 'var(--font-size-lg)',
-              letterSpacing: '0.5px',
+              fontSize: 17,
+              letterSpacing: '0.3px',
               fontWeight: 700,
+              fontFamily: "'Manrope', var(--font-sans)",
             }}>P2P Admin</Text>
           )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
-          <Menu
-            theme="dark"
-            mode="inline"
-            selectedKeys={[selectedKey]}
-            items={filteredMenuItems.map((item) => ({
-              key: item.key,
-              icon: React.cloneElement(item.icon as React.ReactElement, {
-                style: { fontSize: 16, marginRight: 4 }
-              }),
-              label: item.label,
-              onClick: () => navigate(item.key),
-            }))}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              fontSize: 'var(--font-size-sm)',
-            }}
-          />
+        {/* ── Menu groups ── */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: collapsed ? '4px 6px' : '4px 12px',
+          transition: 'padding 0.3s ease',
+        }}>
+          {menuGroups.map((group, gi) => {
+            const visibleItems = group.items.filter(i => canSee(i.key));
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={gi} style={{ marginBottom: 6 }}>
+                {/* Group label */}
+                {!collapsed && (
+                  <div style={{
+                    padding: '12px 12px 6px 12px',
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    color: groupLabelColor,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    fontFamily: "'Inter', var(--font-sans)",
+                    userSelect: 'none',
+                  }}>
+                    {group.groupLabel}
+                  </div>
+                )}
+                {collapsed && gi > 0 && (
+                  <div style={{
+                    height: 1,
+                    background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.1)',
+                    margin: '6px 8px',
+                  }} />
+                )}
+
+                {/* Items */}
+                {visibleItems.map(item => {
+                  const isActive = selectedKey === item.key;
+                  return (
+                    <Tooltip key={item.key} title={collapsed ? item.label : ''} placement="right">
+                      <div
+                        onClick={() => navigate(item.key)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: collapsed ? '10px 0' : '9px 12px',
+                          margin: collapsed ? '2px 0' : '2px 0',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          position: 'relative',
+                          justifyContent: collapsed ? 'center' : 'flex-start',
+                          background: isActive ? activeItemBg : 'transparent',
+                          boxShadow: isActive ? activeGlow : 'none',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={e => {
+                          if (!isActive) {
+                            (e.currentTarget as HTMLDivElement).style.background = hoverBg;
+                          }
+                        }}
+                        onMouseLeave={e => {
+                          if (!isActive) {
+                            (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+                          }
+                        }}
+                      >
+                        {/* Active left indicator */}
+                        {isActive && (
+                          <div style={{
+                            position: 'absolute',
+                            left: collapsed ? -6 : -12,
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            width: 3,
+                            height: 20,
+                            borderRadius: 4,
+                            background: activeAccent,
+                            boxShadow: `0 0 8px ${activeAccent}`,
+                          }} />
+                        )}
+
+                        {/* Icon */}
+                        {React.cloneElement(item.icon as React.ReactElement, {
+                          style: {
+                            fontSize: 16,
+                            color: isActive ? activeFg : inactiveFg,
+                            flexShrink: 0,
+                            transition: 'color 0.2s ease',
+                          },
+                        })}
+
+                        {/* Label */}
+                        {!collapsed && (
+                          <span style={{
+                            fontSize: 13,
+                            fontWeight: isActive ? 600 : 450,
+                            color: isActive ? activeFg : inactiveFg,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            transition: 'color 0.2s ease',
+                            fontFamily: "'Inter', var(--font-sans)",
+                          }}>
+                            {item.label}
+                          </span>
+                        )}
+                      </div>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
 
-        {/* User + Logout */}
+        {/* ── User panel ── */}
         <div style={{
-          padding: collapsed ? '16px 0' : '16px 20px',
-          borderTop: `1px solid ${isDarkMode ? '#1E293B' : '#E2E8F0'}`,
-          background: isDarkMode ? '#020617' : '#0F172A',
-          display: 'flex', alignItems: 'center', gap: 12,
+          padding: collapsed ? '12px 6px' : '14px 16px',
+          background: isDarkMode ? '#060c1c' : '#0a1628',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
           justifyContent: collapsed ? 'center' : 'flex-start',
+          transition: 'all 0.3s ease',
         }}>
           <Avatar
-            size={collapsed ? 32 : 36}
+            size={collapsed ? 30 : 34}
             icon={<UserOutlined />}
             style={{
-              background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover || token.colorPrimary} 100%)`,
+              background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
               flexShrink: 0,
               fontWeight: 600,
             }}
           />
           {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
-              <Text strong style={{ color: '#FFFFFF', fontSize: 'var(--font-size-base)', display: 'block' }}>
+              <Text strong style={{ color: '#FFFFFF', fontSize: 13, display: 'block', lineHeight: 1.3 }}>
                 {user?.username || 'Admin'}
               </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'var(--font-size-xs)', display: 'block' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, display: 'block', lineHeight: 1.3 }}>
                 {roleLabel}
               </Text>
             </div>
           )}
         </div>
+
+        {/* ── Collapse toggle ── */}
+        <div
+          onClick={() => setCollapsed(!collapsed)}
+          style={{
+            padding: '10px 0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: groupLabelColor,
+            transition: 'all 0.2s ease',
+            borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'}`,
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = activeFg; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = groupLabelColor; }}
+        >
+          {collapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <LeftOutlined style={{ fontSize: 12 }} />}
+        </div>
       </Sider>
 
+      {/* ── Main content area ── */}
       <Layout style={{
-        marginLeft: collapsed ? 80 : 260,
+        marginLeft: collapsed ? 72 : 264,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         background: isDarkMode ? '#0F172A' : '#F1F5F9',
       }}>
@@ -204,7 +397,7 @@ export default function AppLayout() {
           position: 'fixed',
           top: 0,
           right: 0,
-          left: collapsed ? 80 : 260,
+          left: collapsed ? 72 : 264,
           zIndex: 99,
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
@@ -216,7 +409,7 @@ export default function AppLayout() {
               fontWeight: 600,
               color: isDarkMode ? '#F1F5F9' : '#0F172A',
             }}>
-              {filteredMenuItems.find(item => item.key === selectedKey)?.label || 'Dashboard'}
+              {currentLabel}
             </Title>
           </div>
 
@@ -325,4 +518,3 @@ export default function AppLayout() {
     </Layout>
   );
 }
-

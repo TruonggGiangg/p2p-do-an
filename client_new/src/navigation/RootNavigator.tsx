@@ -31,6 +31,7 @@ import InvestmentContractListScreen from '../features/invest/screens/InvestmentC
 import InvestmentContractDetailScreen from '../features/invest/screens/InvestmentContractDetailScreen';
 import InvestmentStatsScreen from '../features/invest/screens/InvestmentStatsScreen';
 import SchedulePreviewScreen from '../features/invest/screens/SchedulePreviewScreen';
+import InvestmentFlowScreen from '../features/invest/screens/InvestmentFlowScreen';
 import { HomeScreen } from '../features';
 
 export type RootStackParamList = {
@@ -82,6 +83,7 @@ export type RootStackParamList = {
     InvestmentContractDetail: { contractId: string };
     InvestmentStats: undefined;
     SchedulePreview: { loanApplicationId: string; numNotes: number; loanTitle?: string };
+    InvestmentFlow: { loan: any };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -129,6 +131,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="InvestmentContractDetail" component={InvestmentContractDetailScreen} />
                     <Stack.Screen name="InvestmentStats" component={InvestmentStatsScreen} />
                     <Stack.Screen name="SchedulePreview" component={SchedulePreviewScreen} />
+                    <Stack.Screen name="InvestmentFlow" component={InvestmentFlowScreen} />
                 </>
             )}
         </Stack.Navigator>

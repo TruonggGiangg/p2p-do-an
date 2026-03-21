@@ -106,6 +106,50 @@ export class FineractFDService extends FineractBaseService {
   }
 
   /**
+   * Get full FD product config needed for accurate schedule calculation.
+   * Returns compounding, posting, calculation type, days-in-year, rate, and rounding.
+   */
+  async getFDProductConfig(shortName: string): Promise<{
+    annualInterestRate: number;
+    compoundingPeriod: string; // 'Monthly' | 'Daily' | 'Quarterly' | ...
+    postingPeriod: string;     // 'Monthly' | 'Quarterly' | ...
+    calculationType: string;   // 'Daily Balance' | 'Average Daily Balance'
+    daysInYear: number;        // 365 | 360
+    inMultiplesOf: number;     // currency rounding, e.g. 1000
+    minDepositTerm: number;
+    maxDepositTerm: number;
+  } | null> {
+    const fdProductId = await this.findFDProductByShortName(shortName);
+    if (!fdProductId) return null;
+    try {
+      const res = await this.client.get(`/fixeddepositproducts/${fdProductId}`);
+      const data = res.data;
+      if (!data) return null;
+
+      const activeChart = data.activeChart || data.interestRateCharts?.[0];
+      const chartSlabs = activeChart?.chartSlabs || [];
+      const annualRate = chartSlabs[0]?.annualInterestRate ?? data.nominalAnnualInterestRate ?? 0;
+
+      const config = {
+        annualInterestRate: annualRate,
+        compoundingPeriod: data.interestCompoundingPeriodType?.value || 'Monthly',
+        postingPeriod: data.interestPostingPeriodType?.value || 'Monthly',
+        calculationType: data.interestCalculationType?.value || 'Daily Balance',
+        daysInYear: data.interestCalculationDaysInYearType?.id || 365,
+        inMultiplesOf: data.currency?.inMultiplesOf || 1000,
+        minDepositTerm: data.minDepositTerm || 1,
+        maxDepositTerm: data.maxDepositTerm || 120,
+      };
+
+      this.fdLogger.log(`[getFDProductConfig] ${shortName}: rate=${config.annualInterestRate}%, compound=${config.compoundingPeriod}, posting=${config.postingPeriod}, calc=${config.calculationType}, daysInYear=${config.daysInYear}`);
+      return config;
+    } catch (err: any) {
+      this.fdLogger.error(`Error getting FD config for ${shortName}: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Resolve FD product ID from a Loan Product ID.
    * Strategy: Get loan product → extract shortName → find FD product with same shortName.
    */

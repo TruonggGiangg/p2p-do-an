@@ -1,0 +1,34 @@
+{
+  "name": "projects/16519921962080648271",
+  "projectId": "16519921962080648271",
+  "title": "P2P Admin - Nav & Dashboard Redesign",
+  "visibility": "PRIVATE",
+  "projectType": "PROJECT_DESIGN",
+  "origin": "STITCH",
+  "deviceType": "DESKTOP",
+  "designTheme": {
+    "colorMode": "DARK",
+    "font": "MANROPE",
+    "roundness": "ROUND_EIGHT",
+    "customColor": "#3B82F6",
+    "headlineFont": "MANROPE",
+    "bodyFont": "INTER",
+    "labelFont": "INTER"
+  },
+  "screens": {
+    "sidebar-nav": {
+      "id": "0df01dc10812408db8e4bb8f4cf33042",
+      "sourceScreen": "projects/16519921962080648271/screens/0df01dc10812408db8e4bb8f4cf33042",
+      "width": 2560,
+      "height": 2048,
+      "title": "P2P Admin Sidebar"
+    },
+    "dashboard": {
+      "id": "709aadbf0b64453f9d772b57060791be",
+      "sourceScreen": "projects/16519921962080648271/screens/709aadbf0b64453f9d772b57060791be",
+      "width": 2560,
+      "height": 2764,
+      "title": "P2P Lending Admin Dashboard"
+    }
+  }
+}

@@ -207,12 +207,16 @@ export class InvestService {
     maxRate?: number;
     minPeriod?: number;
     maxPeriod?: number;
+    minCapital?: number;
+    maxCapital?: number;
+    search?: string;
+    riskLevel?: string; // LOW | MEDIUM | HIGH | VERY_HIGH
   } = {}) {
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
 
-    const allowedSorts = new Set(['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth']);
+    const allowedSorts = new Set(['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth', 'entirelyPay']);
     const sortBy = allowedSorts.has(query.sortBy || '') ? query.sortBy! : 'createdAt';
     const sortOrderVal = (query.sortOrder || '').toLowerCase() === 'asc' ? 1 : -1;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortOrderVal };
@@ -233,6 +237,23 @@ export class InvestService {
       filters.periodMonth = {};
       if (query.minPeriod !== undefined) filters.periodMonth.$gte = query.minPeriod;
       if (query.maxPeriod !== undefined) filters.periodMonth.$lte = query.maxPeriod;
+    }
+
+    // ── Capital range filter ──
+    if (query.minCapital !== undefined || query.maxCapital !== undefined) {
+      filters.capital = {};
+      if (query.minCapital !== undefined) filters.capital.$gte = query.minCapital;
+      if (query.maxCapital !== undefined) filters.capital.$lte = query.maxCapital;
+    }
+
+    // ── Search by willing (mục đích vay) ──
+    if (query.search && query.search.trim()) {
+      filters.willing = { $regex: query.search.trim(), $options: 'i' };
+    }
+
+    // ── Risk level filter ──
+    if (query.riskLevel) {
+      filters['aiScore.riskLevel'] = query.riskLevel.toUpperCase();
     }
 
     const [totalCount, loans] = await Promise.all([

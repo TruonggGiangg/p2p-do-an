@@ -1,12 +1,12 @@
 /**
  * AvailableLoansScreen — Khoản vay đang cho phép đầu tư
  * Redesigned: Finesse Wallet theme (Deep Teal + Lime Green)
- * Supports both light & dark mode via useTheme() tokens.
+ * Supports filter, sort, search, pagination via useFilterState hook.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  RefreshControl, StyleSheet, Alert, Modal, Dimensions, Platform,
+  RefreshControl, StyleSheet, Alert, Dimensions, Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,8 +14,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
 import investService, { AvailableLoanItem } from '../services/invest.service';
-import { walletAPI } from '../../wallet/api/wallet.api';
-import type { Wallet } from '../../../types/auth.types';
+import FilterBar from '../components/FilterBar';
+import FilterBottomSheet from '../components/FilterBottomSheet';
+import { useFilterState, FilterState } from '../hooks/useFilterState';
 
 function fmt(n: number): string { return n.toLocaleString('vi-VN') + ' ₫'; }
 
@@ -26,97 +27,53 @@ export default function AvailableLoansScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
-  const [investing, setInvesting] = useState<string | null>(null);
-
-  // ── Note Selector Bottom Sheet state ──
-  const [selectorVisible, setSelectorVisible] = useState(false);
-  const [selectedLoan, setSelectedLoan] = useState<AvailableLoanItem | null>(null);
-  const [numNotes, setNumNotes] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const BASE_UNIT_PRICE = 500_000;
 
-  // ── Wallet Selection state ──
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
-  const [walletsLoading, setWalletsLoading] = useState(false);
+  const {
+    filters, page, pageSize,
+    setFilter, setMultipleFilters, resetFilters,
+    activeFilterCount, buildQueryParams, setPage,
+  } = useFilterState();
 
+  // Fetch loans with current filter params
   const fetchLoans = useCallback(async () => {
     try {
-      const result = await investService.getAvailableLoans({ pageSize: 20, sortOrder: 'desc' });
+      const params = buildQueryParams();
+      const result = await investService.getAvailableLoans(params);
       setLoans(result.loans);
       setTotalCount(result.totalCount);
+      setTotalPages(result.totalPages);
     } catch (e: any) {
       console.error('Failed to fetch available loans:', e?.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [buildQueryParams]);
 
-  useFocusEffect(useCallback(() => { fetchLoans(); }, [fetchLoans]));
+  // Fetch when filters or page change
+  useEffect(() => {
+    setLoading(true);
+    fetchLoans();
+  }, [filters, page]);
 
-  // ── Open note selector bottom sheet ──
-  const openNoteSelector = async (item: AvailableLoanItem) => {
-    const totalNotes = item.totalNotes || Math.ceil(item.capital / BASE_UNIT_PRICE);
-    const available = Math.max(1, totalNotes - ((item.nodeMatch || 0) + (item.investedNotes || 0)));
-    setSelectedLoan(item);
-    setNumNotes(Math.min(available, totalNotes));
-    setSelectorVisible(true);
+  // Also refetch on screen focus (page 1)
+  useFocusEffect(useCallback(() => {
+    setPage(1);
+  }, []));
 
-    // Fetch wallets
-    try {
-      setWalletsLoading(true);
-      const result = await walletAPI.getWallets();
-      const activeWallets = (result.wallets || []).filter(w => !w.status || w.status.toString().toLowerCase() !== 'closed');
-      setWallets(activeWallets);
-      // Auto-select default wallet or first wallet
-      const defaultW = activeWallets.find(w => w.isDefault) || activeWallets[0];
-      setSelectedWallet(defaultW || null);
-    } catch (e: any) {
-      console.error('Failed to fetch wallets:', e?.message);
-      setWallets([]);
-      setSelectedWallet(null);
-    } finally { setWalletsLoading(false); }
-  };
+  // Pagination handlers
+  const goToPrev = useCallback(() => {
+    if (page > 1) setPage(page - 1);
+  }, [page, setPage]);
 
-  const getAvailableNotes = (item: AvailableLoanItem) => {
-    const totalNotes = item.totalNotes || Math.ceil(item.capital / BASE_UNIT_PRICE);
-    return Math.max(0, totalNotes - ((item.nodeMatch || 0) + (item.investedNotes || 0)));
-  };
+  const goToNext = useCallback(() => {
+    if (page < totalPages) setPage(page + 1);
+  }, [page, totalPages, setPage]);
 
-  const handleConfirmInvest = async () => {
-    if (!selectedLoan) return;
-    if (!selectedWallet) {
-      Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví để thanh toán');
-      return;
-    }
-    const investAmount = numNotes * BASE_UNIT_PRICE;
-    if (selectedWallet.balance < investAmount) {
-      Alert.alert('Số dư không đủ', `Ví chỉ có ${fmt(selectedWallet.balance)}, cần ${fmt(investAmount)}`);
-      return;
-    }
-    try {
-      setInvesting(selectedLoan._id);
-      setSelectorVisible(false);
-      const contract = await investService.createContract({ loanApplicationId: selectedLoan._id, numNotes });
-      Alert.alert('Thành công', `Hợp đồng ${contract.contractId} đã tạo`, [
-        { text: 'Xem chi tiết', onPress: () => navigation.navigate('InvestmentContractDetail', { contractId: contract._id }) },
-        { text: 'OK' },
-      ]);
-      fetchLoans();
-    } catch (e: any) {
-      Alert.alert('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo hợp đồng');
-    } finally { setInvesting(null); }
-  };
 
-  const handlePreviewFromSelector = () => {
-    if (!selectedLoan) return;
-    setSelectorVisible(false);
-    navigation.navigate('SchedulePreview' as any, {
-      loanApplicationId: selectedLoan._id,
-      numNotes,
-      loanTitle: selectedLoan.willing || undefined,
-    });
-  };
 
   const renderItem = ({ item }: { item: AvailableLoanItem }) => {
     const annualRate = (item.monthlyRatePercent * 12).toFixed(1);
@@ -339,39 +296,16 @@ export default function AvailableLoansScreen() {
           </View>
         </View>
 
-        {/* ── Action Buttons — Stitch premium CTA ── */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.outlineBtn, { backgroundColor: theme.colors.primaryGlass }]}
-            onPress={() => {
-              navigation.navigate('SchedulePreview' as any, {
-                loanApplicationId: item._id,
-                numNotes: Math.min(available, totalNotes),
-                loanTitle: item.willing || undefined,
-              });
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="calendar-outline" size={16} color={theme.colors.primary} />
-            <Text style={[styles.outlineBtnText, { color: theme.colors.primary }]}>Lịch trả</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filledBtn, { backgroundColor: theme.colors.primary }]}
-            onPress={() => openNoteSelector(item)}
-            disabled={investing === item._id || available <= 0}
-            activeOpacity={0.7}
-          >
-            {investing === item._id ? (
-              <ActivityIndicator size="small" color={theme.colors.onPrimary} />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="rocket-launch" size={16} color={theme.colors.onPrimary} />
-                <Text style={[styles.filledBtnText, { color: theme.colors.onPrimary }]}>Rót vốn</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        {/* ── Action Button — Navigate to Investment Flow ── */}
+        <TouchableOpacity
+          style={[styles.filledBtn, { backgroundColor: theme.colors.primary, flex: undefined }]}
+          onPress={() => navigation.navigate('InvestmentFlow', { loan: item })}
+          disabled={available <= 0}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="rocket-launch" size={16} color={theme.colors.onPrimary} />
+          <Text style={[styles.filledBtnText, { color: theme.colors.onPrimary }]}>Đầu tư sinh lời</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -416,6 +350,15 @@ export default function AvailableLoansScreen() {
         rightComponents={<HeaderRight />}
       />
 
+      {/* ── Filter Bar ── */}
+      <FilterBar
+        filters={filters}
+        activeFilterCount={activeFilterCount}
+        onFilterChange={setFilter}
+        onMultiFilterChange={setMultipleFilters}
+        onOpenFilterSheet={() => setFilterSheetVisible(true)}
+      />
+
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -428,181 +371,58 @@ export default function AvailableLoansScreen() {
           ListEmptyComponent={renderEmpty}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchLoans(); }} tintColor={theme.colors.primary} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); setPage(1); }}
+              tintColor={theme.colors.primary}
+            />
+          }
+          ListFooterComponent={
+            totalPages > 1 ? (
+              <View style={[styles.paginationBar, { backgroundColor: theme.colors.surfaceLight }]}>
+                <TouchableOpacity
+                  style={[styles.pageBtn, { opacity: page <= 1 ? 0.3 : 1 }]}
+                  onPress={goToPrev}
+                  disabled={page <= 1}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+                </TouchableOpacity>
+
+                <View style={styles.pageInfo}>
+                  <Text style={[styles.pageNum, { color: theme.colors.primary }]}>{page}</Text>
+                  <Text style={[styles.pageSep, { color: theme.colors.textMuted }]}>/</Text>
+                  <Text style={[styles.pageSep, { color: theme.colors.textMuted }]}>{totalPages}</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.pageBtn, { opacity: page >= totalPages ? 0.3 : 1 }]}
+                  onPress={goToNext}
+                  disabled={page >= totalPages}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+                </TouchableOpacity>
+
+                <Text style={[styles.footerText, { color: theme.colors.textMuted, marginLeft: 12 }]}>
+                  {totalCount} khoản vay
+                </Text>
+              </View>
+            ) : null
           }
         />
       )}
 
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/*  NOTE SELECTOR BOTTOM SHEET                                */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {selectedLoan && (
-        <Modal
-          visible={selectorVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setSelectorVisible(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setSelectorVisible(false)}
-          >
-            <TouchableOpacity activeOpacity={1} onPress={() => { }}>
-              <View style={[styles.bottomSheet, { backgroundColor: theme.colors.backgroundSecondary }]}>
-                {/* ── Handle bar ── */}
-                <View style={styles.handleBar}>
-                  <View style={[styles.handle, { backgroundColor: theme.colors.textMuted }]} />
-                </View>
+      {/* ── Filter Bottom Sheet ── */}
+      <FilterBottomSheet
+        visible={filterSheetVisible}
+        filters={filters}
+        onApply={setMultipleFilters}
+        onReset={resetFilters}
+        onClose={() => setFilterSheetVisible(false)}
+      />
 
-                {/* ── Title ── */}
-                <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Chọn số notes đầu tư</Text>
-                <Text style={[styles.sheetSubtitle, { color: theme.colors.textSecondary }]}>
-                  {selectedLoan.willing || 'Khoản vay'} — {fmt(selectedLoan.capital)}
-                </Text>
 
-                {/* ── Note Counter ── */}
-                <View style={[styles.counterContainer, { backgroundColor: theme.colors.surfaceLight }]}>
-                  <TouchableOpacity
-                    style={[styles.counterBtn, { backgroundColor: theme.colors.primaryGlass }]}
-                    onPress={() => setNumNotes(n => Math.max(1, n - 1))}
-                    disabled={numNotes <= 1}
-                  >
-                    <Ionicons name="remove" size={22} color={numNotes <= 1 ? theme.colors.textMuted : theme.colors.primary} />
-                  </TouchableOpacity>
-
-                  <View style={styles.counterCenter}>
-                    <Text style={[styles.counterValue, { color: theme.colors.text }]}>{numNotes}</Text>
-                    <Text style={[styles.counterLabel, { color: theme.colors.textSecondary }]}>notes</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.counterBtn, { backgroundColor: theme.colors.primaryGlass }]}
-                    onPress={() => setNumNotes(n => Math.min(getAvailableNotes(selectedLoan), n + 1))}
-                    disabled={numNotes >= getAvailableNotes(selectedLoan)}
-                  >
-                    <Ionicons name="add" size={22} color={numNotes >= getAvailableNotes(selectedLoan) ? theme.colors.textMuted : theme.colors.primary} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* ── Quick Select Buttons ── */}
-                <View style={styles.quickSelectRow}>
-                  {[1, 5, 10, getAvailableNotes(selectedLoan)].filter((v, i, arr) => arr.indexOf(v) === i && v > 0).map(n => (
-                    <TouchableOpacity
-                      key={n}
-                      style={[
-                        styles.quickSelectBtn,
-                        { borderColor: numNotes === n ? theme.colors.primary : theme.colors.textMuted + '30' },
-                        numNotes === n && { backgroundColor: theme.colors.primaryGlass },
-                      ]}
-                      onPress={() => setNumNotes(Math.min(n, getAvailableNotes(selectedLoan)))}
-                    >
-                      <Text style={[
-                        styles.quickSelectText,
-                        { color: numNotes === n ? theme.colors.primary : theme.colors.textSecondary },
-                      ]}>
-                        {n === getAvailableNotes(selectedLoan) ? 'Tất cả' : `${n}`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* ── Investment Summary ── */}
-                <View style={[styles.summaryBox, { backgroundColor: theme.colors.surfaceLight }]}>
-                  <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Số tiền đầu tư</Text>
-                    <Text style={[styles.summaryValue, { color: theme.colors.primary }]}>{fmt(numNotes * BASE_UNIT_PRICE)}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Notes còn trống</Text>
-                    <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{getAvailableNotes(selectedLoan)} / {selectedLoan.totalNotes || Math.ceil(selectedLoan.capital / BASE_UNIT_PRICE)}</Text>
-                  </View>
-                </View>
-
-                {/* ── Wallet Selection ── */}
-                <Text style={[styles.walletSectionTitle, { color: theme.colors.text }]}>Chọn ví thanh toán</Text>
-                {walletsLoading ? (
-                  <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 12 }} />
-                ) : wallets.length === 0 ? (
-                  <View style={[styles.walletCard, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.error + '40' }]}>
-                    <Ionicons name="alert-circle-outline" size={20} color={theme.colors.error} />
-                    <Text style={[styles.walletCardText, { color: theme.colors.error }]}>Không tìm thấy ví nào</Text>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8, marginBottom: 16 }}>
-                    {wallets.map((w, idx) => {
-                      const wId = w._id || w.id || w.fineractSavingsId || w.fineractId || String(idx);
-                      const selId = selectedWallet?._id || selectedWallet?.id || selectedWallet?.fineractSavingsId || selectedWallet?.fineractId;
-                      const curId = w._id || w.id || w.fineractSavingsId || w.fineractId;
-                      const isSelected = selId === curId;
-                      const isSufficient = w.balance >= numNotes * BASE_UNIT_PRICE;
-                      return (
-                        <TouchableOpacity
-                          key={wId}
-                          style={[
-                            styles.walletCard,
-                            {
-                              backgroundColor: isSelected ? theme.colors.primaryGlass : theme.colors.surfaceLight,
-                              borderColor: isSelected ? theme.colors.primary : 'transparent',
-                            },
-                          ]}
-                          onPress={() => setSelectedWallet(w)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.walletCardLeft}>
-                            <Ionicons
-                              name={w.type === 'e_wallet' ? 'wallet' : 'card'}
-                              size={20}
-                              color={isSelected ? theme.colors.primary : theme.colors.textSecondary}
-                            />
-                            <View>
-                              <Text style={[styles.walletCardName, { color: isSelected ? theme.colors.primary : theme.colors.text }]}>
-                                {w.productName || w.metadata?.productName || (w.type === 'e_wallet' ? 'Ví điện tử' : 'Tín dụng')}
-                              </Text>
-                              <Text style={[styles.walletCardAcct, { color: theme.colors.textMuted }]}>
-                                {w.accountNo || w.metadata?.accountNo || ''}
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.walletCardBalance, { color: isSufficient ? theme.colors.success : theme.colors.error }]}>
-                              {fmt(w.balance)}
-                            </Text>
-                            {!isSufficient && (
-                              <Text style={{ fontSize: 10, color: theme.colors.error }}>Không đủ</Text>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {/* ── Action Buttons ── */}
-                <View style={styles.sheetActions}>
-                  <TouchableOpacity
-                    style={[styles.outlineBtn, { backgroundColor: theme.colors.primaryGlass, flex: 1 }]}
-                    onPress={handlePreviewFromSelector}
-                  >
-                    <Ionicons name="calendar-outline" size={16} color={theme.colors.primary} />
-                    <Text style={[styles.outlineBtnText, { color: theme.colors.primary }]}>Xem trước</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.filledBtn, { backgroundColor: theme.colors.primary, flex: 1.5 }]}
-                    onPress={handleConfirmInvest}
-                  >
-                    <Ionicons name="wallet-outline" size={16} color={theme.colors.onPrimary} />
-                    <Text style={[styles.filledBtnText, { color: theme.colors.onPrimary }]}>
-                      Đầu tư {numNotes} notes
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-      )}
     </View>
   );
 }
@@ -748,6 +568,21 @@ const styles = StyleSheet.create({
   sheetActions: { flexDirection: 'row', gap: 10 },
 
   // Wallet selector
+  // Footer (pagination bar)
+  paginationBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16,
+    marginTop: 8, gap: 4,
+  },
+  pageBtn: {
+    width: 36, height: 36, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pageInfo: { flexDirection: 'row', alignItems: 'baseline', gap: 3, marginHorizontal: 12 },
+  pageNum: { fontSize: 18, fontWeight: '800' },
+  pageSep: { fontSize: 14, fontWeight: '500' },
+  footerText: { fontSize: 12, fontWeight: '500' },
+
   walletSectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   walletCard: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

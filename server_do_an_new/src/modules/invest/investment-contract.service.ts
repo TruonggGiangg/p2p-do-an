@@ -48,10 +48,46 @@ export class InvestmentContractService {
     loan: any,
     investCapital: number,
   ): { schedule: LenderScheduleItem[]; summary: { totalPrincipal: number; totalInterest: number; totalIncome: number; periodCount: number } } {
-    const borrowerSchedule: any[] = loan.schedulePreview || [];
+    let borrowerSchedule: any[] = loan.schedulePreview || [];
     const loanCapital = loan.capital || 1;
     const investmentRatio = investCapital / loanCapital;
     const inMultiplesOf = loan.inMultiplesOf || 1000;
+
+    // ── FALLBACK: tự generate schedule từ PMT nếu schedulePreview rỗng ──
+    if (borrowerSchedule.length === 0 && loan.periodMonth > 0) {
+      const monthlyRate = (loan.monthlyRatePercent || 0) / 100;
+      const periods = loan.periodMonth;
+      const cap = loanCapital;
+
+      if (monthlyRate > 0) {
+        const factor = Math.pow(1 + monthlyRate, periods);
+        const monthlyPay = cap * (monthlyRate * factor) / (factor - 1);
+        let remaining = cap;
+        const generated: any[] = [];
+
+        for (let i = 1; i <= periods; i++) {
+          const interest = this.roundToCurrency(remaining * monthlyRate, inMultiplesOf);
+          let principal: number;
+          if (i === periods) {
+            principal = remaining; // last period: clear remaining
+          } else {
+            principal = this.roundToCurrency(monthlyPay - interest, inMultiplesOf);
+          }
+          remaining -= principal;
+          const baseDate = new Date(loan.disbursementDate || loan.createdAt || new Date());
+          baseDate.setMonth(baseDate.getMonth() + i);
+          generated.push({
+            period: i,
+            principal,
+            interest,
+            total: principal + interest,
+            dueDate: baseDate.toISOString(),
+          });
+        }
+        borrowerSchedule = generated;
+        this.logger.log(`[calculateLenderSchedule] Generated ${generated.length} periods from PMT fallback`);
+      }
+    }
 
     if (borrowerSchedule.length === 0) {
       return {
@@ -138,11 +174,26 @@ export class InvestmentContractService {
       throw new BadRequestException('Khoản vay không ở trạng thái cho phép đầu tư');
     }
 
-    // 2. Check available notes
+    // 2. Check available notes (must consider BOTH nodeMatch and investedNotes)
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
     const investedSoFar = (loan as any).investedNotes || 0;
-    const availableNotes = totalLoanNotes - investedSoFar;
+    const nodeMatchSoFar = (loan as any).nodeMatch || 0;
 
+    // Nếu đầu tư từ Order → những node đã match được "giải phóng" khi invest
+    // nên không cần trừ nodeMatch cho phần đang invest
+    let effectiveNodeMatch = nodeMatchSoFar;
+    if (investmentOrderId) {
+      // Tìm order để biết bao nhiêu node match trên loan này thuộc order đó
+      const order = await this.orderModel.findById(investmentOrderId);
+      if (order) {
+        const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
+        const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+        // Trừ bớt nodeMatch thuộc order này (vì sẽ chuyển sang investedNotes)
+        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+      }
+    }
+
+    const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
     if (numNotes > availableNotes) {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }
@@ -218,17 +269,46 @@ export class InvestmentContractService {
     await contract.save();
     this.logger.log(`Created InvestmentContract ${contractId}: ${capital.toLocaleString()} VND, ${numNotes} notes, ${periodMonth} months`);
 
-    // 7. Update loan investedNotes
+    // 7. Update loan: investedNotes++ and nodeMatch-- (if from order)
     const newInvestedNotes = investedSoFar + numNotes;
+    let nodeMatchDecrement = 0;
+
+    if (investmentOrderId) {
+      // Khi invest từ Order → giảm nodeMatch tương ứng (Rule 1: same slot, chuyển từ giữ chỗ → đã đầu tư)
+      const order = await this.orderModel.findById(investmentOrderId);
+      if (order) {
+        const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
+        nodeMatchDecrement = Math.min(matchedLoan?.nodeMatch || 0, numNotes);
+      }
+    }
+
+    const newNodeMatch = Math.max(0, nodeMatchSoFar - nodeMatchDecrement);
+    const totalClaimed = newInvestedNotes + newNodeMatch;
+
     await this.loanModel.findByIdAndUpdate(loanApplicationId, {
-      $inc: { investedNotes: numNotes },
+      $inc: {
+        investedNotes: numNotes,
+        ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
+      },
       $set: {
         totalNotes: totalLoanNotes,
-        isFullMatch: newInvestedNotes >= totalLoanNotes,
+        isFullMatch: totalClaimed >= totalLoanNotes,
       },
     });
 
-    this.logger.log(`Loan ${loanApplicationId}: investedNotes ${investedSoFar} → ${newInvestedNotes}/${totalLoanNotes}`);
+    this.logger.log(
+      `Loan ${loanApplicationId}: investedNotes ${investedSoFar}→${newInvestedNotes}, ` +
+      `nodeMatch ${nodeMatchSoFar}→${newNodeMatch}, total claimed ${totalClaimed}/${totalLoanNotes}` +
+      `${totalClaimed >= totalLoanNotes ? ' (FULL MATCH)' : ''}`,
+    );
+
+    // Update order loan entry as invested
+    if (investmentOrderId) {
+      await this.orderModel.updateOne(
+        { _id: investmentOrderId, 'loans.loanId': String(loan._id) },
+        { $set: { 'loans.$.isInvested': true } },
+      );
+    }
 
     return contract;
   }
@@ -326,56 +406,116 @@ export class InvestmentContractService {
     entirelyPay: number;
     schedule: LenderScheduleItem[];
     summary: { totalPrincipal: number; totalInterest: number; totalIncome: number; periodCount: number };
+    fdConfig?: any;
   }> {
     const loan = await this.loanModel.findById(loanApplicationId);
     if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
 
-    // Check available
+    // Check available (must consider BOTH nodeMatch and investedNotes)
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
     const investedSoFar = (loan as any).investedNotes || 0;
-    const availableNotes = totalLoanNotes - investedSoFar;
+    const nodeMatchSoFar = (loan as any).nodeMatch || 0;
+    const availableNotes = totalLoanNotes - investedSoFar - nodeMatchSoFar;
     if (numNotes > availableNotes) {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }
 
-    // Resolve FD Interest Rate (Investor's Rate)
+    const capital = numNotes * this.baseUnitPrice;
+    const periodMonth = loan.periodMonth;
+
+    // ── Fetch FD product config dynamically ──
+    let fdConfig: any = null;
     let annualRatePercent = 0;
+
     try {
       const loanProdRes = await (this.fineractFDService as any).client.get(`/loanproducts/${loan.productId}`);
       const shortName = loanProdRes.data?.shortName;
       if (shortName) {
-        const fdRate = await this.fineractFDService.getFDProductAnnualRate(shortName);
-        if (fdRate !== null) {
-           annualRatePercent = fdRate;
+        fdConfig = await this.fineractFDService.getFDProductConfig(shortName);
+        if (fdConfig) {
+          annualRatePercent = fdConfig.annualInterestRate;
         }
       }
     } catch (err: any) {
-      this.logger.warn(`Failed to resolve FD rate for preview loan ${loan._id}: ${err.message}`);
+      this.logger.warn(`Failed to fetch FD config for loan ${loan._id}: ${err.message}`);
     }
 
-    // Fallback to loan rate if FD rate not found
+    // Fallback to loan rate if FD config not available
     if (!annualRatePercent) {
-       annualRatePercent = loan.monthlyRatePercent * 12;
+      annualRatePercent = loan.monthlyRatePercent * 12;
     }
-    const monthlyRatePercent = +(annualRatePercent / 12).toFixed(2);
+    const monthlyRatePercent = +(annualRatePercent / 12).toFixed(4);
 
-    const capital = numNotes * this.baseUnitPrice;
-    const periodMonth = loan.periodMonth;
+    // ── Calculate FD schedule using compound interest ──
+    const inMultiplesOf = fdConfig?.inMultiplesOf || loan.inMultiplesOf || 1000;
+    const daysInYear = fdConfig?.daysInYear || 365;
+    const compounding = fdConfig?.compoundingPeriod || 'Monthly';
 
-    // PMT calculation
-    const monthlyRate = monthlyRatePercent / 100;
-    let entirelyPay = 0;
-    if (monthlyRate > 0 && periodMonth > 0) {
-      const factor = Math.pow(1 + monthlyRate, periodMonth);
-      const monthlyPay = capital * (monthlyRate * factor) / (factor - 1);
-      entirelyPay = this.roundToCurrency(monthlyPay * periodMonth, loan.inMultiplesOf || 1000);
-    } else {
-      entirelyPay = capital;
+    const schedule: LenderScheduleItem[] = [];
+    let compoundedBalance = capital; // balance grows with compounded interest
+    let totalInterestEarned = 0;
+
+    const baseDate = new Date(loan.disbursementDate || (loan as any).createdAt || new Date());
+
+    for (let i = 1; i <= periodMonth; i++) {
+      const isLast = i === periodMonth;
+
+      // Calculate monthly interest
+      let periodInterest: number;
+
+      if (compounding === 'Daily' || fdConfig?.calculationType === 'Daily Balance') {
+        // Daily balance: interest = balance × (annualRate / 100) / daysInYear × daysInMonth
+        const monthDate = new Date(baseDate);
+        monthDate.setMonth(monthDate.getMonth() + i);
+        const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 0).getDate();
+        periodInterest = compoundedBalance * (annualRatePercent / 100) / daysInYear * daysInMonth;
+      } else {
+        // Monthly compounding: interest = balance × (annualRate / 100 / 12)
+        periodInterest = compoundedBalance * (annualRatePercent / 100) / 12;
+      }
+
+      periodInterest = this.roundToCurrency(periodInterest, inMultiplesOf);
+      totalInterestEarned += periodInterest;
+
+      // In FD: principal stays locked, only returned at maturity
+      const periodPrincipal = isLast ? capital : 0;
+
+      // Due date
+      const dueDate = new Date(baseDate);
+      dueDate.setMonth(dueDate.getMonth() + i);
+      const dueDateStr = `${String(dueDate.getDate()).padStart(2, '0')}/${String(dueDate.getMonth() + 1).padStart(2, '0')}/${dueDate.getFullYear()}`;
+
+      schedule.push({
+        period: i,
+        dueDate: dueDateStr,
+        principal: periodPrincipal,
+        interest: periodInterest,
+        total: periodPrincipal + periodInterest,
+        status: 'pending' as const,
+      });
+
+      // Compound: add interest to balance for next period's calculation
+      compoundedBalance += periodInterest;
     }
-    const entirelyProfit = entirelyPay - capital;
-    const monthlyIncome = this.roundToCurrency(entirelyPay / Math.max(1, periodMonth), loan.inMultiplesOf || 1000);
 
-    const { schedule, summary } = this.calculateLenderSchedule(loan, capital);
+    const summary = {
+      totalPrincipal: capital,
+      totalInterest: totalInterestEarned,
+      totalIncome: capital + totalInterestEarned,
+      periodCount: periodMonth,
+    };
+
+    const entirelyPay = summary.totalIncome;
+    const entirelyProfit = summary.totalInterest;
+    const monthlyIncome = this.roundToCurrency(entirelyPay / Math.max(1, periodMonth), inMultiplesOf);
+
+    // ── DEBUG LOG ──
+    this.logger.log(`[getSchedulePreview] FD Compound Interest calculation`);
+    this.logger.log(`[DEBUG] capital=${capital}, rate=${annualRatePercent}%, period=${periodMonth}m, compounding=${compounding}`);
+    this.logger.log(`[DEBUG] daysInYear=${daysInYear}, inMultiplesOf=${inMultiplesOf}`);
+    this.logger.log(`[DEBUG] entirelyPay=${entirelyPay}, entirelyProfit=${entirelyProfit}, monthlyIncome=${monthlyIncome}`);
+    this.logger.log(`[DEBUG] schedule length=${schedule.length}, summary=${JSON.stringify(summary)}`);
+    // ── END DEBUG ──
 
     return {
       capital,
@@ -388,6 +528,7 @@ export class InvestmentContractService {
       entirelyPay,
       schedule,
       summary,
+      fdConfig,
     };
   }
 }
