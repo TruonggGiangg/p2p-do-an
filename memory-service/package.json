@@ -1,0 +1,21 @@
+{
+  "name": "p2p-memory-service",
+  "version": "0.1.0",
+  "description": "Graph memory service for P2P project agents",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.13.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.2",
+    "fast-glob": "^3.3.3",
+    "neo4j-driver": "^5.28.1"
+  }
+}

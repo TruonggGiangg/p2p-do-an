@@ -44,8 +44,7 @@ export class DelinquencyController {
     if (!isNaN(d1) && d1 >= 0) filters.delinquentDaysMin = d1;
     const d2 = delinquentDaysMax != null ? parseInt(delinquentDaysMax, 10) : NaN;
     if (!isNaN(d2) && d2 >= 0) filters.delinquentDaysMax = d2;
-    const data = await this.delinquencyService.getOverdueLoans(filters);
-    return { statusCode: 200, message: 'OK', data };
+    return this.delinquencyService.getOverdueLoans(filters);
   }
 
   @Get('ranges')
@@ -53,8 +52,7 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Danh sách nhóm quá hạn (ranges) từ Fineract' })
   @ApiResponse({ status: 200 })
   async getDelinquencyRanges() {
-    const data = await this.delinquencyService.getDelinquencyRanges();
-    return { statusCode: 200, message: 'OK', data };
+    return this.delinquencyService.getDelinquencyRanges();
   }
 
   @Get('loan-delinquency')
@@ -103,8 +101,7 @@ export class DelinquencyController {
       if (!Number.isNaN(parsed)) payload.delinquentDaysMax = parsed;
     }
 
-    const data = await this.delinquencyService.getLoanDelinquencyList(payload);
-    return { statusCode: 200, message: 'OK', data };
+    return this.delinquencyService.getLoanDelinquencyList(payload);
   }
 
   @Post('loan-delinquency/sync')
@@ -114,8 +111,7 @@ export class DelinquencyController {
   async syncLoanDelinquencyBatch(@Query('limit') limit?: string) {
     const parsed = limit != null ? parseInt(limit, 10) : NaN;
     const max = Number.isNaN(parsed) ? 200 : Math.min(Math.max(parsed, 1), 500);
-    const data = await this.delinquencyService.syncLoanDelinquencyBatch(max);
-    return { statusCode: 200, message: 'Đồng bộ loan_delinquency xong', data };
+    return this.delinquencyService.syncLoanDelinquencyBatch(max);
   }
 
   @Post('loan-delinquency/:fineractLoanId/sync')
@@ -123,8 +119,7 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Đồng bộ loan_delinquency cho 1 khoản vay' })
   @ApiResponse({ status: 200 })
   async syncOneLoanDelinquency(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
-    const data = await this.delinquencyService.syncOneLoanDelinquency(fineractLoanId);
-    return { statusCode: 200, message: 'Đồng bộ loan_delinquency thành công', data };
+    return this.delinquencyService.syncOneLoanDelinquency(fineractLoanId);
   }
 
   @Get('policies/debt-groups')
@@ -132,8 +127,7 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Danh sách debt_group từ Fineract delinquency ranges để cấu hình policy' })
   @ApiResponse({ status: 200 })
   async getDelinquencyPolicyDebtGroups() {
-    const data = await this.delinquencyService.getDelinquencyPolicyDebtGroups();
-    return { statusCode: 200, message: 'OK', data };
+    return this.delinquencyService.getDelinquencyPolicyDebtGroups();
   }
 
   @Get('policies')
@@ -147,13 +141,12 @@ export class DelinquencyController {
     @Query('collection_stage') collectionStage?: DelinquencyCollectionStage,
   ) {
     const parsedLoanProductId = loanProductId != null ? Number(loanProductId) : undefined;
-    const data = await this.delinquencyService.getDelinquencyPolicies({
+    return this.delinquencyService.getDelinquencyPolicies({
       is_active: isActive == null ? undefined : isActive === 'true',
       debt_group: debtGroup != null ? Number(debtGroup) : undefined,
       loan_product_id: Number.isFinite(parsedLoanProductId) ? parsedLoanProductId : undefined,
       collection_stage: collectionStage,
     });
-    return { statusCode: 200, message: 'OK', data };
   }
 
   @Post('policies')
@@ -161,8 +154,7 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Tạo cấu hình xử lý nợ xấu' })
   @ApiResponse({ status: 201 })
   async createDelinquencyPolicy(@Body() dto: CreateDelinquencyPolicyDto) {
-    const data = await this.delinquencyService.createDelinquencyPolicy(dto);
-    return { statusCode: 201, message: 'Created', data };
+    return this.delinquencyService.createDelinquencyPolicy(dto);
   }
 
   @Put('policies/:id')
@@ -170,8 +162,7 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Cập nhật cấu hình xử lý nợ xấu' })
   @ApiResponse({ status: 200 })
   async updateDelinquencyPolicy(@Param('id') id: string, @Body() dto: UpdateDelinquencyPolicyDto) {
-    const data = await this.delinquencyService.updateDelinquencyPolicy(id, dto);
-    return { statusCode: 200, message: 'Updated', data };
+    return this.delinquencyService.updateDelinquencyPolicy(id, dto);
   }
 
   @Delete('policies/:id')
@@ -179,7 +170,6 @@ export class DelinquencyController {
   @ApiOperation({ summary: 'Xóa cấu hình xử lý nợ xấu' })
   @ApiResponse({ status: 200 })
   async removeDelinquencyPolicy(@Param('id') id: string) {
-    const data = await this.delinquencyService.removeDelinquencyPolicy(id);
-    return { statusCode: 200, message: 'Deleted', data };
+    return this.delinquencyService.removeDelinquencyPolicy(id);
   }
 }

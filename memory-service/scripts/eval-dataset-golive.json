@@ -1,0 +1,352 @@
+[
+  {
+    "id": "golive_01_disburse_flow",
+    "type": "flow",
+    "question": "luong giai ngan tien vao escrow va borrower nam o dau",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/controllers/loan/LoanDisbursement"],
+    "expectedAnswerKeywords": ["escrow", "borrower", "disbursement"]
+  },
+  {
+    "id": "golive_02_disburse_steps",
+    "type": "flow",
+    "question": "main account sang investment roi vao escrow duoc xu ly o file nao",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/controllers/invest/InvestContractService"],
+    "expectedAnswerKeywords": ["main", "investment", "escrow"]
+  },
+  {
+    "id": "golive_03_transfer_fee",
+    "type": "api",
+    "question": "LoanDisbursement FineractLoanService transferFunds calculateTransferFee va accounttransfers nam o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanDisbursement", "server/interators/services/FineractLoanService"],
+    "expectedAnswerKeywords": ["accounttransfers", "fee", "transfer"]
+  },
+  {
+    "id": "golive_04_transfer_payload",
+    "type": "api",
+    "question": "cho nao build transferDate payload gui fineract",
+    "expectedPathHints": ["server/interators/services/FineractLoanService", "server/interators/connectors/FineractService"],
+    "expectedAnswerKeywords": ["transferDate", "payload", "fineract"]
+  },
+  {
+    "id": "golive_05_loan_approve",
+    "type": "api",
+    "question": "endpoint approve check loan nam o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanDetailsController", "server/interators/controllers/LoanControllers"],
+    "expectedAnswerKeywords": ["loan", "approve", "endpoint"]
+  },
+  {
+    "id": "golive_06_loan_detail",
+    "type": "api",
+    "question": "LoanDetailsController hoac LoanRetrieval xu ly lay chi tiet khoan vay va status o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanDetailsController", "server/interators/controllers/loan/LoanRetrieval"],
+    "expectedAnswerKeywords": ["loan", "details", "status"]
+  },
+  {
+    "id": "golive_07_webhook_webapp",
+    "type": "api",
+    "question": "route webhook cho web app duoc dinh nghia o dau",
+    "expectedPathHints": ["server/interators/controllers/WebAppWebhookController", "server/interfaces/webhook"],
+    "expectedAnswerKeywords": ["webhook", "route", "webapp"]
+  },
+  {
+    "id": "golive_08_webhook_fineract",
+    "type": "api",
+    "question": "fineract webhook controller nam o file nao",
+    "expectedPathHints": ["server/interators/controllers/FineractWebhookController", "server/interfaces/webhook"],
+    "expectedAnswerKeywords": ["fineract", "webhook", "controller"]
+  },
+  {
+    "id": "golive_09_escrow_clientid",
+    "type": "flow",
+    "question": "client id cua escrow account duoc xac dinh nhu the nao",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/connectors/FineractService"],
+    "expectedAnswerKeywords": ["escrow", "client", "id"]
+  },
+  {
+    "id": "golive_10_pending_notification",
+    "type": "logic",
+    "question": "ham nao map pending loan thanh notification",
+    "expectedPathHints": ["server/interators/services/ScheduledNotificationService", "server/interators/services/NotificationHelper"],
+    "expectedAnswerKeywords": ["pending", "loan", "notification"]
+  },
+  {
+    "id": "golive_11_invest_create",
+    "type": "api",
+    "question": "tao investment contract xu ly o dau",
+    "expectedPathHints": ["server/interators/controllers/invest/InvestCreation", "server/interators/controllers/invest/InvestContractService"],
+    "expectedAnswerKeywords": ["investment", "contract", "create"]
+  },
+  {
+    "id": "golive_12_invest_retrieve",
+    "type": "api",
+    "question": "InvestRetrieval hoac InvestmentManagementController cho API lay danh sach investment o dau",
+    "expectedPathHints": ["server/interators/controllers/invest/InvestRetrieval", "server/interators/controllers/InvestmentManagementController"],
+    "expectedAnswerKeywords": ["investment", "retrieval", "api"]
+  },
+  {
+    "id": "golive_13_invest_payment",
+    "type": "flow",
+    "question": "InvestPaymentService va InvestPaymentHandler xu ly thanh toan investment nam o dau",
+    "expectedPathHints": ["server/interators/controllers/invest/InvestPaymentService", "server/interators/services/InvestPaymentHandler"],
+    "expectedAnswerKeywords": ["investment", "payment", "service"]
+  },
+  {
+    "id": "golive_14_loan_creation",
+    "type": "api",
+    "question": "LoanCreation va LoanCreationService cho luong tao khoan vay moi o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanCreation", "server/interators/services/LoanCreationService"],
+    "expectedAnswerKeywords": ["loan", "creation", "service"]
+  },
+  {
+    "id": "golive_15_loan_retrieval",
+    "type": "api",
+    "question": "LoanRetrieval controller lay danh sach loan va filter status nam o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanRetrieval", "server/interators/controllers/loan/LoanDetailsController"],
+    "expectedAnswerKeywords": ["loan", "retrieval", "status"]
+  },
+  {
+    "id": "golive_16_loan_payment",
+    "type": "flow",
+    "question": "thu no va payment loan duoc xu ly o file nao",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanPayment", "server/interators/services/RepaymentService"],
+    "expectedAnswerKeywords": ["loan", "payment", "repayment"]
+  },
+  {
+    "id": "golive_17_wallet_api",
+    "type": "api",
+    "question": "wallet endpoint va luong xu ly tai khoan nam o dau",
+    "expectedPathHints": ["server/interators/controllers/WalletController", "server/interators/connectors/WalletService"],
+    "expectedAnswerKeywords": ["wallet", "controller", "service"]
+  },
+  {
+    "id": "golive_18_ekyc_flow",
+    "type": "flow",
+    "question": "flow eKYC va verify thong tin nguoi dung nam o dau",
+    "expectedPathHints": ["server/interators/controllers/EkycControllers", "server/interators/services/EkycService"],
+    "expectedAnswerKeywords": ["ekyc", "verify", "user"]
+  },
+  {
+    "id": "golive_19_document_upload",
+    "type": "api",
+    "question": "upload va dong bo document sang fineract o dau",
+    "expectedPathHints": ["server/interators/controllers/DocumentController", "server/interators/services/FineractDocumentService"],
+    "expectedAnswerKeywords": ["document", "upload", "fineract"]
+  },
+  {
+    "id": "golive_20_payos_flow",
+    "type": "flow",
+    "question": "PayOSController va PayOSService xu ly luong thanh toan payos o dau",
+    "expectedPathHints": ["server/interators/controllers/PayOSController", "server/interators/connectors/PayOSService"],
+    "expectedAnswerKeywords": ["payos", "payment", "webhook"]
+  },
+  {
+    "id": "golive_21_otp_logic",
+    "type": "logic",
+    "question": "OTPController OtpService SmartOTPService cho logic tao va verify OTP nam o dau",
+    "expectedPathHints": ["server/interators/controllers/OTPController", "server/interators/connectors/OtpService"],
+    "expectedAnswerKeywords": ["otp", "verify", "service"]
+  },
+  {
+    "id": "golive_22_auth_controller",
+    "type": "api",
+    "question": "AuthControllers AuthMiddlewares va IdentifyControllers cho login register auth endpoint nam o dau",
+    "expectedPathHints": ["server/interators/controllers/AuthControllers", "server/interators/controllers/IdentifyControllers"],
+    "expectedAnswerKeywords": ["auth", "login", "controller"]
+  },
+  {
+    "id": "golive_23_schedule_controller",
+    "type": "api",
+    "question": "ScheduleControllers LenderScheduleService repayment schedule endpoint nam o dau",
+    "expectedPathHints": ["server/interators/controllers/ScheduleControllers", "server/interators/services/LenderScheduleService", "server/interators/controllers/AuthControllers"],
+    "expectedAnswerKeywords": ["schedule", "repayment", "controller"]
+  },
+  {
+    "id": "golive_24_settlement",
+    "type": "flow",
+    "question": "SettlementControllers cho settlement process va settle endpoint nam o dau",
+    "expectedPathHints": ["server/interators/controllers/SettlementControllers", "server/interfaces/settle"],
+    "expectedAnswerKeywords": ["settlement", "controller", "flow"]
+  },
+  {
+    "id": "golive_25_merchant",
+    "type": "api",
+    "question": "MerchantController va MerchantService cho merchant api nam o dau",
+    "expectedPathHints": ["server/interators/controllers/MerchantController", "server/interators/services/MerchantService"],
+    "expectedAnswerKeywords": ["merchant", "api", "service"]
+  },
+  {
+    "id": "golive_26_disburse_flow_alt",
+    "type": "flow",
+    "question": "where is escrow disbursement flow from lender account implemented",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/services/LoanDisbursementService"],
+    "expectedAnswerKeywords": ["escrow", "lender", "flow"]
+  },
+  {
+    "id": "golive_27_disburse_direct_or_two_step",
+    "type": "flow",
+    "question": "logic chon direct flow hay 2 step main-investment-escrow o dau",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/controllers/invest/InvestContractService"],
+    "expectedAnswerKeywords": ["direct", "investment", "escrow"]
+  },
+  {
+    "id": "golive_28_fee_deduction",
+    "type": "logic",
+    "question": "phi transfer duoc tru truoc hay sau va tinh trong ham nao",
+    "expectedPathHints": ["server/interators/connectors/FineractService", "server/interators/controllers/loan/LoanDisbursement"],
+    "expectedAnswerKeywords": ["fee", "transfer", "calculate"]
+  },
+  {
+    "id": "golive_29_loan_status_sync",
+    "type": "logic",
+    "question": "FineractLoanService dong bo loan status tu fineract ve he thong nam o dau",
+    "expectedPathHints": ["server/interators/services/FineractLoanService", "server/interators/controllers/loan/LoanDetailsController"],
+    "expectedAnswerKeywords": ["loan", "status", "fineract"]
+  },
+  {
+    "id": "golive_30_webhook_approved",
+    "type": "api",
+    "question": "loan approved webhook route nam o file nao",
+    "expectedPathHints": ["server/interators/controllers/WebAppWebhookController", "server/interators/controllers/FineractWebhookController"],
+    "expectedAnswerKeywords": ["loan", "approved", "webhook"]
+  },
+  {
+    "id": "golive_31_escrow_validation",
+    "type": "logic",
+    "question": "FineractEscrowService cho validation tranh nham borrower fineract client id nam o dau",
+    "expectedPathHints": ["server/interators/connectors/FineractEscrowService", "server/interators/controllers/loan/LoanDisbursement"],
+    "expectedAnswerKeywords": ["borrower", "clientId", "validation"]
+  },
+  {
+    "id": "golive_32_notification_pending",
+    "type": "logic",
+    "question": "pending loans thanh notification jobs duoc tao o dau",
+    "expectedPathHints": ["server/interators/services/ScheduledNotificationService", "server/interators/controllers/NotificationController"],
+    "expectedAnswerKeywords": ["pending", "notification", "jobs"]
+  },
+  {
+    "id": "golive_33_invest_contracts",
+    "type": "api",
+    "question": "InvestContractService chua cac ham quan ly invest contract nam o dau",
+    "expectedPathHints": ["server/interators/controllers/invest/InvestContractService", "server/interators/controllers/invest/index"],
+    "expectedAnswerKeywords": ["invest", "contract", "service"]
+  },
+  {
+    "id": "golive_34_invest_list",
+    "type": "api",
+    "question": "controller nao tra ve danh sach investment cua lender",
+    "expectedPathHints": ["server/interators/controllers/invest/InvestRetrieval", "server/interators/controllers/InvestmentManagementController"],
+    "expectedAnswerKeywords": ["investment", "lender", "controller"]
+  },
+  {
+    "id": "golive_35_investment_management",
+    "type": "api",
+    "question": "investment management service nam o dau",
+    "expectedPathHints": ["server/interators/services/InvestmentManagementService", "server/interators/controllers/InvestmentManagementController"],
+    "expectedAnswerKeywords": ["investment", "management", "service"]
+  },
+  {
+    "id": "golive_36_loan_create_api",
+    "type": "api",
+    "question": "LoanCreationService va LoanCreation cho API create loan contract nam o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanCreation", "server/interators/services/LoanCreationService"],
+    "expectedAnswerKeywords": ["loan", "create", "contract"]
+  },
+  {
+    "id": "golive_37_loan_list_api",
+    "type": "api",
+    "question": "LoanRetrieval va loan interface API lay danh sach loan implemented o dau",
+    "expectedPathHints": ["server/interators/controllers/loan/LoanRetrieval", "server/interators/controllers/loan/LoanDetailsController"],
+    "expectedAnswerKeywords": ["loan", "retrieval", "api"]
+  },
+  {
+    "id": "golive_38_repayment_logic",
+    "type": "flow",
+    "question": "repayment flow va phan bo tien tra no nam o dau",
+    "expectedPathHints": ["server/interators/services/RepaymentService", "server/interators/controllers/RepaymentController"],
+    "expectedAnswerKeywords": ["repayment", "flow", "loan"]
+  },
+  {
+    "id": "golive_39_wallet_transfer",
+    "type": "flow",
+    "question": "WalletController WalletService xu ly chuyen tien vi va dong bo so du o dau",
+    "expectedPathHints": ["server/interators/controllers/WalletController", "server/interators/connectors/WalletService"],
+    "expectedAnswerKeywords": ["wallet", "transfer", "balance"]
+  },
+  {
+    "id": "golive_40_ekyc_service",
+    "type": "logic",
+    "question": "EkycService EkycControllers xu ly OCR verify eKYC nam o dau",
+    "expectedPathHints": ["server/interators/services/EkycService", "server/interators/controllers/EkycControllers"],
+    "expectedAnswerKeywords": ["ekyc", "ocr", "verify"]
+  },
+  {
+    "id": "golive_41_document_sync",
+    "type": "flow",
+    "question": "FineractDocumentService va DocumentController cho upload sync tai lieu loan nam o dau",
+    "expectedPathHints": ["server/interators/services/FineractDocumentService", "server/interators/controllers/DocumentController"],
+    "expectedAnswerKeywords": ["document", "loan", "fineract"]
+  },
+  {
+    "id": "golive_42_payos_webhook",
+    "type": "api",
+    "question": "PayOSController callback webhook route duoc dinh nghia o dau",
+    "expectedPathHints": ["server/interators/controllers/PayOSController", "server/interfaces/payos"],
+    "expectedAnswerKeywords": ["payos", "webhook", "callback"]
+  },
+  {
+    "id": "golive_43_otp_service",
+    "type": "logic",
+    "question": "smart otp generation va verify duoc xu ly o file nao",
+    "expectedPathHints": ["server/interators/services/SmartOTPService", "server/interators/controllers/OTPController"],
+    "expectedAnswerKeywords": ["otp", "generate", "verify"]
+  },
+  {
+    "id": "golive_44_auth_middleware",
+    "type": "logic",
+    "question": "middleware auth va keycloak xac thuc nam o dau",
+    "expectedPathHints": ["server/interators/middlewares/AuthMiddlewares", "server/interators/middlewares/keycloakAuth"],
+    "expectedAnswerKeywords": ["auth", "middleware", "keycloak"]
+  },
+  {
+    "id": "golive_45_schedule_service",
+    "type": "logic",
+    "question": "service tao lender schedule va ky han tra no o dau",
+    "expectedPathHints": ["server/interators/services/LenderScheduleService", "server/interators/controllers/ScheduleControllers"],
+    "expectedAnswerKeywords": ["lender", "schedule", "term"]
+  },
+  {
+    "id": "golive_46_settlement_controller",
+    "type": "api",
+    "question": "settlement controller endpoint nam o dau",
+    "expectedPathHints": ["server/interators/controllers/SettlementControllers", "server/interfaces/settle"],
+    "expectedAnswerKeywords": ["settlement", "endpoint", "controller"]
+  },
+  {
+    "id": "golive_47_merchant_refund",
+    "type": "flow",
+    "question": "merchant refund xu ly o controller nao",
+    "expectedPathHints": ["server/interators/controllers/MerchantRefundController", "server/interators/services/MerchantService"],
+    "expectedAnswerKeywords": ["merchant", "refund", "controller"]
+  },
+  {
+    "id": "golive_48_notification_pref",
+    "type": "api",
+    "question": "notification preferences endpoint nam o dau",
+    "expectedPathHints": ["server/interators/controllers/NotificationPreferencesController", "server/interfaces/notification"],
+    "expectedAnswerKeywords": ["notification", "preferences", "endpoint"]
+  },
+  {
+    "id": "golive_49_escrow_controller",
+    "type": "api",
+    "question": "escrow controller va connector service nam o dau",
+    "expectedPathHints": ["server/interators/controllers/EscrowController", "server/interators/connectors/EscrowService"],
+    "expectedAnswerKeywords": ["escrow", "controller", "service"]
+  },
+  {
+    "id": "golive_50_auto_cancel",
+    "type": "flow",
+    "question": "auto cancel loan underfunded va refund escrow nam o dau",
+    "expectedPathHints": ["server/interators/services/LoanAutoCancelService", "server/jobs/UnderfundedLoanCancellationJob"],
+    "expectedAnswerKeywords": ["loan", "cancel", "refund"]
+  }
+]

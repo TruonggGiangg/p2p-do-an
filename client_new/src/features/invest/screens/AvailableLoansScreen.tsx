@@ -18,6 +18,28 @@ import FilterBar from '../components/FilterBar';
 import FilterBottomSheet from '../components/FilterBottomSheet';
 import { useFilterState, FilterState } from '../hooks/useFilterState';
 
+type SortType = 'newest' | 'oldest' | 'capital_desc' | 'capital_asc' | 'rate_desc' | 'return_desc';
+
+const SORT_OPTIONS: { key: SortType; label: string }[] = [
+  { key: 'newest', label: 'Mới nhất' },
+  { key: 'oldest', label: 'Cũ nhất' },
+  { key: 'capital_desc', label: 'Vốn cao → thấp' },
+  { key: 'capital_asc', label: 'Vốn thấp → cao' },
+  { key: 'rate_desc', label: 'Lãi suất cao nhất' },
+  { key: 'return_desc', label: 'Tổng trả cao nhất' },
+];
+
+function getSortParams(s: SortType): { sortBy: FilterState['sortBy']; sortOrder: 'asc' | 'desc' } {
+  switch (s) {
+    case 'newest': return { sortBy: 'createdAt', sortOrder: 'desc' };
+    case 'oldest': return { sortBy: 'createdAt', sortOrder: 'asc' };
+    case 'capital_desc': return { sortBy: 'capital', sortOrder: 'desc' };
+    case 'capital_asc': return { sortBy: 'capital', sortOrder: 'asc' };
+    case 'rate_desc': return { sortBy: 'monthlyRatePercent', sortOrder: 'desc' };
+    case 'return_desc': return { sortBy: 'entirelyPay', sortOrder: 'desc' };
+  }
+}
+
 function fmt(n: number): string { return n.toLocaleString('vi-VN') + ' ₫'; }
 
 export default function AvailableLoansScreen() {
@@ -29,6 +51,8 @@ export default function AvailableLoansScreen() {
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [sortType, setSortType] = useState<SortType>('newest');
+  const [showSort, setShowSort] = useState(false);
   const BASE_UNIT_PRICE = 500_000;
 
   const {
@@ -64,6 +88,17 @@ export default function AvailableLoansScreen() {
     setPage(1);
   }, []));
 
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    if (page === 1) {
+      // page đã là 1 → useEffect không trigger → gọi trực tiếp
+      fetchLoans();
+    } else {
+      setPage(1); // useEffect sẽ trigger fetchLoans
+    }
+  }, [page, fetchLoans, setPage]);
+
   // Pagination handlers
   const goToPrev = useCallback(() => {
     if (page > 1) setPage(page - 1);
@@ -73,7 +108,14 @@ export default function AvailableLoansScreen() {
     if (page < totalPages) setPage(page + 1);
   }, [page, totalPages, setPage]);
 
+  const onSort = (s: SortType) => {
+    setSortType(s);
+    setShowSort(false);
+    const { sortBy, sortOrder } = getSortParams(s);
+    setMultipleFilters({ sortBy, sortOrder });
+  };
 
+  const sortLabel = SORT_OPTIONS.find(s => s.key === sortType)?.label || 'Mới nhất';
 
   const renderItem = ({ item }: { item: AvailableLoanItem }) => {
     const annualRate = (item.monthlyRatePercent * 12).toFixed(1);
@@ -325,19 +367,16 @@ export default function AvailableLoansScreen() {
 
   // Header right components
   const HeaderRight = () => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-      {totalCount > 0 && (
-        <View style={[styles.countChip, { backgroundColor: theme.colors.primaryGlass }]}>
-          <Text style={[styles.countText, { color: theme.colors.primary }]}>{totalCount}</Text>
-        </View>
-      )}
-      <TouchableOpacity onPress={() => navigation.navigate('InvestmentStats' as any)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <MaterialCommunityIcons name="chart-line" size={22} color={theme.colors.text} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('InvestmentContractList')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <MaterialCommunityIcons name="folder-outline" size={22} color={theme.colors.text} />
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity onPress={() => setFilterSheetVisible(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+      <View>
+        <MaterialCommunityIcons name="tune-variant" size={22} color={theme.colors.text} />
+        {activeFilterCount > 0 && (
+          <View style={[styles.filterBadge, { backgroundColor: theme.colors.primary }]}>
+            <Text style={[styles.filterBadgeText, { color: theme.colors.background }]}>{activeFilterCount}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -350,14 +389,8 @@ export default function AvailableLoansScreen() {
         rightComponents={<HeaderRight />}
       />
 
-      {/* ── Filter Bar ── */}
-      <FilterBar
-        filters={filters}
-        activeFilterCount={activeFilterCount}
-        onFilterChange={setFilter}
-        onMultiFilterChange={setMultipleFilters}
-        onOpenFilterSheet={() => setFilterSheetVisible(true)}
-      />
+
+
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -370,10 +403,36 @@ export default function AvailableLoansScreen() {
           renderItem={renderItem}
           ListEmptyComponent={renderEmpty}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <View>
+              <View style={styles.sortRow}>
+                <Text style={[styles.sortResultText, { color: theme.colors.textSecondary }]}>
+                  {totalCount} khoản vay
+                </Text>
+                <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
+                  <Text style={[styles.sortBtnText, { color: theme.colors.textSecondary }]}>{sortLabel}</Text>
+                  <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              {showSort && (
+                <View style={[styles.sortMenu, { backgroundColor: theme.colors.backgroundSecondary }]}>
+                  {SORT_OPTIONS.map(opt => {
+                    const active = sortType === opt.key;
+                    return (
+                      <TouchableOpacity key={opt.key} style={[styles.sortItem, active && { backgroundColor: theme.colors.primary + '12' }]} onPress={() => onSort(opt.key)}>
+                        <Text style={[styles.sortItemText, { color: active ? theme.colors.primary : theme.colors.text }]}>{opt.label}</Text>
+                        {active && <Ionicons name="checkmark" size={16} color={theme.colors.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); setPage(1); }}
+              onRefresh={handleRefresh}
               tintColor={theme.colors.primary}
             />
           }
@@ -432,9 +491,20 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 32 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
+  // Sort row
+  sortRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sortResultText: { fontSize: 13, fontWeight: '500' },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sortBtnText: { fontSize: 13, fontWeight: '600' },
+  sortMenu: { borderRadius: 14, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
+  sortItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 13 },
+  sortItemText: { fontSize: 14, fontWeight: '500' },
+
   // Count chip
   countChip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, minWidth: 28, alignItems: 'center' },
   countText: { fontSize: 13, fontWeight: '700' },
+  filterBadge: { position: 'absolute', top: -4, right: -6, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  filterBadgeText: { fontSize: 9, fontWeight: '800' },
 
   // Card — Stitch "Bioluminescent Vault" tonal layering
   card: {

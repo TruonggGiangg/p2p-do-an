@@ -6,21 +6,20 @@ import {
   Body,
   Param,
   Req,
-  HttpCode,
-  HttpStatus,
+  NotFoundException,
+  UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SmartOtpService } from './services/smart-otp.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { UserPayload } from '../auth/interfaces/auth.interface';
 import {
   RegisterDeviceDto,
   RequestOtpDto,
   VerifyOtpDto,
 } from './dto';
-import { BadRequestException } from '@nestjs/common';
 
 /**
  * Smart OTP Controller
@@ -37,30 +36,24 @@ export class SmartOtpController {
 
   /**
    * Đăng ký device mới với Smart OTP
-   * POST /otp/register-device
    */
   @Post('register-device')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Register device with Smart OTP' })
   @ApiResponse({ status: 200, description: 'Đăng ký Smart OTP thành công' })
-  @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ' })
   async registerDevice(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: RegisterDeviceDto,
     @Req() req: Request,
   ) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
 
     // Security Enhancement: Verify 2FA token if 2FA is enabled for user
-    const is2faEnabled = await this.twoFactorService.isEnabled(user._id);
+    const is2faEnabled = await this.twoFactorService.isEnabled(userId);
     if (is2faEnabled) {
       if (!body.verificationToken) {
         throw new BadRequestException('Mã 2FA là bắt buộc khi đăng ký thiết bị mới');
       }
       const isTokenValid = await this.twoFactorService.verifyToken(
-        user._id,
+        userId,
         body.verificationToken,
       );
       if (!isTokenValid) {
@@ -70,15 +63,13 @@ export class SmartOtpController {
 
     const ipAddress = req.ip || req.connection?.remoteAddress;
     const result = await this.smartOtpService.registerDevice(
-      user._id,
+      userId,
       body.publicKey,
       body.deviceFingerprint,
       ipAddress,
     );
 
     return {
-      success: true,
-      message: 'Đăng ký Smart OTP thành công',
       deviceId: result.deviceId,
       totpSecret: result.totpSecret, // Client lưu vào SecureStore
     };
@@ -86,19 +77,14 @@ export class SmartOtpController {
 
   /**
    * Lấy danh sách devices đã đăng ký
-   * GET /otp/devices
    */
   @Get('devices')
   @ApiOperation({ summary: 'Get registered devices' })
   @ApiResponse({ status: 200, description: 'Danh sách thiết bị' })
-  async getDevices(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
-    const devices = await this.smartOtpService.getRegisteredDevices(user._id);
+  async getDevices(@CurrentUser('id') userId: string) {
+    const devices = await this.smartOtpService.getRegisteredDevices(userId);
 
     return {
-      success: true,
       devices,
       count: devices.length,
     };
@@ -106,54 +92,35 @@ export class SmartOtpController {
 
   /**
    * Thu hồi (revoke) device
-   * DELETE /otp/revoke-device/:deviceId
    */
   @Delete('revoke-device/:deviceId')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Revoke device' })
-  @ApiResponse({ status: 200, description: 'Đã thu hồi thiết bị hoặc không tìm thấy' })
   async revokeDevice(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Param('deviceId') deviceId: string,
   ) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
-    const result = await this.smartOtpService.revokeDevice(user._id, deviceId);
+    const result = await this.smartOtpService.revokeDevice(userId, deviceId);
 
     if (result) {
-      return {
-        success: true,
-        message: 'Đã thu hồi thiết bị thành công',
-      };
+      return { message: 'Đã thu hồi thiết bị thành công' };
     } else {
-      return {
-        success: false,
-        message: 'Không tìm thấy thiết bị',
-      };
+      throw new NotFoundException('Không tìm thấy thiết bị');
     }
   }
 
   /**
    * Tạo OTP session cho action
-   * POST /otp/request
    */
   @Post('request')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request OTP session for action' })
-  @ApiResponse({ status: 200, description: 'Đã tạo OTP session' })
-  @ApiResponse({ status: 404, description: 'Thiết bị không tồn tại' })
   async requestOtp(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: RequestOtpDto,
     @Req() req: Request,
   ) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
-    const ipAddress = req.ip || req.connection?.remoteAddress;
+    const ipAddress = req.ip || req.socket?.remoteAddress;
     const session = await this.smartOtpService.createSession(
-      user._id,
+      userId,
       body.deviceId,
       body.actionType,
       body.actionData || {},
@@ -161,8 +128,6 @@ export class SmartOtpController {
     );
 
     return {
-      success: true,
-      message: 'Đã tạo OTP session',
       sessionId: session.sessionId,
       expiresAt: session.expiresAt,
       expiresIn: session.expiresIn,
@@ -171,22 +136,15 @@ export class SmartOtpController {
 
   /**
    * Xác thực Smart OTP
-   * POST /otp/verify
    */
   @Post('verify')
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify Smart OTP' })
-  @ApiResponse({ status: 200, description: 'Kết quả xác thực OTP' })
-  @ApiResponse({ status: 400, description: 'OTP không hợp lệ hoặc đã hết hạn' })
   async verifyOtp(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: VerifyOtpDto,
   ) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
     const result = await this.smartOtpService.verifySmartOtp(
-      user._id,
+      userId,
       body.sessionId,
       body.otp,
       body.signature,
@@ -197,41 +155,33 @@ export class SmartOtpController {
 
     if (result.valid) {
       return {
-        success: true,
         message: result.message,
-        verified: true,
-        actionData: result.actionData,
+        data: {
+          verified: true,
+          actionData: result.actionData,
+        }
       };
     } else {
-      return {
-        success: false,
-        message: result.message,
-      };
+      throw new BadRequestException(result.message);
     }
   }
 
   /**
    * Kiểm tra trạng thái OTP session
-   * GET /otp/session/:sessionId
    */
   @Get('session/:sessionId')
   @ApiOperation({ summary: 'Get OTP session status' })
-  @ApiResponse({ status: 200, description: 'Trạng thái session' })
   async getSessionStatus(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Param('sessionId') sessionId: string,
   ) {
     const session = await this.smartOtpService.getSessionStatus(sessionId);
 
     if (!session) {
-      return {
-        success: false,
-        message: 'Session không tồn tại',
-      };
+      throw new NotFoundException('Session không tồn tại');
     }
 
     return {
-      success: true,
       sessionId: session.sessionId,
       status: session.status,
       actionType: session.actionType,
@@ -243,36 +193,24 @@ export class SmartOtpController {
 
   /**
    * Kiểm tra trạng thái Smart OTP của user
-   * GET /otp/status
    */
   @Get('status')
   @ApiOperation({ summary: 'Get Smart OTP status for current user' })
-  @ApiResponse({ status: 200, description: 'Trạng thái Smart OTP' })
-  async getSmartOtpStatus(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
-      throw new Error('User ID not found');
-    }
-    const status = await this.smartOtpService.getSmartOtpStatus(user._id);
-
-    return {
-      success: true,
-      ...status,
-    };
+  async getSmartOtpStatus(@CurrentUser('id') userId: string) {
+    return this.smartOtpService.getSmartOtpStatus(userId);
   }
 
   /**
    * Lấy thời gian còn lại của OTP hiện tại
-   * GET /otp/time-remaining
    */
   @Get('time-remaining')
   @ApiOperation({ summary: 'Get remaining time for current OTP' })
   async getTimeRemaining() {
-    const remaining = this.smartOtpService.getRemainingSeconds();
+    const remainingSeconds = this.smartOtpService.getRemainingSeconds();
     const timeStep = this.smartOtpService.getTimeStep();
 
     return {
-      success: true,
-      remainingSeconds: remaining,
+      remainingSeconds,
       timeStep,
     };
   }

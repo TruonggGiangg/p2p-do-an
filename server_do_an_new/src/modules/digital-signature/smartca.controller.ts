@@ -1,4 +1,5 @@
-﻿import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -7,20 +8,8 @@ import { DigitalSignature } from './schemas/digital-signature.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { generateLoanContractHTML } from '../loan/templates/loan-contract.template';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { UserPayload } from '../auth/interfaces/auth.interface';
 
-/**
- * DigitalSignatureController
- *
- * Expose endpoints dung cho client mobile:
- *   POST /api/digital-signature/initiate       - Khoi tao phien ky (v1 flow)
- *   POST /api/digital-signature/sign-v2        - Ky truc tiep voi password+OTP (v2 flow)
- *   POST /api/digital-signature/confirm        - Xac nhan ky (v2 confirm)
- *   GET  /api/digital-signature/:id/status     - Check trang thai ky
- *   POST /api/digital-signature/retry/:id      - Retry phien ky
- *   GET  /api/digital-signature/contract/:code - Lay thong tin chu ky cua hop dong
- *   GET  /api/digital-signature/:id/verify     - Verify tinh toan ven
- *   GET  /api/digital-signature/certificates   - Lay danh sach chung thu so
- */
 @ApiTags('Digital Signature')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -32,62 +21,48 @@ export class DigitalSignatureController {
     @InjectModel(LoanContract.name) private contractModel: Model<LoanContract>,
   ) {}
 
-  // ================================================================
-  // GET /digital-signature/certificates
-  // ================================================================
   @Get('certificates')
-  @ApiOperation({ summary: 'Lay danh sach chung thu so cua user' })
-  async getCertificates(@Req() req: any) {
-    const userId = this.getUserCccd(req);
-    const result = await this.smartCAService.getCertificates(userId);
+  @ApiOperation({ summary: 'Lấy danh sách chứng thư số của user' })
+  async getCertificates(@CurrentUser() user: UserPayload) {
+    const userCccd = this.getUserCccd(user);
+    const result = await this.smartCAService.getCertificates(userCccd);
     return {
-      success: result.success,
-      data: {
-        certificates: result.certificates.map(c => ({
-          serialNumber: c.serialNumber,
-          status: c.status,
-          statusCode: c.statusCode,
-          subject: c.subject,
-          issuer: c.issuer,
-          validFrom: c.validFrom,
-          validTo: c.validTo,
-        })),
-        selectedSerial: result.selectedSerial,
-      },
+      certificates: result.certificates.map(c => ({
+        serialNumber: c.serialNumber,
+        status: c.status,
+        statusCode: c.statusCode,
+        subject: c.subject,
+        issuer: c.issuer,
+        validFrom: c.validFrom,
+        validTo: c.validTo,
+      })),
+      selectedSerial: result.selectedSerial,
     };
   }
 
-  // ================================================================
-  // POST /digital-signature/initiate
-  // Flow v1: Gui yeu cau ky -> User xac nhan tren app VNPT SmartCA
-  // ================================================================
   @Post('initiate')
-  @ApiOperation({ summary: 'Khoi tao phien ky so (v1 - user xac nhan tren app)' })
-  async initiateSigning(@Body() body: { contractId: string }, @Req() req: any) {
+  @ApiOperation({ summary: 'Khởi tạo phiên ký số (v1 - user xác nhận trên app)' })
+  async initiateSigning(@Body() body: { contractId: string }, @CurrentUser() user: UserPayload) {
     const { contractId } = body;
     if (!contractId) throw new BadRequestException('contractId is required');
 
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
-    const userCccd = this.getUserCccd(req);
+    const userId = user._id || (user as any).sub || (user as any).userId;
+    const userCccd = this.getUserCccd(user);
 
-    // Find contract
     const contract = await this.findContract(contractId, userId);
     if (contract.status !== 'pending_signature') {
-      throw new BadRequestException(`Hop dong da o trang thai: ${contract.status}`);
+      throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
-    // Generate HTML and hash it
     const contractHTML = generateLoanContractHTML({ contract });
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
-    // Send sign request to VNPT SmartCA
     const session = await this.smartCAService.initiateSigningSession({
       documentData: contractHTML,
       userId: userCccd,
       contractId: contract.contractId,
     });
 
-    // Save to DB
     const signature = await this.signatureModel.create({
       contractId: contract._id,
       userId: new Types.ObjectId(userId),
@@ -101,42 +76,34 @@ export class DigitalSignatureController {
     });
 
     return {
-      success: true,
-      data: {
-        signatureId: signature._id?.toString(),
-        transactionId: session.transactionId,
-        signingSessionId: session.transactionId,
-        credentialId: session.serialNumber || '',
-        expiresAt: session.expiresAt.toISOString(),
-        flow: 'v1',
-      },
+      signatureId: signature._id?.toString(),
+      transactionId: session.transactionId,
+      signingSessionId: session.transactionId,
+      credentialId: session.serialNumber || '',
+      expiresAt: session.expiresAt.toISOString(),
+      flow: 'v1',
     };
   }
 
-  // ================================================================
-  // POST /digital-signature/sign-v2
-  // Flow v2: Ky truc tiep voi password + OTP (SmartCA tich hop)
-  // ================================================================
   @Post('sign-v2')
-  @ApiOperation({ summary: 'Ky so truc tiep v2 (password + OTP)' })
-  async signV2(@Body() body: { contractId: string; password: string; otp: string }, @Req() req: any) {
+  @ApiOperation({ summary: 'Ký số trực tiếp v2 (password + OTP)' })
+  async signV2(@Body() body: { contractId: string; password: string; otp: string }, @CurrentUser() user: UserPayload) {
     const { contractId, password, otp } = body;
     if (!contractId) throw new BadRequestException('contractId is required');
     if (!password) throw new BadRequestException('password is required');
     if (!otp) throw new BadRequestException('otp is required');
 
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
-    const userCccd = this.getUserCccd(req);
+    const userId = user._id || (user as any).sub || (user as any).userId;
+    const userCccd = this.getUserCccd(user);
 
     const contract = await this.findContract(contractId, userId);
     if (contract.status !== 'pending_signature') {
-      throw new BadRequestException(`Hop dong da o trang thai: ${contract.status}`);
+      throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
     const contractHTML = generateLoanContractHTML({ contract });
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
-    // Sign directly with v2 API
     const result = await this.smartCAService.signDocumentV2({
       documentData: contractHTML,
       userId: userCccd,
@@ -145,69 +112,55 @@ export class DigitalSignatureController {
       contractId: contract.contractId,
     });
 
-    // Save to DB
     const signatureDoc = await this.signatureModel.create({
       contractId: contract._id,
       userId: new Types.ObjectId(userId),
       contractCode: contract.contractId,
       provider: 'vnpt_smartca',
       transactionId: result.transactionId,
-      status: result.success ? 'signed' : 'failed',
+      status: 'signed',
       documentHash,
       signatureValue: result.signatures?.[0]?.signatureValue,
-      completedAt: result.success ? new Date() : undefined,
-      lastError: result.error,
+      completedAt: new Date(),
       idempotencyKey: `sign:${contract.contractId}:${Math.floor(Date.now() / 60000)}`,
     });
 
-    // If success, update contract status
-    if (result.success) {
-      await this.contractModel.updateOne(
-        { _id: contract._id },
-        {
-          $set: {
-            status: 'signed',
-            signedAt: new Date(),
-            signatureData: result.signatures?.[0]?.signatureValue,
-          },
+    await this.contractModel.updateOne(
+      { _id: contract._id },
+      {
+        $set: {
+          status: 'signed',
+          signedAt: new Date(),
+          signatureData: result.signatures?.[0]?.signatureValue,
         },
-      );
-    }
+      },
+    );
 
     return {
-      success: result.success,
-      data: {
-        signatureId: signatureDoc._id?.toString(),
-        transactionId: result.transactionId,
-        status: result.success ? 'signed' : 'failed',
-        completedAt: result.success ? new Date().toISOString() : undefined,
-        error: result.error,
-      },
+      signatureId: signatureDoc._id?.toString(),
+      transactionId: result.transactionId,
+      status: 'signed',
+      completedAt: new Date().toISOString(),
     };
   }
 
-  // ================================================================
-  // POST /digital-signature/confirm
-  // For v2 flow that needs a confirm step, or for v1 flow result submission
-  // ================================================================
   @Post('confirm')
-  @ApiOperation({ summary: 'Xac nhan ket qua ky so' })
+  @ApiOperation({ summary: 'Xác nhận kết quả ký số' })
   async confirmSigning(
     @Body() body: { signatureId: string; result?: any; password?: string; sad?: string },
-    @Req() req: any,
+    @CurrentUser() user: UserPayload,
   ) {
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
+    const userId = user._id || (user as any).sub || (user as any).userId;
 
     const signature = await this.signatureModel.findOne({
       _id: body.signatureId,
       userId: new Types.ObjectId(userId),
     });
 
-    if (!signature) throw new BadRequestException('Khong tim thay phien ky');
+    if (!signature) throw new BadRequestException('Không tìm thấy phiên ký');
 
-    // If v2 confirm with sad
     if (body.sad && body.password && signature.transactionId) {
-      const userCccd = this.getUserCccd(req);
+      const userCccd = this.getUserCccd(user);
       const confirmResult = await this.smartCAService.confirmSignV2({
         userId: userCccd,
         password: body.password,
@@ -215,34 +168,22 @@ export class DigitalSignatureController {
         sad: body.sad,
       });
 
-      if (confirmResult.success) {
-        signature.status = 'signed';
-        signature.signatureValue = confirmResult.signatures?.[0]?.signatureValue;
-        signature.completedAt = new Date();
-        await signature.save();
+      signature.status = 'signed';
+      signature.signatureValue = confirmResult.signatures?.[0]?.signatureValue;
+      signature.completedAt = new Date();
+      await signature.save();
 
-        // Update contract
-        await this.contractModel.updateOne(
-          { _id: signature.contractId },
-          { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
-        );
-      } else {
-        signature.status = 'failed';
-        signature.lastError = confirmResult.error;
-        await signature.save();
-      }
+      await this.contractModel.updateOne(
+        { _id: signature.contractId },
+        { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
+      );
 
       return {
-        success: confirmResult.success,
-        data: {
-          status: confirmResult.success ? 'signed' : 'failed',
-          completedAt: confirmResult.success ? signature.completedAt?.toISOString() : undefined,
-          error: confirmResult.error,
-        },
+        status: 'signed',
+        completedAt: signature.completedAt?.toISOString(),
       };
     }
 
-    // For v1 flow: client reports the result from polling
     if (body.result?.status === 'SUCCESS' || body.result?.status === 'signed') {
       signature.status = 'signed';
       signature.signatureValue = body.result?.signatureValue;
@@ -261,45 +202,36 @@ export class DigitalSignatureController {
         { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
       );
 
-      return { success: true, data: { status: 'signed', completedAt: signature.completedAt?.toISOString() } };
+      return { status: 'signed', completedAt: signature.completedAt?.toISOString() };
     }
 
-    // Failed/rejected
     signature.status = body.result?.status === 'REJECTED' ? 'rejected' : 'failed';
-    signature.lastError = body.result?.errorMessage || 'Ky that bai';
+    signature.lastError = body.result?.errorMessage || 'Ký thất bại';
     await signature.save();
 
-    return { success: false, data: { status: signature.status, error: signature.lastError } };
+    throw new BadRequestException(signature.lastError);
   }
 
-  // ================================================================
-  // GET /digital-signature/:id/status
-  // ================================================================
   @Get(':id/status')
-  @ApiOperation({ summary: 'Kiem tra trang thai ky so' })
-  async checkStatus(@Param('id') id: string, @Req() req: any) {
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
+  @ApiOperation({ summary: 'Kiểm tra trạng thái ký số' })
+  async checkStatus(@Param('id') id: string, @CurrentUser() user: UserPayload) {
+    const userId = user._id || (user as any).sub || (user as any).userId;
 
     const signature = await this.signatureModel.findOne({
       _id: id,
       userId: new Types.ObjectId(userId),
     });
 
-    if (!signature) throw new BadRequestException('Khong tim thay phien ky');
+    if (!signature) throw new BadRequestException('Không tìm thấy phiên ký');
 
-    // If already terminal
     if (['signed', 'failed', 'rejected', 'expired', 'cancelled'].includes(signature.status)) {
       return {
-        success: true,
-        data: {
-          status: signature.status,
-          transactionId: signature.transactionId,
-          completedAt: signature.completedAt?.toISOString(),
-        },
+        status: signature.status,
+        transactionId: signature.transactionId,
+        completedAt: signature.completedAt?.toISOString(),
       };
     }
 
-    // Poll VNPT for live status
     if (signature.transactionId) {
       const liveStatus = await this.smartCAService.checkSignStatus(signature.transactionId);
 
@@ -319,49 +251,37 @@ export class DigitalSignatureController {
       }
 
       return {
-        success: true,
-        data: {
-          status: signature.status,
-          transactionId: signature.transactionId,
-          completedAt: signature.completedAt?.toISOString(),
-        },
+        status: signature.status,
+        transactionId: signature.transactionId,
+        completedAt: signature.completedAt?.toISOString(),
       };
     }
 
-    return {
-      success: true,
-      data: { status: signature.status, transactionId: signature.transactionId },
-    };
+    return { status: signature.status, transactionId: signature.transactionId };
   }
 
-  // ================================================================
-  // POST /digital-signature/retry/:id
-  // ================================================================
   @Post('retry/:id')
-  @ApiOperation({ summary: 'Thu lai phien ky so' })
-  async retrySigning(@Param('id') id: string, @Req() req: any) {
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
-    const userCccd = this.getUserCccd(req);
+  @ApiOperation({ summary: 'Thử lại phiên ký số' })
+  async retrySigning(@Param('id') id: string, @CurrentUser() user: UserPayload) {
+    const userId = user._id || (user as any).sub || (user as any).userId;
+    const userCccd = this.getUserCccd(user);
 
     const oldSignature = await this.signatureModel.findOne({
       _id: id,
       userId: new Types.ObjectId(userId),
     });
 
-    if (!oldSignature) throw new BadRequestException('Khong tim thay phien ky');
+    if (!oldSignature) throw new BadRequestException('Không tìm thấy phiên ký');
 
-    // Find contract
     const contract = await this.contractModel.findById(oldSignature.contractId);
-    if (!contract) throw new BadRequestException('Khong tim thay hop dong');
+    if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
     if (contract.status !== 'pending_signature') {
-      throw new BadRequestException(`Hop dong da o trang thai: ${contract.status}`);
+      throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
-    // Mark old signature as cancelled
     oldSignature.status = 'cancelled';
     await oldSignature.save();
 
-    // Create new signing session
     const contractHTML = generateLoanContractHTML({ contract });
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
@@ -385,24 +305,18 @@ export class DigitalSignatureController {
     });
 
     return {
-      success: true,
-      data: {
-        signatureId: newSignature._id?.toString(),
-        transactionId: session.transactionId,
-        signingSessionId: session.transactionId,
-        credentialId: session.serialNumber || '',
-        expiresAt: session.expiresAt.toISOString(),
-      },
+      signatureId: newSignature._id?.toString(),
+      transactionId: session.transactionId,
+      signingSessionId: session.transactionId,
+      credentialId: session.serialNumber || '',
+      expiresAt: session.expiresAt.toISOString(),
     };
   }
 
-  // ================================================================
-  // GET /digital-signature/contract/:contractCode
-  // ================================================================
   @Get('contract/:contractCode')
-  @ApiOperation({ summary: 'Lay thong tin chu ky so cua hop dong' })
-  async getContractSignature(@Param('contractCode') contractCode: string, @Req() req: any) {
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
+  @ApiOperation({ summary: 'Lấy thông tin chữ ký số của hợp đồng' })
+  async getContractSignature(@Param('contractCode') contractCode: string, @CurrentUser() user: UserPayload) {
+    const userId = user._id || (user as any).sub || (user as any).userId;
 
     const signature = await this.signatureModel
       .findOne({
@@ -413,26 +327,23 @@ export class DigitalSignatureController {
       .sort({ completedAt: -1 })
       .lean();
 
-    return { success: true, data: signature || null };
+    return signature || null;
   }
 
-  // ================================================================
-  // GET /digital-signature/:id/verify
-  // ================================================================
   @Get(':id/verify')
-  @ApiOperation({ summary: 'Xac minh tinh toan ven chu ky so' })
-  async verifySignature(@Param('id') id: string, @Req() req: any) {
-    const userId = req.user?.sub || req.user?._id || req.user?.userId;
+  @ApiOperation({ summary: 'Xác minh tính toàn vẹn chữ ký số' })
+  async verifySignature(@Param('id') id: string, @CurrentUser() user: UserPayload) {
+    const userId = user._id || (user as any).sub || (user as any).userId;
 
     const signature = await this.signatureModel.findOne({
       _id: id,
       userId: new Types.ObjectId(userId),
     });
 
-    if (!signature) throw new BadRequestException('Khong tim thay chu ky');
+    if (!signature) throw new BadRequestException('Không tìm thấy chữ ký');
 
     const contract = await this.contractModel.findById(signature.contractId);
-    if (!contract) throw new BadRequestException('Khong tim thay hop dong');
+    if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
 
     const contractHTML = generateLoanContractHTML({ contract });
     const currentHash = this.smartCAService.hashDocument(contractHTML);
@@ -440,24 +351,17 @@ export class DigitalSignatureController {
     const valid = currentHash === signature.documentHash;
 
     return {
-      success: true,
-      data: {
-        valid,
-        documentHash: signature.documentHash,
-        currentHash,
-        message: valid
-          ? 'Chu ky so hop le. Noi dung hop dong khong bi thay doi.'
-          : 'CANH BAO: Noi dung hop dong da bi thay doi sau khi ky!',
-      },
+      valid,
+      documentHash: signature.documentHash,
+      currentHash,
+      message: valid
+        ? 'Chữ ký số hợp lệ. Nội dung hợp đồng không bị thay đổi.'
+        : 'CẢNH BÁO: Nội dung hợp đồng đã bị thay đổi sau khi ký!',
     };
   }
 
-  // ================================================================
-  // Helpers
-  // ================================================================
-  private getUserCccd(req: any): string {
-    // Try to get CCCD from user's KYC data, fallback to default
-    const kycData = req.user?.kycData || {};
+  private getUserCccd(user: any): string {
+    const kycData = user?.kycData || {};
     return kycData.idNumber || kycData.cccd || this.smartCAService['config'].defaultUserId || '';
   }
 
@@ -466,12 +370,11 @@ export class DigitalSignatureController {
 
     let contract = await this.contractModel.findOne({ ...query, userId: new Types.ObjectId(userId) }).lean();
 
-    // Fallback: userId mismatch (e.g. user re-created)
     if (!contract) {
       contract = await this.contractModel.findOne(query).lean();
     }
 
-    if (!contract) throw new BadRequestException('Khong tim thay hop dong');
+    if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
     return contract;
   }
 }

@@ -27,9 +27,16 @@ export const PRO_TABLE_DEFAULTS: ProTableDefaults = {
   showSorterTooltip: false,
   size: 'middle',
   cardProps: {
+    className: 'premium-pro-table-card',
     style: {
-      borderRadius: 10,
-      boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+      borderRadius: 16,
+      border: '1px solid var(--border-color)',
+      boxShadow: 'var(--shadow-md)',
+      overflow: 'hidden',
+      backgroundColor: 'var(--surface-color)',
+    },
+    bodyStyle: {
+      padding: 0,
     },
   },
   tableAlertRender: false,

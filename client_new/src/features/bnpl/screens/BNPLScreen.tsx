@@ -9,7 +9,6 @@ import {
     ActivityIndicator,
     RefreshControl,
     Modal,
-    TextInput,
     Keyboard,
     TouchableWithoutFeedback,
     Animated,
@@ -478,35 +477,31 @@ export default function BNPLScreen() {
                     <Text style={[styles.regTitle, { color: c.textPrimary }]}>Thông tin đăng ký</Text>
                     <Text style={[styles.regDesc, { color: c.textMuted }]}>Vui lòng điền đầy đủ thông tin để đăng ký Ví Trả Sau</Text>
 
-                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Họ và tên <Text style={{ color: c.error }}>*</Text></Text>
-                    <TextInput
-                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                    <CommonInput
+                        label="Họ và tên *"
                         value={regForm.fullName}
                         onChangeText={v => setRegForm(f => ({ ...f, fullName: v }))}
                         placeholder="Nhập họ tên đầy đủ"
-                        placeholderTextColor={c.textMuted}
+                        autoCapitalize="words"
                     />
 
-                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Số CCCD / CMND <Text style={{ color: c.error }}>*</Text></Text>
-                    <TextInput
-                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                    <CommonInput
+                        label="Số CCCD / CMND *"
                         value={regForm.cccd}
                         onChangeText={v => setRegForm(f => ({ ...f, cccd: v }))}
                         placeholder="Nhập số CCCD / CMND"
-                        placeholderTextColor={c.textMuted}
                         keyboardType="numeric"
                         maxLength={12}
                     />
 
-                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Địa chỉ thường trú <Text style={{ color: c.error }}>*</Text></Text>
-                    <TextInput
-                        style={[styles.regInput, styles.regInputMulti, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                    <CommonInput
+                        label="Địa chỉ thường trú *"
                         value={regForm.address}
                         onChangeText={v => setRegForm(f => ({ ...f, address: v }))}
                         placeholder="Nhập địa chỉ thường trú"
-                        placeholderTextColor={c.textMuted}
                         multiline
                         numberOfLines={2}
+                        textAlignVertical="top"
                     />
 
                     <Text style={[styles.regLabel, { color: c.textSecondary }]}>Mục đích vay</Text>
@@ -522,23 +517,20 @@ export default function BNPLScreen() {
                         ))}
                     </View>
 
-                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Nghề nghiệp</Text>
-                    <TextInput
-                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                    <CommonInput
+                        label="Nghề nghiệp"
                         value={regForm.occupation}
                         onChangeText={v => setRegForm(f => ({ ...f, occupation: v }))}
                         placeholder="VD: Nhân viên văn phòng, Kinh doanh..."
-                        placeholderTextColor={c.textMuted}
                     />
 
-                    <Text style={[styles.regLabel, { color: c.textSecondary }]}>Thu nhập hàng tháng (đ)</Text>
-                    <TextInput
-                        style={[styles.regInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.surface }]}
+                    <CommonInput
+                        label="Thu nhập hàng tháng"
                         value={regForm.income}
                         onChangeText={v => setRegForm(f => ({ ...f, income: v.replace(/\D/g, '') }))}
                         placeholder="Nhập thu nhập ước tính"
-                        placeholderTextColor={c.textMuted}
                         keyboardType="numeric"
+                        suffix="₫"
                     />
 
                     <TouchableOpacity
@@ -803,7 +795,7 @@ export default function BNPLScreen() {
                                             backgroundColor: theme.mode === 'dark'
                                                 ? 'rgba(255, 255, 255, 0.1)'
                                                 : 'rgba(139, 92, 246, 0.1)',
-                                            borderRadius: theme.radius.full,
+                                            borderRadius: theme.radius.pill,
                                         },
                                     ]}
                                 >
@@ -819,7 +811,7 @@ export default function BNPLScreen() {
                                             styles.walletProgressFill,
                                             {
                                                 width: `${progressPercentage}%`,
-                                                borderRadius: theme.radius.full,
+                                                borderRadius: theme.radius.pill,
                                             },
                                         ]}
                                         start={{ x: 0, y: 0 }}
@@ -1142,7 +1134,7 @@ export default function BNPLScreen() {
                                                             numberOfRepayments === months
                                                                 ? theme.colors.primaryBorder
                                                                 : theme.colors.border,
-                                                        borderRadius: theme.radius.full,
+                                                        borderRadius: theme.radius.pill,
                                                     },
                                                     numberOfRepayments === months && styles.pillActive,
                                                 ]}

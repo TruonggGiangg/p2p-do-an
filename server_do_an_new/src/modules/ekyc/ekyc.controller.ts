@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Req,
+  Body,
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
@@ -11,6 +12,7 @@ import {
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { EkycService } from './ekyc.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('ekyc')
 @UseGuards(JwtAuthGuard)
@@ -76,14 +78,12 @@ export class EkycController {
 
   @Post('save')
   @UseInterceptors(AnyFilesInterceptor())
-  async saveKyc(@Req() req: any, @UploadedFiles() files: any[]) {
-    const userId = req.user.id || req.user._id || req.user.keycloakUserId; // Map from JWT Payload
+  async saveKyc(@CurrentUser('id') userId: string, @Body() body: any, @UploadedFiles() files: any[]) {
     if (!userId) {
       throw new BadRequestException('Không tìm thấy thông tin định danh người dùng');
     }
 
-    const body = req.body;
-
+    
     let frontOCRData: any = body.frontOCRData;
     let backOCRData: any = body.backOCRData;
     let faceMatchingResult: any = body.faceMatchingResult;

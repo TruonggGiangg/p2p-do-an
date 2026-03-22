@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -18,8 +18,8 @@ export class UsersController {
         @CurrentUser() user: UserPayload,
         @Body('pushToken') pushToken: string,
     ) {
-        if (!user._id) return { success: false, message: 'User ID not found' };
+        if (!user._id) throw new UnauthorizedException('User ID not found');
         await this.usersService.updatePushToken(user._id, pushToken);
-        return { success: true, message: 'Push token updated' };
+        return { message: 'Push token updated' };
     }
 }

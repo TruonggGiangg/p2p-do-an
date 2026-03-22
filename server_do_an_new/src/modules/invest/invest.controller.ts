@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Param, Body, Query,
-  Req, HttpStatus, UseGuards,
+  HttpStatus, UseGuards, UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { InvestService } from './invest.service';
@@ -11,6 +11,7 @@ import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('invest')
 @ApiBearerAuth()
@@ -32,28 +33,13 @@ export class InvestController {
   @Post('investment-order')
   @ApiOperation({ summary: 'Tạo lệnh đầu tư mới + auto-match' })
   @ApiResponse({ status: 201, description: 'Lệnh đầu tư đã tạo (kèm kết quả match)' })
-  async createOrder(@Req() req: any, @Body() dto: CreateInvestmentOrderDto) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) {
-      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-    }
-
-    const result = await this.investService.createOrderWithMatching(userId, dto);
-
-    return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Lệnh đầu tư đã tạo thành công',
-      data: result,
-    };
+  async createOrder(@CurrentUser('id') userId: string, @Body() dto: CreateInvestmentOrderDto) {
+    return this.investService.createOrderWithMatching(userId, dto);
   }
 
   @Post('investment-order/with-progress')
   @ApiOperation({ summary: 'Tạo lệnh đầu tư + auto-match (JSON, progress logs)' })
-  async createOrderWithProgress(@Req() req: any, @Body() dto: CreateInvestmentOrderDto) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) {
-      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-    }
+  async createOrderWithProgress(@CurrentUser('id') userId: string, @Body() dto: CreateInvestmentOrderDto) {
 
     const progressLogs: Array<{ message: string; step: number }> = [];
 
@@ -66,12 +52,8 @@ export class InvestController {
     );
 
     return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Lệnh đầu tư đã tạo thành công',
-      data: {
-        ...result,
-        progressLogs,
-      },
+      ...result,
+      progressLogs,
     };
   }
 
@@ -107,7 +89,7 @@ export class InvestController {
     @Query('search') search?: string,
     @Query('riskLevel') riskLevel?: string,
   ) {
-    const result = await this.investService.getAvailableLoans({
+    return this.investService.getAvailableLoans({
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       sortBy,
@@ -121,12 +103,6 @@ export class InvestController {
       search,
       riskLevel,
     });
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'OK',
-      data: result,
-    };
   }
 
   // ═══════════════════════════════════════════════════════
@@ -141,42 +117,27 @@ export class InvestController {
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'status', required: false, enum: ['open', 'closed'] })
   async listOrders(
-    @Req() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
     @Query('status') status?: string,
   ) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) {
-      return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-    }
 
-    const result = await this.investService.getOrdersByLender(userId, {
+    return this.investService.getOrdersByLender(userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       sortBy,
       sortOrder,
       status,
     });
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'OK',
-      data: result,
-    };
   }
 
   @Get('investment-order/:id')
   @ApiOperation({ summary: 'Chi tiết lệnh đầu tư' })
   async getOrder(@Param('id') id: string) {
-    const order = await this.investService.getOrderById(id);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'OK',
-      data: order,
-    };
+    return this.investService.getOrderById(id);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -187,21 +148,13 @@ export class InvestController {
   @ApiOperation({ summary: 'Tạo hợp đồng ký quỹ đầu tư (với thanh toán Fineract)' })
   @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo + thanh toán + FD' })
   async createContract(
-    @Req() req: any,
+    @CurrentUser('id') userId: string,
     @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
   ) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
 
-    const contract = await this.paymentService.processInvestment(
+    return this.paymentService.processInvestment(
       userId, body.loanApplicationId, body.numNotes, body.investmentOrderId,
     );
-
-    return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Hợp đồng ký quỹ đã tạo thành công',
-      data: contract,
-    };
   }
 
   // ═══════════════════════════════════════════════════════
@@ -213,30 +166,21 @@ export class InvestController {
   async schedulePreview(
     @Body() body: { loanApplicationId: string; numNotes: number },
   ) {
-    const preview = await this.contractService.getSchedulePreview(
+    return this.contractService.getSchedulePreview(
       body.loanApplicationId, body.numNotes,
     );
-    return { statusCode: HttpStatus.OK, message: 'OK', data: preview };
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Thống kê đầu tư của lender' })
-  async getStats(@Req() req: any) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-
-    const stats = await this.statsService.getLenderStats(userId);
-    return { statusCode: HttpStatus.OK, message: 'OK', data: stats };
+  async getStats(@CurrentUser('id') userId: string) {
+    return this.statsService.getLenderStats(userId);
   }
 
   @Get('my-balance')
   @ApiOperation({ summary: 'Số dư ví đầu tư của lender' })
-  async getMyBalance(@Req() req: any) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-
-    const balance = await this.paymentService.getLenderBalance(userId);
-    return { statusCode: HttpStatus.OK, message: 'OK', data: balance };
+  async getMyBalance(@CurrentUser('id') userId: string) {
+    return this.paymentService.getLenderBalance(userId);
   }
 
   @Get('contracts')
@@ -245,41 +189,29 @@ export class InvestController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: ['pending', 'active', 'matured', 'closed'] })
   async listContracts(
-    @Req() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
   ) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
 
-    const result = await this.contractService.getContractsByLender(userId, {
+    return this.contractService.getContractsByLender(userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       status,
     });
-
-    return { statusCode: HttpStatus.OK, message: 'OK', data: result };
   }
 
   @Get('contract/:id')
   @ApiOperation({ summary: 'Chi tiết hợp đồng ký quỹ' })
-  async getContract(@Req() req: any, @Param('id') id: string) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-
-    const contract = await this.contractService.getContractById(id, userId);
-    return { statusCode: HttpStatus.OK, message: 'OK', data: contract };
+  async getContract(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.contractService.getContractById(id, userId);
   }
 
   @Get('contract/loan/:loanId')
   @ApiOperation({ summary: 'Chi tiết hợp đồng ký quỹ theo khoản vay' })
-  async getContractByLoanId(@Req() req: any, @Param('loanId') loanId: string) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    if (!userId) return { statusCode: HttpStatus.UNAUTHORIZED, message: 'Unauthorized' };
-
-    const contract = await this.contractService.getContractByLoanId(loanId, userId);
-    return { statusCode: HttpStatus.OK, message: 'OK', data: contract };
+  async getContractByLoanId(@CurrentUser('id') userId: string, @Param('loanId') loanId: string) {
+    return this.contractService.getContractByLoanId(loanId, userId);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -288,36 +220,20 @@ export class InvestController {
 
   @Put('investment-order/:id')
   @ApiOperation({ summary: 'Cập nhật lệnh đầu tư' })
-  async updateOrder(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateInvestmentOrderDto) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    const order = await this.investService.updateOrder(id, userId, dto);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Cập nhật thành công',
-      data: order,
-    };
+  async updateOrder(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() dto: UpdateInvestmentOrderDto) {
+    return this.investService.updateOrder(id, userId, dto);
   }
 
   @Delete('investment-order/:id')
   @ApiOperation({ summary: 'Xóa lệnh đầu tư' })
-  async deleteOrder(@Req() req: any, @Param('id') id: string) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
+  async deleteOrder(@CurrentUser('id') userId: string, @Param('id') id: string) {
     await this.investService.deleteOrder(id, userId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Đã xóa lệnh đầu tư',
-    };
+    return null;
   }
 
   @Post('investment-order/:id/close')
   @ApiOperation({ summary: 'Đóng lệnh đầu tư' })
-  async closeOrder(@Req() req: any, @Param('id') id: string) {
-    const userId = req.user?._id ?? req.user?.sub ?? req.user?.userId ?? req.user?.id;
-    const order = await this.investService.closeOrder(id, userId);
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Đã đóng lệnh đầu tư',
-      data: order,
-    };
+  async closeOrder(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.investService.closeOrder(id, userId);
   }
 }

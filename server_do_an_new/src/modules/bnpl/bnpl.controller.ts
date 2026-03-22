@@ -17,7 +17,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { CreateBnplLoanDto } from './dto/create-bnpl-loan.dto';
 import { PreviewBnplLoanDto } from './dto/preview-bnpl-loan.dto';
-import type { UserPayload } from '../auth/interfaces/auth.interface';
 
 @ApiTags('bnpl')
 @ApiBearerAuth()
@@ -72,16 +71,10 @@ export class BnplController {
     },
   })
   async previewLoan(@Body() dto: PreviewBnplLoanDto) {
-    const preview = await this.bnplService.previewLoan(
+    return this.bnplService.previewLoan(
       dto.amount,
       dto.numberOfRepayments, // Will use default from config if undefined
     );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Thông tin preview khoản vay',
-      data: preview,
-    };
   }
 
   // ==================== WALLET ENDPOINTS ====================
@@ -89,35 +82,27 @@ export class BnplController {
   @Get('wallet')
   @ApiOperation({ summary: 'Lấy thông tin ví trả sau' })
   @ApiResponse({ status: 200, description: 'Trả về thông tin ví BNPL' })
-  async getWallet(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
+  async getWallet(@CurrentUser('id') userId: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const wallet = await this.bnplService.getWalletInfo(user._id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data: wallet,
-    };
+    return this.bnplService.getWalletInfo(userId);
   }
 
   @Get('wallet/balance')
   @ApiOperation({ summary: 'Lấy số dư ví trả sau' })
   @ApiResponse({ status: 200, description: 'Trả về số dư (âm khi có nợ)' })
-  async getWalletBalance(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
+  async getWalletBalance(@CurrentUser('id') userId: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const wallet = await this.bnplService.getWalletInfo(user._id);
+    const wallet = await this.bnplService.getWalletInfo(userId);
 
     return {
-      statusCode: HttpStatus.OK,
-      data: {
-        balance: wallet.balance,
-        creditLimit: wallet.creditLimit,
-        usedCredit: wallet.usedCredit,
-        availableCredit: wallet.availableCredit,
-      },
+      balance: wallet.balance,
+      creditLimit: wallet.creditLimit,
+      usedCredit: wallet.usedCredit,
+      availableCredit: wallet.availableCredit,
     };
   }
 
@@ -133,17 +118,11 @@ export class BnplController {
     status: 400,
     description: 'Vượt quá hạn mức hoặc dữ liệu không hợp lệ',
   })
-  async createLoan(@CurrentUser() user: UserPayload, @Body() dto: CreateBnplLoanDto) {
-    if (!user._id) {
+  async createLoan(@CurrentUser('id') userId: string, @Body() dto: CreateBnplLoanDto) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const loan = await this.bnplService.createLoan(user._id, dto);
-
-    return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Tạo khoản vay thành công',
-      data: loan,
-    };
+    return this.bnplService.createLoan(userId, dto);
   }
 
   @Get('loans')
@@ -154,18 +133,15 @@ export class BnplController {
     description: 'Lọc theo trạng thái',
   })
   @ApiResponse({ status: 200, description: 'Trả về danh sách khoản vay' })
-  async getLoans(@CurrentUser() user: UserPayload, @Query('status') status?: string) {
-    if (!user._id) {
+  async getLoans(@CurrentUser('id') userId: string, @Query('status') status?: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const loans = await this.bnplService.getLoans(user._id, status);
+    const loans = await this.bnplService.getLoans(userId, status);
 
     return {
-      statusCode: HttpStatus.OK,
-      data: {
-        loans,
-        count: loans.length,
-      },
+      loans,
+      count: loans.length,
     };
   }
 
@@ -173,32 +149,21 @@ export class BnplController {
   @ApiOperation({ summary: 'Chi tiết khoản vay với lịch trả nợ' })
   @ApiResponse({ status: 200, description: 'Trả về chi tiết khoản vay' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy khoản vay' })
-  async getLoanDetails(@CurrentUser() user: UserPayload, @Param('id') id: string) {
-    if (!user._id) {
+  async getLoanDetails(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const loan = await this.bnplService.getLoanDetails(user._id, id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data: loan,
-    };
+    return this.bnplService.getLoanDetails(userId, id);
   }
 
   @Post('loans/:id/sync')
   @ApiOperation({ summary: 'Đồng bộ trạng thái khoản vay từ Fineract' })
   @ApiResponse({ status: 200, description: 'Đồng bộ thành công' })
-  async syncLoanStatus(@CurrentUser() user: UserPayload, @Param('id') id: string) {
-    if (!user._id) {
+  async syncLoanStatus(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const loan = await this.bnplService.syncLoanStatus(user._id, id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Đồng bộ trạng thái thành công',
-      data: loan,
-    };
+    return this.bnplService.syncLoanStatus(userId, id);
   }
 
   // ==================== SCHEDULE ENDPOINTS ====================
@@ -206,22 +171,18 @@ export class BnplController {
   @Get('schedule')
   @ApiOperation({ summary: 'Lịch trả nợ tổng hợp (gộp từ nhiều khoản vay)' })
   @ApiResponse({ status: 200, description: 'Trả về lịch trả nợ theo tháng' })
-  async getConsolidatedSchedule(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
+  async getConsolidatedSchedule(@CurrentUser('id') userId: string) {
+    if (!userId) {
       throw new UnauthorizedException('User ID not found');
     }
-    const schedule = await this.bnplService.getConsolidatedSchedule(user._id);
-
+    const schedule = await this.bnplService.getConsolidatedSchedule(userId);
     const totalDue = schedule.reduce((sum, item) => sum + item.totalDue, 0);
 
     return {
-      statusCode: HttpStatus.OK,
-      data: {
-        schedule,
-        summary: {
-          totalMonths: schedule.length,
-          totalDue,
-        },
+      schedule,
+      summary: {
+        totalMonths: schedule.length,
+        totalDue,
       },
     };
   }

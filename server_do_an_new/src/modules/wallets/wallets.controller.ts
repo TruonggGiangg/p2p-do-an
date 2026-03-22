@@ -1,9 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, HttpStatus, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { UserPayload } from '../auth/interfaces/auth.interface';
 import { TransferDto } from './dto/transfer.dto';
 import { TransferByPhoneDto } from './dto/transfer-by-phone.dto';
 import { TransferByAccountDto } from './dto/transfer-by-account.dto';
@@ -18,36 +17,22 @@ export class WalletsController {
   @Get()
   @ApiOperation({ summary: 'Get all wallets for current user' })
   @ApiResponse({ status: 200, description: 'Returns list of wallets' })
-  async getWallets(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-    const wallets = await this.walletsService.getWalletsByUserId(user._id);
+  async getWallets(@CurrentUser('id') userId: string) {
+    const wallets = await this.walletsService.getWalletsByUserId(userId);
     const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
 
     return {
-      statusCode: HttpStatus.OK,
-      data: {
-        wallets,
-        totalBalance,
-        count: wallets.length,
-      },
+      wallets,
+      totalBalance,
+      count: wallets.length,
     };
   }
 
   @Get('balance')
   @ApiOperation({ summary: 'Get total balance across all wallets' })
   @ApiResponse({ status: 200, description: 'Returns total balance' })
-  async getTotalBalance(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-    const balance = await this.walletsService.getTotalBalance(user._id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data: balance,
-    };
+  async getTotalBalance(@CurrentUser('id') userId: string) {
+    return this.walletsService.getTotalBalance(userId);
   }
 
   @Get('transactions')
@@ -62,50 +47,31 @@ export class WalletsController {
     description: 'Specific wallet Fineract ID to filter transactions for a single wallet',
   })
   async getTransactions(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('walletId') walletId?: string,
   ) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-
     const limitNum = limit ? parseInt(limit, 10) : 20;
     const offsetNum = offset ? parseInt(offset, 10) : 0;
 
-    // walletId is Fineract Savings ID (not MongoDB ID)
-    const result = await this.walletsService.getWalletTransactions(user._id, limitNum, offsetNum, walletId);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data: result,
-    };
+    return this.walletsService.getWalletTransactions(userId, limitNum, offsetNum, walletId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get specific wallet by ID' })
   @ApiResponse({ status: 200, description: 'Returns wallet details' })
   async getWallet(@Param('id') id: string) {
-    const wallet = await this.walletsService.getWalletById(id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data: wallet,
-    };
+    return this.walletsService.getWalletById(id);
   }
 
   @Post('sync')
   @ApiOperation({ summary: 'Sync wallets from Fineract' })
   @ApiResponse({ status: 200, description: 'Wallets synced successfully' })
-  async syncWallets(@CurrentUser() user: UserPayload) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-    const result = await this.walletsService.syncWalletsFromFineract(user._id);
+  async syncWallets(@CurrentUser('id') userId: string) {
+    const result = await this.walletsService.syncWalletsFromFineract(userId);
 
     return {
-      statusCode: HttpStatus.OK,
       message: `Synced ${result.synced} wallet(s)`,
       data: {
         synced: result.synced,
@@ -118,98 +84,63 @@ export class WalletsController {
   @ApiOperation({ summary: 'Chuyển tiền giữa các ví Fineract' })
   @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transfer(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: TransferDto,
   ) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-
     const { fromWalletId, toWalletId, amount, description } = body;
-
     const result = await this.walletsService.transferBetweenWallets(fromWalletId, toWalletId, amount, description);
 
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Chuyển khoản thành công',
-      data: result,
-    };
+    return result;
   }
 
   @Post('transfer/phone')
   @ApiOperation({ summary: 'Chuyển tiền qua số điện thoại' })
   @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transferByPhone(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: TransferByPhoneDto,
   ) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-
     const { fromWalletId, recipientPhone, amount, description } = body;
     const cleanPhone = recipientPhone.replace(/\D/g, '');
-
     const result = await this.walletsService.transferByPhone(
-      user._id,
+      userId,
       fromWalletId,
       cleanPhone,
       amount,
       description,
     );
 
-    return {
-      statusCode: HttpStatus.OK,
-      message: `Chuyển ${amount.toLocaleString('vi-VN')} VND thành công đến ${cleanPhone}`,
-      data: result,
-    };
+    return result;
   }
 
   @Patch(':id/default')
   @ApiOperation({ summary: 'Set a wallet as default' })
   @ApiResponse({ status: 200, description: 'Wallet set as default successful' })
   async setDefaultWallet(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Param('id') id: string,
   ) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
+    const wallet = await this.walletsService.setDefaultWallet(userId, id);
 
-    const wallet = await this.walletsService.setDefaultWallet(user._id, id);
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Đã đặt ví làm mặc định',
-      data: wallet,
-    };
+    return wallet;
   }
 
   @Post('transfer/account')
   @ApiOperation({ summary: 'Chuyển tiền qua số tài khoản Fineract' })
   @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
   async transferByAccount(
-    @CurrentUser() user: UserPayload,
+    @CurrentUser('id') userId: string,
     @Body() body: TransferByAccountDto,
   ) {
-    if (!user._id) {
-      throw new UnauthorizedException('User ID not found');
-    }
-
     const { fromWalletId, recipientAccountNo, amount, description } = body;
-
     const result = await this.walletsService.transferByAccountNumber(
-      user._id,
+      userId,
       fromWalletId,
       recipientAccountNo,
       amount,
       description,
     );
 
-    return {
-      statusCode: HttpStatus.OK,
-      message: `Chuyển ${amount.toLocaleString('vi-VN')} VND thành công đến số tài khoản ${recipientAccountNo}`,
-      data: result,
-    };
+    return result;
   }
 }

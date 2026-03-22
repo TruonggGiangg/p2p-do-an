@@ -16,7 +16,7 @@ export class RbacController {
   @Get('metadata')
   @ApiOperation({ summary: 'Lấy danh sách actions + subjects hệ thống' })
   async getMetadata() {
-    return { statusCode: 200, data: this.rbacService.getMetadata() };
+    return this.rbacService.getMetadata();
   }
 
   // ═══════════════════ ROLES ═══════════════════════
@@ -24,30 +24,26 @@ export class RbacController {
   @Get('roles')
   @ApiOperation({ summary: 'Danh sách tất cả roles' })
   async listRoles() {
-    const roles = await this.rbacService.listRoles();
-    return { statusCode: 200, data: roles };
+    return this.rbacService.listRoles();
   }
 
   @Post('roles')
   @ApiOperation({ summary: 'Tạo role mới' })
   async createRole(@Body() body: { name: string; description?: string }) {
-    const role = await this.rbacService.createRole(body.name, body.description);
-    return { statusCode: 201, data: role };
+    return this.rbacService.createRole(body.name, body.description);
   }
 
   @Put('roles/:id')
   @ApiOperation({ summary: 'Cập nhật role' })
   async updateRole(@Param('id') id: string, @Body() body: { name?: string; description?: string; isActive?: boolean }) {
-    const role = await this.rbacService.updateRole(id, body);
-    return { statusCode: 200, data: role };
+    return this.rbacService.updateRole(id, body);
   }
 
   @Delete('roles/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Xóa role (chỉ role tự tạo)' })
   async deleteRole(@Param('id') id: string) {
-    const result = await this.rbacService.deleteRole(id);
-    return { statusCode: 200, data: result };
+    return this.rbacService.deleteRole(id);
   }
 
   // ═══════════════════ PERMISSIONS ═════════════════
@@ -55,8 +51,7 @@ export class RbacController {
   @Get('roles/:id/permissions')
   @ApiOperation({ summary: 'Lấy danh sách permissions của role' })
   async getPermissions(@Param('id') id: string) {
-    const perms = await this.rbacService.getPermissionsByRole(id);
-    return { statusCode: 200, data: perms };
+    return this.rbacService.getPermissionsByRole(id);
   }
 
   @Put('roles/:id/permissions')
@@ -65,14 +60,12 @@ export class RbacController {
     @Param('id') id: string,
     @Body() body: { permissions: { action: string; subject: string; allowed: boolean }[] },
   ) {
-    const perms = await this.rbacService.setPermissions(id, body.permissions);
-    return { statusCode: 200, message: 'Cập nhật quyền thành công', data: perms };
+    return this.rbacService.setPermissions(id, body.permissions);
   }
 
   @Post('roles/:id/permissions/toggle')
   @ApiOperation({ summary: 'Bật/tắt một quyền cụ thể' })
   async togglePermission(@Param('id') id: string, @Body() body: { action: string; subject: string; allowed: boolean }) {
-    const perm = await this.rbacService.togglePermission(id, body.action, body.subject, body.allowed);
-    return { statusCode: 200, data: perm };
+    return this.rbacService.togglePermission(id, body.action, body.subject, body.allowed);
   }
 }

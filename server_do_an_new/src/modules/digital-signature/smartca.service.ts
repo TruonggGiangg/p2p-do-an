@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, RequestTimeoutException } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -6,16 +6,6 @@ import smartcaConfig from 'src/config/smartca.config';
 
 /**
  * SmartCAService - VNPT SmartCA Digital Signature Integration
- *
- * Supports two environments via SMARTCA_ENV:
- *   - production: gwsca.vnpt.vn (SMARTCA_* vars)
- *   - test: rmgateway.vnptit.vn (SMARTCA_TEST_* vars)
- *
- * Authentication: sp_id + sp_password in request body (same for both envs)
- *
- * Two sign flows:
- *   v1: Send sign request → User confirms on VNPT SmartCA app → Poll status
- *   v2: Send sign request with (password + OTP) → Get transaction_id/tran_code/sad → Confirm
  */
 
 function utcTimestamp(): string {
@@ -36,12 +26,10 @@ export interface CertificateInfo {
 }
 
 export interface SignResult {
-  success: boolean;
   signatures?: Array<{ signatureValue: string; docId: string }>;
   transactionId?: string;
   tranCode?: string;
   sad?: string;
-  error?: string;
   rawResponse?: any;
 }
 
@@ -72,7 +60,6 @@ export class SmartCAService {
   // 1. Get certificates
   // ================================================================
   async getCertificates(userId?: string): Promise<{
-    success: boolean;
     certificates: CertificateInfo[];
     selectedSerial?: string;
     rawResponse?: any;
@@ -103,7 +90,7 @@ export class SmartCAService {
 
     if (!Array.isArray(list) || list.length === 0) {
       this.logger.warn(`[getCertificates] No certificates. Response: ${JSON.stringify(body).slice(0, 300)}`);
-      return { success: false, certificates: [], rawResponse: body };
+      throw new NotFoundException('Không tìm thấy chứng thư số nào của người dùng này');
     }
 
     const certificates: CertificateInfo[] = list.map((cert: any) => ({
@@ -126,7 +113,7 @@ export class SmartCAService {
     const selectedSerial = active?.serialNumber || certificates[certificates.length - 1]?.serialNumber;
 
     this.logger.log(`[getCertificates] Found ${certificates.length} certs, selected: ${selectedSerial}`);
-    return { success: true, certificates, selectedSerial, rawResponse: body };
+    return { certificates, selectedSerial, rawResponse: body };
   }
 
   // ================================================================
@@ -173,9 +160,13 @@ export class SmartCAService {
     const body = res.data ?? {};
     this.logger.log(`[requestSignV1] status=${res.status}, body=${JSON.stringify(body).slice(0, 500)}`);
 
+    const isSuccess = res.status === 200 && (body.status_code === 200 || body.status_code === 0);
+    if (!isSuccess) {
+      throw new BadRequestException(body.message || 'Không thể gửi yêu cầu ký v1');
+    }
+
     const data = body.data ?? {};
     return {
-      success: res.status === 200 && (body.status_code === 200 || body.status_code === 0),
       transactionId: data.transaction_id || transaction_id,
       tranCode: data.tran_code,
       sad: data.sad,
@@ -229,6 +220,11 @@ export class SmartCAService {
     const body = res.data ?? {};
     this.logger.log(`[requestSignV2] status=${res.status}, body=${JSON.stringify(body).slice(0, 500)}`);
 
+    const isSuccess = res.status === 200 && (body.status_code === 200 || body.status_code === 0);
+    if (!isSuccess) {
+      throw new BadRequestException(body.message || 'Yêu cầu ký v2 bị từ chối do API lỗi');
+    }
+
     const data = body.data ?? {};
     const sigs = (data.signatures ?? []).map((s: any) => ({
       signatureValue: s.signature_value,
@@ -236,7 +232,6 @@ export class SmartCAService {
     }));
 
     return {
-      success: res.status === 200 && (body.status_code === 200 || body.status_code === 0),
       transactionId: data.transaction_id || transaction_id,
       tranCode: data.tran_code,
       sad: data.sad,
@@ -276,6 +271,11 @@ export class SmartCAService {
     const body = res.data ?? {};
     this.logger.log(`[confirmSignV2] status=${res.status}, body=${JSON.stringify(body).slice(0, 500)}`);
 
+    const isSuccess = res.status === 200 && (body.status_code === 200 || body.status_code === 0);
+    if (!isSuccess) {
+      throw new BadRequestException(body.message || 'Xác nhận ký số v2 thất bại.');
+    }
+
     const data = body.data ?? {};
     const sigs = (data.signatures ?? []).map((s: any) => ({
       signatureValue: s.signature_value,
@@ -283,7 +283,6 @@ export class SmartCAService {
     }));
 
     return {
-      success: res.status === 200 && (body.status_code === 200 || body.status_code === 0),
       signatures: sigs.length ? sigs : undefined,
       transactionId: options.transactionId,
       rawResponse: body,
@@ -356,19 +355,19 @@ export class SmartCAService {
       const result = await this.checkSignStatus(transactionId);
 
       if (result.status === 'signed' && result.signatures?.length) {
-        return { success: true, signatures: result.signatures, transactionId, rawResponse: result.rawResponse };
+        return { signatures: result.signatures, transactionId, rawResponse: result.rawResponse };
       }
       if (result.status === 'expired') {
-        return { success: false, error: 'Phien ky da het han', transactionId };
+        throw new BadRequestException('Phiên ký đã hết hạn');
       }
       if (result.status === 'rejected') {
-        return { success: false, error: 'Nguoi dung da tu choi ky', transactionId };
+        throw new BadRequestException('Người dùng đã từ chối ký');
       }
       if (result.status === 'failed') {
-        return { success: false, error: 'Ky so that bai', transactionId, rawResponse: result.rawResponse };
+        throw new BadRequestException('Ký số thất bại trên server VNPT');
       }
       if (Date.now() - startedAt > timeout) {
-        return { success: false, error: 'Het thoi gian cho ky', transactionId };
+        throw new RequestTimeoutException('Hết thời gian chờ ký');
       }
 
       await new Promise(resolve => setTimeout(resolve, interval));
@@ -392,7 +391,7 @@ export class SmartCAService {
     contractId?: string;
   }): Promise<SigningSession> {
     const certResult = await this.getCertificates(options.userId);
-    if (!certResult.success || !certResult.selectedSerial) {
+    if (!certResult.selectedSerial) {
       throw new BadRequestException('Khong tim thay chung thu so. Vui long dang ky chu ky so VNPT SmartCA.');
     }
 
@@ -407,10 +406,6 @@ export class SmartCAService {
       docId,
       transactionId,
     });
-
-    if (!signResult.success) {
-      throw new BadRequestException('Khong the gui yeu cau ky. Vui long thu lai.');
-    }
 
     return {
       transactionId: signResult.transactionId || transactionId,
@@ -436,8 +431,8 @@ export class SmartCAService {
     contractId?: string;
   }): Promise<SignResult> {
     const certResult = await this.getCertificates(options.userId);
-    if (!certResult.success || !certResult.selectedSerial) {
-      throw new BadRequestException('Khong tim thay chung thu so.');
+    if (!certResult.selectedSerial) {
+      throw new BadRequestException('Không tìm thấy chứng thư số.');
     }
 
     const documentHash = this.hashDocument(options.documentData);
@@ -454,11 +449,11 @@ export class SmartCAService {
       transactionId,
     });
 
-    if (signResult.success && signResult.signatures?.length) {
+    if (signResult.signatures?.length) {
       return signResult;
     }
 
-    if (signResult.success && signResult.sad) {
+    if (signResult.sad) {
       return this.confirmSignV2({
         userId: options.userId,
         password: options.password,
@@ -467,11 +462,6 @@ export class SmartCAService {
       });
     }
 
-    return {
-      success: false,
-      error: 'Ky so khong thanh cong. Vui long kiem tra mat khau va OTP.',
-      transactionId: signResult.transactionId,
-      rawResponse: signResult.rawResponse,
-    };
+    throw new BadRequestException('Ký số không thành công. Thiếu sad hoặc signature.');
   }
 }

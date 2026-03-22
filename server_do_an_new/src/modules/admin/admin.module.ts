@@ -15,7 +15,12 @@ import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { Notification, NotificationSchema } from '../loan/schemas/notification.schema';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
 import { Role, RoleSchema } from '../rbac/schemas/role.schema';
-import { AdminController } from './admin.controller';
+import { AdminProfileController } from './controllers/admin-profile.controller';
+import { AdminProductController } from './controllers/admin-product.controller';
+import { AdminCustomerController } from './controllers/admin-customer.controller';
+import { AdminKycController } from './controllers/admin-kyc.controller';
+import { AdminStaffController } from './controllers/admin-staff.controller';
+import { AdminLoanController } from './controllers/admin-loan.controller';
 import { AdminService } from './admin.service';
 import { LoanSyncScheduler } from './loan-sync.scheduler';
 import { ReminderScheduler } from './reminder.scheduler';
@@ -34,6 +39,7 @@ import {
   AdminKycService,
   AdminStaffService,
 } from './services';
+import { AdminLoanService } from './services/admin-loan.service';
 
 @Module({
   imports: [
@@ -62,13 +68,21 @@ import {
       { name: Role.name, schema: RoleSchema },
     ]),
   ],
-  controllers: [AdminController],
+  controllers: [
+    AdminProfileController,
+    AdminProductController,
+    AdminCustomerController,
+    AdminKycController,
+    AdminStaffController,
+    AdminLoanController,
+  ],
   providers: [
     AdminService,
     AdminProductService,
     AdminCustomerService,
     AdminKycService,
     AdminStaffService,
+    AdminLoanService,
     LoanSyncScheduler,
     ReminderScheduler,
     PushNotificationService,

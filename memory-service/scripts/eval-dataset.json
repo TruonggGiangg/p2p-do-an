@@ -1,0 +1,85 @@
+[
+  {
+    "id": "flow_disbursement",
+    "type": "flow",
+    "question": "flow giai ngan tu escrow sang borrower nam o dau",
+    "expectedPathHints": [
+      "server/interators/connectors/escrow",
+      "server/interators/controllers/loan",
+      "server/interators/services/fineractloan"
+    ],
+    "expectedAnswerKeywords": ["escrow", "borrower", "disbursement"]
+  },
+  {
+    "id": "transfer_fee_api",
+    "type": "api",
+    "question": "api nao tao transfer accounttransfers va tinh fee",
+    "expectedPathHints": [
+      "server/interators/controllers/loan",
+      "server/interators/connectors/fineract",
+      "server/interators/services/fineractloan"
+    ],
+    "expectedAnswerKeywords": ["accounttransfers", "fee", "transfer"]
+  },
+  {
+    "id": "loan_approve_endpoint",
+    "type": "api",
+    "question": "loan approve-check endpoint nam o file nao",
+    "expectedPathHints": [
+      "server/interators/services/fineractloan",
+      "server/interators/controllers/loan"
+    ],
+    "expectedAnswerKeywords": ["approve", "endpoint", "loan"]
+  },
+  {
+    "id": "transfer_date_payload",
+    "type": "api",
+    "question": "cho nao build payload transferDate cho fineract",
+    "expectedPathHints": [
+      "server/interators/connectors/fineract",
+      "server/interators/controllers/loan"
+    ],
+    "expectedAnswerKeywords": ["transferDate", "payload", "fineract"]
+  },
+  {
+    "id": "webhook_route",
+    "type": "api",
+    "question": "webhook loan approved route o file nao",
+    "expectedPathHints": [
+      "server/interators/controllers",
+      "server/interators/routes",
+      "server/interators"
+    ],
+    "expectedAnswerKeywords": ["webhook", "route", "approved"]
+  },
+  {
+    "id": "escrow_client_id",
+    "type": "flow",
+    "question": "fineract escrow account client id duoc xac dinh ra sao",
+    "expectedPathHints": [
+      "server/interators/connectors/escrow",
+      "server/interators/connectors/fineract"
+    ],
+    "expectedAnswerKeywords": ["escrow", "client", "id"]
+  },
+  {
+    "id": "pending_notifications",
+    "type": "logic",
+    "question": "ham nao map pending loans thanh notifications",
+    "expectedPathHints": [
+      "server/interators",
+      "server"
+    ],
+    "expectedAnswerKeywords": ["pending", "loan", "notification"]
+  },
+  {
+    "id": "invest_to_escrow",
+    "type": "flow",
+    "question": "vi sao co 2 buoc main to investment roi investment to escrow",
+    "expectedPathHints": [
+      "server/interators/connectors/FineractEscrowService",
+      "server/interators/controllers/invest"
+    ],
+    "expectedAnswerKeywords": ["investment", "escrow", "flow"]
+  }
+]

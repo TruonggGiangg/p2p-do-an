@@ -1,15 +1,44 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  Alert, StyleSheet, StatusBar,
+  Alert, StyleSheet, StatusBar, Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { BinanceHeader } from '../../../components';
 import investService, { InvestmentOrderItem } from '../services/invest.service';
+import Svg, { Circle } from 'react-native-svg';
+
+/* ── Circular Progress ── */
+function CircularProgress({ pct, size, color, bgColor, textColor }: {
+  pct: number; size: number; color: string; bgColor: string; textColor: string;
+}) {
+  const strokeWidth = 8;
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct / 100);
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={bgColor} strokeWidth={strokeWidth} fill="transparent" />
+        <Circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={strokeWidth} fill="transparent"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90, ${size / 2}, ${size / 2})`}
+        />
+      </Svg>
+      <Text style={{ fontSize: 22, fontWeight: '800', color: textColor }}>{pct}%</Text>
+    </View>
+  );
+}
 
 export default function InvestmentOrderDetailScreen() {
   const { theme } = useTheme();
+  const c = theme.colors;
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const orderId: string = route.params?.orderId;
@@ -24,43 +53,32 @@ export default function InvestmentOrderDetailScreen() {
       setOrder(data);
     } catch (e: any) {
       Alert.alert('Lỗi', e?.message || 'Không tải được chi tiết');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [orderId]);
 
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
 
   const handleClose = () => {
-    Alert.alert('Đóng lệnh đầu tư', 'Bạn muốn đóng lệnh này? Hệ thống sẽ không ghép thêm khoản vay mới.', [
+    Alert.alert('Đóng lệnh đầu tư', 'Hệ thống sẽ không ghép thêm khoản vay mới.', [
       { text: 'Huỷ', style: 'cancel' },
       {
         text: 'Đóng', style: 'destructive', onPress: async () => {
           setClosing(true);
-          try {
-            await investService.closeInvestmentOrder(orderId);
-            fetchOrder();
-          } catch (e: any) {
-            Alert.alert('Lỗi', e?.message || 'Không thể đóng');
-          } finally {
-            setClosing(false);
-          }
+          try { await investService.closeInvestmentOrder(orderId); fetchOrder(); }
+          catch (e: any) { Alert.alert('Lỗi', e?.message || 'Không thể đóng'); }
+          finally { setClosing(false); }
         },
       },
     ]);
   };
 
   const handleDelete = () => {
-    Alert.alert('Xóa lệnh đầu tư', 'Bạn chắc chắn muốn xóa lệnh này?', [
+    Alert.alert('Xóa lệnh đầu tư', 'Bạn chắc chắn muốn xóa?', [
       { text: 'Huỷ', style: 'cancel' },
       {
         text: 'Xóa', style: 'destructive', onPress: async () => {
-          try {
-            await investService.deleteInvestmentOrder(orderId);
-            navigation.goBack();
-          } catch (e: any) {
-            Alert.alert('Lỗi', e?.message || 'Không thể xóa');
-          }
+          try { await investService.deleteInvestmentOrder(orderId); navigation.goBack(); }
+          catch (e: any) { Alert.alert('Lỗi', e?.message || 'Không thể xóa'); }
         },
       },
     ]);
@@ -70,142 +88,152 @@ export default function InvestmentOrderDetailScreen() {
     if (item.isInvested) {
       try {
         const contract = await investService.getContractByLoanId(item.loanId);
-        if (contract) {
-          navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
-        } else {
-          Alert.alert('Chưa sẵn sàng', 'Hợp đồng đầu tư đang được tạo, vui lòng thử lại sau.');
-        }
-      } catch (error: any) {
-        Alert.alert('Lỗi', error?.message || 'Không thể mở chi tiết hợp đồng.');
+        if (contract) navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
+        else Alert.alert('Chưa sẵn sàng', 'Hợp đồng đang được tạo, vui lòng thử lại sau.');
+      } catch (e: any) {
+        Alert.alert('Lỗi', e?.message || 'Không thể mở chi tiết hợp đồng.');
       }
     } else {
-      navigation.navigate('SchedulePreview', {
-        loanApplicationId: item.loanId,
-        numNotes: item.nodeMatch,
-        readonly: true,
-      });
+      navigation.navigate('SchedulePreview', { loanApplicationId: item.loanId, numNotes: item.nodeMatch, readonly: true });
     }
   };
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+      <View style={[s.container, s.center, { backgroundColor: c.background }]}>
+        <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
   }
 
   if (!order) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.textSecondary }}>Không tìm thấy lệnh đầu tư</Text>
+      <View style={[s.container, s.center, { backgroundColor: c.background }]}>
+        <Text style={{ color: c.textSecondary }}>Không tìm thấy lệnh đầu tư</Text>
       </View>
     );
   }
 
   const matchPct = order.totalNodes > 0 ? Math.round((order.matchedNodes / order.totalNodes) * 100) : 0;
   const isClosed = order.status === 'closed';
+  const statusColor = isClosed ? '#EF4444' : (c.success || '#4edea3');
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[s.container, { backgroundColor: c.background }]}>
       <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-          {order.name || `Lệnh #${order._id.slice(-6)}`}
-        </Text>
-        <TouchableOpacity onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={22} color="#EF4444" />
-        </TouchableOpacity>
-      </View>
+      <BinanceHeader
+        mode="standard"
+        title={order.name || `Lệnh #${order._id.slice(-6)}`}
+        showBack
+        rightComponents={
+          <TouchableOpacity onPress={handleDelete} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="trash-outline" size={22} color="#EF4444" />
+          </TouchableOpacity>
+        }
+      />
 
       <FlatList
         ListHeaderComponent={
-          <View style={styles.detailSection}>
-            {/* Status + Progress */}
-            <View style={[styles.statusCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
-              <View style={styles.statusRow}>
-                <Ionicons name={isClosed ? 'lock-closed' : 'folder-open'} size={28} color={isClosed ? '#EF4444' : theme.colors.primary} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.statusTitle, { color: theme.colors.text }]}>
-                    {isClosed ? 'Đã đóng' : 'Đang hoạt động'}
+          <View style={s.headerSection}>
+            {/* Status hero card */}
+            <View style={[s.heroCard, { backgroundColor: c.backgroundSecondary }]}>
+              <View style={s.heroRow}>
+                <CircularProgress
+                  pct={matchPct}
+                  size={100}
+                  color={isClosed ? (c.success || '#4edea3') : c.primary}
+                  bgColor={(c.textMuted || '#999') + '20'}
+                  textColor={c.text}
+                />
+                <View style={s.heroInfo}>
+                  <View style={[s.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                    <Ionicons name={isClosed ? 'lock-closed' : 'folder-open'} size={14} color={statusColor} />
+                    <Text style={[s.statusText, { color: statusColor }]}>{isClosed ? 'Đã đóng' : 'Đang hoạt động'}</Text>
+                  </View>
+                  <Text style={[s.heroAmount, { color: c.text }]}>
+                    {order.matchedCapital.toLocaleString('vi-VN')} ₫
                   </Text>
-                  <Text style={[styles.statusSub, { color: theme.colors.textSecondary }]}>
-                    Ghép {matchPct}% — {order.matchedCapital.toLocaleString('vi-VN')} / {order.capital.toLocaleString('vi-VN')} ₫
+                  <Text style={[s.heroSub, { color: c.textSecondary }]}>
+                    / {order.capital.toLocaleString('vi-VN')} ₫
                   </Text>
                 </View>
-              </View>
-              <View style={[styles.progressOuter, { backgroundColor: theme.colors.border || '#E5E7EB' }]}>
-                <View style={[styles.progressInner, { width: `${matchPct}%`, backgroundColor: isClosed ? '#10B981' : theme.colors.primary }]} />
               </View>
             </View>
 
             {/* Info grid */}
-            <View style={[styles.infoGrid, { backgroundColor: theme.colors.backgroundSecondary }]}>
-              <InfoItem icon="cash-outline" label="Vốn đầu tư" value={`${order.capital.toLocaleString('vi-VN')} ₫`} theme={theme} />
-              <InfoItem icon="trending-up-outline" label="Max/khoản vay" value={`${order.maxCapital.toLocaleString('vi-VN')} ₫`} theme={theme} />
-              <InfoItem icon="calculator-outline" label="Lãi suất" value={`${order.interestRange.min}% — ${order.interestRange.max}%`} theme={theme} />
-              <InfoItem icon="calendar-outline" label="Kỳ hạn" value={`${order.periodRange.min} — ${order.periodRange.max} tháng`} theme={theme} />
-              <InfoItem icon="bookmark-outline" label="Mục đích" value={order.purpose.join(', ')} theme={theme} />
-              <InfoItem icon="grid-outline" label="Nodes" value={`${order.matchedNodes} / ${order.totalNodes}`} theme={theme} />
+            <View style={[s.infoGrid, { backgroundColor: c.backgroundSecondary }]}>
+              <View style={s.gridRow}>
+                <InfoItem icon="cash-outline" label="Vốn đầu tư" value={`${order.capital.toLocaleString('vi-VN')} ₫`} c={c} />
+                <InfoItem icon="trending-up-outline" label="Max/khoản" value={`${order.maxCapital.toLocaleString('vi-VN')} ₫`} c={c} />
+              </View>
+              <View style={s.gridRow}>
+                <InfoItem icon="calculator-outline" label="Lãi suất" value={`${order.interestRange.min}% — ${order.interestRange.max}%`} c={c} />
+                <InfoItem icon="calendar-outline" label="Kỳ hạn" value={`${order.periodRange.min} — ${order.periodRange.max} tháng`} c={c} />
+              </View>
+              <View style={s.gridRow}>
+                <InfoItem icon="bookmark-outline" label="Mục đích" value={order.purpose.join(', ')} c={c} />
+                <InfoItem icon="grid-outline" label="Nodes" value={`${order.matchedNodes} / ${order.totalNodes}`} c={c} />
+              </View>
             </View>
 
             {/* Close button */}
             {!isClosed && (
               <TouchableOpacity
-                style={[styles.closeButton, { borderColor: '#EF4444' }]}
-                onPress={handleClose}
-                disabled={closing}
+                style={[s.closeBtn, { borderColor: '#EF4444' }]}
+                onPress={handleClose} disabled={closing}
               >
-                {closing ? (
-                  <ActivityIndicator color="#EF4444" size="small" />
-                ) : (
+                {closing ? <ActivityIndicator color="#EF4444" size="small" /> : (
                   <>
-                    <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
-                    <Text style={styles.closeButtonText}>Đóng lệnh đầu tư</Text>
+                    <Ionicons name="stop-circle-outline" size={18} color="#EF4444" />
+                    <Text style={s.closeBtnText}>Đóng lệnh đầu tư</Text>
                   </>
                 )}
               </TouchableOpacity>
             )}
 
             {/* Matched loans header */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            <Text style={[s.sectionTitle, { color: c.text }]}>
               Khoản vay đã ghép ({order.loans?.length || 0})
             </Text>
           </View>
         }
         data={order.loans || []}
-        keyExtractor={(item, index) => item.loanId + index}
+        keyExtractor={(item, i) => item.loanId + i}
         renderItem={({ item }) => (
-          <TouchableOpacity 
-            style={[styles.loanCard, { backgroundColor: theme.colors.backgroundSecondary }]}
+          <TouchableOpacity
+            style={[s.loanCard, { backgroundColor: c.backgroundSecondary }]}
             activeOpacity={0.7}
             onPress={() => handleLoanPress(item)}
           >
-            <View style={styles.loanRow}>
-              <Ionicons name="document-text" size={18} color={theme.colors.primary} />
-              <Text style={[styles.loanId, { color: theme.colors.text }]} numberOfLines={1}>
-                {item.loanId}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+            <View style={s.loanHeader}>
+              <View style={s.loanIdRow}>
+                <Ionicons name="document-text" size={18} color={c.primary} />
+                <Text style={[s.loanId, { color: c.text }]} numberOfLines={1}>
+                  #{item.loanId.slice(-8)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={c.textSecondary} />
             </View>
-            <View style={styles.loanInfoRow}>
-              <Text style={[styles.loanInfoLabel, { color: theme.colors.textSecondary }]}>Nodes ghép</Text>
-              <Text style={[styles.loanInfoValue, { color: theme.colors.text }]}>{item.nodeMatch}</Text>
+            <View style={s.loanInfoRow}>
+              <Text style={[s.loanLabel, { color: c.textSecondary }]}>Nodes ghép</Text>
+              <Text style={[s.loanValue, { color: c.text }]}>{item.nodeMatch}</Text>
             </View>
-            <View style={styles.loanInfoRow}>
-              <Text style={[styles.loanInfoLabel, { color: theme.colors.textSecondary }]}>Đã đầu tư</Text>
-              <Ionicons name={item.isInvested ? 'checkmark-circle' : 'time-outline'} size={16} color={item.isInvested ? '#10B981' : '#F59E0B'} />
+            <View style={s.loanInfoRow}>
+              <Text style={[s.loanLabel, { color: c.textSecondary }]}>Trạng thái</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name={item.isInvested ? 'checkmark-circle' : 'time-outline'} size={16} color={item.isInvested ? '#10B981' : '#F59E0B'} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: item.isInvested ? '#10B981' : '#F59E0B' }}>
+                  {item.isInvested ? 'Đã đầu tư' : 'Chờ xử lý'}
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <View style={styles.emptyLoans}>
-            <Text style={{ color: theme.colors.textSecondary }}>Chưa có khoản vay nào được ghép</Text>
+          <View style={s.emptyLoans}>
+            <Ionicons name="layers-outline" size={32} color={c.textMuted || c.textSecondary} />
+            <Text style={{ color: c.textSecondary, marginTop: 8 }}>Chưa có khoản vay nào được ghép</Text>
           </View>
         }
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
@@ -214,51 +242,59 @@ export default function InvestmentOrderDetailScreen() {
   );
 }
 
-function InfoItem({ icon, label, value, theme }: { icon: string; label: string; value: string; theme: any }) {
+/* ── InfoItem ── */
+function InfoItem({ icon, label, value, c }: { icon: string; label: string; value: string; c: any }) {
   return (
-    <View style={infoStyles.item}>
-      <Ionicons name={icon as any} size={18} color={theme.colors.primary} />
-      <View style={{ flex: 1, marginLeft: 8 }}>
-        <Text style={[infoStyles.label, { color: theme.colors.textSecondary }]}>{label}</Text>
-        <Text style={[infoStyles.value, { color: theme.colors.text }]}>{value}</Text>
+    <View style={s.infoItem}>
+      <Ionicons name={icon as any} size={16} color={c.primary} />
+      <View style={{ flex: 1, marginLeft: 6 }}>
+        <Text style={[s.infoLabel, { color: c.textSecondary }]}>{label}</Text>
+        <Text style={[s.infoValue, { color: c.text }]} numberOfLines={1}>{value}</Text>
       </View>
     </View>
   );
 }
 
-const infoStyles = StyleSheet.create({
-  item: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8, paddingHorizontal: 4 },
-  label: { fontSize: 12 },
-  value: { fontSize: 14, fontWeight: '600', marginTop: 2 },
-});
-
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16,
-  },
-  headerTitle: { fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center', marginHorizontal: 12 },
-  detailSection: { paddingTop: 8 },
-  statusCard: { borderRadius: 16, padding: 16, marginBottom: 12 },
-  statusRow: { flexDirection: 'row', alignItems: 'center' },
-  statusTitle: { fontSize: 16, fontWeight: '600' },
-  statusSub: { fontSize: 13, marginTop: 2 },
-  progressOuter: { height: 6, borderRadius: 3, marginTop: 12, overflow: 'hidden' },
-  progressInner: { height: '100%', borderRadius: 3 },
-  infoGrid: { borderRadius: 16, padding: 12, marginBottom: 12 },
-  closeButton: {
+  headerSection: { paddingTop: 8 },
+
+  // Hero
+  heroCard: { borderRadius: 16, padding: 20, marginBottom: 10 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  heroInfo: { flex: 1 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 8 },
+  statusText: { fontSize: 12, fontWeight: '700' },
+  heroAmount: { fontSize: 20, fontWeight: '800' },
+  heroSub: { fontSize: 13, marginTop: 2 },
+
+  // Info grid
+  infoGrid: { borderRadius: 16, padding: 14, marginBottom: 10 },
+  gridRow: { flexDirection: 'row', gap: 8 },
+  infoItem: { flexDirection: 'row', alignItems: 'flex-start', flex: 1, paddingVertical: 8 },
+  infoLabel: { fontSize: 11, fontWeight: '500' },
+  infoValue: { fontSize: 13, fontWeight: '700', marginTop: 2 },
+
+  // Close
+  closeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderWidth: 1.5, borderRadius: 12, paddingVertical: 12, marginBottom: 16,
+    gap: 8, borderWidth: 1.5, borderRadius: 14, paddingVertical: 13, marginBottom: 16,
   },
-  closeButtonText: { color: '#EF4444', fontWeight: '600' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 4 },
-  loanCard: { borderRadius: 12, padding: 14, marginBottom: 8 },
-  loanRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  loanId: { fontSize: 13, fontWeight: '500', flex: 1 },
-  loanInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  loanInfoLabel: { fontSize: 13 },
-  loanInfoValue: { fontSize: 13, fontWeight: '600' },
-  emptyLoans: { alignItems: 'center', paddingVertical: 30 },
+  closeBtnText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
+
+  // Section
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+
+  // Loan cards
+  loanCard: { borderRadius: 14, padding: 16, marginBottom: 8 },
+  loanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  loanIdRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  loanId: { fontSize: 14, fontWeight: '600' },
+  loanInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
+  loanLabel: { fontSize: 13 },
+  loanValue: { fontSize: 13, fontWeight: '600' },
+
+  // Empty
+  emptyLoans: { alignItems: 'center', paddingVertical: 40 },
 });

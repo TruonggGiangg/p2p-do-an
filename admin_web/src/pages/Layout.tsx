@@ -184,201 +184,213 @@ export default function AppLayout() {
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        {/* ── Logo ── */}
+        {/* Inner flex wrapper – Ant Design Sider wraps children in its own div,
+            so we need an explicit flex container to make overflow scroll work. */}
         <div style={{
-          padding: collapsed ? '20px 0' : '24px 20px',
           display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          marginBottom: 4,
-          transition: 'all 0.3s ease',
+          flexDirection: 'column',
+          height: '100%',
         }}>
+          {/* ── Logo ── */}
           <div style={{
-            width: 38, height: 38, borderRadius: 10,
-            background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, color: '#fff', fontSize: 14, flexShrink: 0,
-            boxShadow: '0 4px 14px rgba(77, 142, 255, 0.35)',
-            letterSpacing: '0.5px',
-          }}>P2</div>
-          {!collapsed && (
-            <Text strong style={{
-              color: '#FFFFFF',
-              fontSize: 17,
-              letterSpacing: '0.3px',
-              fontWeight: 700,
-              fontFamily: "'Manrope', var(--font-sans)",
-            }}>P2P Admin</Text>
-          )}
-        </div>
-
-        {/* ── Menu groups ── */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          padding: collapsed ? '4px 6px' : '4px 12px',
-          transition: 'padding 0.3s ease',
-        }}>
-          {menuGroups.map((group, gi) => {
-            const visibleItems = group.items.filter(i => canSee(i.key));
-            if (visibleItems.length === 0) return null;
-
-            return (
-              <div key={gi} style={{ marginBottom: 6 }}>
-                {/* Group label */}
-                {!collapsed && (
-                  <div style={{
-                    padding: '12px 12px 6px 12px',
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: groupLabelColor,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    fontFamily: "'Inter', var(--font-sans)",
-                    userSelect: 'none',
-                  }}>
-                    {group.groupLabel}
-                  </div>
-                )}
-                {collapsed && gi > 0 && (
-                  <div style={{
-                    height: 1,
-                    background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.1)',
-                    margin: '6px 8px',
-                  }} />
-                )}
-
-                {/* Items */}
-                {visibleItems.map(item => {
-                  const isActive = selectedKey === item.key;
-                  return (
-                    <Tooltip key={item.key} title={collapsed ? item.label : ''} placement="right">
-                      <div
-                        onClick={() => navigate(item.key)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: collapsed ? '10px 0' : '9px 12px',
-                          margin: collapsed ? '2px 0' : '2px 0',
-                          borderRadius: 8,
-                          cursor: 'pointer',
-                          position: 'relative',
-                          justifyContent: collapsed ? 'center' : 'flex-start',
-                          background: isActive ? activeItemBg : 'transparent',
-                          boxShadow: isActive ? activeGlow : 'none',
-                          transition: 'all 0.2s ease',
-                        }}
-                        onMouseEnter={e => {
-                          if (!isActive) {
-                            (e.currentTarget as HTMLDivElement).style.background = hoverBg;
-                          }
-                        }}
-                        onMouseLeave={e => {
-                          if (!isActive) {
-                            (e.currentTarget as HTMLDivElement).style.background = 'transparent';
-                          }
-                        }}
-                      >
-                        {/* Active left indicator */}
-                        {isActive && (
-                          <div style={{
-                            position: 'absolute',
-                            left: collapsed ? -6 : -12,
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            width: 3,
-                            height: 20,
-                            borderRadius: 4,
-                            background: activeAccent,
-                            boxShadow: `0 0 8px ${activeAccent}`,
-                          }} />
-                        )}
-
-                        {/* Icon */}
-                        {React.cloneElement(item.icon as React.ReactElement, {
-                          style: {
-                            fontSize: 16,
-                            color: isActive ? activeFg : inactiveFg,
-                            flexShrink: 0,
-                            transition: 'color 0.2s ease',
-                          },
-                        })}
-
-                        {/* Label */}
-                        {!collapsed && (
-                          <span style={{
-                            fontSize: 13,
-                            fontWeight: isActive ? 600 : 450,
-                            color: isActive ? activeFg : inactiveFg,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            transition: 'color 0.2s ease',
-                            fontFamily: "'Inter', var(--font-sans)",
-                          }}>
-                            {item.label}
-                          </span>
-                        )}
-                      </div>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ── User panel ── */}
-        <div style={{
-          padding: collapsed ? '12px 6px' : '14px 16px',
-          background: isDarkMode ? '#060c1c' : '#0a1628',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          transition: 'all 0.3s ease',
-        }}>
-          <Avatar
-            size={collapsed ? 30 : 34}
-            icon={<UserOutlined />}
-            style={{
-              background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
-              flexShrink: 0,
-              fontWeight: 600,
-            }}
-          />
-          {!collapsed && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Text strong style={{ color: '#FFFFFF', fontSize: 13, display: 'block', lineHeight: 1.3 }}>
-                {user?.username || 'Admin'}
-              </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, display: 'block', lineHeight: 1.3 }}>
-                {roleLabel}
-              </Text>
-            </div>
-          )}
-        </div>
-
-        {/* ── Collapse toggle ── */}
-        <div
-          onClick={() => setCollapsed(!collapsed)}
-          style={{
-            padding: '10px 0',
+            padding: collapsed ? '20px 0' : '24px 20px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: groupLabelColor,
-            transition: 'all 0.2s ease',
-            borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'}`,
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = activeFg; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = groupLabelColor; }}
-        >
-          {collapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <LeftOutlined style={{ fontSize: 12 }} />}
+            gap: 12,
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            marginBottom: 4,
+            flexShrink: 0,
+            transition: 'all 0.3s ease',
+          }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 800, color: '#fff', fontSize: 14, flexShrink: 0,
+              boxShadow: '0 4px 14px rgba(77, 142, 255, 0.35)',
+              letterSpacing: '0.5px',
+            }}>P2</div>
+            {!collapsed && (
+              <Text strong style={{
+                color: '#FFFFFF',
+                fontSize: 17,
+                letterSpacing: '0.3px',
+                fontWeight: 700,
+                fontFamily: "'Manrope', var(--font-sans)",
+              }}>P2P Admin</Text>
+            )}
+          </div>
+
+          {/* ── Menu groups ── */}
+          <div style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: collapsed ? '4px 6px' : '4px 12px',
+            transition: 'padding 0.3s ease',
+          }}>
+            {menuGroups.map((group, gi) => {
+              const visibleItems = group.items.filter(i => canSee(i.key));
+              if (visibleItems.length === 0) return null;
+
+              return (
+                <div key={gi} style={{ marginBottom: 6 }}>
+                  {/* Group label */}
+                  {!collapsed && (
+                    <div style={{
+                      padding: '12px 12px 6px 12px',
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: groupLabelColor,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      fontFamily: "'Inter', var(--font-sans)",
+                      userSelect: 'none',
+                    }}>
+                      {group.groupLabel}
+                    </div>
+                  )}
+                  {collapsed && gi > 0 && (
+                    <div style={{
+                      height: 1,
+                      background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.1)',
+                      margin: '6px 8px',
+                    }} />
+                  )}
+
+                  {/* Items */}
+                  {visibleItems.map(item => {
+                    const isActive = selectedKey === item.key;
+                    return (
+                      <Tooltip key={item.key} title={collapsed ? item.label : ''} placement="right">
+                        <div
+                          onClick={() => navigate(item.key)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: collapsed ? '10px 0' : '9px 12px',
+                            margin: collapsed ? '2px 0' : '2px 0',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            position: 'relative',
+                            justifyContent: collapsed ? 'center' : 'flex-start',
+                            background: isActive ? activeItemBg : 'transparent',
+                            boxShadow: isActive ? activeGlow : 'none',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={e => {
+                            if (!isActive) {
+                              (e.currentTarget as HTMLDivElement).style.background = hoverBg;
+                            }
+                          }}
+                          onMouseLeave={e => {
+                            if (!isActive) {
+                              (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+                            }
+                          }}
+                        >
+                          {/* Active left indicator */}
+                          {isActive && (
+                            <div style={{
+                              position: 'absolute',
+                              left: collapsed ? -6 : -12,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              width: 3,
+                              height: 20,
+                              borderRadius: 4,
+                              background: activeAccent,
+                              boxShadow: `0 0 8px ${activeAccent}`,
+                            }} />
+                          )}
+
+                          {/* Icon */}
+                          {React.cloneElement(item.icon as React.ReactElement, {
+                            style: {
+                              fontSize: 16,
+                              color: isActive ? activeFg : inactiveFg,
+                              flexShrink: 0,
+                              transition: 'color 0.2s ease',
+                            },
+                          })}
+
+                          {/* Label */}
+                          {!collapsed && (
+                            <span style={{
+                              fontSize: 13,
+                              fontWeight: isActive ? 600 : 450,
+                              color: isActive ? activeFg : inactiveFg,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              transition: 'color 0.2s ease',
+                              fontFamily: "'Inter', var(--font-sans)",
+                            }}>
+                              {item.label}
+                            </span>
+                          )}
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── User panel ── */}
+          <div style={{
+            padding: collapsed ? '12px 6px' : '14px 16px',
+            background: isDarkMode ? '#060c1c' : '#0a1628',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            transition: 'all 0.3s ease',
+          }}>
+            <Avatar
+              size={collapsed ? 30 : 34}
+              icon={<UserOutlined />}
+              style={{
+                background: 'linear-gradient(135deg, #4d8eff 0%, #3B82F6 100%)',
+                flexShrink: 0,
+                fontWeight: 600,
+              }}
+            />
+            {!collapsed && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Text strong style={{ color: '#FFFFFF', fontSize: 13, display: 'block', lineHeight: 1.3 }}>
+                  {user?.username || 'Admin'}
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, display: 'block', lineHeight: 1.3 }}>
+                  {roleLabel}
+                </Text>
+              </div>
+            )}
+          </div>
+
+          {/* ── Collapse toggle ── */}
+          <div
+            onClick={() => setCollapsed(!collapsed)}
+            style={{
+              padding: '10px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+              color: groupLabelColor,
+              transition: 'all 0.2s ease',
+              borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'}`,
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = activeFg; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = groupLabelColor; }}
+          >
+            {collapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <LeftOutlined style={{ fontSize: 12 }} />}
+          </div>
         </div>
       </Sider>
 
@@ -507,7 +519,7 @@ export default function AppLayout() {
           padding: 32,
           background: token.colorBgContainer,
           borderRadius: 10,
-          minHeight: 'calc(100vh - 152px)',
+          height: 'calc(100vh - 120px)',
           overflow: 'auto',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',

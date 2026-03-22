@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P2P Memory Service — Codebase Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-secondary: #111827;
+      --bg-card: #1a2236;
+      --bg-card-hover: #1f2943;
+      --border: #2a3550;
+      --text-primary: #e8ecf4;
+      --text-secondary: #8b95a8;
+      --text-muted: #5a6478;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --gradient-1: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      --gradient-2: linear-gradient(135deg, #06b6d4, #10b981);
+      --gradient-3: linear-gradient(135deg, #f59e0b, #f43f5e);
+      --gradient-4: linear-gradient(135deg, #8b5cf6, #ec4899);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background decoration */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: radial-gradient(circle at 20% 50%, rgba(59,130,246,0.06) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 20%, rgba(139,92,246,0.06) 0%, transparent 50%),
+                  radial-gradient(circle at 50% 80%, rgba(6,182,212,0.04) 0%, transparent 50%);
+      z-index: -1;
+      animation: bgShift 30s ease-in-out infinite alternate;
+    }
+
+    @keyframes bgShift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-2%, -2%) rotate(3deg); }
+    }
+
+    /* Header */
+    .header {
+      padding: 24px 32px;
+      display: flex; align-items: center; gap: 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(17,24,39,0.7);
+      backdrop-filter: blur(20px);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .header-logo {
+      width: 40px; height: 40px;
+      background: var(--gradient-1);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 700; color: white;
+      box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+    }
+
+    .header h1 {
+      font-size: 20px; font-weight: 600;
+      background: var(--gradient-1);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .header .subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .header-right {
+      margin-left: auto; display: flex; align-items: center; gap: 12px;
+    }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      font-size: 12px; font-weight: 500;
+      background: rgba(16,185,129,0.15); color: var(--accent-green);
+      border: 1px solid rgba(16,185,129,0.2);
+    }
+
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.5); }
+    }
+
+    /* Search bar */
+    .search-container {
+      padding: 20px 32px;
+    }
+
+    .search-box {
+      position: relative; max-width: 600px;
+    }
+
+    .search-box input {
+      width: 100%; padding: 12px 16px 12px 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    .search-box input:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+
+    .search-box .search-icon {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--text-muted); font-size: 16px;
+    }
+
+    /* Stats cards */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+      padding: 0 32px 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      position: relative; overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      border-color: rgba(59,130,246,0.3);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .stat-card:nth-child(1)::before { background: var(--gradient-1); }
+    .stat-card:nth-child(2)::before { background: var(--gradient-2); }
+    .stat-card:nth-child(3)::before { background: var(--gradient-3); }
+    .stat-card:nth-child(4)::before { background: var(--gradient-4); }
+
+    .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .stat-value { font-size: 28px; font-weight: 700; }
+    .stat-card:nth-child(1) .stat-value { color: var(--accent-blue); }
+    .stat-card:nth-child(2) .stat-value { color: var(--accent-green); }
+    .stat-card:nth-child(3) .stat-value { color: var(--accent-amber); }
+    .stat-card:nth-child(4) .stat-value { color: var(--accent-purple); }
+
+    /* Main layout */
+    .main-layout {
+      display: grid; grid-template-columns: 340px 1fr; gap: 0;
+      min-height: calc(100vh - 180px);
+    }
+
+    /* Sidebar - File tree */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: rgba(17,24,39,0.5);
+      overflow-y: auto; max-height: calc(100vh - 240px);
+      position: sticky; top: 80px;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .tree-node {
+      cursor: pointer; user-select: none;
+    }
+
+    .tree-label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px 6px calc(12px + var(--depth, 0) * 16px);
+      font-size: 13px; color: var(--text-secondary);
+      transition: all 0.15s ease;
+      border-left: 2px solid transparent;
+    }
+
+    .tree-label:hover {
+      background: rgba(59,130,246,0.08);
+      color: var(--text-primary);
+      border-left-color: var(--accent-blue);
+    }
+
+    .tree-label.active {
+      background: rgba(59,130,246,0.12);
+      color: var(--accent-blue);
+      border-left-color: var(--accent-blue);
+      font-weight: 500;
+    }
+
+    .tree-icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+    .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-badge {
+      font-size: 10px; padding: 1px 6px; border-radius: 10px;
+      background: rgba(59,130,246,0.15); color: var(--accent-blue);
+      font-weight: 500;
+    }
+
+    .tree-children { display: none; }
+    .tree-node.open > .tree-children { display: block; }
+
+    /* Content panel */
+    .content {
+      padding: 24px 32px;
+      overflow-y: auto; max-height: calc(100vh - 240px);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex; gap: 4px; margin-bottom: 24px;
+      border-bottom: 1px solid var(--border); padding-bottom: 0;
+    }
+
+    .tab {
+      padding: 10px 20px; font-size: 13px; font-weight: 500;
+      color: var(--text-muted); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab:hover { color: var(--text-secondary); }
+    .tab.active {
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: fadeIn 0.3s ease; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* File detail */
+    .file-detail-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .file-detail-header h2 {
+      font-size: 16px; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .lang-badge {
+      padding: 3px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+
+    .lang-badge.ts { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .lang-badge.tsx { background: rgba(139,92,246,0.15); color: #a78bfa; }
+    .lang-badge.js { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .lang-badge.json { background: rgba(16,185,129,0.15); color: #34d399; }
+    .lang-badge.md { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .lang-badge.default { background: rgba(107,114,128,0.15); color: #9ca3af; }
+
+    /* Symbol & import lists */
+    .item-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .item-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: var(--radius-sm);
+      background: var(--bg-card); border: 1px solid var(--border);
+      transition: all 0.2s ease;
+    }
+
+    .item-row:hover {
+      border-color: rgba(59,130,246,0.2);
+      background: var(--bg-card-hover);
+    }
+
+    .symbol-kind {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 4px; flex-shrink: 0;
+      letter-spacing: 0.3px;
+    }
+
+    .symbol-kind.function { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .symbol-kind.class { background: rgba(244,63,94,0.15); color: #fb7185; }
+    .symbol-kind.variable { background: rgba(16,185,129,0.15); color: #34d399; }
+    .symbol-kind.interface { background: rgba(139,92,246,0.15); color: #a78bfa; }
+    .symbol-kind.import { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .symbol-kind.default { background: rgba(107,114,128,0.15); color: #9ca3af; }
+
+    .symbol-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px; font-weight: 500;
+    }
+
+    .symbol-file {
+      margin-left: auto; font-size: 11px;
+      color: var(--text-muted); max-width: 200px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* Module overview */
+    .module-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+    }
+
+    .module-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .module-card:hover {
+      border-color: rgba(59,130,246,0.3);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .module-name {
+      font-size: 14px; font-weight: 600; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .module-name .icon { font-size: 18px; }
+
+    .module-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+
+    .module-stat {
+      text-align: center; padding: 8px;
+      background: rgba(0,0,0,0.2); border-radius: 6px;
+    }
+
+    .module-stat .val { font-size: 18px; font-weight: 700; }
+    .module-stat .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+
+    /* Query demo section */
+    .query-section {
+      padding: 24px 32px;
+      border-top: 1px solid var(--border);
+    }
+
+    .query-section h3 {
+      font-size: 16px; font-weight: 600; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .query-box {
+      display: flex; gap: 12px; margin-bottom: 16px;
+    }
+
+    .query-box input {
+      flex: 1; padding: 12px 16px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-primary);
+      font-family: 'Inter', sans-serif; font-size: 14px;
+      outline: none; transition: all 0.3s ease;
+    }
+
+    .query-box input:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+
+    .btn {
+      padding: 12px 24px; border: none; border-radius: var(--radius);
+      font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.3s ease;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--gradient-1); color: white;
+      box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59,130,246,0.4);
+    }
+
+    .btn-primary:active { transform: translateY(0); }
+
+    .query-result {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; line-height: 1.6; color: var(--text-secondary);
+      max-height: 400px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 60px; color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent-blue); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-right: 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .main-layout { grid-template-columns: 1fr; }
+      .sidebar { max-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">M</div>
+    <div>
+      <h1>Memory Service</h1>
+      <div class="subtitle">P2P Codebase Explorer</div>
+    </div>
+    <div class="header-right">
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span>Đang kết nối...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Search -->
+  <div class="search-container">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Tìm file, symbol, hoặc import..." />
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">Files</div><div class="stat-value" id="statFiles">—</div></div>
+    <div class="stat-card"><div class="stat-label">Chunks</div><div class="stat-value" id="statChunks">—</div></div>
+    <div class="stat-card"><div class="stat-label">Symbols</div><div class="stat-value" id="statSymbols">—</div></div>
+    <div class="stat-card"><div class="stat-label">Imports</div><div class="stat-value" id="statImports">—</div></div>
+  </div>
+
+  <!-- Main layout -->
+  <div class="main-layout">
+    <!-- Sidebar file tree -->
+    <nav class="sidebar">
+      <div class="sidebar-header">📁 File Tree</div>
+      <div id="fileTree"></div>
+    </nav>
+
+    <!-- Content -->
+    <main class="content">
+      <div class="tabs">
+        <div class="tab active" data-tab="modules">📦 Modules</div>
+        <div class="tab" data-tab="symbols">🔤 Symbols</div>
+        <div class="tab" data-tab="imports">🔗 Imports</div>
+        <div class="tab" data-tab="detail">📄 File Detail</div>
+      </div>
+
+      <div class="tab-panel active" id="panel-modules">
+        <div class="module-grid" id="moduleGrid"></div>
+      </div>
+
+      <div class="tab-panel" id="panel-symbols">
+        <div class="item-list" id="symbolList"></div>
+      </div>
+
+      <div class="tab-panel" id="panel-imports">
+        <div class="item-list" id="importList"></div>
+      </div>
+
+      <div class="tab-panel" id="panel-detail">
+        <div id="fileDetail" style="color: var(--text-muted); text-align: center; padding: 40px;">
+          👈 Chọn một file từ cây thư mục bên trái
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Query demo -->
+  <section class="query-section">
+    <h3>🧠 Hỏi Memory Service</h3>
+    <div class="query-box">
+      <input type="text" id="queryInput" placeholder="Ví dụ: flow giải ngân, tính lãi suất, cấu trúc API invest..." />
+      <button class="btn btn-primary" id="queryBtn">Truy vấn</button>
+    </div>
+    <div class="query-result" id="queryResult" style="display:none;"></div>
+  </section>
+
+  <script>
+    const API = 'http://localhost:5055';
+    let DATA = { files: [], symbols: [], imports: [], stats: {} };
+
+    // --- Init ---
+    async function init() {
+      try {
+        const resp = await fetch(`${API}/memory/graph/overview`);
+        DATA = await resp.json();
+
+        if (!DATA.ok) throw new Error(DATA.error);
+
+        document.getElementById('statusBadge').innerHTML = '<span class="status-dot"></span><span>Online · ' + DATA.stats.totalFiles + ' files</span>';
+        renderStats(DATA.stats);
+        renderFileTree(DATA.files);
+        renderModules(DATA.files);
+        renderSymbols(DATA.symbols);
+        renderImports(DATA.imports);
+      } catch (e) {
+        document.getElementById('statusBadge').innerHTML = '<span style="color:var(--accent-rose)">⚠ Offline</span>';
+        console.error(e);
+      }
+    }
+
+    // --- Stats ---
+    function renderStats(s) {
+      document.getElementById('statFiles').textContent = s.totalFiles?.toLocaleString() || 0;
+      document.getElementById('statChunks').textContent = s.totalChunks?.toLocaleString() || 0;
+      document.getElementById('statSymbols').textContent = s.totalSymbols?.toLocaleString() || 0;
+      document.getElementById('statImports').textContent = s.totalImports?.toLocaleString() || 0;
+    }
+
+    // --- File tree ---
+    function buildTree(files) {
+      const root = {};
+      files.forEach(f => {
+        const parts = f.path.replace(/^\/workspace\//, '').split('/');
+        let node = root;
+        parts.forEach((p, i) => {
+          if (!node[p]) node[p] = i === parts.length - 1 ? { __file: f } : {};
+          node = node[p];
+        });
+      });
+      return root;
+    }
+
+    function renderFileTree(files) {
+      const tree = buildTree(files);
+      const container = document.getElementById('fileTree');
+      container.innerHTML = renderTreeNode(tree, 0);
+    }
+
+    function getFileIcon(name) {
+      if (name.endsWith('.ts') || name.endsWith('.tsx')) return '🟦';
+      if (name.endsWith('.js') || name.endsWith('.jsx')) return '🟨';
+      if (name.endsWith('.json')) return '🟩';
+      if (name.endsWith('.md')) return '📝';
+      if (name.endsWith('.yml') || name.endsWith('.yaml')) return '⚙️';
+      return '📄';
+    }
+
+    function renderTreeNode(node, depth) {
+      let html = '';
+      const entries = Object.entries(node).filter(([k]) => k !== '__file').sort(([a, av], [b, bv]) => {
+        const aIsDir = !av.__file;
+        const bIsDir = !bv.__file;
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+        return a.localeCompare(b);
+      });
+
+      entries.forEach(([name, sub]) => {
+        const isFile = sub.__file;
+        if (isFile) {
+          const f = sub.__file;
+          html += `<div class="tree-node">
+            <div class="tree-label" style="--depth:${depth}" onclick="showFileDetail('${f.path.replace(/'/g, "\\'")}')">
+              <span class="tree-icon">${getFileIcon(name)}</span>
+              <span class="tree-name">${name}</span>
+              <span class="tree-badge">${f.symbols}s</span>
+            </div>
+          </div>`;
+        } else {
+          const childCount = countFiles(sub);
+          html += `<div class="tree-node" onclick="this.classList.toggle('open'); event.stopPropagation();">
+            <div class="tree-label" style="--depth:${depth}">
+              <span class="tree-icon">📁</span>
+              <span class="tree-name">${name}</span>
+              <span class="tree-badge">${childCount}</span>
+            </div>
+            <div class="tree-children">${renderTreeNode(sub, depth + 1)}</div>
+          </div>`;
+        }
+      });
+      return html;
+    }
+
+    function countFiles(node) {
+      let count = 0;
+      Object.entries(node).forEach(([k, v]) => {
+        if (k === '__file') count++;
+        else count += countFiles(v);
+      });
+      return count;
+    }
+
+    // --- Module overview ---
+    function renderModules(files) {
+      const modules = {};
+      files.forEach(f => {
+        const parts = f.path.replace(/^\/workspace\//, '').split('/');
+        const mod = parts.length > 1 ? parts[0] + '/' + parts[1] : parts[0];
+        if (!modules[mod]) modules[mod] = { files: 0, symbols: 0, imports: 0, chunks: 0 };
+        modules[mod].files++;
+        modules[mod].symbols += f.symbols || 0;
+        modules[mod].imports += f.imports || 0;
+        modules[mod].chunks += f.chunks || 0;
+      });
+
+      const grid = document.getElementById('moduleGrid');
+      grid.innerHTML = Object.entries(modules)
+        .sort((a, b) => b[1].files - a[1].files)
+        .map(([name, s]) => `
+          <div class="module-card">
+            <div class="module-name"><span class="icon">📦</span>${name}</div>
+            <div class="module-stats">
+              <div class="module-stat"><div class="val" style="color:var(--accent-blue)">${s.files}</div><div class="lbl">Files</div></div>
+              <div class="module-stat"><div class="val" style="color:var(--accent-green)">${s.symbols}</div><div class="lbl">Symbols</div></div>
+              <div class="module-stat"><div class="val" style="color:var(--accent-amber)">${s.chunks}</div><div class="lbl">Chunks</div></div>
+            </div>
+          </div>
+        `).join('');
+    }
+
+    // --- Symbols ---
+    function renderSymbols(symbols, filter = '') {
+      const list = document.getElementById('symbolList');
+      const filtered = filter
+        ? symbols.filter(s => s.name.toLowerCase().includes(filter) || s.file.toLowerCase().includes(filter))
+        : symbols;
+
+      list.innerHTML = filtered.slice(0, 200).map(s => {
+        const kindClass = ['function', 'class', 'variable', 'interface'].includes(s.kind?.toLowerCase()) ? s.kind.toLowerCase() : 'default';
+        return `<div class="item-row">
+          <span class="symbol-kind ${kindClass}">${s.kind || '?'}</span>
+          <span class="symbol-name">${s.name}</span>
+          <span class="symbol-file" title="${s.file}">${s.file.split('/').slice(-2).join('/')}</span>
+        </div>`;
+      }).join('');
+
+      if (filtered.length > 200) {
+        list.innerHTML += `<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:12px;">... và ${filtered.length - 200} symbols khác</div>`;
+      }
+    }
+
+    // --- Imports ---
+    function renderImports(imports, filter = '') {
+      const list = document.getElementById('importList');
+      const filtered = filter
+        ? imports.filter(i => i.file.toLowerCase().includes(filter) || i.source.toLowerCase().includes(filter))
+        : imports;
+
+      list.innerHTML = filtered.slice(0, 200).map(i => `
+        <div class="item-row">
+          <span class="symbol-kind import">import</span>
+          <span class="symbol-name">${i.source}</span>
+          <span class="symbol-file" title="${i.file}">← ${i.file.split('/').slice(-2).join('/')}</span>
+        </div>
+      `).join('');
+
+      if (filtered.length > 200) {
+        list.innerHTML += `<div style="text-align:center; padding:12px; color:var(--text-muted); font-size:12px;">... và ${filtered.length - 200} imports khác</div>`;
+      }
+    }
+
+    // --- File detail ---
+    function showFileDetail(filePath) {
+      const f = DATA.files.find(x => x.path === filePath);
+      if (!f) return;
+
+      const fileSymbols = DATA.symbols.filter(s => s.file === filePath);
+      const fileImports = DATA.imports.filter(i => i.file === filePath);
+      const ext = filePath.split('.').pop()?.toLowerCase();
+      const langClass = ['ts', 'tsx', 'js', 'json', 'md'].includes(ext) ? ext : 'default';
+
+      document.getElementById('fileDetail').innerHTML = `
+        <div class="file-detail-header">
+          <h2>${filePath.replace(/^\/workspace\//, '')}</h2>
+          <span class="lang-badge ${langClass}">${ext}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;">
+          <div class="module-stat"><div class="val" style="color:var(--accent-blue)">${f.chunks}</div><div class="lbl">Chunks</div></div>
+          <div class="module-stat"><div class="val" style="color:var(--accent-green)">${f.symbols}</div><div class="lbl">Symbols</div></div>
+          <div class="module-stat"><div class="val" style="color:var(--accent-amber)">${f.imports}</div><div class="lbl">Imports</div></div>
+        </div>
+
+        ${fileSymbols.length ? '<h3 style="font-size:14px; margin-bottom:8px;">Symbols</h3><div class="item-list" style="margin-bottom:20px;">' +
+          fileSymbols.map(s => {
+            const kindClass = ['function', 'class', 'variable', 'interface'].includes(s.kind?.toLowerCase()) ? s.kind.toLowerCase() : 'default';
+            return `<div class="item-row"><span class="symbol-kind ${kindClass}">${s.kind||'?'}</span><span class="symbol-name">${s.name}</span></div>`;
+          }).join('') + '</div>' : ''}
+
+        ${fileImports.length ? '<h3 style="font-size:14px; margin-bottom:8px;">Imports</h3><div class="item-list">' +
+          fileImports.map(i => `<div class="item-row"><span class="symbol-kind import">import</span><span class="symbol-name">${i.source}</span></div>`).join('') + '</div>' : ''}
+      `;
+
+      // Switch to detail tab
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-tab="detail"]').classList.add('active');
+      document.getElementById('panel-detail').classList.add('active');
+
+      // Highlight active tree item
+      document.querySelectorAll('.tree-label').forEach(l => l.classList.remove('active'));
+      event.target.closest('.tree-label')?.classList.add('active');
+    }
+
+    // --- Tabs ---
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // --- Search ---
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      renderSymbols(DATA.symbols, q);
+      renderImports(DATA.imports, q);
+
+      // Filter file tree visibility
+      document.querySelectorAll('.tree-node').forEach(node => {
+        const label = node.querySelector('.tree-name');
+        if (!label) return;
+        const match = !q || label.textContent.toLowerCase().includes(q);
+        node.style.display = match ? '' : 'none';
+        if (match && q) {
+          let parent = node.parentElement;
+          while (parent) {
+            if (parent.classList?.contains('tree-node')) {
+              parent.classList.add('open');
+              parent.style.display = '';
+            }
+            parent = parent.parentElement;
+          }
+        }
+      });
+    });
+
+    // --- Query ---
+    document.getElementById('queryBtn').addEventListener('click', async () => {
+      const q = document.getElementById('queryInput').value.trim();
+      if (!q) return;
+
+      const resultEl = document.getElementById('queryResult');
+      resultEl.style.display = 'block';
+      resultEl.textContent = '⏳ Đang truy vấn...';
+
+      try {
+        const resp = await fetch(`${API}/agent/context`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q, limit: 8 })
+        });
+        const data = await resp.json();
+        resultEl.textContent = data.contextText || JSON.stringify(data, null, 2);
+      } catch (e) {
+        resultEl.textContent = '❌ Lỗi: ' + e.message;
+      }
+    });
+
+    document.getElementById('queryInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('queryBtn').click();
+    });
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

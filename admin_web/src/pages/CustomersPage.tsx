@@ -358,12 +358,8 @@ export default function CustomersPage() {
             {/* Advanced Filters */}
             <Card
                 bordered={false}
-                style={{
-                    borderRadius: 10,
-                    marginBottom: 16,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                    display: showFilters ? 'block' : 'none'
-                }}
+                className="premium-filter-card"
+                style={{ display: showFilters ? 'block' : 'none' }}
                 title={
                     <Space>
                         <FilterOutlined />

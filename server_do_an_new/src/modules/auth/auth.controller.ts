@@ -6,6 +6,7 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  BadRequestException,
   HttpStatus,
   HttpCode,
   Query,
@@ -53,7 +54,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ hoặc người dùng đã tồn tại' })
   async register(@Body() body: RegisterDto) {
     const result = await this.fineractSignupService.signup(body);
-    return { message: 'Đăng ký thành công', data: result };
+    return result ;
   }
 
   @Public()
@@ -155,7 +156,7 @@ export class AuthController {
     const pinStatus = user._id ? await this.pinService.getStatus(user._id) : { hasPin: false };
     const creditScore = user._id ? await this.creditScoreService.ensureCreditScoreForUser(user._id) : null;
     const creditScoreHistory = user._id ? await this.creditScoreService.getHistoryByUserId(user._id, 20) : [];
-    const data = {
+    return {
       ...user,
       profile: mongoProfile?.profile,
       kycStatus: mongoProfile?.kycStatus ?? 'NONE',
@@ -170,7 +171,6 @@ export class AuthController {
         : null,
       creditScoreHistory,
     };
-    return { data };
   }
 
   @Get('me/credit-score-history')
@@ -192,15 +192,13 @@ export class AuthController {
     const result = await this.creditScoreService.getHistoryPageByUserId(user._id, pageNumber, limitNumber);
 
     return {
-      data: {
-        items: result.items,
-        pagination: {
-          page: result.page,
-          limit: result.limit,
-          total: result.total,
-          totalPages: result.totalPages,
-          hasNextPage: result.hasNextPage,
-        },
+      items: result.items,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages,
+        hasNextPage: result.hasNextPage,
       },
     };
   }
@@ -211,10 +209,9 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Kiểm tra trạng thái mã PIN' })
   @ApiResponse({ status: 200, description: 'Trả về hasPin true/false' })
-  async getPinStatus(@CurrentUser() user: UserPayload) {
-    if (!user._id) throw new UnauthorizedException();
-    const status = await this.pinService.getStatus(user._id);
-    return { success: true, ...status };
+  async getPinStatus(@CurrentUser('id') userId: string) {
+    if (!userId) throw new UnauthorizedException();
+    return this.pinService.getStatus(userId);
   }
 
   @Post('pin/setup')
@@ -224,10 +221,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Thiết lập mã PIN (yêu cầu Smart OTP)' })
   @ApiResponse({ status: 200, description: 'Thiết lập mã PIN thành công' })
   @ApiResponse({ status: 400, description: 'OTP không hợp lệ hoặc PIN không đúng định dạng' })
-  async setupPin(@CurrentUser() user: UserPayload, @Body() body: SetupPinDto) {
-    if (!user._id) throw new UnauthorizedException();
-    await this.pinService.setupPin(user._id, body.pin, body.sessionId);
-    return { success: true, message: 'Thiết lập mã PIN thành công' };
+  async setupPin(@CurrentUser('id') userId: string, @Body() body: SetupPinDto) {
+    if (!userId) throw new UnauthorizedException();
+    await this.pinService.setupPin(userId, body.pin, body.sessionId);
+    return { message: 'Thiết lập mã PIN thành công' };
   }
 
   @Post('pin/verify')
@@ -236,11 +233,11 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Xác thực mã PIN' })
   @ApiResponse({ status: 200, description: 'Kết quả xác thực PIN' })
-  async verifyPin(@CurrentUser() user: UserPayload, @Body() body: VerifyPinDto) {
-    if (!user._id) throw new UnauthorizedException();
-    const valid = await this.pinService.verifyPin(user._id, body.pin);
+  async verifyPin(@CurrentUser('id') userId: string, @Body() body: VerifyPinDto) {
+    if (!userId) throw new UnauthorizedException();
+    const valid = await this.pinService.verifyPin(userId, body.pin);
     if (!valid) {
-      return { success: false, message: 'Mã PIN không đúng' };
+      throw new BadRequestException('Mã PIN không đúng');
     }
     return { success: true, message: 'Xác thực PIN thành công' };
   }
@@ -252,10 +249,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Đổi mã PIN (yêu cầu PIN cũ + Smart OTP)' })
   @ApiResponse({ status: 200, description: 'Đổi mã PIN thành công' })
   @ApiResponse({ status: 400, description: 'PIN cũ không đúng hoặc OTP không hợp lệ' })
-  async changePin(@CurrentUser() user: UserPayload, @Body() body: ChangePinDto) {
-    if (!user._id) throw new UnauthorizedException();
-    await this.pinService.changePin(user._id, body.oldPin, body.newPin, body.sessionId);
-    return { success: true, message: 'Đổi mã PIN thành công' };
+  async changePin(@CurrentUser('id') userId: string, @Body() body: ChangePinDto) {
+    if (!userId) throw new UnauthorizedException();
+    await this.pinService.changePin(userId, body.oldPin, body.newPin, body.sessionId);
+    return { message: 'Đổi mã PIN thành công' };
   }
 
   @Public()
