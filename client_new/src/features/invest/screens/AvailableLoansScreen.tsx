@@ -276,7 +276,7 @@ export default function AvailableLoansScreen() {
           </View>
         )}
 
-        {/* ── Investment Progress — Stitch segmented progress bar ── */}
+        {/* ── Investment Progress — Stitch Donut ── */}
         <View style={[styles.progressSection, { backgroundColor: theme.colors.surfaceLight }]}>
           {/* Header */}
           <View style={styles.progressHeader}>
@@ -285,57 +285,80 @@ export default function AvailableLoansScreen() {
               {totalClaimed}/{totalNotes} phần
             </Text>
           </View>
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '15', marginBottom: 12 }} />
 
-          {/* Segmented Progress bar — 3 distinct segments */}
-          <View style={styles.progressOuter}>
-            {invested > 0 && (
-              <View style={[styles.progressSegment, {
-                width: `${Math.max((invested / totalNotes) * 100, 1.5)}%`,
-                backgroundColor: theme.colors.success,
-                borderTopLeftRadius: 6, borderBottomLeftRadius: 6,
-                borderTopRightRadius: nodeMatch === 0 && available === 0 ? 6 : 0,
-                borderBottomRightRadius: nodeMatch === 0 && available === 0 ? 6 : 0,
-              }]} />
-            )}
-            {nodeMatch > 0 && (
-              <View style={[styles.progressSegment, {
-                width: `${Math.max((nodeMatch / totalNotes) * 100, 1.5)}%`,
-                backgroundColor: theme.colors.warning || '#FBBF24',
-                borderTopLeftRadius: invested === 0 ? 6 : 0,
-                borderBottomLeftRadius: invested === 0 ? 6 : 0,
-                borderTopRightRadius: available === 0 ? 6 : 0,
-                borderBottomRightRadius: available === 0 ? 6 : 0,
-              }]} />
-            )}
-            <View style={[styles.progressSegment, {
-              flex: 1,
-              backgroundColor: theme.colors.textMuted + '30',
-              borderTopRightRadius: 6, borderBottomRightRadius: 6,
-              borderTopLeftRadius: invested === 0 && nodeMatch === 0 ? 6 : 0,
-              borderBottomLeftRadius: invested === 0 && nodeMatch === 0 ? 6 : 0,
-            }]} />
-          </View>
+          {/* Donut Ring (left) + Legend (right) */}
+          {(() => {
+            const SIZE = 66;
+            const STROKE = 6;
+            const R = (SIZE - STROKE) / 2;
+            const C = 2 * Math.PI * R;
+            const investedPct = totalNotes > 0 ? invested / totalNotes : 0;
+            const matchPctVal = totalNotes > 0 ? nodeMatch / totalNotes : 0;
+            const availablePct = 1 - investedPct - matchPctVal;
+            const pctNum = totalNotes > 0 ? Math.round(((invested + nodeMatch) / totalNotes) * 100) : 0;
 
-          {/* Legend list — vertical */}
-          <View style={styles.progressLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
-              <Text style={[styles.legendLabel, { color: theme.colors.textMuted }]}>Đã được rót vốn</Text>
-              <Text style={[styles.legendNum, { color: theme.colors.success }]}>{invested} phần</Text>
-            </View>
-            {nodeMatch > 0 && (
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.warning || '#FBBF24' }]} />
-                <Text style={[styles.legendLabel, { color: theme.colors.textMuted }]}>Đang giữ chỗ</Text>
-                <Text style={[styles.legendNum, { color: theme.colors.warning || '#FBBF24' }]}>{nodeMatch} phần</Text>
+            const gap = 0.01;
+            const investedLen = investedPct * C;
+            const matchLen = matchPctVal * C;
+            const availableLen = Math.max(0, availablePct * C - (investedPct > 0 ? gap * C : 0) - (matchPctVal > 0 ? gap * C : 0));
+            const offset2 = investedLen + gap * C;
+            const offset3 = offset2 + matchLen + gap * C;
+
+            const Svg = require('react-native-svg').default;
+            const Circle = require('react-native-svg').Circle;
+
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                {/* Ring */}
+                <View style={{ width: SIZE, height: SIZE }}>
+                  <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+                    <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.textMuted + '15'} strokeWidth={STROKE} fill="none" />
+                    {availableLen > 0 && (
+                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.textMuted + '30'} strokeWidth={STROKE} fill="none"
+                        strokeDasharray={`${availableLen} ${C - availableLen}`} strokeDashoffset={-offset3} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
+                    )}
+                    {matchLen > 0 && (
+                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.warning || '#F0B90B'} strokeWidth={STROKE} fill="none"
+                        strokeDasharray={`${matchLen} ${C - matchLen}`} strokeDashoffset={-offset2} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
+                    )}
+                    {investedLen > 0 && (
+                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.success} strokeWidth={STROKE + 1} fill="none"
+                        strokeDasharray={`${investedLen} ${C - investedLen}`} strokeDashoffset={0} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
+                    )}
+                  </Svg>
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.text }}>{pctNum}%</Text>
+                  </View>
+                </View>
+                {/* Legend */}
+                <View style={{ flex: 1, gap: 0 }}>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
+                    <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Đã rót vốn</Text>
+                    <Text style={[styles.legendVal, { color: theme.colors.success }]}>{invested}</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '10', marginVertical: 6 }} />
+                  {nodeMatch > 0 && (
+                    <>
+                      <View style={styles.legendRow}>
+                        <View style={[styles.legendDot, { backgroundColor: theme.colors.warning || '#F0B90B' }]} />
+                        <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Giữ chỗ</Text>
+                        <Text style={[styles.legendVal, { color: theme.colors.warning || '#F0B90B' }]}>{nodeMatch}</Text>
+                      </View>
+                      <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '10', marginVertical: 6 }} />
+                    </>
+                  )}
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: theme.colors.textMuted + '50' }]} />
+                    <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Khả dụng</Text>
+                    <Text style={[styles.legendVal, { color: theme.colors.text }]}>{available}</Text>
+                  </View>
+                </View>
               </View>
-            )}
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.colors.textMuted + '60' }]} />
-              <Text style={[styles.legendLabel, { color: theme.colors.textMuted }]}>Khả dụng</Text>
-              <Text style={[styles.legendNum, { color: theme.colors.text }]}>{available} phần</Text>
-            </View>
-          </View>
+            );
+          })()}
         </View>
 
         {/* ── Action Button — Navigate to Investment Flow ── */}
@@ -558,16 +581,14 @@ const styles = StyleSheet.create({
 
   // Progress — Stitch segmented progress bar
   progressSection: { borderRadius: 16, padding: 14, marginBottom: 16 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   progressLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   progressValue: { fontSize: 13, fontWeight: '800' },
-  progressOuter: { flexDirection: 'row', height: 8, borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
-  progressSegment: { height: '100%' },
-  progressLegend: { gap: 6 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Donut legend (right side)
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
-  legendNum: { fontSize: 12, fontWeight: '700', marginLeft: 'auto' as any },
-  legendLabel: { fontSize: 12, fontWeight: '500' },
+  legendText: { fontSize: 12, fontWeight: '500', flex: 1 },
+  legendVal: { fontSize: 12, fontWeight: '700' },
 
   // Action buttons — Stitch premium CTA with glow
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 2 },
