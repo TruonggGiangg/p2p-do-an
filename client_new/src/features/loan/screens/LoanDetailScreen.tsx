@@ -275,6 +275,39 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 const prepayData = (prepayRes as any)?.data || prepayRes;
                 if (prepayData) setPrepayAmount(prepayData);
             }
+
+            // Lấy danh sách giao dịch
+            try {
+                const txRes = await loanService.getTransactions(loan.id);
+                console.log('[LoanDetail] txRes data:', (txRes as any)?.data);
+                
+                // Mongoose/Axios response might be double-wrapped inside `data.data` because of NestJS TransformInterceptor
+                const responseBody = (txRes as any)?.data || txRes;
+                const actualData = responseBody.data || responseBody;
+                const txData = actualData.transactions || [];
+                
+                if (Array.isArray(txData)) {
+                    const mapped: TransactionItem[] = txData.map((t: any) => {
+                        const typeInfo = getTxTypeInfo(t.type);
+                        const isDisburs = t.type?.disbursement || t.type?.code?.includes('disbursement');
+                        return {
+                            id: t.id,
+                            date: Array.isArray(t.date) ? `${t.date[2]}/${t.date[1]}/${t.date[0]}` : (t.date || ''),
+                            amount: t.amount || 0,
+                            type: typeInfo.text,
+                            typeIcon: typeInfo.icon,
+                            typeColor: typeInfo.color,
+                            isDisbursement: !!isDisburs,
+                        };
+                    });
+                    // Sort by id descending (newest first)
+                    mapped.sort((a, b) => b.id - a.id);
+                    setTransactions(mapped);
+                }
+            } catch (txErr) {
+                console.warn('[LoanDetail] getTransactions failed', txErr);
+            }
+
         } catch (err) {
             console.error('[LoanDetail] Error:', err);
         } finally {

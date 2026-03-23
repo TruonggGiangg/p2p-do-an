@@ -80,7 +80,7 @@ const getStatusInfo = (loan: LoanHistoryItem) => {
     return { text: loan.status || 'N/A', color: '#6B7280' };
 };
 
-const getPurposeIcon = (purpose?: string): string => {
+const getPurposeIcon = (purpose?: string): any => {
     const lower = purpose?.toLowerCase() || '';
     if (lower.includes('học') || lower.includes('giáo') || lower.includes('trường')) return 'school';
     if (lower.includes('xe')) return 'car';
@@ -119,55 +119,48 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
     const statusInfo = getStatusInfo(loan);
     const progress = loan.progress || 0;
     const isActive = loan.status === 'success' || loan.status === 'disbursed';
-    // rate from server is already annualInterestRate (%/năm)
     const annualRate = loan.rate || 0;
 
     return (
         <TouchableOpacity
             activeOpacity={0.7}
             style={[styles.loanCard, {
-                backgroundColor: colors.backgroundSecondary,
-                ...Platform.select({
-                    ios: { shadowColor: isDark ? '#000' : '#03110B', shadowOffset: { width: 0, height: 8 }, shadowOpacity: isDark ? 0.4 : 0.12, shadowRadius: 20 },
-                    android: { elevation: isDark ? 2 : 4 },
-                }),
+                backgroundColor: isDark ? colors.surface : '#FFFFFF',
+                borderRadius: 24,
+                padding: 16,
+                marginBottom: 16,
+                borderWidth: isDark ? 1 : 1,
+                borderColor: isDark ? colors.border : '#F3F4F6',
             }]}
             onPress={onPress}
         >
-            {/* Row 1: Icon + Name/Date + Amount/Status */}
-            <View style={styles.cardHeader}>
-                <View style={[styles.purposeIconContainer, { backgroundColor: statusInfo.color + '10' }]}>
-                    <MaterialCommunityIcons name="hand-coin-outline" size={18} color={statusInfo.color} />
+            {/* Header: Icon + Info + Amount/Badge */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                {/* Icon */}
+                <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: statusInfo.color + '15', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                    <MaterialCommunityIcons name={getPurposeIcon(loan.productName || loan.willing)} size={24} color={statusInfo.color} />
                 </View>
-                <View style={styles.cardHeaderInfo}>
-                    <Text style={[styles.loanPurpose, { color: colors.text }]} numberOfLines={1}>
+                
+                {/* Info */}
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }} numberOfLines={1}>
                         {loan.productName || 'Khoản vay P2P'}
                     </Text>
-                    <Text style={[styles.loanDate, { color: colors.textDim || colors.textMuted }]}>
+                    <Text style={{ fontSize: 13, color: colors.textMuted }}>
                         {formatDate(loan.createdAt)}
                     </Text>
                 </View>
-                <View style={styles.cardHeaderRight}>
-                    <Text style={[styles.loanAmount, { color: colors.text }]}>
-                        {formatMoney(loan.capital)} <Text style={[styles.loanCurrency, { color: colors.textMuted }]}>đ</Text>
+                
+                {/* Right */}
+                <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 6 }}>
+                        {formatMoney(loan.capital)} <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>đ</Text>
                     </Text>
-                    <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '10' }]}>
-                        <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+                    <View style={{ backgroundColor: statusInfo.color + '10', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: statusInfo.color }}>{statusInfo.text}</Text>
                     </View>
                 </View>
             </View>
-
-            {/* Progress Bar (active loans only) */}
-            {isActive && (
-                <View style={styles.progressSection}>
-                    <View style={[styles.progressBarBg, { backgroundColor: isDark ? colors.border : '#F3F4F6' }]}>
-                        <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` as any, backgroundColor: colors.primary }]} />
-                    </View>
-                    <Text style={[styles.progressDesc, { color: colors.textDim || colors.textMuted }]}>
-                        Đã trả {loan.paidInstallments || 0}/{loan.totalInstallments || 0} kỳ • {Math.round(progress)}%
-                    </Text>
-                </View>
-            )}
 
             {/* Investment Progress (donut ring) — shown when totalNotes > 0 */}
             {(loan.totalNotes ?? 0) > 0 && (() => {
@@ -191,7 +184,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                 const Circle = require('react-native-svg').Circle;
 
                 return (
-                    <View style={[styles.investSection, { backgroundColor: isDark ? (colors.surfaceLight || colors.backgroundSecondary) + '40' : '#F8F8F6' }]}>
+                    <View style={[styles.investSection, { backgroundColor: isDark ? (colors.surfaceLight || colors.backgroundSecondary) + '40' : '#F8F8F6', borderRadius: 16, padding: 16, marginBottom: 12 }]}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                             {/* Donut */}
                             <View style={{ width: SIZE, height: SIZE }}>
@@ -240,35 +233,50 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                 );
             })()}
 
-            {/* Footer: Term + Monthly + Rate + Action */}
-            <View style={[styles.cardFooter, { backgroundColor: isDark ? colors.background + '80' : '#F8F8F6' }]}>
-                <View style={styles.footerStats}>
-                    <View style={styles.footerStat}>
-                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Kỳ hạn</Text>
-                        <Text style={[styles.footerValue, { color: colors.text }]}>{loan.periodMonth || 0} th</Text>
+            {/* Gray Box Footer */}
+            <View style={{ backgroundColor: isDark ? colors.background : '#F9FAFB', borderRadius: 16, padding: 16 }}>
+                
+                {/* Progress (if active) */}
+                {isActive && (
+                    <View style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#E5E7EB' }}>
+                        <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '500' }}>
+                            Đã trả {loan.paidInstallments || 0}/{loan.totalInstallments || 0} kỳ • {Math.round(progress)}%
+                        </Text>
                     </View>
-                    <View style={styles.footerStat}>
-                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Gốc & Lãi/th</Text>
-                        <Text style={[styles.footerValue, { color: colors.text }]}>{formatMoney(loan.monthlyPay)} đ</Text>
+                )}
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', paddingRight: isActive ? 6 : 16 }}>
+                        <View style={{ flexShrink: 1 }}>
+                            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginBottom: 4 }} numberOfLines={1}>Kỳ hạn</Text>
+                            <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }} numberOfLines={1}>{loan.periodMonth || 0} th</Text>
+                        </View>
+                        <View style={{ flexShrink: 1 }}>
+                            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginBottom: 4 }} numberOfLines={1}>Gốc & Lãi/th</Text>
+                            <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }} numberOfLines={1}>{formatMoney(loan.monthlyPay)} đ</Text>
+                        </View>
+                        <View style={{ flexShrink: 1 }}>
+                            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginBottom: 4 }} numberOfLines={1}>Lãi suất</Text>
+                            <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }} numberOfLines={1}>{annualRate.toFixed(1)}%/năm</Text>
+                        </View>
                     </View>
-                    <View style={styles.footerStat}>
-                        <Text style={[styles.footerLabel, { color: colors.textDim || colors.textMuted, opacity: 0.75 }]}>Lãi suất</Text>
-                        <Text style={[styles.footerValue, { color: colors.text }]}>{annualRate.toFixed(1)}%/năm</Text>
+                    
+                    {/* Actions */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isActive && (
+                            <TouchableOpacity 
+                                style={{ backgroundColor: '#111827', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                                onPress={onRepayPress}
+                            >
+                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Trả nợ</Text>
+                            </TouchableOpacity>
+                        )}
+                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? colors.surfaceLight : '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
+                            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                        </View>
                     </View>
                 </View>
-                <View style={styles.actionGroup}>
-                    {isActive && (
-                        <TouchableOpacity
-                            style={[styles.repayBtn, { backgroundColor: colors.primary }]}
-                            onPress={onRepayPress}
-                        >
-                            <Text style={[styles.repayBtnText, { color: colors.onPrimary }]}>Trả nợ</Text>
-                        </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={[styles.detailBtn, { backgroundColor: isDark ? colors.background + '60' : '#F3F4F6' }]} onPress={onPress}>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                </View>
+
             </View>
         </TouchableOpacity>
     );
@@ -376,7 +384,7 @@ const LoanHistoryScreen = () => {
             />
 
 
-            {/* ── Filter + Sort Row (giống InvestmentOrderListScreen) ── */}
+            {/* ── Filter Row ── */}
             <View style={styles.filterSortRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={styles.chipRow}>
                     {STATUS_FILTERS.map(opt => {
@@ -395,6 +403,21 @@ const LoanHistoryScreen = () => {
                         );
                     })}
                 </ScrollView>
+            </View>
+
+            {/* ── Search ── */}
+            <View style={styles.searchBar}>
+                <View style={[styles.searchInputWrapper, { backgroundColor: isDark ? colors.surfaceLight || colors.backgroundSecondary : '#F5F5F5' }]}>
+                    <Ionicons name="search" size={18} color={colors.textMuted} />
+                    <TextInput
+                        style={[styles.searchInput, { color: colors.text }]}
+                        placeholder="Tìm theo mục đích, sản phẩm..."
+                        placeholderTextColor={colors.textMuted}
+                        value={searchText}
+                        onChangeText={setSearchText}
+                        returnKeyType="search"
+                    />
+                </View>
                 <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
                     <Text style={[styles.sortBtnText, { color: colors.textSecondary }]}>{sortLabel}</Text>
                     <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textSecondary} />
@@ -419,21 +442,6 @@ const LoanHistoryScreen = () => {
                     })}
                 </View>
             )}
-
-            {/* ── Search ── */}
-            <View style={styles.searchBar}>
-                <View style={[styles.searchInputWrapper, { backgroundColor: isDark ? colors.surfaceLight || colors.backgroundSecondary : '#F5F5F5' }]}>
-                    <Ionicons name="search" size={18} color={colors.textMuted} />
-                    <TextInput
-                        style={[styles.searchInput, { color: colors.text }]}
-                        placeholder="Tìm theo mục đích, sản phẩm..."
-                        placeholderTextColor={colors.textMuted}
-                        value={searchText}
-                        onChangeText={setSearchText}
-                        returnKeyType="search"
-                    />
-                </View>
-            </View>
 
             {/* Main Content */}
             {loading && !refreshing ? (

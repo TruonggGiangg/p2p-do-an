@@ -102,8 +102,8 @@ export class ContractService {
 
     const kycData = user.kycData || {};
     const borrowerInfo: BorrowerInfo = {
-      fullName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
-      idNumber: kycData.idNumber || kycData.cccd || '',
+      fullName: kycData.fullName || [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
+      idNumber: kycData.ssn || kycData.idNumber || kycData.cccd || '',
       dateOfBirth: kycData.dateOfBirth || kycData.dob || '',
       address: kycData.address || kycData.permanentAddress || '',
       phone: user.username || '',
@@ -199,18 +199,6 @@ export class ContractService {
       .lean()
       .exec();
 
-    // Fallback: userId in JWT may differ from the one stored (e.g. re-created user)
-    if (!contract) {
-      contract = await this.contractModel.findOne(query).lean().exec();
-      if (contract) {
-        this.logger.warn(
-          `[getContractById] Found contract ${contractId} via fallback (stored userId=${contract.userId}, jwt userId=${userId}). Updating...`,
-        );
-        // Fix the userId mismatch permanently
-        await this.contractModel.updateOne({ _id: contract._id }, { $set: { userId: new Types.ObjectId(userId) } });
-      }
-    }
-
     if (!contract) {
       throw new NotFoundException('Không tìm thấy hợp đồng');
     }
@@ -264,21 +252,7 @@ export class ContractService {
         .exec();
     }
 
-    // Fallback: try without userId filter (handles userId mismatch)
-    if (!contract) {
-      contract = await this.contractModel
-        .findOne({ loanId: (app as any)._id })
-        .lean()
-        .exec();
-      if (!contract && app.fineractLoanId) {
-        contract = await this.contractModel.findOne({ fineractLoanId: app.fineractLoanId }).lean().exec();
-      }
-      if (contract) {
-        this.logger.warn(
-          `[getContractByLoanId] Found contract via fallback (stored userId=${contract.userId}, jwt userId=${userId})`,
-        );
-      }
-    }
+
 
     if (contract) return contract as LoanContract;
 

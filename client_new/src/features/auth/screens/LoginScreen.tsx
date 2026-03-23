@@ -140,6 +140,7 @@ export default function LoginScreen() {
                             placeholder="Enter email or phone number"
                             error={usernameError}
                             editable={!isLoading}
+                            containerStyle={{ marginBottom: 20 }}
                         />
 
                         <CommonInput
@@ -150,6 +151,7 @@ export default function LoginScreen() {
                             secureTextEntry
                             error={passwordError}
                             editable={!isLoading}
+                            containerStyle={{ marginBottom: 12 }}
                         />
 
                         {error && !usernameError && !passwordError && (

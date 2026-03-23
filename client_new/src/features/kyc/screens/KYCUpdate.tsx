@@ -340,40 +340,44 @@ const KYCUpdate: React.FC = () => {
                             </Text>
                         </View>
                     )}
-                    {loading && (
-                        <View style={styles.loadingOverlay}>
-                            <ActivityIndicator color={c.primary} size="large" />
-                            <Text style={[styles.loadingText, { color: c.primary }]}>Đang phân tích...</Text>
-                        </View>
-                    )}
                 </TouchableOpacity>
 
-                <View style={styles.guideContainer}>
-                    <View style={styles.guideItem}>
-                        <Ionicons name="checkmark-circle" size={16} color={c.success} />
-                        <Text style={[styles.guideText, { color: c.textSecondary }]}>Ảnh rõ nét, không lóa</Text>
-                    </View>
-                    <View style={styles.guideItem}>
-                        <Ionicons name="checkmark-circle" size={16} color={c.success} />
-                        <Text style={[styles.guideText, { color: c.textSecondary }]}>Đầy đủ 4 góc của thẻ</Text>
-                    </View>
-                </View>
-
-                {(showFrontOcr || showBackOcr) && (
-                    <Animated.View entering={FadeIn} style={[styles.ocrResultCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                        <View style={styles.ocrResultTitleRow}>
-                            <Ionicons name="document-text-outline" size={18} color={c.primary} />
-                            <Text style={[styles.ocrResultTitle, { color: c.primary }]}>Thông tin đã nhận dạng</Text>
-                        </View>
-                        {(type === 'front' ? frontOcrItems : backOcrItems).map((item, idx) => (
-                            item.value ? (
-                                <View key={idx} style={[styles.ocrRow, { borderBottomColor: c.border + '60' }]}>
-                                    <Text style={[styles.ocrLabel, { color: c.textSecondary }]}>{item.label}</Text>
-                                    <Text style={[styles.ocrValue, { color: c.textPrimary }]} numberOfLines={2}>{item.value}</Text>
-                                </View>
-                            ) : null
-                        ))}
+                {loading ? (
+                    <Animated.View entering={FadeIn} exiting={FadeOut} style={[styles.ocrResultCard, { backgroundColor: c.surface, borderColor: c.border, alignItems: 'center', paddingVertical: 24 }]}>
+                        <ActivityIndicator color={c.primary} size="large" />
+                        <Text style={{ marginTop: 12, color: c.primary, fontFamily: 'Poppins_600SemiBold', fontSize: 13 }}>Đang phân tích CCCD...</Text>
+                        <Text style={{ marginTop: 4, color: c.textSecondary, fontFamily: 'Poppins_400Regular', fontSize: 12, textAlign: 'center' }}>Vui lòng đợi vài giây để hệ thống bóc tách dữ liệu</Text>
                     </Animated.View>
+                ) : (
+                    <>
+                        <View style={styles.guideContainer}>
+                            <View style={styles.guideItem}>
+                                <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                                <Text style={[styles.guideText, { color: c.textSecondary }]}>Ảnh rõ nét, không lóa</Text>
+                            </View>
+                            <View style={styles.guideItem}>
+                                <Ionicons name="checkmark-circle" size={16} color={c.success} />
+                                <Text style={[styles.guideText, { color: c.textSecondary }]}>Đầy đủ 4 góc của thẻ</Text>
+                            </View>
+                        </View>
+
+                        {(showFrontOcr || showBackOcr) && (
+                            <Animated.View entering={FadeIn} style={[styles.ocrResultCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                                <View style={styles.ocrResultTitleRow}>
+                                    <Ionicons name="document-text-outline" size={18} color={c.primary} />
+                                    <Text style={[styles.ocrResultTitle, { color: c.primary }]}>Thông tin đã nhận dạng</Text>
+                                </View>
+                                {(type === 'front' ? frontOcrItems : backOcrItems).map((item, idx) => (
+                                    item.value ? (
+                                        <View key={idx} style={[styles.ocrRow, { borderBottomColor: c.border + '60' }]}>
+                                            <Text style={[styles.ocrLabel, { color: c.textSecondary }]}>{item.label}</Text>
+                                            <Text style={[styles.ocrValue, { color: c.textPrimary }]} numberOfLines={2}>{item.value}</Text>
+                                        </View>
+                                    ) : null
+                                ))}
+                            </Animated.View>
+                        )}
+                    </>
                 )}
             </Animated.View>
         );

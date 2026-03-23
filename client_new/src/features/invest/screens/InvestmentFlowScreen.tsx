@@ -456,7 +456,17 @@ export default function InvestmentFlowScreen() {
           <View style={styles.resultActions}>
             {result.success && (
               <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]}
+                style={[
+                  styles.primaryBtn, 
+                  { backgroundColor: theme.colors.primary },
+                  {
+                    shadowColor: theme.colors.primary,
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.4,
+                    shadowRadius: 8,
+                    elevation: 6,
+                  }
+                ]}
                 onPress={() => navigation.navigate('InvestmentContractDetail', { contractId: result._id })}
               >
                 <MaterialCommunityIcons name="file-document-outline" size={18} color={theme.colors.onPrimary} />
@@ -556,6 +566,14 @@ export default function InvestmentFlowScreen() {
                 backgroundColor: (step === 4 && !agreed) ? theme.colors.textMuted + '40' : theme.colors.primary,
                 opacity: submitting ? 0.7 : 1,
               },
+              // Chỉ apply Neon shadow khi nút không bị disable
+              (!submitting && !(step === 4 && !agreed)) && {
+                shadowColor: theme.colors.primary,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+                elevation: 6,
+              }
             ]}
             onPress={goNext}
             disabled={submitting || (step === 4 && !agreed)}
@@ -697,7 +715,7 @@ const styles = StyleSheet.create({
   resultActions: { gap: 12, marginTop: 32, width: '100%' },
 
   // Buttons
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, shadowColor: '#CDEA2D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
+  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16 },
   primaryBtnText: { fontSize: 16, fontWeight: '800' },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 16 },
   secondaryBtnText: { fontSize: 15, fontWeight: '700' },

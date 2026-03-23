@@ -4,6 +4,7 @@ import {
   RefreshControl, StyleSheet, StatusBar,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, Pagination } from '../../../components';
@@ -97,103 +98,141 @@ export default function InvestmentOrderListScreen() {
     open: orders.filter(o => o.status !== 'closed').length,
   }), [orders]);
 
-  /* ── Order Card (Stitch design) ── */
+  /* ── Order Card (Stitch premium design) ── */
   const renderItem = ({ item }: { item: InvestmentOrderItem }) => {
-    const matchPct = item.totalNodes > 0 ? Math.round((item.matchedNodes / item.totalNodes) * 100) : 0;
     const isClosed = item.status === 'closed';
-    const accent = isClosed ? (c.success || '#4edea3') : c.primary;
-    const statusClr = isClosed ? '#EF4444' : (c.success || '#4edea3');
+    const matchPct = item.capital > 0 ? Math.round((item.matchedCapital / item.capital) * 100) : 0;
+    const remaining = item.capital - item.matchedCapital;
+    
+    // Status visual
+    const statusBg = isClosed ? c.textMuted + '15' : c.success + '15';
+    const statusClr = isClosed ? c.textSecondary : c.success;
+    const Svg = require('react-native-svg').default;
+    const Circle = require('react-native-svg').Circle;
 
     return (
-      <TouchableOpacity
-        style={[st.card, { backgroundColor: c.backgroundSecondary }]}
-        onPress={() => nav.navigate('InvestmentOrderDetail', { orderId: item._id })}
-        activeOpacity={0.7}
-      >
-        {/* ─ Top: Icon + Name + Status ─ */}
-        <View style={st.cardTop}>
-          <View style={[st.iconCircle, { backgroundColor: accent + '15' }]}>
-            <MaterialCommunityIcons
-              name={isClosed ? 'lock-outline' : 'briefcase-outline'}
-              size={18} color={accent}
-            />
+      <View style={[st.card, { backgroundColor: c.backgroundSecondary }]}>
+        {/* ── Header Row ── */}
+        <View style={st.cardHeader}>
+          <View style={st.cardTitleRow}>
+            <View style={[st.purposeIcon, { backgroundColor: isClosed ? c.textMuted + '15' : c.primary + '15' }]}>
+              <MaterialCommunityIcons 
+                name={isClosed ? "lock-outline" : "briefcase-check-outline"} 
+                size={22} 
+                color={isClosed ? c.textMuted : c.primary} 
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[st.cardTitle, { color: c.text }]} numberOfLines={1}>
+                {item.name || `Lệnh #${item._id.slice(-6)}`}
+              </Text>
+              <Text style={[st.cardSubtitle, { color: c.textMuted }]}>
+                {fmtDate((item as any).createdAt)}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={[st.cardName, { color: c.text }]} numberOfLines={1}>
-              {item.name || `Lệnh #${item._id.slice(-6)}`}
-            </Text>
-            <Text style={[st.cardDate, { color: c.textMuted || c.textSecondary }]}>
-              {fmtDate((item as any).createdAt)}
-            </Text>
-          </View>
-          <View style={[st.statusPill, { backgroundColor: statusClr + '18' }]}>
+          <View style={[st.statusBadge, { backgroundColor: statusBg }]}>
             <View style={[st.statusDot, { backgroundColor: statusClr }]} />
-            <Text style={[st.statusLabel, { color: statusClr }]}>
+            <Text style={[st.statusText, { color: statusClr }]}>
               {isClosed ? 'ĐÓNG' : 'MỞ'}
             </Text>
           </View>
         </View>
 
-        {/* ─ Middle: Progress ─ */}
-        <View style={st.progressSection}>
+        {/* ── Key Metrics 2x2 Grid ── */}
+        <View style={[st.metricsGrid, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB' }]}>
+          <View style={st.metricItem}>
+            <Text style={[st.metricLabel, { color: c.textSecondary }]}>GIÁ TRỊ LỆNH</Text>
+            <Text style={[st.metricValue, { color: c.textPrimary }]}>{fmtVND(item.capital)}</Text>
+          </View>
+          <View style={[st.metricItem, st.metricItemRight]}>
+            <Text style={[st.metricLabel, { color: c.textSecondary }]}>MỤC TIÊU LÃI</Text>
+            <Text style={[st.metricValue, { color: c.primary }]}>
+              {item.interestRange ? `${item.interestRange.min}%-${item.interestRange.max}%` : '—'}
+            </Text>
+          </View>
+          <View style={[st.metricItem, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.textMuted + '15' }]}>
+            <Text style={[st.metricLabel, { color: c.textSecondary }]}>KỲ HẠN</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+              <Text style={[st.metricValue, { color: c.textPrimary }]}>
+                {item.periodRange ? `${item.periodRange.min}-${item.periodRange.max}` : '—'}
+              </Text>
+              <Text style={[st.metricUnit, { color: c.textSecondary }]}>tháng</Text>
+            </View>
+          </View>
+          <View style={[st.metricItem, st.metricItemRight, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.textMuted + '15' }]}>
+            <Text style={[st.metricLabel, { color: c.textSecondary }]}>SỐ KHOẢN VAY</Text>
+            <Text style={[st.metricValue, { color: c.textPrimary }]}>{item.loans?.length || 0}</Text>
+          </View>
+        </View>
+
+        {/* ── Investment Progress (Donut) ── */}
+        <View style={[st.progressSection, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB' }]}>
           <View style={st.progressHeader}>
-            <Text style={[st.progressPctText, { color: accent }]}>
-              Đã ghép {matchPct}%
-            </Text>
-            <Text style={[st.progressAmountText, { color: c.textMuted || c.textSecondary }]}>
-              {item.matchedCapital.toLocaleString('vi-VN')} / {item.capital.toLocaleString('vi-VN')} ₫
-            </Text>
+            <Text style={[st.progressLabel, { color: c.textSecondary }]}>TIẾN ĐỘ GHÉP VỐN</Text>
+            <Text style={[st.progressValue, { color: c.primary }]}>{fmtVND(item.matchedCapital)} / {fmtVND(item.capital)}</Text>
           </View>
-          <View style={[st.progressTrack, { backgroundColor: (c.textMuted || '#999') + '15' }]}>
-            <View style={[st.progressFill, {
-              width: `${Math.max(matchPct, 1)}%`,
-              backgroundColor: accent,
-            }]} />
-          </View>
+          <View style={{ height: 1, backgroundColor: c.textMuted + '15', marginBottom: 12 }} />
+
+          {(() => {
+            const SIZE = 66;
+            const STROKE = 6;
+            const R = (SIZE - STROKE) / 2;
+            const C = 2 * Math.PI * R;
+            const matchPctVal = item.capital > 0 ? item.matchedCapital / item.capital : 0;
+            const availablePct = 1 - matchPctVal;
+
+            const gap = 0.01;
+            const matchLen = matchPctVal * C;
+            const availableLen = Math.max(0, availablePct * C - (matchPctVal > 0 ? gap * C : 0));
+
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ width: SIZE, height: SIZE }}>
+                  <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+                    <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={c.textMuted + '15'} strokeWidth={STROKE} fill="none" />
+                    {availableLen > 0 && (
+                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={c.textMuted + '30'} strokeWidth={STROKE} fill="none"
+                        strokeDasharray={`${availableLen} ${C - availableLen}`} strokeDashoffset={-matchLen - gap * C} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
+                    )}
+                    {matchLen > 0 && (
+                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={c.success} strokeWidth={STROKE + 1} fill="none"
+                        strokeDasharray={`${matchLen} ${C - matchLen}`} strokeDashoffset={0} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
+                    )}
+                  </Svg>
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{matchPct}%</Text>
+                  </View>
+                </View>
+
+                <View style={{ flex: 1, gap: 0 }}>
+                  <View style={st.legendRow}>
+                    <View style={[st.legendDot, { backgroundColor: c.success }]} />
+                    <Text style={[st.legendText, { color: c.textSecondary }]}>Đã ghép</Text>
+                    <Text style={[st.legendVal, { color: c.success }]}>{fmtVND(item.matchedCapital)}</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: c.textMuted + '10', marginVertical: 6 }} />
+                  <View style={st.legendRow}>
+                    <View style={[st.legendDot, { backgroundColor: c.textMuted + '50' }]} />
+                    <Text style={[st.legendText, { color: c.textSecondary }]}>Chờ duyệt</Text>
+                    <Text style={[st.legendVal, { color: c.text }]}>{fmtVND(remaining)}</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
-        {/* ─ Bottom: 3-col info strip ─ */}
-        <View style={[st.infoStrip, { backgroundColor: (c.textMuted || '#999') + '08' }]}>
-          <View style={st.infoCol}>
-            <View style={st.infoLabelRow}>
-              <Ionicons name="cash-outline" size={12} color={c.textSecondary} />
-              <Text style={[st.infoLabel, { color: c.textSecondary }]}>Vốn</Text>
-            </View>
-            <Text style={[st.infoValue, { color: c.text }]}>{fmtVND(item.capital)}</Text>
-          </View>
-          <View style={[st.infoDivider, { backgroundColor: (c.textMuted || '#999') + '20' }]} />
-          <View style={st.infoCol}>
-            <View style={st.infoLabelRow}>
-              <Ionicons name="layers-outline" size={12} color={c.textSecondary} />
-              <Text style={[st.infoLabel, { color: c.textSecondary }]}>Khoản vay</Text>
-            </View>
-            <Text style={[st.infoValue, { color: c.text }]}>{item.loans?.length || 0}</Text>
-          </View>
-          <View style={[st.infoDivider, { backgroundColor: (c.textMuted || '#999') + '20' }]} />
-          <View style={st.infoCol}>
-            <View style={st.infoLabelRow}>
-              <Ionicons name="trending-up-outline" size={12} color={c.textSecondary} />
-              <Text style={[st.infoLabel, { color: c.textSecondary }]}>Khoản lãi</Text>
-            </View>
-            <Text style={[st.infoValue, { color: c.primary }]}>
-              {(() => {
-                const ir = item.interestRange;
-                const pr = item.periodRange;
-                if (!ir || !pr || !item.matchedCapital) return '—';
-                const avgRate = (ir.min + ir.max) / 2 / 100;
-                const avgPeriod = (pr.min + pr.max) / 2;
-                const est = Math.round(item.matchedCapital * avgRate * avgPeriod);
-                return fmtVND(est);
-              })()}
-            </Text>
-          </View>
-        </View>
-
-        {/* Chevron */}
-        <View style={st.chevron}>
-          <Ionicons name="chevron-forward" size={14} color={(c.textMuted || '#999') + '50'} />
-        </View>
-      </TouchableOpacity>
+        {/* ── Action Button ── */}
+        <TouchableOpacity
+          style={[st.filledBtn, { backgroundColor: c.primary }]}
+          onPress={() => nav.navigate('InvestmentOrderDetail', { orderId: item._id })}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="eye-outline" size={16} color={c.onPrimary || '#fff'} />
+          <Text style={[st.filledBtnText, { color: c.onPrimary || '#fff' }]}>Xem chi tiết</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -238,23 +277,6 @@ export default function InvestmentOrderListScreen() {
           renderItem={renderItem}
           ListHeaderComponent={
             <View>
-              {/* Stats */}
-              <View style={st.statsRow}>
-                <View style={[st.statCard, { backgroundColor: c.backgroundSecondary }]}>
-                  <Text style={[st.statLbl, { color: c.textSecondary }]}>TỔNG VỐN</Text>
-                  <Text style={[st.statVal, { color: c.text }]}>{fmtVND(stats.total)}</Text>
-                </View>
-                <View style={[st.statCard, { backgroundColor: c.backgroundSecondary }]}>
-                  <Text style={[st.statLbl, { color: c.textSecondary }]}>ĐÃ GHÉP</Text>
-                  <Text style={[st.statVal, { color: c.primary }]}>{fmtVND(stats.matched)}</Text>
-                </View>
-                <View style={[st.statCard, { backgroundColor: c.backgroundSecondary }]}>
-                  <Text style={[st.statLbl, { color: c.textSecondary }]}>LỆNH MỞ</Text>
-                  <Text style={[st.statVal, { color: c.text }]}>{stats.open}</Text>
-                </View>
-              </View>
-
-              {/* Filter + Sort — SAME ROW */}
               <View style={st.filterSortRow}>
                 <View style={st.filterRow}>
                   {STATUS_FILTERS.map(f => {
@@ -262,19 +284,36 @@ export default function InvestmentOrderListScreen() {
                     return (
                       <TouchableOpacity
                         key={f.key}
-                        style={[st.filterChip, { backgroundColor: active ? c.primary : c.backgroundSecondary }]}
+                        style={[st.filterChip, { backgroundColor: active ? c.primary : c.backgroundSecondary, borderColor: active ? c.primary : (c.border || 'transparent') }]}
                         onPress={() => onFilter(f.key)} activeOpacity={0.7}
                       >
-                        <Text style={[st.filterText, { color: active ? (c.onPrimary || '#2C3400') : c.text }]}>{f.label}</Text>
+                        <Text style={[st.filterText, { color: active ? (c.onPrimary || '#FFF') : c.textSecondary }]}>{f.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-                <TouchableOpacity style={st.sortBtn} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
+                <TouchableOpacity style={[st.sortBtn, { backgroundColor: c.backgroundSecondary, borderColor: c.border || 'transparent', borderWidth: 1 }]} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
                   <Text style={[st.sortBtnText, { color: c.textSecondary }]}>{sortLabel}</Text>
                   <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={c.textSecondary} />
                 </TouchableOpacity>
               </View>
+
+              {/* Stats - moved BELOW filters */}
+              {/* <View style={st.statsRow}>
+                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderColor: c.border || 'transparent', borderWidth: 1 }]}>
+                  <Text style={[st.statLbl, { color: c.textMuted }]}>TỔNG VỐN</Text>
+                  <Text style={[st.statVal, { color: c.text }]}>{fmtVND(stats.total)}</Text>
+                </View>
+                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(205, 234, 45, 0.05)' : c.primary + '08', borderColor: c.primary + '30', borderWidth: 1 }]}>
+                  <Text style={[st.statLbl, { color: c.primary }]}>ĐÃ GHÉP</Text>
+                  <Text style={[st.statVal, { color: c.primary }]}>{fmtVND(stats.matched)}</Text>
+                </View>
+                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderColor: c.border || 'transparent', borderWidth: 1 }]}>
+                  <Text style={[st.statLbl, { color: c.textMuted }]}>LỆNH MỞ</Text>
+                  <Text style={[st.statVal, { color: c.text }]}>{stats.open}</Text>
+                </View>
+              </View> */}
+
 
               {/* Sort dropdown */}
               {showSort && (
@@ -324,54 +363,64 @@ const st = StyleSheet.create({
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
 
   // Stats
-  statsRow: { flexDirection: 'row', gap: 8, marginVertical: 12 },
-  statCard: { flex: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 12 },
-  statLbl: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 4 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 12, alignItems: 'center' },
+  statLbl: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 6 },
   statVal: { fontSize: 16, fontWeight: '800' },
 
   // Filter + Sort row
-  filterSortRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  filterSortRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   filterRow: { flexDirection: 'row', gap: 8 },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  filterText: { fontSize: 12, fontWeight: '600' },
-  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sortBtnText: { fontSize: 12, fontWeight: '500' },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  filterText: { fontSize: 13, fontWeight: '600' },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  sortBtnText: { fontSize: 12, fontWeight: '600' },
 
   // Sort menu
-  sortMenu: { borderRadius: 12, marginBottom: 12, overflow: 'hidden' },
+  sortMenu: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 2 },
   sortItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 },
   sortItemText: { fontSize: 13, fontWeight: '500' },
 
-  // ─── CARD (STITCH DESIGN) ───
-  card: { borderRadius: 16, padding: 18, marginBottom: 12, position: 'relative' },
+  // ─── CARD (STITCH DESIGN - MATCHES AVAILABLE LOANS) ───
+  card: {
+    borderRadius: 22, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#00110D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8,
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  cardTitle: { fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
+  cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
 
-  // Card top
-  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  iconCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  cardName: { fontSize: 16, fontWeight: '700' },
-  cardDate: { fontSize: 11, marginTop: 2 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusLabel: { fontSize: 11, fontWeight: '800' },
+  // Metrics Grid
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', borderRadius: 16, overflow: 'hidden', marginBottom: 14 },
+  metricItem: { width: '50%', paddingVertical: 16, paddingHorizontal: 20 },
+  metricItemRight: { alignItems: 'flex-end' },
+  metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
+  metricValue: { fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  metricUnit: { fontSize: 12, fontWeight: '500' },
 
-  // Card progress
-  progressSection: { marginBottom: 16 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
-  progressPctText: { fontSize: 14, fontWeight: '700' },
-  progressAmountText: { fontSize: 12 },
-  progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 3 },
+  // Progress (Donut)
+  progressSection: { borderRadius: 16, padding: 14, marginBottom: 16 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  progressLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+  progressValue: { fontSize: 13, fontWeight: '800' },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendDot: { width: 6, height: 6, borderRadius: 3 },
+  legendText: { fontSize: 12, fontWeight: '500', flex: 1 },
+  legendVal: { fontSize: 12, fontWeight: '700' },
 
-  // Card info strip
-  infoStrip: { flexDirection: 'row', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center' },
-  infoCol: { flex: 1, alignItems: 'center' },
-  infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
-  infoLabel: { fontSize: 10, fontWeight: '500' },
-  infoValue: { fontSize: 14, fontWeight: '800' },
-  infoDivider: { width: 1, height: 28 },
-
-  // Chevron
-  chevron: { position: 'absolute', right: 10, bottom: 16 },
+  // CTA Button
+  filledBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 14, borderRadius: 14,
+    shadowColor: '#CDEA2D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 6,
+  },
+  filledBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
 
   // Empty
   emptyWrap: { alignItems: 'center', paddingHorizontal: 32, marginTop: -40 },

@@ -7,22 +7,36 @@ import {
     TouchableOpacity,
     Alert,
     Animated,
+    StatusBar,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, FintechPullToRefresh } from '../../../components';
+import { FintechPullToRefresh, BinanceHeader } from '../../../components';
 import { loanService, LoanProduct, LoanDocumentType, LoanProductConfig } from '../services/loan.service';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 type RouteParams = { product: LoanProduct };
 type LoanProductDetailNav = NativeStackNavigationProp<RootStackParamList, 'LoanProductDetail'>;
 
+const formatMoney = (amount: number) => {
+    return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 export default function LoanProductDetailScreen() {
     const { theme } = useTheme();
+    const EMERALD_THEME = {
+        ...theme.colors,
+        surfaceHigh: theme.colors.surfaceBright,
+        textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
+    };
+    const styles = React.useMemo(() => getStyles(EMERALD_THEME), [EMERALD_THEME]);
+
     const route = useRoute();
     const navigation = useNavigation<LoanProductDetailNav>();
+    const insets = useSafeAreaInsets();
     const { product } = (route.params || {}) as RouteParams;
 
     const [documentTypes, setDocumentTypes] = useState<LoanDocumentType[]>([]);
@@ -70,10 +84,10 @@ export default function LoanProductDetailScreen() {
 
     if (!product) {
         return (
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <BinanceHeader showBack title="Chi tiết gói vay" />
+            <View style={[styles.container, { backgroundColor: EMERALD_THEME.background }]}>
+                <BinanceHeader title="Chi tiết gói vay" mode="standard" />
                 <View style={styles.centered}>
-                    <Text style={{ color: theme.colors.textSecondary }}>Không có thông tin sản phẩm</Text>
+                    <Text style={{ color: EMERALD_THEME.textSecondary }}>Không có thông tin sản phẩm</Text>
                 </View>
             </View>
         );
@@ -87,65 +101,64 @@ export default function LoanProductDetailScreen() {
     }, [fetchData]);
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            <BinanceHeader showBack title={product.name} />
+        <View style={[styles.container, { backgroundColor: EMERALD_THEME.background }]}>
+            <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+            
+            <BinanceHeader 
+                title={product.name} 
+                mode="standard" 
+                rightComponents={
+                    <TouchableOpacity style={styles.moreButton}>
+                        <MaterialCommunityIcons name="dots-horizontal" size={24} color={EMERALD_THEME.textPrimary} />
+                    </TouchableOpacity>
+                }
+            />
 
             <FintechPullToRefresh
                 onRefresh={onRefresh}
                 refreshing={refreshing}
                 contentContainerStyle={styles.scrollContent}
-                primaryColor={theme.colors.primary}
-                glowColor={theme.colors.primaryLight}
+                primaryColor={EMERALD_THEME.primary}
+                glowColor={EMERALD_THEME.primary + '30'}
             >
-                {/* Hero Card */}
-                <View style={[styles.heroCard, { backgroundColor: theme.colors.surface }]}>
-                    <View style={[styles.heroTopRow]}>
-                        <View style={[styles.iconWrap, { backgroundColor: theme.colors.primary + '20' }]}>
-                            <MaterialCommunityIcons name="currency-usd" size={30} color={theme.colors.primary} />
+                {/* Luminous Hero Card */}
+                <View style={styles.heroCard}>
+                    <View style={styles.heroTopRow}>
+                        <View style={styles.heroIconBox}>
+                            <MaterialCommunityIcons name="currency-usd" size={26} color={EMERALD_THEME.background} />
                         </View>
                         <View style={styles.heroTitleGroup}>
-                            <Text style={[styles.heroProductName, { color: theme.colors.textPrimary }]}>{product.name}</Text>
-                            <Text style={[styles.heroShortName, { color: theme.colors.textSecondary }]}>{product.shortName}</Text>
+                            <Text style={styles.heroProductName}>{product.name}</Text>
+                            <Text style={styles.heroShortName}>{product.shortName}</Text>
                         </View>
-                        <View style={[styles.badgePromo, { backgroundColor: theme.colors.primary + '20' }]}>
-                            <Text style={[styles.badgePromoText, { color: theme.colors.primary }]}>Ưu đãi</Text>
-                        </View>
-                    </View>
-
-                    <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-
-                    {/* Rate Highlight */}
-                    <View style={[styles.rateHighlight, { backgroundColor: theme.colors.primary + '10', borderColor: theme.colors.primary + '30' }]}>
-                        <View style={styles.rateHighlightLeft}>
-                            <MaterialCommunityIcons name="percent" size={18} color={theme.colors.primary} />
-                            <Text style={[styles.rateLabel, { color: theme.colors.textDim }]}>Lãi suất</Text>
-                        </View>
-                        <View style={styles.rateHighlightRight}>
-                            <Text style={[styles.rateMain, { color: theme.colors.primary }]}>
-                                {+mainRate.toFixed(2)}% / {mainUnit}
-                            </Text>
-                            <Text style={[styles.rateAnnual, { color: theme.colors.textSecondary }]}>
-                                ({subRate.toFixed(2)}% / {subUnit})
-                            </Text>
+                        <View style={styles.badgePromo}>
+                            <Text style={styles.badgePromoText}>Ưu đãi</Text>
                         </View>
                     </View>
 
-                    <View style={[styles.row, { borderTopColor: theme.colors.border }]}>
-                        <View style={styles.rowLeft}>
-                            <MaterialCommunityIcons name="calculator-variant-outline" size={16} color={theme.colors.textDim} />
-                            <Text style={[styles.label, { color: theme.colors.textDim }]}>Kiểu tính lãi</Text>
-                        </View>
-                        <Text style={[styles.value, { color: theme.colors.textPrimary }]}>{product.interestType?.value ?? '-'}</Text>
+                    <View style={styles.heroRateContainer}>
+                        <Text style={styles.heroRateMain}>{+mainRate.toFixed(2)}%<Text style={styles.heroRateUnit}> / {mainUnit}</Text></Text>
+                        <Text style={styles.heroRateSub}>Tương đương {subRate.toFixed(2)}% / {subUnit}</Text>
                     </View>
 
-                    {/* Hạn mức từ LoanProduct */}
+                    <View style={styles.heroDivider} />
+
+                    {/* Data List (No-Line Rule: Just Spacing) */}
+                    <View style={styles.dataRow}>
+                        <View style={styles.dataRowLeft}>
+                            <MaterialCommunityIcons name="calculator-variant-outline" size={18} color={EMERALD_THEME.textDim} />
+                            <Text style={styles.dataLabel}>Kiểu tính lãi</Text>
+                        </View>
+                        <Text style={styles.dataValue}>{product.interestType?.value ?? '-'}</Text>
+                    </View>
+
                     {(product.minPrincipal && product.maxPrincipal) && (
-                        <View style={[styles.row, { borderTopColor: theme.colors.border }]}>
-                            <View style={styles.rowLeft}>
-                                <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.colors.textDim} />
-                                <Text style={[styles.label, { color: theme.colors.textDim }]}>Hạn mức</Text>
+                        <View style={styles.dataRow}>
+                            <View style={styles.dataRowLeft}>
+                                <MaterialCommunityIcons name="cash-multiple" size={18} color={EMERALD_THEME.textDim} />
+                                <Text style={styles.dataLabel}>Hạn mức</Text>
                             </View>
-                            <Text style={[styles.value, { color: theme.colors.textPrimary }]}>
+                            <Text style={styles.dataValue}>
                                 {((product.minPrincipal ?? 0) / 1e6).toFixed(0)}tr – {((product.maxPrincipal ?? 0) / 1e6).toFixed(0)}tr đ
                             </Text>
                         </View>
@@ -153,25 +166,24 @@ export default function LoanProductDetailScreen() {
 
                     {config && (
                         <>
-                            {/* Lãi suất min/max từ Fineract config */}
                             {(config.minInterestRatePerPeriod != null && config.maxInterestRatePerPeriod != null) && (
-                                <View style={[styles.row, { borderTopColor: theme.colors.border }]}>
-                                    <View style={styles.rowLeft}>
-                                        <MaterialCommunityIcons name="percent-outline" size={16} color={theme.colors.textDim} />
-                                        <Text style={[styles.label, { color: theme.colors.textDim }]}>Lãi suất tùy chọn</Text>
+                                <View style={styles.dataRow}>
+                                    <View style={styles.dataRowLeft}>
+                                        <MaterialCommunityIcons name="percent-outline" size={18} color={EMERALD_THEME.textDim} />
+                                        <Text style={styles.dataLabel}>Lãi suất tùy chọn</Text>
                                     </View>
-                                    <Text style={[styles.value, { color: theme.colors.textPrimary }]}>
-                                        {+config.minInterestRatePerPeriod!.toFixed(2)}% – {+config.maxInterestRatePerPeriod!.toFixed(2)}%/{mainUnit}
+                                    <Text style={styles.dataValue}>
+                                        {+config.minInterestRatePerPeriod!.toFixed(2)}% – {+config.maxInterestRatePerPeriod!.toFixed(2)}%
                                     </Text>
                                 </View>
                             )}
                             {(config.minNumberOfRepayments && config.maxNumberOfRepayments) ? (
-                                <View style={[styles.row, { borderTopColor: theme.colors.border }]}>
-                                    <View style={styles.rowLeft}>
-                                        <MaterialCommunityIcons name="calendar-range" size={16} color={theme.colors.textDim} />
-                                        <Text style={[styles.label, { color: theme.colors.textDim }]}>Kỳ hạn</Text>
+                                <View style={styles.dataRow}>
+                                    <View style={styles.dataRowLeft}>
+                                        <MaterialCommunityIcons name="calendar-range" size={18} color={EMERALD_THEME.textDim} />
+                                        <Text style={styles.dataLabel}>Kỳ hạn</Text>
                                     </View>
-                                    <Text style={[styles.value, { color: theme.colors.textPrimary }]}>
+                                    <Text style={styles.dataValue}>
                                         {config.minNumberOfRepayments} – {config.maxNumberOfRepayments} tháng
                                     </Text>
                                 </View>
@@ -181,34 +193,32 @@ export default function LoanProductDetailScreen() {
                 </View>
 
                 {/* Documents Section */}
-                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Tài liệu cần nộp</Text>
+                <Text style={styles.sectionTitle}>TÀI LIỆU CẦN NỘP</Text>
 
                 {loading ? (
-                    <ActivityIndicator color={theme.colors.primary} style={styles.loader} />
+                    <ActivityIndicator color={EMERALD_THEME.primary} style={styles.loader} />
                 ) : documentTypes.length === 0 ? (
-                    <View style={[styles.docEmptyCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                        <MaterialCommunityIcons name="check-circle-outline" size={32} color={theme.colors.primary} />
-                        <Text style={[styles.docEmptyText, { color: theme.colors.textSecondary }]}>
-                            Không yêu cầu tài liệu bổ sung
-                        </Text>
+                    <View style={styles.docEmptyCard}>
+                        <MaterialCommunityIcons name="check-circle-outline" size={28} color={EMERALD_THEME.primary} />
+                        <Text style={styles.docEmptyText}>Không yêu cầu tài liệu bổ sung</Text>
                     </View>
                 ) : (
                     <View style={styles.docList}>
                         {documentTypes
                             .sort((a, b) => a.sortOrder - b.sortOrder)
                             .map((doc) => (
-                                <View key={doc.id} style={[styles.docCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                                    <View style={[styles.docIconWrap, { backgroundColor: theme.colors.primary + '15' }]}>
-                                        <MaterialCommunityIcons name="file-document-outline" size={20} color={theme.colors.primary} />
+                                <View key={doc.id} style={styles.docCard}>
+                                    <View style={styles.docIconWrap}>
+                                        <MaterialCommunityIcons name="file-document-outline" size={20} color={EMERALD_THEME.primary} />
                                     </View>
-                                    <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
+                                    <Text style={styles.docName}>{doc.name}</Text>
                                     {doc.required ? (
-                                        <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
+                                        <View style={styles.badgeRequired}>
                                             <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
                                         </View>
                                     ) : (
-                                        <View style={[styles.badgeOptional, { backgroundColor: theme.colors.surfaceLight }]}>
-                                            <Text style={[styles.badgeOptionalText, { color: theme.colors.textSecondary }]}>Tuỳ chọn</Text>
+                                        <View style={styles.badgeOptional}>
+                                            <Text style={styles.badgeOptionalText}>Tuỳ chọn</Text>
                                         </View>
                                     )}
                                 </View>
@@ -216,108 +226,125 @@ export default function LoanProductDetailScreen() {
                     </View>
                 )}
 
-                {/* CTA Button */}
-                <Animated.View style={{ transform: [{ scale: btnScale }], marginTop: loading ? 24 : 16 }}>
+                <View style={{ height: 40 }} />
+
+                {/* Footer Form Action */}
+                <Animated.View style={[styles.footer, { transform: [{ scale: btnScale }] }]}>
                     <TouchableOpacity
-                        style={[styles.btn, { backgroundColor: theme.colors.primary }]}
+                        style={styles.btn}
                         onPress={navigateToCreate}
                         onPressIn={handlePressIn}
                         onPressOut={handlePressOut}
                         activeOpacity={0.9}
                     >
-                        <MaterialCommunityIcons name="arrow-right-circle-outline" size={22} color="#fff" />
                         <Text style={styles.btnText}>Bắt đầu vay</Text>
+                        <MaterialCommunityIcons name="arrow-right" size={20} color={EMERALD_THEME.onPrimary} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
                 </Animated.View>
-
-                <View style={{ height: 40 }} />
             </FintechPullToRefresh>
         </View>
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 24 },
+    moreButton: { padding: 4, marginRight: -4 },
+
+    scrollContent: { padding: 20, paddingTop: 12 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    // Hero card
+    // Hero Card - Nocturnal Luminary Style
     heroCard: {
+        backgroundColor: EMERALD_THEME.surface,
+        borderRadius: 24,
+        padding: 24,
+        marginBottom: 32,
+    },
+    heroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    heroIconBox: {
+        width: 48, height: 48,
         borderRadius: 16,
-        padding: 18,
-        marginBottom: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        elevation: 3,
+        backgroundColor: EMERALD_THEME.primary,
+        justifyContent: 'center', alignItems: 'center',
     },
-    heroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-    iconWrap: { width: 52, height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-    heroTitleGroup: { flex: 1, marginLeft: 14 },
-    heroProductName: { fontSize: 18, fontWeight: '700' },
-    heroShortName: { fontSize: 13, marginTop: 2 },
-    badgePromo: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-    badgePromoText: { fontSize: 12, fontWeight: '700' },
-    divider: { height: 1, marginBottom: 14 },
+    heroTitleGroup: { flex: 1, marginLeft: 16 },
+    heroProductName: { fontSize: 18, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    heroShortName: { fontSize: 13, color: EMERALD_THEME.textSecondary, marginTop: 4 },
+    badgePromo: {
+        backgroundColor: EMERALD_THEME.surfaceHigh,
+        paddingHorizontal: 12, paddingVertical: 6,
+        borderRadius: 20,
+    },
+    badgePromoText: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textPrimary },
 
-    rateHighlight: {
-        flexDirection: 'row',
+    heroRateContainer: {
+        backgroundColor: EMERALD_THEME.background,
+        borderRadius: 16,
+        padding: 20,
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        marginBottom: 14,
+        marginBottom: 24,
     },
-    rateHighlightLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    rateHighlightRight: { alignItems: 'flex-end' },
-    rateLabel: { fontSize: 13 },
-    rateMain: { fontSize: 18, fontWeight: '800' },
-    rateAnnual: { fontSize: 12, marginTop: 2 },
+    heroRateMain: { fontSize: 40, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: -1 },
+    heroRateUnit: { fontSize: 16, fontWeight: '600', color: EMERALD_THEME.textSecondary },
+    heroRateSub: { fontSize: 13, color: EMERALD_THEME.textDim, marginTop: 4 },
+    heroDivider: { height: 1, backgroundColor: EMERALD_THEME.border, marginBottom: 20 },
 
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 0.5 },
-    rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    label: { fontSize: 13 },
-    value: { fontSize: 14, fontWeight: '600' },
+    dataRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    dataRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    dataLabel: { fontSize: 14, color: EMERALD_THEME.textSecondary },
+    dataValue: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
 
-    sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+    sectionTitle: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, marginBottom: 16, letterSpacing: 1 },
     loader: { marginVertical: 24 },
 
-    docList: { gap: 10 },
+    docList: { gap: 12 },
     docCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 14,
-        borderRadius: 14,
-        borderWidth: 1,
-        gap: 10,
+        padding: 16,
+        borderRadius: 16,
+        backgroundColor: EMERALD_THEME.surface,
     },
-    docIconWrap: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    docName: { flex: 1, fontSize: 14, fontWeight: '500' },
-    badgeRequired: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    badgeRequiredText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-    badgeOptional: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    badgeOptionalText: { fontSize: 11, fontWeight: '600' },
+    docIconWrap: {
+        width: 40, height: 40,
+        borderRadius: 12,
+        backgroundColor: EMERALD_THEME.surfaceHigh,
+        justifyContent: 'center', alignItems: 'center',
+        marginRight: 14,
+    },
+    docName: { flex: 1, fontSize: 15, fontWeight: '600', color: EMERALD_THEME.textPrimary },
+    badgeRequired: { backgroundColor: '#93000a', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    badgeRequiredText: { color: '#ffb4ab', fontSize: 11, fontWeight: '700' },
+    badgeOptional: { backgroundColor: EMERALD_THEME.surfaceHigh, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    badgeOptionalText: { color: EMERALD_THEME.textSecondary, fontSize: 11, fontWeight: '600' },
 
     docEmptyCard: {
-        borderRadius: 14,
-        borderWidth: 1,
-        padding: 24,
+        flexDirection: 'row',
+        backgroundColor: EMERALD_THEME.surface,
+        borderRadius: 16,
+        padding: 20,
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
         marginBottom: 8,
     },
-    docEmptyText: { fontSize: 14, textAlign: 'center' },
+    docEmptyText: { fontSize: 14, color: EMERALD_THEME.textSecondary, fontWeight: '500' },
 
+    footer: {
+        width: '100%',
+        paddingVertical: 16,
+    },
     btn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 16,
-        borderRadius: 14,
+        backgroundColor: EMERALD_THEME.primary,
+        paddingVertical: 18,
+        borderRadius: 100, // Pill shape
+        shadowColor: EMERALD_THEME.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
     },
-    btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    btnText: { color: EMERALD_THEME.onPrimary, fontSize: 16, fontWeight: '700' },
 });

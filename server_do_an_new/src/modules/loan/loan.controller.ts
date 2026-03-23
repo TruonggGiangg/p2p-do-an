@@ -212,6 +212,13 @@ export class LoanController {
     return this.repaymentService.getRepaymentSchedule(userId, loanId);
   }
 
+  @Get(':loanId/transactions')
+  @ApiOperation({ summary: 'Lấy lịch sử giao dịch từ Fineract' })
+  @ApiResponse({ status: 200, description: 'Danh sách giao dịch' })
+  async getTransactions(@CurrentUser('id') userId: string, @Param('loanId') loanId: string) {
+    return this.repaymentService.getLoanTransactions(userId, loanId);
+  }
+
   @Post(':loanId/support-request')
   @ApiOperation({ summary: 'Gửi yêu cầu hỗ trợ (Xóa phạt / Cơ cấu nợ) cho khoản vay quá hạn' })
   @ApiResponse({ status: 201, description: 'Yêu cầu được gửi thành công' })

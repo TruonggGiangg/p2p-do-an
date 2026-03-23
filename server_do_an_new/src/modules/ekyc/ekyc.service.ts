@@ -46,6 +46,8 @@ export class EkycService {
                 timeout: this.timeout,
             });
 
+            this.logger.debug(`[EkycService] ocrFrontID response data (PYTHON): ${JSON.stringify(response.data)}`);
+
             return response.data;
         } catch (error) {
             const errorDetail = error.response?.data?.error || error.message;
@@ -71,6 +73,8 @@ export class EkycService {
                 headers: formData.getHeaders(),
                 timeout: this.timeout,
             });
+
+            this.logger.debug(`[EkycService] ocrBackID response data (PYTHON): ${JSON.stringify(response.data)}`);
 
             return response.data;
         } catch (error) {

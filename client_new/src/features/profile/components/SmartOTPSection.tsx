@@ -44,6 +44,14 @@ export const SmartOTPSection: React.FC = () => {
   }, [isRegistered]);
 
   const handleRegister = async () => {
+    // Re-check 2FA status mới nhất (tránh stale state khi user vừa bật 2FA)
+    let currentlyEnabled = is2FAEnabled;
+    try {
+      const freshStatus = await TwoFactorService.getStatus();
+      currentlyEnabled = freshStatus.enabled;
+      setIs2FAEnabled(currentlyEnabled);
+    } catch {}
+
     const registerWithToken = async (token?: string) => {
       const success = await registerDevice(token);
       if (success) {
@@ -56,7 +64,7 @@ export const SmartOTPSection: React.FC = () => {
       }
     };
 
-    if (is2FAEnabled) {
+    if (currentlyEnabled) {
       if (Platform.OS === 'ios') {
         Alert.prompt(
           'Xác thực 2FA',

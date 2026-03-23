@@ -247,12 +247,14 @@ const registerDevice = async (
     },
   );
 
-  const envelope = response.data as
-    | RegisterDeviceResponse
-    | ApiEnvelope<RegisterDeviceResponse>;
-  const payload = ((envelope as ApiEnvelope<RegisterDeviceResponse>).data ??
-    envelope) as RegisterDeviceResponse;
-  if (payload.success) {
+  const rawData = response.data as any;
+  console.log('[SmartOTPService] Register response rawData keys:', Object.keys(rawData || {}));
+
+  // Unwrap: response.data can be { success, data: {...} } or { success, deviceId, totpSecret }
+  const payload = rawData?.data ?? rawData;
+  const isSuccess = Boolean(rawData?.success ?? payload?.success);
+
+  if (isSuccess || payload?.deviceId) {
     const deviceId = String(payload.deviceId ?? "");
     const totpSecret = String(payload.totpSecret ?? "");
 
@@ -275,9 +277,10 @@ const registerDevice = async (
 
     console.log("[SmartOTPService] Device registered successfully");
 
-    return response.data;
+    return { success: true, deviceId, totpSecret } as any;
   }
 
+  console.error('[SmartOTPService] Register failed - payload:', JSON.stringify(payload));
   throw new Error("Failed to register device");
 };
 

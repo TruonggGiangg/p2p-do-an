@@ -577,7 +577,10 @@ export class RepaymentService {
 
     // Fallback: tìm bằng fineractLoanId
     if (!loan) {
-      loan = await this.loanApplicationModel.findOne({ fineractLoanId: Number(loanId) });
+      const numericId = Number(loanId);
+      if (!isNaN(numericId)) {
+        loan = await this.loanApplicationModel.findOne({ fineractLoanId: numericId });
+      }
     }
 
     if (!loan) {
@@ -596,6 +599,23 @@ export class RepaymentService {
     }
 
     return loan;
+  }
+
+  /**
+   * Lấy lịch sử giao dịch từ Fineract
+   */
+  async getLoanTransactions(userId: string, loanId: string): Promise<any> {
+    const loan = await this.findAndValidateLoan(userId, loanId);
+    if (!loan.fineractLoanId) {
+      return { success: true, total: 0, transactions: [] };
+    }
+
+    const transactions = await this.fineractLoanService.getLoanTransactions(loan.fineractLoanId);
+    return {
+      success: true,
+      total: transactions.length,
+      transactions,
+    };
   }
 
   private estimateOverdueDays(loan: LoanApplication, paymentDate: string): number {

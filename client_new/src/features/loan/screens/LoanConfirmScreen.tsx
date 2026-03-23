@@ -1,25 +1,20 @@
+/**
+ * LoanConfirmScreen — Xác nhận khoản vay
+ * Design: Emerald Night / Precision Luminescence
+ */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    TouchableOpacity,
-    ActivityIndicator,
-    Alert,
-    TextInput,
-    LayoutAnimation,
-    Platform,
-    UIManager,
-    Image,
-    Linking,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
+    ActivityIndicator, Alert, LayoutAnimation, Platform, UIManager,
+    Image, StatusBar,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonCard, OTPProtectedAction, PinVerifyModal } from '../../../components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { OTPProtectedAction, PinVerifyModal, BinanceHeader } from '../../../components';
 import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
@@ -29,6 +24,7 @@ import type { Wallet } from '../../../types/auth.types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { OtpActionType } from '../../../types/otp.types';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -48,60 +44,63 @@ type RouteParams = {
 
 type LoanConfirmNav = NativeStackNavigationProp<RootStackParamList, 'LoanConfirm'>;
 
-// ── Step indicator: đồng bộ với LoanCreateScreen ────────────────────────────
-function StepIndicator({ current, theme }: { current: number; theme: any }) {
-    const c = theme.colors;
+// ── Step indicator ────────────────────────────
+function StepIndicator({ current, theme }: { current: number, theme: any }) {
+    const EMERALD_THEME = {
+        ...theme.colors,
+        surfaceHigh: theme.colors.surfaceBright,
+        textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
+    };
+    const stepS = StyleSheet.create({
+        container: { paddingHorizontal: 20, paddingVertical: 14, gap: 10, marginBottom: 10 },
+        label: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.textDim, textTransform: 'uppercase', letterSpacing: 1 },
+        labelHighlight: { color: EMERALD_THEME.textPrimary },
+        stepsRow: { flexDirection: 'row', alignItems: 'center' },
+        dot: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+        dotText: { fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim },
+        connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
+    });
     return (
-        <View style={stepStyles.container}>
-            <View style={stepStyles.stepsRow}>
+        <View style={stepS.container}>
+            <Text style={stepS.label}>Bước {current + 1}/2: <Text style={stepS.labelHighlight}>{current === 0 ? 'Nhập thông tin' : 'Xác nhận đơn'}</Text></Text>
+            <View style={stepS.stepsRow}>
                 {[0, 1].map((i) => (
                     <React.Fragment key={i}>
                         <View style={[
-                            stepStyles.dot,
-                            i <= current
-                                ? { backgroundColor: c.primary }
-                                : { backgroundColor: c.border + '60' },
+                            stepS.dot,
+                            i <= current ? { backgroundColor: EMERALD_THEME.primary } : { backgroundColor: EMERALD_THEME.surfaceHigh },
                         ]}>
                             {i < current ? (
-                                <MaterialCommunityIcons name="check" size={11} color="#fff" />
+                                <MaterialCommunityIcons name="check" size={12} color={EMERALD_THEME.onPrimary} />
                             ) : (
-                                <Text style={[stepStyles.dotText, i <= current && { color: '#000' }]}>{i + 1}</Text>
+                                <Text style={[stepS.dotText, i <= current && { color: EMERALD_THEME.onPrimary }]}>{i + 1}</Text>
                             )}
                         </View>
                         {i < 1 && (
                             <View style={[
-                                stepStyles.connector,
-                                i < current
-                                    ? { backgroundColor: c.primary }
-                                    : { backgroundColor: c.border + '40' },
+                                stepS.connector,
+                                i < current ? { backgroundColor: EMERALD_THEME.primary } : { backgroundColor: EMERALD_THEME.surfaceHigh },
                             ]} />
                         )}
                     </React.Fragment>
                 ))}
             </View>
-            <Text style={[stepStyles.label, { color: c.textPrimary }]}>
-                {current === 0 ? 'Nhập thông tin vay' : 'Xác nhận & gửi đơn'}
-            </Text>
         </View>
     );
 }
 
-const stepStyles = StyleSheet.create({
-    container: { paddingHorizontal: 20, paddingVertical: 14, gap: 6 },
-    stepsRow: { flexDirection: 'row', alignItems: 'center' },
-    dot: {
-        width: 24, height: 24, borderRadius: 12,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    dotText: { fontSize: 11, fontWeight: '700', color: '#999' },
-    connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
-    label: { fontSize: 15, fontWeight: '600', marginTop: 2 },
-});
-
 export default function LoanConfirmScreen() {
     const { theme } = useTheme();
+    const EMERALD_THEME = {
+        ...theme.colors,
+        surfaceHigh: theme.colors.surfaceBright,
+        textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
+    };
+    const s = React.useMemo(() => getStyles(EMERALD_THEME), [EMERALD_THEME]);
+
     const route = useRoute();
     const navigation = useNavigation<LoanConfirmNav>();
+    const insets = useSafeAreaInsets();
     const params = (route.params || {}) as RouteParams;
     const { product, config, capital, periodMonth, willing, monthlyRatePercent, schedule } = params;
 
@@ -178,7 +177,7 @@ export default function LoanConfirmScreen() {
 
             const loanMongoId = result.id;
 
-            // Upload documents one by one if they have URI
+            // Upload documents
             const uploadPromises = Object.entries(documents)
                 .filter(([, v]) => v?.uri)
                 .map(async ([documentTypeId, v]) => {
@@ -190,8 +189,6 @@ export default function LoanConfirmScreen() {
                 });
 
             if (uploadPromises.length > 0) {
-                // We don't necessarily need to wait for all if we want to show success fast,
-                // but for consistency let's wait.
                 await Promise.all(uploadPromises);
             }
 
@@ -237,9 +234,9 @@ export default function LoanConfirmScreen() {
 
     if (!product || !schedule) {
         return (
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <BinanceHeader showBack title="Xác nhận đơn vay" />
-                <View style={styles.centered}><Text style={{ color: theme.colors.textSecondary }}>Thiếu thông tin</Text></View>
+            <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
+                <BinanceHeader title="Xác nhận đơn vay" mode="standard" />
+                <View style={s.centered}><Text style={{ color: EMERALD_THEME.textSecondary }}>Thiếu thông tin</Text></View>
             </View>
         );
     }
@@ -253,296 +250,253 @@ export default function LoanConfirmScreen() {
         : (schedule.schedulePreview ?? []).slice(0, PREVIEW_ROWS);
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            <BinanceHeader showBack title="Xác nhận đơn vay" />
+        <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
+            <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+            
+            <BinanceHeader title="Xác nhận đơn vay" mode="standard" />
+
             <StepIndicator current={1} theme={theme} />
 
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
 
                 {/* ── Hero: Tóm tắt chính ── */}
-                <View style={[styles.heroSummary, { backgroundColor: theme.colors.primary }]}>
-                    <Text style={styles.heroLabel}>Số tiền vay</Text>
-                    <Text style={styles.heroAmount}>{formatCurrency(capital)}</Text>
-                    <View style={styles.heroRow}>
-                        <View style={styles.heroItem}>
-                            <Text style={styles.heroItemLabel}>Kỳ hạn</Text>
-                            <Text style={styles.heroItemValue}>{periodMonth} tháng</Text>
+                <View style={s.heroVaultCard}>
+                    <Text style={s.heroLabel}>TỔNG SỐ TIỀN VAY</Text>
+                    <Text style={s.heroAmount}>{formatCurrency(capital)} ₫</Text>
+                    
+                    <View style={s.heroGrid}>
+                        <View style={s.heroCol}>
+                            <Text style={s.heroColLabel}>KỲ HẠN</Text>
+                            <Text style={s.heroColValue}>{periodMonth} tháng</Text>
                         </View>
-                        <View style={[styles.heroSeparator]} />
-                        <View style={styles.heroItem}>
-                            <Text style={styles.heroItemLabel}>Lãi suất</Text>
-                            <Text style={styles.heroItemValue}>{effectiveRate}%/{rateUnit}</Text>
+                        <View style={s.heroDivider} />
+                        <View style={s.heroCol}>
+                            <Text style={s.heroColLabel}>LÃI SUẤT</Text>
+                            <Text style={s.heroColValue}>{effectiveRate}%/{rateUnit}</Text>
                         </View>
-                        <View style={[styles.heroSeparator]} />
-                        <View style={styles.heroItem}>
-                            <Text style={styles.heroItemLabel}>Trả/tháng</Text>
-                            <Text style={styles.heroItemValue}>{formatCurrency(schedule.monthlyPay)}</Text>
+                        <View style={s.heroDivider} />
+                        <View style={s.heroCol}>
+                            <Text style={s.heroColLabel}>TRẢ/THÁNG</Text>
+                            <Text style={s.heroColValue}>{formatCurrency(schedule.monthlyPay)}</Text>
                         </View>
                     </View>
-                    <View style={[styles.heroTotalRow, { borderTopColor: 'rgba(255,255,255,0.3)' }]}>
-                        <Text style={styles.heroTotalLabel}>Tổng trả</Text>
-                        <Text style={styles.heroTotalValue}>{formatCurrency(schedule.entirelyPay)}</Text>
+
+                    <View style={s.heroTotalBox}>
+                        <Text style={s.heroTotalLabel}>Tổng số tiền phải trả</Text>
+                        <Text style={s.heroTotalValue}>{formatCurrency(schedule.entirelyPay)} ₫</Text>
                     </View>
                 </View>
 
-                {/* ── Phí (nếu có) ── */}
+                {/* ── Phí khoản vay ── */}
                 {charges.length > 0 && (
-                    <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Phí khoản vay</Text>
+                    <View style={s.card}>
+                        <Text style={s.sectionTitle}>PHÍ KHOẢN VAY</Text>
                         {charges.map((fee, idx) => {
                             const isPercent = /percent|amount/i.test(fee.chargeCalculationType);
                             const pct = fee.amount ?? 0;
-                            // Nếu % → tính tiền cụ thể từ vốn
-                            const feeAmountCalc = isPercent && capital > 0
-                                ? Math.round(capital * pct / 100)
-                                : null;
+                            const feeAmountCalc = isPercent && capital > 0 ? Math.round(capital * pct / 100) : null;
                             const isDisbursement = /disbursement/i.test(fee.chargeTimeType);
-                            const isLast = idx === charges.length - 1;
+                            
                             return (
-                                <View key={fee.id} style={[styles.feeRow, { borderBottomColor: theme.colors.border }, isLast && { borderBottomWidth: 0 }]}>
-                                    <View style={styles.feeLabelBlock}>
-                                        <Text style={[styles.feeName, { color: theme.colors.textPrimary }]}>{fee.name}</Text>
-                                        {isDisbursement && (
-                                            <Text style={[styles.feeNote, { color: theme.colors.textSecondary }]}>Thu khi giải ngân</Text>
-                                        )}
+                                <View key={fee.id} style={s.feeRow}>
+                                    <View style={s.feeLabelBlock}>
+                                        <Text style={s.feeName}>{fee.name}</Text>
+                                        {isDisbursement && <Text style={s.feeNote}>Thu khi giải ngân</Text>}
                                     </View>
-                                    <View style={styles.feeValueBlock}>
-                                        <Text style={[styles.feeRate, { color: theme.colors.textPrimary }]}>
-                                            {isPercent
-                                                ? `${Number(pct).toFixed(2)}% gốc`
-                                                : `${formatCurrency(pct)}`}
+                                    <View style={s.feeValueBlock}>
+                                        <Text style={s.feeRate}>
+                                            {isPercent ? `${Number(pct).toFixed(2)}% gốc` : `${formatCurrency(pct)}`}
                                         </Text>
                                         {feeAmountCalc != null && (
-                                            <Text style={[styles.feeAmountText, { color: theme.colors.textSecondary }]}>
-                                                ≈ {formatCurrency(feeAmountCalc)}
-                                            </Text>
+                                            <Text style={s.feeAmountText}>≈ {formatCurrency(feeAmountCalc)}</Text>
                                         )}
                                     </View>
                                 </View>
                             );
                         })}
-                    </CommonCard>
+                    </View>
                 )}
 
-                {/* ── Lịch trả (có thể thu gọn) ── */}
+                {/* ── Lịch trả nợ ── */}
                 {schedule.schedulePreview && schedule.schedulePreview.length > 0 && (
-                    <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                        <View style={styles.scheduleTitleRow}>
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch trả nợ</Text>
-                            <TouchableOpacity style={[styles.expandBtn, { borderColor: theme.colors.border }]} onPress={toggleSchedule}>
-                                <Text style={[styles.expandText, { color: theme.colors.primary }]}>
-                                    {scheduleExpanded ? 'Thu gọn' : `Xem tất cả (${schedule.schedulePreview.length})`}
+                    <View style={s.card}>
+                        <View style={s.scheduleTitleRow}>
+                            <Text style={s.sectionTitle}>LỊCH TRẢ NỢ</Text>
+                            <TouchableOpacity style={s.expandBtn} onPress={toggleSchedule}>
+                                <Text style={s.expandText}>
+                                    {scheduleExpanded ? 'Thu gọn' : `Chi tiết (${schedule.schedulePreview.length})`}
                                 </Text>
-                                <MaterialCommunityIcons
-                                    name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
-                                    size={16}
-                                    color={theme.colors.primary}
-                                />
+                                <MaterialCommunityIcons name={scheduleExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={EMERALD_THEME.primary} />
                             </TouchableOpacity>
                         </View>
 
-                        {/* Table header */}
-                        <View style={[styles.tableHeader, { backgroundColor: theme.colors.background, borderRadius: 8 }]}>
-                            <Text style={[styles.colKy, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Kỳ</Text>
-                            <Text style={[styles.colGoc, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Gốc</Text>
-                            <Text style={[styles.colLai, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Lãi</Text>
-                            <Text style={[styles.colTong, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Tổng</Text>
+                        <View style={s.tableHeader}>
+                            <Text style={[s.colKy, s.tableHeaderText]}>Kỳ</Text>
+                            <Text style={[s.colGoc, s.tableHeaderText]}>Gốc</Text>
+                            <Text style={[s.colLai, s.tableHeaderText]}>Lãi</Text>
+                            <Text style={[s.colTong, s.tableHeaderText]}>Tổng</Text>
                         </View>
 
                         {visibleRows.map((item, index) => (
-                            <View
-                                key={item.period}
-                                style={[
-                                    styles.tableRow,
-                                    { borderBottomColor: theme.colors.border },
-                                    index % 2 === 0 && { backgroundColor: theme.colors.surfaceLight || 'rgba(0,0,0,0.02)' },
-                                ]}
-                            >
-                                <View style={[styles.colKy, { alignItems: 'center' }]}>
-                                    <View style={[styles.periodCircle, { borderColor: theme.colors.primary + '40' }]}>
-                                        <Text style={[styles.periodCircleText, { color: theme.colors.primary }]}>{item.period}</Text>
+                            <View key={item.period} style={[s.tableRow, index % 2 === 0 && { backgroundColor: EMERALD_THEME.background }]}>
+                                <View style={s.colKy}>
+                                    <View style={s.periodCircle}>
+                                        <Text style={s.periodCircleText}>{item.period}</Text>
                                     </View>
                                 </View>
-                                <Text style={[styles.colGoc, styles.moneyText, { color: theme.colors.textPrimary }]}>
-                                    {formatCurrency(item.principal)}
-                                </Text>
-                                <Text style={[styles.colLai, styles.moneyText, { color: theme.colors.textSecondary }]}>
-                                    {formatCurrency(item.interest)}
-                                </Text>
-                                <Text style={[styles.colTong, styles.moneyTextBold, { color: theme.colors.primary }]}>
-                                    {formatCurrency(item.total)}
-                                </Text>
+                                <Text style={[s.colGoc, s.tableRowText]}>{formatCurrency(item.principal)}</Text>
+                                <Text style={[s.colLai, s.tableRowText, { color: EMERALD_THEME.textSecondary }]}>{formatCurrency(item.interest)}</Text>
+                                <Text style={[s.colTong, s.tableRowTextBold]}>{formatCurrency(item.total)}</Text>
                             </View>
                         ))}
 
                         {!scheduleExpanded && schedule.schedulePreview.length > PREVIEW_ROWS && (
-                            <TouchableOpacity style={styles.showMoreRow} onPress={toggleSchedule}>
-                                <Text style={[styles.showMoreText, { color: theme.colors.primary }]}>
-                                    + {schedule.schedulePreview.length - PREVIEW_ROWS} kỳ còn lại
-                                </Text>
+                            <TouchableOpacity style={s.showMoreBtn} onPress={toggleSchedule}>
+                                <Text style={s.showMoreText}>+ {schedule.schedulePreview.length - PREVIEW_ROWS} kỳ còn lại</Text>
                             </TouchableOpacity>
                         )}
-                    </CommonCard>
+                    </View>
                 )}
 
-                {/* ── Cần làm: Chọn ví + Tài liệu ── */}
-                <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Thông tin nhận giải ngân</Text>
+                {/* ── Thông tin nhận giải ngân ── */}
+                <View style={s.card}>
+                    <Text style={s.sectionTitle}>THÔNG TIN NHẬN GIẢI NGÂN</Text>
                     {loading ? (
-                        <ActivityIndicator color={theme.colors.primary} size="small" />
+                        <ActivityIndicator color={EMERALD_THEME.primary} size="small" />
                     ) : (
                         <TouchableOpacity
-                            style={[styles.walletSelect, { borderColor: selectedWallet ? theme.colors.primary : theme.colors.border }]}
+                            style={[s.walletSelect, selectedWallet && { borderColor: EMERALD_THEME.primary }]}
                             onPress={() => setShowWalletModal(true)}
                         >
-                            <View style={[styles.walletIconWrap, { backgroundColor: theme.colors.primary + '15' }]}>
-                                <MaterialCommunityIcons name="wallet-outline" size={22} color={theme.colors.primary} />
+                            <View style={s.walletIconWrap}>
+                                <MaterialCommunityIcons name="wallet-outline" size={24} color={EMERALD_THEME.primary} />
                             </View>
                             {selectedWallet ? (
-                                <View style={styles.walletInfo}>
-                                    <Text style={[styles.walletName, { color: theme.colors.textPrimary }]}>
-                                        {selectedWallet.productName || selectedWallet.metadata?.productName || 'Ví điện tử'}
-                                    </Text>
-                                    <Text style={[styles.walletNo, { color: theme.colors.textSecondary }]}>
-                                        {selectedWallet.accountNo || selectedWallet.fineractId || 'N/A'}
-                                    </Text>
+                                <View style={s.walletInfo}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={s.walletName}>
+                                            {selectedWallet.productName || selectedWallet.metadata?.productName || 'Ví điện tử'}
+                                        </Text>
+                                        {selectedWallet.isDefault && (
+                                            <View style={s.defaultBadge}>
+                                                <Text style={s.defaultBadgeText}>Mặc định</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={s.walletNo}>ID: {selectedWallet.accountNo || selectedWallet.fineractId || 'N/A'}</Text>
                                 </View>
                             ) : (
-                                <Text style={[styles.walletPlaceholder, { color: theme.colors.textSecondary }]}>Chọn ví nhận giải ngân</Text>
+                                <Text style={s.walletPlaceholder}>Chọn ví nhận giải ngân</Text>
                             )}
-                            {selectedWallet?.isDefault && (
-                                <View style={[styles.defaultBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-                                    <Text style={[styles.defaultBadgeText, { color: theme.colors.primary }]}>Mặc định</Text>
-                                </View>
-                            )}
-                            <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textSecondary} />
+                            <MaterialCommunityIcons name="chevron-right" size={24} color={EMERALD_THEME.textDim} />
                         </TouchableOpacity>
                     )}
-                </CommonCard>
+                </View>
 
-                {/* ── Tài liệu ── */}
+                {/* ── Tài liệu đính kèm ── */}
                 {documentTypes.length > 0 && (
-                    <CommonCard style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-                        <View style={styles.docSectionHeader}>
-                            <MaterialCommunityIcons name="file-document-multiple-outline" size={20} color={theme.colors.primary} />
-                            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>Tài liệu đính kèm</Text>
+                    <View style={s.card}>
+                        <View style={s.docSectionHeader}>
+                            <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={EMERALD_THEME.textDim} />
+                            <Text style={s.sectionTitle}>TÀI LIỆU ĐÍNH KÈM</Text>
                         </View>
-                        <Text style={[styles.docSectionHint, { color: theme.colors.textSecondary }]}>
-                            Vui lòng cung cấp đầy đủ tài liệu yêu cầu
-                        </Text>
+                        
                         {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
                             const hasValue = !!documents[doc.id]?.name;
 
                             return (
-                                <View key={doc.id} style={[styles.docRow, { borderTopColor: theme.colors.border }]}>
-                                    <View style={styles.docHeader}>
-                                        <View style={[styles.docIconWrap, {
-                                            backgroundColor: hasValue ? theme.colors.success + '15' : theme.colors.primary + '15',
-                                        }]}>
+                                <View key={doc.id} style={s.docRow}>
+                                    <View style={s.docHeader}>
+                                        <View style={[s.docIconWrap, hasValue && { backgroundColor: EMERALD_THEME.success + '20' }]}>
                                             <MaterialCommunityIcons
                                                 name={hasValue ? "check-circle" : "file-image-outline"}
                                                 size={18}
-                                                color={hasValue ? theme.colors.success : theme.colors.primary}
+                                                color={hasValue ? EMERALD_THEME.success : EMERALD_THEME.primary}
                                             />
                                         </View>
-                                        <View style={styles.docNameBlock}>
-                                            <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
+                                        <View style={s.docNameBlock}>
+                                            <Text style={s.docName}>{doc.name}</Text>
                                             {doc.description ? (
-                                                <Text style={[styles.docDesc, { color: theme.colors.textSecondary }]} numberOfLines={1}>{doc.description}</Text>
+                                                <Text style={s.docDesc} numberOfLines={1}>{doc.description}</Text>
                                             ) : null}
                                         </View>
                                         {doc.required ? (
-                                            <View style={[styles.badgeRequired, { backgroundColor: theme.colors.error }]}>
-                                                <Text style={styles.badgeRequiredText}>Bắt buộc</Text>
+                                            <View style={s.badgeRequired}>
+                                                <Text style={s.badgeRequiredText}>Bắt buộc</Text>
                                             </View>
                                         ) : (
-                                            <View style={[styles.badgeOptional, { backgroundColor: theme.colors.surfaceLight }]}>
-                                                <Text style={[styles.badgeOptionalText, { color: theme.colors.textSecondary }]}>Tuỳ chọn</Text>
+                                            <View style={s.badgeOptional}>
+                                                <Text style={s.badgeOptionalText}>Tuỳ chọn</Text>
                                             </View>
                                         )}
                                     </View>
 
-                                    <View style={styles.docUploadContainer}>
-                                        <TouchableOpacity
-                                            style={[styles.bigCameraBtn, {
-                                                backgroundColor: theme.colors.primary + '06',
-                                                borderColor: documents[doc.id]?.uri ? theme.colors.success : theme.colors.border,
-                                            }]}
-                                            onPress={() => pickImage(doc.id)}
-                                        >
-                                            {documents[doc.id]?.uri ? (
-                                                <View style={styles.docThumbnailWrap}>
-                                                    <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
-                                                    <View style={[styles.docThumbnailOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-                                                        <MaterialCommunityIcons name="pencil-circle" size={28} color="#fff" />
-                                                        <Text style={styles.docThumbnailText}>Nhấn để thay đổi</Text>
-                                                    </View>
+                                    <TouchableOpacity
+                                        style={[s.bigCameraBtn, documents[doc.id]?.uri && { borderColor: EMERALD_THEME.success, borderStyle: 'solid' }]}
+                                        onPress={() => pickImage(doc.id)}
+                                    >
+                                        {documents[doc.id]?.uri ? (
+                                            <View style={s.docThumbnailWrap}>
+                                                <Image source={{ uri: documents[doc.id]?.uri }} style={s.docThumbnail} />
+                                                <View style={s.docThumbnailOverlay}>
+                                                    <MaterialCommunityIcons name="pencil-circle" size={32} color="#fff" />
+                                                    <Text style={s.docThumbnailText}>Sửa ảnh</Text>
                                                 </View>
-                                            ) : (
-                                                <View style={styles.emptyDocState}>
-                                                    <View style={[styles.docUploadIconCircle, { backgroundColor: theme.colors.primary + '15' }]}>
-                                                        <MaterialCommunityIcons name="camera-plus-outline" size={28} color={theme.colors.primary} />
-                                                    </View>
-                                                    <Text style={[styles.uploadHint, { color: theme.colors.textSecondary }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
-                                                </View>
-                                            )}
-                                        </TouchableOpacity>
-                                    </View>
+                                            </View>
+                                        ) : (
+                                            <View style={s.emptyDocState}>
+                                                <MaterialCommunityIcons name="camera-plus-outline" size={32} color={EMERALD_THEME.textDim} />
+                                                <Text style={s.uploadHint}>Chụp hoặc chọn ảnh</Text>
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
                                 </View>
                             );
                         })}
-                    </CommonCard>
+                    </View>
                 )}
 
-                {/* ── Submit (PIN + Smart OTP protected) ── */}
-                <OTPProtectedAction
-                    actionType={OtpActionType.LOAN_CREATE}
-                    actionData={{ capital, periodMonth, productId: product.id }}
-                    onExecute={handleApply}
-                    requireOTP
-                    title="Xác thực Smart OTP"
-                    description="Nhập mã OTP để xác nhận tạo khoản vay"
-                >
-                    {({ trigger, isLoading, isInitialized }) => {
-                        // Lưu trigger ref để gọi sau khi PIN thành công
-                        otpTriggerRef.current = trigger;
-                        const handlePress = () => {
-                            if (!selectedWallet) {
-                                Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
-                                return;
-                            }
-                            if (!(selectedWallet.id ?? selectedWallet._id)) {
-                                Alert.alert('Lỗi', 'Ví không hợp lệ');
-                                return;
-                            }
-                            const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
-                            if (requiredMissing.length > 0) {
-                                Alert.alert('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
-                                return;
-                            }
-                            // Bước 1: xác thực PIN trước
-                            setShowPinVerify(true);
-                        };
-                        const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized;
-                        return (
-                            <TouchableOpacity
-                                style={[styles.submitBtn, { backgroundColor: isDisabled ? theme.colors.border : theme.colors.primary }]}
-                                onPress={handlePress}
-                                disabled={isDisabled}
-                                activeOpacity={0.85}
-                            >
-                                {submitting || isLoading ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <MaterialCommunityIcons name="send-check-outline" size={20} color="#fff" />
-                                )}
-                                <Text style={[styles.submitBtnText, { color: isDisabled ? theme.colors.textSecondary : '#fff' }]}>
-                                    {submitting || isLoading ? 'Đang gửi...' : 'Xác nhận đăng ký vay'}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    }}
-                </OTPProtectedAction>
+                {/* Footer Form Action */}
+                <View style={s.footer}>
+                    <OTPProtectedAction
+                        actionType={OtpActionType.LOAN_CREATE}
+                        actionData={{ capital, periodMonth, productId: product.id }}
+                        onExecute={handleApply}
+                        requireOTP
+                        title="Xác thực phân đoạn"
+                        description="Nhập mã OTP để xác nhận tạo khoản vay"
+                    >
+                        {({ trigger, isLoading, isInitialized }) => {
+                            otpTriggerRef.current = trigger;
+                            const handlePress = () => {
+                                if (!selectedWallet) { Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân'); return; }
+                                const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
+                                if (requiredMissing.length > 0) {
+                                    Alert.alert('Lỗi', `Thiếu tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
+                                    return;
+                                }
+                                setShowPinVerify(true);
+                            };
+                            const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized;
+                            return (
+                                <TouchableOpacity
+                                    style={[s.submitBtn, { backgroundColor: isDisabled ? (theme.mode === 'dark' ? EMERALD_THEME.surfaceHigh : 'rgba(0,0,0,0.06)') : EMERALD_THEME.primary }]}
+                                    onPress={handlePress}
+                                    disabled={isDisabled}
+                                    activeOpacity={0.85}
+                                >
+                                    {submitting || isLoading ? (
+                                        <ActivityIndicator size="small" color={EMERALD_THEME.onPrimary} />
+                                    ) : (
+                                        <Text style={[s.submitBtnText, { color: isDisabled ? (theme.mode === 'dark' ? EMERALD_THEME.textDim : 'rgba(0,0,0,0.3)') : EMERALD_THEME.onPrimary }]}>
+                                            Xác nhận & gửi đơn
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        }}
+                    </OTPProtectedAction>
+                </View>
 
                 <View style={{ height: 40 }} />
             </ScrollView>
@@ -560,177 +514,142 @@ export default function LoanConfirmScreen() {
                 visible={imagePickerVisible}
                 onClose={() => { setImagePickerVisible(false); setImagePickerDocId(null); }}
                 onSelect={handleImagePicked}
-                title={imagePickerDocId ? (documentTypes.find(d => d.id === imagePickerDocId)?.name ?? 'Chọn ảnh') : 'Chọn ảnh'}
+                title="Tải tài liệu lên"
                 allowCamera
-                quality={0.85}
+                quality={0.8}
             />
 
-            {/* ── PIN Verify Modal (trước OTP) ── */}
             <PinVerifyModal
                 visible={showPinVerify}
                 dismissable
                 onCancel={() => setShowPinVerify(false)}
                 onSuccess={() => {
                     setShowPinVerify(false);
-                    // Bước 2: sau PIN thành công → trigger OTP
                     setTimeout(() => otpTriggerRef.current?.(), 300);
                 }}
                 title="Xác thực mã PIN"
-                subtitle="Nhập mã PIN trước khi xác nhận khoản vay"
+                subtitle="Nhập mã PIN để tiếp tục giao dịch an toàn"
             />
-
-        </View >
+        </View>
     );
 }
 
-const styles = StyleSheet.create({
+// ═══════════════════════════════════════════════════════════
+//  STYLES — Emerald Night
+// ═══════════════════════════════════════════════════════════
+const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     container: { flex: 1 },
+    
     scroll: { flex: 1 },
-    scrollContent: { padding: 16, paddingBottom: 24 },
+    scrollContent: { padding: 20, paddingBottom: 24, gap: 16 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    card: { padding: 16, marginBottom: 14, borderRadius: 16 },
 
-    heroSummary: {
-        borderRadius: 18,
-        padding: 20,
-        marginBottom: 14,
+    card: { backgroundColor: EMERALD_THEME.surface, borderRadius: 20, padding: 20 },
+    sectionTitle: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 16 },
+
+    // Hero Vault
+    heroVaultCard: {
+        backgroundColor: EMERALD_THEME.background,
+        borderRadius: 24, padding: 24,
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 6,
+        borderWidth: 1, borderColor: EMERALD_THEME.border, // subtle highlight
     },
-    heroLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '500', marginBottom: 4 },
-    heroAmount: { color: '#fff', fontSize: 32, fontWeight: '800', marginBottom: 16 },
-    heroRow: { flexDirection: 'row', width: '100%' },
-    heroItem: { flex: 1, alignItems: 'center' },
-    heroItemLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginBottom: 4 },
-    heroItemValue: { color: '#fff', fontSize: 13, fontWeight: '700' },
-    heroSeparator: { width: 1, backgroundColor: 'rgba(255,255,255,0.25)', marginVertical: 4 },
-    heroTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
-    heroTotalLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
-    heroTotalValue: { color: '#fff', fontSize: 18, fontWeight: '800' },
+    heroLabel: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1.5, marginBottom: 8 },
+    heroAmount: { fontSize: 36, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: 0.5, marginBottom: 24 },
+    
+    heroGrid: { flexDirection: 'row', width: '100%', alignItems: 'center', marginBottom: 24 },
+    heroCol: { flex: 1, alignItems: 'center' },
+    heroColLabel: { fontSize: 10, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 4 },
+    heroColValue: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    heroDivider: { width: 1, height: 24, backgroundColor: EMERALD_THEME.border },
 
-    sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+    heroTotalBox: { 
+        width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        paddingTop: 16, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border,
+    },
+    heroTotalLabel: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.textSecondary },
+    heroTotalValue: { fontSize: 18, fontWeight: '800', color: EMERALD_THEME.textPrimary },
+
+    // Fees
+    feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+    feeLabelBlock: { flex: 1, paddingRight: 12 },
+    feeName: { fontSize: 14, fontWeight: '600', color: EMERALD_THEME.textPrimary },
+    feeNote: { fontSize: 12, color: EMERALD_THEME.textDim, marginTop: 2 },
+    feeValueBlock: { alignItems: 'flex-end' },
+    feeRate: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    feeAmountText: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 2 },
 
     // Schedule
-    scheduleTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
-    expandText: { fontSize: 12, fontWeight: '600' },
-    tableHeader: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 4, marginBottom: 4 },
-    tableHeaderText: { fontSize: 12, fontWeight: '600' },
-    tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 0.5 },
-    colKy: { width: 40 },
-    colGoc: { flex: 1.1 },
-    colLai: { flex: 1 },
-    colTong: { flex: 1 },
-    moneyText: { fontSize: 12, textAlign: 'right' },
-    moneyTextBold: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
-    periodCircle: {
-        width: 26, height: 26, borderRadius: 13,
-        borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
-    },
-    periodCircleText: { fontSize: 11, fontWeight: '700' },
-    showMoreRow: { paddingVertical: 10, alignItems: 'center' },
-    showMoreText: { fontSize: 13, fontWeight: '600' },
+    scheduleTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    expandText: { fontSize: 12, fontWeight: '600', color: EMERALD_THEME.primary },
+    tableHeader: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 4, marginBottom: 8 },
+    tableHeaderText: { fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim, textTransform: 'uppercase', letterSpacing: 0.5 },
+    tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8 },
+    colKy: { width: 44, alignItems: 'center' },
+    colGoc: { flex: 1.1, textAlign: 'right' },
+    colLai: { flex: 1, textAlign: 'right' },
+    colTong: { flex: 1.1, textAlign: 'right' },
+    
+    tableRowText: { fontSize: 13, fontWeight: '500', color: EMERALD_THEME.textPrimary, textAlign: 'right' },
+    tableRowTextBold: { fontSize: 13, fontWeight: '700', color: EMERALD_THEME.primary, textAlign: 'right' },
+    
+    periodCircle: { width: 28, height: 28, borderRadius: 8, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
+    periodCircleText: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    
+    showMoreBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+    showMoreText: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.primary },
 
     // Wallet
     walletSelect: {
-        flexDirection: 'row', alignItems: 'center',
-        borderWidth: 1.5, borderRadius: 14, padding: 14, gap: 12,
+        flexDirection: 'row', alignItems: 'center', gap: 14,
+        padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: EMERALD_THEME.surfaceHigh,
+        backgroundColor: EMERALD_THEME.background,
     },
-    walletIconWrap: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    walletIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
     walletInfo: { flex: 1 },
-    walletName: { fontSize: 15, fontWeight: '600' },
-    walletNo: { fontSize: 12, marginTop: 2 },
-    walletPlaceholder: { flex: 1, fontSize: 14 },
-    defaultBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginLeft: 4 },
-    defaultBadgeText: { fontSize: 11, fontWeight: '700' },
+    walletName: { fontSize: 15, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    walletNo: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 4 },
+    walletPlaceholder: { flex: 1, fontSize: 14, color: EMERALD_THEME.textDim },
+    defaultBadge: { backgroundColor: EMERALD_THEME.primary + '20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    defaultBadgeText: { fontSize: 10, fontWeight: '800', color: EMERALD_THEME.primary },
 
     // Docs
-    docSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-    docSectionHint: { fontSize: 12, marginBottom: 12 },
-    docRow: { paddingVertical: 14, borderTopWidth: 0.5 },
-    docHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-    docIconWrap: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    docSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    docRow: { paddingTop: 16, marginTop: 16, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border },
+    docHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+    docIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
     docNameBlock: { flex: 1 },
-    docName: { fontSize: 14, fontWeight: '600' },
-    docDesc: { fontSize: 11, marginTop: 2 },
-    badgeRequired: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    badgeRequiredText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-    badgeOptional: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    badgeOptionalText: { fontSize: 11, fontWeight: '600' },
-    docUploadContainer: { marginTop: 4 },
+    docName: { fontSize: 14, fontWeight: '600', color: EMERALD_THEME.textPrimary },
+    docDesc: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 2 },
+    badgeRequired: { backgroundColor: '#93000a', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    badgeRequiredText: { color: '#ffb4ab', fontSize: 10, fontWeight: '700' },
+    badgeOptional: { backgroundColor: EMERALD_THEME.surfaceHigh, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    badgeOptionalText: { color: EMERALD_THEME.textSecondary, fontSize: 10, fontWeight: '600' },
+    
     bigCameraBtn: {
-        width: '100%',
-        height: 130,
-        borderRadius: 14,
-        borderWidth: 1.5,
-        borderStyle: 'dashed',
-        justifyContent: 'center',
-        alignItems: 'center',
-        overflow: 'hidden'
+        width: '100%', height: 110, borderRadius: 12,
+        backgroundColor: EMERALD_THEME.background,
+        borderWidth: 1.5, borderColor: EMERALD_THEME.surfaceHigh, borderStyle: 'dashed',
+        justifyContent: 'center', alignItems: 'center', overflow: 'hidden'
     },
-    docUploadIconCircle: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
-    emptyDocState: { alignItems: 'center', gap: 4 },
-    uploadHint: { fontSize: 12, fontWeight: '500' },
+    emptyDocState: { alignItems: 'center', gap: 8 },
+    uploadHint: { fontSize: 13, fontWeight: '500', color: EMERALD_THEME.textDim },
     docThumbnailWrap: { width: '100%', height: '100%', position: 'relative' },
     docThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
-    docThumbnailOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    docThumbnailText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 4 },
-    // Text input field
-    docTextInput: {
-        borderWidth: 1.5,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        fontSize: 14,
-        minHeight: 48,
-        textAlignVertical: 'top',
-    },
-    // Select field (radio list)
-    docSelectContainer: { gap: 8 },
-    docSelectOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        borderRadius: 12,
-        borderWidth: 1.5,
-    },
-    docSelectText: { fontSize: 14 },
-    // Button group field
-    docButtonContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    docButton: {
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-        borderRadius: 10,
-        borderWidth: 1.5,
-    },
-    docButtonText: { fontSize: 13 },
+    docThumbnailOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', gap: 4 },
+    docThumbnailText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
-    // Submit
+    // Footer
+    footer: {
+        width: '100%',
+        paddingVertical: 16,
+        paddingHorizontal: 0,
+    },
     submitBtn: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-        gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
+        width: '100%',
+        paddingVertical: 18, borderRadius: 100,
+        justifyContent: 'center', alignItems: 'center',
     },
     submitBtnText: { fontSize: 16, fontWeight: '700' },
-
-    feeRow: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingVertical: 10, borderBottomWidth: 0.5,
-    },
-    feeLabelBlock: { flex: 1, paddingRight: 12 },
-    feeName: { fontSize: 14, fontWeight: '500' },
-    feeNote: { fontSize: 11, marginTop: 2 },
-    feeValueBlock: { alignItems: 'flex-end', minWidth: 110 },
-    feeRate: { fontSize: 13, fontWeight: '600' },
-    feeAmountText: { fontSize: 12, marginTop: 2 },
-
 });

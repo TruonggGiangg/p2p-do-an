@@ -918,6 +918,13 @@ class LoanService {
   async updatePushToken(pushToken: string): Promise<void> {
     await api.post("/api/users/push-token", { pushToken });
   }
+
+  /**
+   * Lấy lịch sử giao dịch của khoản vay từ server (Fineract backend)
+   */
+  async getTransactions(loanId: string): Promise<any> {
+    return api.get(`/api/loan/${loanId}/transactions`);
+  }
 }
 
 // =============================================

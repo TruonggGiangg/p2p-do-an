@@ -68,8 +68,6 @@ export default function LoanScreen() {
     const [products, setProducts] = useState<LoanProduct[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [recentLoans, setRecentLoans] = useState<LoanHistoryItem[]>([]);
-    const [loadingLoans, setLoadingLoans] = useState(false);
 
     const fetchProducts = async () => {
         const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
@@ -85,21 +83,12 @@ export default function LoanScreen() {
         }
     };
 
-    const fetchRecentLoans = async () => {
-        try {
-            setLoadingLoans(true);
-            const result = await loanService.getApplications({ page: 1, pageSize: 5, sortBy: 'createdAt', sortOrder: 'desc' });
-            setRecentLoans(result.loans || []);
-        } catch { } finally { setLoadingLoans(false); }
-    };
-
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await Promise.all([fetchProducts(), fetchRecentLoans()]);
+        await fetchProducts();
     }, []);
 
-    useEffect(() => { fetchProducts(); fetchRecentLoans(); }, []);
-    useFocusEffect(useCallback(() => { fetchRecentLoans(); }, []));
+    useEffect(() => { fetchProducts(); }, []);
 
     const navToHistory = () => (navigation as any).navigate('LoanHistory');
 
@@ -171,6 +160,21 @@ export default function LoanScreen() {
                 primaryColor={c.primary}
                 glowColor={c.primaryLight}
             >
+                {/* ═══ LOAN HISTORY BTN (New Design) ═══ */}
+                <View style={styles.historySection}>
+                    <TouchableOpacity
+                        style={[styles.historyBtnTop, { backgroundColor: isDark ? c.surfaceLight : '#EDF0F2', borderWidth: 1, borderColor: isDark ? 'transparent' : '#E2E6E8' }]}
+                        activeOpacity={0.7}
+                        onPress={navToHistory}
+                    >
+                        <View style={[styles.historyIconWrap, { backgroundColor: isDark ? '#3D454A' : '#Dde2e5' }]}>
+                            <MaterialCommunityIcons name="history" size={22} color={isDark ? '#FFFFFF' : '#14342B'} />
+                        </View>
+                        <Text style={[styles.historyBtnText, { color: c.textPrimary }]}>Lịch sử khoản vay</Text>
+                        <Ionicons name="chevron-forward" size={20} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                    </TouchableOpacity>
+                </View>
+
                 {/* ═══ HEADER ═══ */}
                 <View style={styles.headerSection}>
                     <View style={styles.headerRow}>
@@ -178,14 +182,6 @@ export default function LoanScreen() {
                             <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Gói vay ưu đãi</Text>
                             <Text style={[styles.sectionSubtitle, { color: c.textSecondary }]}>Chọn gói vay phù hợp với nhu cầu của bạn</Text>
                         </View>
-                        <TouchableOpacity
-                            style={[styles.historyLink, { backgroundColor: c.primary + '12' }]}
-                            onPress={navToHistory}
-                            activeOpacity={0.75}
-                        >
-                            <MaterialCommunityIcons name="history" size={16} color={c.primary} />
-                            <Text style={[styles.historyLinkText, { color: c.primary }]}>Lịch sử</Text>
-                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -211,95 +207,7 @@ export default function LoanScreen() {
                     />
                 )}
 
-                {/* ═══ RECENT LOANS ═══ */}
-                {recentLoans.length > 0 && (
-                    <View style={styles.recentSection}>
-                        <View style={styles.recentHeader}>
-                            <Text style={[styles.recentTitle, { color: c.textPrimary }]}>Khoản vay gần đây</Text>
-                            <TouchableOpacity onPress={navToHistory} activeOpacity={0.75}>
-                                <Text style={[styles.recentSeeAll, { color: isDark ? '#8ECFB9' : '#14342B' }]}>Xem tất cả</Text>
-                            </TouchableOpacity>
-                        </View>
 
-                        {recentLoans.map((loan) => {
-                                const status = getStatusInfo(loan);
-                                const annualRate = loan.rate || 0;
-                                return (
-                                    <TouchableOpacity
-                                        key={loan.id}
-                                        style={[styles.recentCard, {
-                                            backgroundColor: isDark ? c.backgroundSecondary : '#FFFFFF',
-                                            borderColor: isDark ? c.border : '#F0F0EC',
-                                            ...Platform.select({
-                                                ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.08 : 0.03, shadowRadius: 12 },
-                                                android: { elevation: isDark ? 2 : 1 },
-                                            }),
-                                        }]}
-                                        activeOpacity={0.7}
-                                        onPress={() => (navigation as any).navigate('LoanDetail', { loan })}
-                                    >
-                                        {/* Header: Icon + Name/Date + Amount/Status */}
-                                        <View style={styles.recentCardHeader}>
-                                            <View style={[styles.recentIcon, { backgroundColor: status.color + '10' }]}>
-                                                <MaterialCommunityIcons name="hand-coin-outline" size={18} color={status.color} />
-                                            </View>
-                                            <View style={styles.recentCardInfo}>
-                                                <Text style={[styles.recentName, { color: c.textPrimary }]} numberOfLines={1}>
-                                                    {loan.willing || loan.productName || 'Khoản vay'}
-                                                </Text>
-                                                <Text style={[styles.recentSub, { color: c.textMuted, opacity: 0.6 }]}>
-                                                    {formatDateShort(loan.createdAt)}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.recentRight}>
-                                                <Text style={[styles.recentAmount, { color: c.textPrimary }]}>
-                                                    {formatMoney(loan.capital)} <Text style={[styles.recentCurrency, { color: c.textMuted }]}>đ</Text>
-                                                </Text>
-                                                <View style={[styles.recentBadge, { backgroundColor: status.color + '10' }]}>
-                                                    <Text style={[styles.recentBadgeText, { color: status.color }]}>{status.text}</Text>
-                                                </View>
-                                            </View>
-                                        </View>
-
-                                        {/* Footer: Term + Monthly + Rate + Chevron */}
-                                        <View style={[styles.recentCardFooter, { borderTopColor: isDark ? c.border + '60' : '#F0F0EC' }]}>
-                                            <View style={styles.recentFooterStats}>
-                                                <View style={styles.recentFooterStat}>
-                                                    <Text style={[styles.recentFooterLabel, { color: c.textMuted, opacity: 0.75 }]}>Kỳ hạn</Text>
-                                                    <Text style={[styles.recentFooterValue, { color: c.textPrimary }]}>{loan.periodMonth || 0} th</Text>
-                                                </View>
-                                                <View style={styles.recentFooterStat}>
-                                                    <Text style={[styles.recentFooterLabel, { color: c.textMuted, opacity: 0.75 }]}>Gốc & Lãi/th</Text>
-                                                    <Text style={[styles.recentFooterValue, { color: c.textPrimary }]}>{formatMoney(loan.monthlyPay)} đ</Text>
-                                                </View>
-                                                <View style={styles.recentFooterStat}>
-                                                    <Text style={[styles.recentFooterLabel, { color: c.textMuted, opacity: 0.75 }]}>Lãi suất</Text>
-                                                    <Text style={[styles.recentFooterValue, { color: c.textPrimary }]}>{annualRate.toFixed(1)}%/năm</Text>
-                                                </View>
-                                            </View>
-                                            <TouchableOpacity style={[styles.recentChevron, { backgroundColor: isDark ? c.border : '#F3F4F6' }]} onPress={() => (navigation as any).navigate('LoanDetail', { loan })}>
-                                                <Ionicons name="chevron-forward" size={16} color={c.textSecondary} />
-                                            </TouchableOpacity>
-                                        </View>
-                                    </TouchableOpacity>
-                                );
-                            })}
-
-                            {/* Xem tất cả button */}
-                            <TouchableOpacity
-                                style={[styles.viewAllBtn, { backgroundColor: isDark ? '#1A3A30' : '#14342B' }]}
-                                activeOpacity={0.7}
-                                onPress={navToHistory}
-                            >
-                                <Text style={styles.viewAllText}>Xem tất cả khoản vay</Text>
-                                <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                            </TouchableOpacity>
-                    </View>
-                )}
-
-                {loadingLoans && recentLoans.length === 0 && (
-                    <ActivityIndicator size="small" color={c.primary} style={{ marginTop: 20 }} />
-                )}
 
                 <View style={{ height: 40 }} />
             </FintechPullToRefresh>
@@ -311,19 +219,25 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
 
+    // ── History Link ──
+    historySection: { marginTop: 20 },
+    historyBtnTop: {
+        flexDirection: 'row', alignItems: 'center', 
+        paddingLeft: 12, paddingRight: 20, paddingVertical: 12, 
+        borderRadius: 24,
+    },
+    historyIconWrap: {
+        width: 44, height: 44, borderRadius: 14, 
+        justifyContent: 'center', alignItems: 'center',
+    },
+    historyBtnText: { flex: 1, marginLeft: 16, fontSize: 15, fontFamily: 'Poppins_500Medium' },
+
     // ── Header ──
-    headerSection: { marginTop: 20, marginBottom: 20 },
+    headerSection: { marginTop: 32, marginBottom: 20 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
     sectionTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', marginBottom: 4 },
     sectionSubtitle: { fontSize: 13, fontFamily: 'Poppins_400Regular', lineHeight: 18 },
     loadingContainer: { marginTop: 28 },
-
-    // ── History Link ──
-    historyLink: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14,
-    },
-    historyLinkText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
 
     // ── Product Card ──
     productItem: { marginBottom: 14 },
@@ -375,32 +289,4 @@ const styles = StyleSheet.create({
     },
     emptyText: { fontSize: 15, textAlign: 'center', fontFamily: 'Poppins_500Medium' },
 
-    // ── Recent Loans — individual cards matching LoanHistoryScreen ──
-    recentSection: { marginTop: 28 },
-    recentHeader: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14,
-    },
-    recentTitle: { fontSize: 18, fontFamily: 'Poppins_700Bold' },
-    recentSeeAll: { fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
-    recentCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, overflow: 'hidden' },
-    recentCardHeader: { flexDirection: 'row', alignItems: 'center' },
-    recentIcon: {
-        width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-    },
-    recentCardInfo: { flex: 1, marginLeft: 12 },
-    recentName: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', marginBottom: 2 },
-    recentSub: { fontSize: 11, fontFamily: 'Poppins_400Regular' },
-    recentRight: { alignItems: 'flex-end' },
-    recentAmount: { fontSize: 16, fontFamily: 'Poppins_700Bold', letterSpacing: -0.3, marginBottom: 4 },
-    recentCurrency: { fontSize: 12, fontFamily: 'Poppins_400Regular' },
-    recentBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-    recentBadgeText: { fontSize: 10, fontFamily: 'Poppins_600SemiBold' },
-    recentCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
-    recentFooterStats: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-    recentFooterStat: {},
-    recentFooterLabel: { fontSize: 10, fontFamily: 'Poppins_400Regular', marginBottom: 3 },
-    recentFooterValue: { fontSize: 13, fontFamily: 'Poppins_700Bold' },
-    recentChevron: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-    viewAllBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, marginTop: 4, borderRadius: 14 },
-    viewAllText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: '#FFFFFF' },
 });

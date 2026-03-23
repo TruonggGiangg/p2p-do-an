@@ -34,10 +34,10 @@ export class FineractBaseService {
             return `${day} ${month} ${year}`;
         }
 
-        // Return local YYYY-MM-DD instead of UTC
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
+        // Return UTC YYYY-MM-DD to match Fineract Docker (UTC timezone)
+        const year = now.getUTCFullYear();
+        const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(now.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
 

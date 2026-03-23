@@ -666,14 +666,15 @@ const styles = StyleSheet.create({
     detailGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8,
-        marginBottom: 12,
+        justifyContent: 'space-between',
+        marginBottom: 8,
     },
     detailItem: {
-        width: (width - 64) / 2 - 4,
+        width: '48%', // flex basis responsive
         padding: 12,
         borderRadius: 10,
         backgroundColor: '#F7F8FA',
+        marginBottom: 8,
     },
     detailItemLabel: { fontSize: 12 },
     detailItemValue: { fontSize: 14, fontWeight: '700', marginTop: 2 },
