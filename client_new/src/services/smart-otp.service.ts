@@ -1,7 +1,7 @@
 /**
  * Smart OTP Service
  * Xử lý Smart OTP với Device Binding phía client
- * 
+ *
  * Features:
  * - Generate ECDSA key pair
  * - Secure storage for keys
@@ -9,14 +9,14 @@
  * - Signature generation for device binding
  */
 
-import * as Crypto from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
-import * as Device from 'expo-device';
-import * as Application from 'expo-application';
-import { ec as EC } from 'elliptic';
-import { Buffer } from 'buffer';
-import { generateSync } from 'otplib';
-import api from '../core/api';
+import * as Crypto from "expo-crypto";
+import * as SecureStore from "expo-secure-store";
+import * as Device from "expo-device";
+import * as Application from "expo-application";
+import { ec as EC } from "elliptic";
+import { Buffer } from "buffer";
+import { generateSync } from "otplib";
+import api from "../core/api";
 import type {
   DeviceFingerprint,
   RegisterDeviceRequest,
@@ -27,7 +27,7 @@ import type {
   VerifyOtpResponse,
   SmartOtpStatus,
   DeviceBindingInfo,
-} from '../types/otp.types';
+} from "../types/otp.types";
 
 // TOTP Configuration (must match server)
 const TOTP_CONFIG = {
@@ -37,14 +37,20 @@ const TOTP_CONFIG = {
 
 // SecureStore keys
 const STORAGE_KEYS = {
-  DEVICE_BINDING: 'smart_otp_device_binding',
-  TOTP_SECRET: 'smart_otp_totp_secret',
-  PRIVATE_KEY: 'smart_otp_private_key',
-  PUBLIC_KEY: 'smart_otp_public_key',
-  DEVICE_ID: 'smart_otp_device_id',
+  DEVICE_BINDING: "smart_otp_device_binding",
+  TOTP_SECRET: "smart_otp_totp_secret",
+  PRIVATE_KEY: "smart_otp_private_key",
+  PUBLIC_KEY: "smart_otp_public_key",
+  DEVICE_ID: "smart_otp_device_id",
 };
 
-const ec = new EC('p256');
+const ec = new EC("p256");
+
+type ApiEnvelope<T> = {
+  success?: boolean;
+  message?: string;
+  data?: T;
+};
 
 /**
  * Get unique device identifier
@@ -56,13 +62,13 @@ const getDeviceId = async (): Promise<string> => {
   if (!deviceId) {
     // Generate new device ID based on device info
     const deviceInfo = [
-      Device.deviceName || '',
-      Device.modelName || '',
-      Device.osName || '',
-      Device.osVersion || '',
-      Application.applicationId || '',
+      Device.deviceName || "",
+      Device.modelName || "",
+      Device.osName || "",
+      Device.osVersion || "",
+      Application.applicationId || "",
       Date.now().toString(),
-    ].join('|');
+    ].join("|");
 
     deviceId = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
@@ -84,7 +90,7 @@ export const getDeviceFingerprint = async (): Promise<DeviceFingerprint> => {
 
   return {
     deviceId,
-    deviceName: Device.deviceName || 'Unknown Device',
+    deviceName: Device.deviceName || "Unknown Device",
     model: Device.modelName || undefined,
     brand: Device.brand || undefined,
     os: Device.osName || undefined,
@@ -98,24 +104,29 @@ export const getDeviceFingerprint = async (): Promise<DeviceFingerprint> => {
  * Generate ECDSA key pair for device binding
  * Uses expo-crypto for random bytes (elliptic's genKeyPair uses Node crypto which fails in RN)
  */
-const generateKeyPair = async (): Promise<{ privateKey: string; publicKey: string }> => {
+const generateKeyPair = async (): Promise<{
+  privateKey: string;
+  publicKey: string;
+}> => {
   try {
-    console.log('[SmartOTPService] Generating ECDSA key pair (P-256)...');
+    console.log("[SmartOTPService] Generating ECDSA key pair (P-256)...");
     const randomBytes = await Crypto.getRandomBytesAsync(32);
     const privateKeyHex = Array.from(randomBytes)
-      .map((c) => c.toString(16).padStart(2, '0'))
-      .join('');
-    const key = ec.keyFromPrivate(privateKeyHex, 'hex');
-    const privateKey = String(key.getPrivate('hex'));
-    const publicKey = String(key.getPublic('hex'));
+      .map((c) => c.toString(16).padStart(2, "0"))
+      .join("");
+    const key = ec.keyFromPrivate(privateKeyHex, "hex");
+    const privateKey = String(key.getPrivate("hex"));
+    const publicKey = String(key.getPublic("hex"));
 
     await SecureStore.setItemAsync(STORAGE_KEYS.PRIVATE_KEY, privateKey);
     await SecureStore.setItemAsync(STORAGE_KEYS.PUBLIC_KEY, publicKey);
 
-    console.log('[SmartOTPService] ECDSA key pair generated and stored successfully');
+    console.log(
+      "[SmartOTPService] ECDSA key pair generated and stored successfully",
+    );
     return { privateKey, publicKey };
   } catch (error) {
-    console.error('[SmartOTPService] generateKeyPair error:', error);
+    console.error("[SmartOTPService] generateKeyPair error:", error);
     throw error;
   }
 };
@@ -128,9 +139,11 @@ const signPayload = async (
   timestamp: number,
   actionType: string,
 ): Promise<string> => {
-  const privateKeyHex = await SecureStore.getItemAsync(STORAGE_KEYS.PRIVATE_KEY);
+  const privateKeyHex = await SecureStore.getItemAsync(
+    STORAGE_KEYS.PRIVATE_KEY,
+  );
   if (!privateKeyHex) {
-    throw new Error('Private key not found. Please register device first.');
+    throw new Error("Private key not found. Please register device first.");
   }
 
   const payload = `${otp}:${timestamp}:${actionType}`;
@@ -141,11 +154,11 @@ const signPayload = async (
     { encoding: Crypto.CryptoEncoding.HEX },
   );
 
-  const key = ec.keyFromPrivate(privateKeyHex, 'hex');
+  const key = ec.keyFromPrivate(privateKeyHex, "hex");
   const signature = key.sign(hash);
   const derSign = signature.toDER();
 
-  return Buffer.from(derSign).toString('base64');
+  return Buffer.from(derSign).toString("base64");
 };
 
 /**
@@ -156,14 +169,14 @@ const generateTOTP = async (): Promise<string> => {
     const totpSecret = await SecureStore.getItemAsync(STORAGE_KEYS.TOTP_SECRET);
 
     if (!totpSecret) {
-      throw new Error('TOTP secret not found. Please register device first.');
+      throw new Error("TOTP secret not found. Please register device first.");
     }
 
     // otplib v13 functional API
     const code = generateSync({ secret: totpSecret });
     return code;
   } catch (error) {
-    console.error('[SmartOTPService] generateTOTP error:', error);
+    console.error("[SmartOTPService] generateTOTP error:", error);
     throw error;
   }
 };
@@ -196,7 +209,9 @@ const isDeviceRegistered = async (): Promise<boolean> => {
  * Get stored device binding info
  */
 const getDeviceBinding = async (): Promise<DeviceBindingInfo | null> => {
-  const bindingStr = await SecureStore.getItemAsync(STORAGE_KEYS.DEVICE_BINDING);
+  const bindingStr = await SecureStore.getItemAsync(
+    STORAGE_KEYS.DEVICE_BINDING,
+  );
   if (!bindingStr) return null;
 
   try {
@@ -211,8 +226,10 @@ const getDeviceBinding = async (): Promise<DeviceBindingInfo | null> => {
 /**
  * Register device with server
  */
-const registerDevice = async (verificationToken?: string): Promise<RegisterDeviceResponse> => {
-  console.log('[SmartOTPService] Registering device...');
+const registerDevice = async (
+  verificationToken?: string,
+): Promise<RegisterDeviceResponse> => {
+  console.log("[SmartOTPService] Registering device...");
 
   // Generate key pair
   const { publicKey } = await generateKeyPair();
@@ -222,7 +239,7 @@ const registerDevice = async (verificationToken?: string): Promise<RegisterDevic
 
   // Call server API
   const response = await api.post<RegisterDeviceResponse>(
-    '/api/otp/register-device',
+    "/api/otp/register-device",
     {
       publicKey,
       deviceFingerprint,
@@ -230,20 +247,24 @@ const registerDevice = async (verificationToken?: string): Promise<RegisterDevic
     },
   );
 
-  if (response.data.success) {
-    const payload = response.data.data ?? response.data;
-    const deviceId = String(payload.deviceId ?? '');
-    const totpSecret = String(payload.totpSecret ?? '');
+  const envelope = response.data as
+    | RegisterDeviceResponse
+    | ApiEnvelope<RegisterDeviceResponse>;
+  const payload = ((envelope as ApiEnvelope<RegisterDeviceResponse>).data ??
+    envelope) as RegisterDeviceResponse;
+  if (payload.success) {
+    const deviceId = String(payload.deviceId ?? "");
+    const totpSecret = String(payload.totpSecret ?? "");
 
     if (!totpSecret) {
-      throw new Error('Server không trả về TOTP secret');
+      throw new Error("Server không trả về TOTP secret");
     }
 
     await SecureStore.setItemAsync(STORAGE_KEYS.TOTP_SECRET, totpSecret);
 
     const binding: DeviceBindingInfo = {
       deviceId,
-      deviceName: deviceFingerprint.deviceName || 'Unknown Device',
+      deviceName: deviceFingerprint.deviceName || "Unknown Device",
       registeredAt: new Date().toISOString(),
       fingerprint: deviceFingerprint,
     };
@@ -252,21 +273,23 @@ const registerDevice = async (verificationToken?: string): Promise<RegisterDevic
       JSON.stringify(binding),
     );
 
-    console.log('[SmartOTPService] Device registered successfully');
+    console.log("[SmartOTPService] Device registered successfully");
 
     return response.data;
   }
 
-  throw new Error('Failed to register device');
+  throw new Error("Failed to register device");
 };
 
 /**
  * Get registered devices from server
  */
 const getRegisteredDevices = async (): Promise<DeviceBindingInfo[]> => {
-  const response = await api.get<{ success: boolean; data?: { devices?: DeviceBindingInfo[] }; devices?: DeviceBindingInfo[] }>(
-    '/api/otp/devices',
-  );
+  const response = await api.get<{
+    success: boolean;
+    data?: { devices?: DeviceBindingInfo[] };
+    devices?: DeviceBindingInfo[];
+  }>("/api/otp/devices");
   const payload = response.data.data ?? response.data;
   return payload.devices || [];
 };
@@ -293,12 +316,16 @@ const requestOTPSession = async (
 ): Promise<RequestOtpResponse> => {
   const deviceId = await getDeviceId();
 
-  const response = await api.post<RequestOtpResponse>('/api/otp/request', {
+  const response = await api.post<RequestOtpResponse>("/api/otp/request", {
     deviceId,
     actionType,
     actionData,
   });
-  const payload = response.data.data ?? response.data;
+  const envelope = response.data as
+    | RequestOtpResponse
+    | ApiEnvelope<RequestOtpResponse>;
+  const payload = ((envelope as ApiEnvelope<RequestOtpResponse>).data ??
+    envelope) as RequestOtpResponse;
   return payload as RequestOtpResponse;
 };
 
@@ -316,7 +343,7 @@ const verifyOTP = async (
   // Sign the payload
   const signature = await signPayload(otp, timestamp, actionType);
 
-  const response = await api.post<VerifyOtpResponse>('/api/otp/verify', {
+  const response = await api.post<VerifyOtpResponse>("/api/otp/verify", {
     sessionId,
     otp,
     signature,
@@ -324,8 +351,21 @@ const verifyOTP = async (
     deviceId,
     actionType,
   });
-  const payload = response.data.data ?? response.data;
-  return payload as VerifyOtpResponse;
+  const envelope: any = response.data;
+  const payload: any = envelope?.data ?? envelope;
+
+  const verified = Boolean(payload?.verified ?? payload?.data?.verified);
+  const message =
+    payload?.message ??
+    envelope?.message ??
+    (verified ? "Xác thực OTP thành công" : "Xác thực OTP thất bại");
+
+  return {
+    success: Boolean(envelope?.success ?? verified),
+    message,
+    verified,
+    actionData: payload?.actionData ?? payload?.data?.actionData,
+  };
 };
 
 /**
@@ -340,7 +380,9 @@ const getSessionStatus = async (sessionId: string) => {
  * Get Smart OTP status for current user
  */
 const getSmartOTPStatus = async (): Promise<SmartOtpStatus> => {
-  const response = await api.get<{ success: boolean } & SmartOtpStatus>('/api/otp/status');
+  const response = await api.get<{ success: boolean } & SmartOtpStatus>(
+    "/api/otp/status",
+  );
   return response.data;
 };
 

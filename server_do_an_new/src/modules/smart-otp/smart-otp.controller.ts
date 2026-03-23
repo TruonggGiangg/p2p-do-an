@@ -7,7 +7,6 @@ import {
   Param,
   Req,
   NotFoundException,
-  UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
@@ -15,11 +14,7 @@ import type { Request } from 'express';
 import { SmartOtpService } from './services/smart-otp.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import {
-  RegisterDeviceDto,
-  RequestOtpDto,
-  VerifyOtpDto,
-} from './dto';
+import { RegisterDeviceDto, RequestOtpDto, VerifyOtpDto } from './dto';
 
 /**
  * Smart OTP Controller
@@ -32,7 +27,7 @@ export class SmartOtpController {
   constructor(
     private readonly smartOtpService: SmartOtpService,
     private readonly twoFactorService: TwoFactorService,
-  ) { }
+  ) {}
 
   /**
    * Đăng ký device mới với Smart OTP
@@ -40,34 +35,21 @@ export class SmartOtpController {
   @Post('register-device')
   @ApiOperation({ summary: 'Register device with Smart OTP' })
   @ApiResponse({ status: 200, description: 'Đăng ký Smart OTP thành công' })
-  async registerDevice(
-    @CurrentUser('id') userId: string,
-    @Body() body: RegisterDeviceDto,
-    @Req() req: Request,
-  ) {
-
+  async registerDevice(@CurrentUser('id') userId: string, @Body() body: RegisterDeviceDto, @Req() req: Request) {
     // Security Enhancement: Verify 2FA token if 2FA is enabled for user
     const is2faEnabled = await this.twoFactorService.isEnabled(userId);
     if (is2faEnabled) {
       if (!body.verificationToken) {
         throw new BadRequestException('Mã 2FA là bắt buộc khi đăng ký thiết bị mới');
       }
-      const isTokenValid = await this.twoFactorService.verifyToken(
-        userId,
-        body.verificationToken,
-      );
+      const isTokenValid = await this.twoFactorService.verifyToken(userId, body.verificationToken);
       if (!isTokenValid) {
         throw new BadRequestException('Mã 2FA không chính xác hoặc đã hết hạn');
       }
     }
 
     const ipAddress = req.ip || req.connection?.remoteAddress;
-    const result = await this.smartOtpService.registerDevice(
-      userId,
-      body.publicKey,
-      body.deviceFingerprint,
-      ipAddress,
-    );
+    const result = await this.smartOtpService.registerDevice(userId, body.publicKey, body.deviceFingerprint, ipAddress);
 
     return {
       deviceId: result.deviceId,
@@ -95,10 +77,7 @@ export class SmartOtpController {
    */
   @Delete('revoke-device/:deviceId')
   @ApiOperation({ summary: 'Revoke device' })
-  async revokeDevice(
-    @CurrentUser('id') userId: string,
-    @Param('deviceId') deviceId: string,
-  ) {
+  async revokeDevice(@CurrentUser('id') userId: string, @Param('deviceId') deviceId: string) {
     const result = await this.smartOtpService.revokeDevice(userId, deviceId);
 
     if (result) {
@@ -113,11 +92,7 @@ export class SmartOtpController {
    */
   @Post('request')
   @ApiOperation({ summary: 'Request OTP session for action' })
-  async requestOtp(
-    @CurrentUser('id') userId: string,
-    @Body() body: RequestOtpDto,
-    @Req() req: Request,
-  ) {
+  async requestOtp(@CurrentUser('id') userId: string, @Body() body: RequestOtpDto, @Req() req: Request) {
     const ipAddress = req.ip || req.socket?.remoteAddress;
     const session = await this.smartOtpService.createSession(
       userId,
@@ -139,10 +114,7 @@ export class SmartOtpController {
    */
   @Post('verify')
   @ApiOperation({ summary: 'Verify Smart OTP' })
-  async verifyOtp(
-    @CurrentUser('id') userId: string,
-    @Body() body: VerifyOtpDto,
-  ) {
+  async verifyOtp(@CurrentUser('id') userId: string, @Body() body: VerifyOtpDto) {
     const result = await this.smartOtpService.verifySmartOtp(
       userId,
       body.sessionId,
@@ -159,7 +131,7 @@ export class SmartOtpController {
         data: {
           verified: true,
           actionData: result.actionData,
-        }
+        },
       };
     } else {
       throw new BadRequestException(result.message);
@@ -171,10 +143,7 @@ export class SmartOtpController {
    */
   @Get('session/:sessionId')
   @ApiOperation({ summary: 'Get OTP session status' })
-  async getSessionStatus(
-    @CurrentUser('id') userId: string,
-    @Param('sessionId') sessionId: string,
-  ) {
+  async getSessionStatus(@CurrentUser('id') userId: string, @Param('sessionId') sessionId: string) {
     const session = await this.smartOtpService.getSessionStatus(sessionId);
 
     if (!session) {

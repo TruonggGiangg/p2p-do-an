@@ -36,8 +36,11 @@ import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import {
+  CreateCreditScoreWeightConfigInput,
+  CreditScoreWeightConfigItem,
   CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
+  UpdateCreditScoreWeightConfigInput,
 } from '../credit-score/credit-score.service';
 import { AdminProductService } from './services/admin-product.service';
 import { AdminCustomerService } from './services/admin-customer.service';
@@ -101,11 +104,30 @@ export class AdminService {
     private readonly customerService: AdminCustomerService,
     private readonly kycService: AdminKycService,
     private readonly staffService: AdminStaffService,
-  ) { }
+  ) {}
 
   // FACADE DELEGATES â€” Products
-  async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> { return this.staffService.getCreditScoreWeightConfig(); }
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) { return this.staffService.updateCreditScoreWeightConfig(input); }
+  async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
+    return this.staffService.getCreditScoreWeightConfig();
+  }
+  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
+    return this.staffService.updateCreditScoreWeightConfig(input);
+  }
+  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
+    return this.staffService.listCreditScoreWeightConfigs();
+  }
+  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
+    return this.staffService.createCreditScoreWeightConfig(input);
+  }
+  async updateCreditScoreWeightConfigById(
+    id: string,
+    input: UpdateCreditScoreWeightConfigInput,
+  ): Promise<CreditScoreWeightConfigItem> {
+    return this.staffService.updateCreditScoreWeightConfigById(id, input);
+  }
+  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
+    return this.staffService.applyCreditScoreWeightConfig(id);
+  }
 
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
@@ -209,69 +231,185 @@ export class AdminService {
     }
   }
 
-  async getLoanProductsForAdmin() { return this.productService.getLoanProductsForAdmin(); }
-  async getLoanProductDetails(productId: number) { return this.productService.getLoanProductDetails(productId); }
-  async createDocumentType(dto: CreateDocumentTypeDto) { return this.productService.createDocumentType(dto); }
-  async findAllDocumentTypes() { return this.productService.findAllDocumentTypes(); }
-  async findOneDocumentType(id: string) { return this.productService.findOneDocumentType(id); }
-  async updateDocumentType(id: string, dto: UpdateDocumentTypeDto) { return this.productService.updateDocumentType(id, dto); }
-  async removeDocumentType(id: string) { return this.productService.removeDocumentType(id); }
-  async getDocumentTypesByProduct(fineractProductId: number) { return this.productService.getDocumentTypesByProduct(fineractProductId); }
-  async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) { return this.productService.setDocumentTypesForProduct(fineractProductId, items); }
-  async getSnapshot() { return this.productService.getSnapshot(); }
-  async saveSnapshot(products: any[]) { return this.productService.saveSnapshot(products); }
-  async logSyncDrift(added: ProductDiffItem[], removed: ProductDiffItem[], modified: ProductDiffItem[], scope: 'loan' | 'savings' = 'loan') { return this.productService.logSyncDrift(added, removed, modified, scope); }
-  async getSyncDriftLogs(limit = 20, scope?: 'loan' | 'savings') { return this.productService.getSyncDriftLogs(limit, scope); }
-  async compareAndSync(persist = true, currentProducts?: any[]) { return this.productService.compareAndSync(persist, currentProducts); }
-  async getSavingsProductsForAdmin() { return this.productService.getSavingsProductsForAdmin(); }
-  async getSavingsProductDetails(productId: number) { return this.productService.getSavingsProductDetails(productId); }
-  async compareAndSyncSavings(persist = true, currentProducts?: any[]) { return this.productService.compareAndSyncSavings(persist, currentProducts); }
-  async getFDProductsForAdmin() { return this.productService.getFDProductsForAdmin(); }
-  async getFDProductDetails(productId: number) { return this.productService.getFDProductDetails(productId); }
-  async compareAndSyncFD(persist = true) { return this.productService.compareAndSyncFD(persist); }
+  async getLoanProductsForAdmin() {
+    return this.productService.getLoanProductsForAdmin();
+  }
+  async getLoanProductDetails(productId: number) {
+    return this.productService.getLoanProductDetails(productId);
+  }
+  async createDocumentType(dto: CreateDocumentTypeDto) {
+    return this.productService.createDocumentType(dto);
+  }
+  async findAllDocumentTypes() {
+    return this.productService.findAllDocumentTypes();
+  }
+  async findOneDocumentType(id: string) {
+    return this.productService.findOneDocumentType(id);
+  }
+  async updateDocumentType(id: string, dto: UpdateDocumentTypeDto) {
+    return this.productService.updateDocumentType(id, dto);
+  }
+  async removeDocumentType(id: string) {
+    return this.productService.removeDocumentType(id);
+  }
+  async getDocumentTypesByProduct(fineractProductId: number) {
+    return this.productService.getDocumentTypesByProduct(fineractProductId);
+  }
+  async setDocumentTypesForProduct(fineractProductId: number, items: ProductDocumentTypeItemDto[]) {
+    return this.productService.setDocumentTypesForProduct(fineractProductId, items);
+  }
+  async getSnapshot() {
+    return this.productService.getSnapshot();
+  }
+  async saveSnapshot(products: any[]) {
+    return this.productService.saveSnapshot(products);
+  }
+  async logSyncDrift(
+    added: ProductDiffItem[],
+    removed: ProductDiffItem[],
+    modified: ProductDiffItem[],
+    scope: 'loan' | 'savings' = 'loan',
+  ) {
+    return this.productService.logSyncDrift(added, removed, modified, scope);
+  }
+  async getSyncDriftLogs(limit = 20, scope?: 'loan' | 'savings') {
+    return this.productService.getSyncDriftLogs(limit, scope);
+  }
+  async compareAndSync(persist = true, currentProducts?: any[]) {
+    return this.productService.compareAndSync(persist, currentProducts);
+  }
+  async getSavingsProductsForAdmin() {
+    return this.productService.getSavingsProductsForAdmin();
+  }
+  async getSavingsProductDetails(productId: number) {
+    return this.productService.getSavingsProductDetails(productId);
+  }
+  async compareAndSyncSavings(persist = true, currentProducts?: any[]) {
+    return this.productService.compareAndSyncSavings(persist, currentProducts);
+  }
+  async getFDProductsForAdmin() {
+    return this.productService.getFDProductsForAdmin();
+  }
+  async getFDProductDetails(productId: number) {
+    return this.productService.getFDProductDetails(productId);
+  }
+  async compareAndSyncFD(persist = true) {
+    return this.productService.compareAndSyncFD(persist);
+  }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FACADE DELEGATES â€” Customers
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  async getPendingApprovalClients(page = 1, limit = 20, keyword?: string) { return this.customerService.getPendingApprovalClients(page, limit, keyword); }
-  async getCustomers(page = 1, limit = 20, keyword?: string) { return this.customerService.getCustomers(page, limit, keyword); }
-  async getCustomerById(userId: string) { return this.customerService.getCustomerById(userId); }
-  async getCustomerDetail(userId: string) { return this.customerService.getCustomerDetail(userId, (uid) => this.kycService.getKycDetail(uid)); }
-  async getCustomerLoans(userId: string) { return this.customerService.getCustomerLoans(userId); }
+  async getPendingApprovalClients(page = 1, limit = 20, keyword?: string) {
+    return this.customerService.getPendingApprovalClients(page, limit, keyword);
+  }
+  async getCustomers(page = 1, limit = 20, keyword?: string) {
+    return this.customerService.getCustomers(page, limit, keyword);
+  }
+  async getCustomerById(userId: string) {
+    return this.customerService.getCustomerById(userId);
+  }
+  async getCustomerDetail(userId: string) {
+    return this.customerService.getCustomerDetail(userId, uid => this.kycService.getKycDetail(uid));
+  }
+  async getCustomerLoans(userId: string) {
+    return this.customerService.getCustomerLoans(userId);
+  }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FACADE DELEGATES â€” KYC
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  async getPendingKycUsers() { return this.kycService.getPendingKycUsers(); }
-  async getKycDetail(userId: string) { return this.kycService.getKycDetail(userId); }
-  async approveKyc(userId: string) { return this.kycService.approveKyc(userId); }
-  async rejectKyc(userId: string) { return this.kycService.rejectKyc(userId); }
-  async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) { return this.kycService.getKycDocumentStream(userId, entityType, entityId, documentId); }
-  async ocrFrontForUser(userId: string, imageBuffer: Buffer, filename = 'front.jpg') { return this.kycService.ocrFrontForUser(userId, imageBuffer, filename); }
-  async ocrBackForUser(userId: string, imageBuffer: Buffer, filename = 'back.jpg') { return this.kycService.ocrBackForUser(userId, imageBuffer, filename); }
-  async saveKycForUser(userId: string, frontOCRData: any, backOCRData: any, frontImageBuffer: Buffer | null, backImageBuffer: Buffer | null) { return this.kycService.saveKycForUser(userId, frontOCRData, backOCRData, frontImageBuffer, backImageBuffer); }
+  async getPendingKycUsers() {
+    return this.kycService.getPendingKycUsers();
+  }
+  async getKycDetail(userId: string) {
+    return this.kycService.getKycDetail(userId);
+  }
+  async approveKyc(userId: string) {
+    return this.kycService.approveKyc(userId);
+  }
+  async rejectKyc(userId: string) {
+    return this.kycService.rejectKyc(userId);
+  }
+  async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) {
+    return this.kycService.getKycDocumentStream(userId, entityType, entityId, documentId);
+  }
+  async ocrFrontForUser(userId: string, imageBuffer: Buffer, filename = 'front.jpg') {
+    return this.kycService.ocrFrontForUser(userId, imageBuffer, filename);
+  }
+  async ocrBackForUser(userId: string, imageBuffer: Buffer, filename = 'back.jpg') {
+    return this.kycService.ocrBackForUser(userId, imageBuffer, filename);
+  }
+  async saveKycForUser(
+    userId: string,
+    frontOCRData: any,
+    backOCRData: any,
+    frontImageBuffer: Buffer | null,
+    backImageBuffer: Buffer | null,
+  ) {
+    return this.kycService.saveKycForUser(userId, frontOCRData, backOCRData, frontImageBuffer, backImageBuffer);
+  }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FACADE DELEGATES â€” Staff / Support / Profile / Preferences
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  async createStaff(dto: RegisterDto) { return this.staffService.createStaff(dto); }
-  async getStaffList(page = 1, limit = 20, keyword?: string) { return this.staffService.getStaffList(page, limit, keyword); }
-  async getDeletedStaffList(page = 1, limit = 20) { return this.staffService.getDeletedStaffList(page, limit); }
-  async getStaffById(staffId: string) { return this.staffService.getStaffById(staffId); }
-  async updateStaff(staffId: string, dto: UpdateStaffDto) { return this.staffService.updateStaff(staffId, dto); }
-  async deleteStaff(staffId: string) { return this.staffService.deleteStaff(staffId); }
-  async restoreStaff(staffId: string) { return this.staffService.restoreStaff(staffId); }
-  async migratePhoneNumbers() { return this.staffService.migratePhoneNumbers(); }
-  async getMyProfile(userId: string) { return this.staffService.getMyProfile(userId); }
-  async updateMyProfile(userId: string, dto: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string }) { return this.staffService.updateMyProfile(userId, dto); }
-  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) { return this.staffService.changeMyPassword(userId, currentPassword, newPassword); }
-  async getMyPreferences(userId: string) { return this.staffService.getMyPreferences(userId); }
-  async updateMyPreferences(userId: string, prefs: { fontSize?: 'compact' | 'default' | 'large' }) { return this.staffService.updateMyPreferences(userId, prefs); }
-  async getSupportRequests(query: any) { return this.staffService.getSupportRequests(query); }
-  async approveWaivePenalty(requestId: string, adminId: string) { return this.staffService.approveWaivePenalty(requestId, adminId); }
-  async approveReschedule(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveReschedule(requestId, adminId, adminNote); }
-  async approveWriteOff(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveWriteOff(requestId, adminId, adminNote); }
-  async approveWaiveInterest(requestId: string, adminId: string, adminNote?: string) { return this.staffService.approveWaiveInterest(requestId, adminId, adminNote); }
+  async createStaff(dto: RegisterDto) {
+    return this.staffService.createStaff(dto);
+  }
+  async getStaffList(page = 1, limit = 20, keyword?: string) {
+    return this.staffService.getStaffList(page, limit, keyword);
+  }
+  async getDeletedStaffList(page = 1, limit = 20) {
+    return this.staffService.getDeletedStaffList(page, limit);
+  }
+  async getStaffById(staffId: string) {
+    return this.staffService.getStaffById(staffId);
+  }
+  async updateStaff(staffId: string, dto: UpdateStaffDto) {
+    return this.staffService.updateStaff(staffId, dto);
+  }
+  async deleteStaff(staffId: string) {
+    return this.staffService.deleteStaff(staffId);
+  }
+  async restoreStaff(staffId: string) {
+    return this.staffService.restoreStaff(staffId);
+  }
+  async migratePhoneNumbers() {
+    return this.staffService.migratePhoneNumbers();
+  }
+  async getMyProfile(userId: string) {
+    return this.staffService.getMyProfile(userId);
+  }
+  async updateMyProfile(
+    userId: string,
+    dto: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string },
+  ) {
+    return this.staffService.updateMyProfile(userId, dto);
+  }
+  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) {
+    return this.staffService.changeMyPassword(userId, currentPassword, newPassword);
+  }
+  async getMyPreferences(userId: string) {
+    return this.staffService.getMyPreferences(userId);
+  }
+  async updateMyPreferences(userId: string, prefs: { fontSize?: 'compact' | 'default' | 'large' }) {
+    return this.staffService.updateMyPreferences(userId, prefs);
+  }
+  async getSupportRequests(query: any) {
+    return this.staffService.getSupportRequests(query);
+  }
+  async approveWaivePenalty(requestId: string, adminId: string) {
+    return this.staffService.approveWaivePenalty(requestId, adminId);
+  }
+  async approveReschedule(requestId: string, adminId: string, adminNote?: string) {
+    return this.staffService.approveReschedule(requestId, adminId, adminNote);
+  }
+  async approveWriteOff(requestId: string, adminId: string, adminNote?: string) {
+    return this.staffService.approveWriteOff(requestId, adminId, adminNote);
+  }
+  async approveWaiveInterest(requestId: string, adminId: string, adminNote?: string) {
+    return this.staffService.approveWaiveInterest(requestId, adminId, adminNote);
+  }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LOAN + DELINQUENCY METHODS (remain in this file)
@@ -445,12 +583,15 @@ export class AdminService {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan) throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
+    if (!loan)
+      throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
 
     // 0. Check contract is signed before allowing disbursement
     const contract = await this.loanContractModel.findOne({ loanId: loan._id });
     if (!contract) {
-      throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`);
+      throw new BadRequestException(
+        `Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`,
+      );
     }
     if (contract.status !== 'signed') {
       throw new BadRequestException(
@@ -831,7 +972,7 @@ export class AdminService {
       if (firstDueStr && firstDueStr < app.disbursementDate) {
         this.logger.error(
           `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
-          'First due date is BEFORE disbursement â€” loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+            'First due date is BEFORE disbursement â€” loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
         );
       }
     }
@@ -1076,11 +1217,13 @@ export class AdminService {
         this.logger.warn(
           `[syncDisbursedLoansFromFineract] Removed ${orphansRemoved} orphan loans (fineractLoanIds: ${orphanIds.join(', ')})`,
         );
-        details.push(...orphanIds.map(fid => ({
-          fineractLoanId: fid,
-          status: 'orphan_removed' as const,
-          message: 'Khoáº£n vay khÃ´ng cÃ²n trÃªn Fineract, Ä‘Ã£ Ä‘Ã¡nh dáº¥u removed_from_fineract',
-        })));
+        details.push(
+          ...orphanIds.map(fid => ({
+            fineractLoanId: fid,
+            status: 'orphan_removed' as const,
+            message: 'Khoáº£n vay khÃ´ng cÃ²n trÃªn Fineract, Ä‘Ã£ Ä‘Ã¡nh dáº¥u removed_from_fineract',
+          })),
+        );
       }
     } catch (orphanErr: any) {
       this.logger.warn(`[syncDisbursedLoansFromFineract] Orphan cleanup failed: ${orphanErr?.message}`);
@@ -1278,26 +1421,26 @@ export class AdminService {
         };
       })
       .filter(Boolean) as Array<{
-        _id: string;
-        loanId: string;
-        fineractLoanId: number;
-        borrowerId: string;
-        userId: string;
-        customerName: string;
-        customerUsername: string;
-        fineractClientId?: string;
-        capital: number;
-        overdueAmount: number;
-        debtGroup: number;
-        firstOverdueDate: Date | null;
-        lastOverdueDate: Date | null;
-        status: LoanDelinquencyStatus;
-        collectionStage: LoanCollectionStage;
-        totalOverdue: number;
-        delinquentDays: number;
-        delinquencyClassification: string | null;
-        lastSyncedAt: Date | null;
-      }>;
+      _id: string;
+      loanId: string;
+      fineractLoanId: number;
+      borrowerId: string;
+      userId: string;
+      customerName: string;
+      customerUsername: string;
+      fineractClientId?: string;
+      capital: number;
+      overdueAmount: number;
+      debtGroup: number;
+      firstOverdueDate: Date | null;
+      lastOverdueDate: Date | null;
+      status: LoanDelinquencyStatus;
+      collectionStage: LoanCollectionStage;
+      totalOverdue: number;
+      delinquentDays: number;
+      delinquencyClassification: string | null;
+      lastSyncedAt: Date | null;
+    }>;
 
     // Khi clientDisplayName trá»‘ng (sync cÅ© hoáº·c lá»—i), láº¥y tÃªn tá»« Fineract Ä‘á»ƒ luÃ´n hiá»‡n Ä‘Ãºng tÃªn khoáº£n vay
     const needFineractName = items
@@ -1326,7 +1469,7 @@ export class AdminService {
           this.loanApplicationModel
             .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
             .exec()
-            .catch(() => { });
+            .catch(() => {});
         }
       });
     }
@@ -1516,11 +1659,11 @@ export class AdminService {
         };
       })
       .filter(Boolean) as Array<{
-        debt_group: number;
-        debt_group_name: string;
-        min_days: number;
-        max_days: number | null;
-      }>;
+      debt_group: number;
+      debt_group_name: string;
+      min_days: number;
+      max_days: number | null;
+    }>;
   }
 
   private async resolveDebtGroupMetadata(debtGroup: number): Promise<{
@@ -1627,7 +1770,9 @@ export class AdminService {
 
     const nextProductId = dto.loan_product_id ?? existing.loan_product_id;
     if (nextProductId == null) {
-      throw new BadRequestException('Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.');
+      throw new BadRequestException(
+        'Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.',
+      );
     }
 
     const nextDebtGroup = dto.debt_group ?? existing.debt_group;
@@ -2150,7 +2295,9 @@ export class AdminService {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find(d => d.id === documentId);
       if (!fd) {
-        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
+        throw new BadRequestException(
+          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
+        );
       }
 
       const newDoc = {
@@ -2189,7 +2336,9 @@ export class AdminService {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find((d: any) => d.id == documentId);
       if (!fd) {
-        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
+        throw new BadRequestException(
+          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
+        );
       }
 
       const newDoc = {

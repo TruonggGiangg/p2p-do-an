@@ -1,33 +1,35 @@
 /**
  * useSmartOTP Hook
  * React Hook quản lý Smart OTP state và operations
- * 
+ *
  * Features:
  * - Auto-refresh OTP mỗi 30 giây
  * - Device registration status
  * - OTP verification flow
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import SmartOTPService from '../../services/smart-otp.service';
+import { useState, useEffect, useCallback, useRef } from "react";
+import SmartOTPService from "../../services/smart-otp.service";
 import type {
   DeviceBindingInfo,
   SmartOtpSession,
   OtpActionType,
-} from '../../types/otp.types';
+} from "../../types/otp.types";
 
 /**
  * Smart OTP Hook
  */
 export const useSmartOTP = () => {
   // State
-  const [otp, setOtp] = useState<string>('');
+  const [otp, setOtp] = useState<string>("");
   const [timeRemaining, setTimeRemaining] = useState<number>(30);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceBindingInfo[]>([]);
-  const [currentSession, setCurrentSession] = useState<SmartOtpSession | null>(null);
+  const [currentSession, setCurrentSession] = useState<SmartOtpSession | null>(
+    null,
+  );
 
   // Refs for cleanup
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,11 +53,13 @@ export const useSmartOTP = () => {
             const serverDevices = await SmartOTPService.getRegisteredDevices();
 
             // Check if this device exists on server
-            const isDeviceOnServer = serverDevices.some((d) => d.deviceId === deviceId);
+            const isDeviceOnServer = serverDevices.some(
+              (d) => d.deviceId === deviceId,
+            );
 
             if (!isDeviceOnServer) {
               console.warn(
-                '[useSmartOTP] Device registered locally but NOT on server. Clearing local binding.',
+                "[useSmartOTP] Device registered locally but NOT on server. Clearing local binding.",
               );
               await SmartOTPService.clearDeviceBinding();
               registered = false;
@@ -64,7 +68,10 @@ export const useSmartOTP = () => {
             }
           } catch (serverErr: any) {
             // Network error or server error - keep local state but log warning
-            console.warn('[useSmartOTP] Could not verify device with server:', serverErr.message);
+            console.warn(
+              "[useSmartOTP] Could not verify device with server:",
+              serverErr.message,
+            );
           }
         }
 
@@ -77,12 +84,15 @@ export const useSmartOTP = () => {
             setOtp(initialOtp);
             setTimeRemaining(SmartOTPService.getRemainingSeconds());
           } catch (genErr) {
-            console.error('[useSmartOTP] Failed to generate initial OTP:', genErr);
+            console.error(
+              "[useSmartOTP] Failed to generate initial OTP:",
+              genErr,
+            );
             setIsRegistered(false); // Fallback to unregistered if secret missing
           }
         }
       } catch (err: any) {
-        console.error('[useSmartOTP] Init error:', err);
+        console.error("[useSmartOTP] Init error:", err);
         setError(err.message);
       } finally {
         setIsLoading(false);
@@ -109,7 +119,7 @@ export const useSmartOTP = () => {
           const newOtp = await SmartOTPService.generateTOTP();
           setOtp(newOtp);
         } catch (err) {
-          console.error('[useSmartOTP] Generate OTP error in loop:', err);
+          console.error("[useSmartOTP] Generate OTP error in loop:", err);
           setIsRegistered(false); // Fallback if secret somehow disappears
         }
       }
@@ -130,36 +140,39 @@ export const useSmartOTP = () => {
 
   // ==================== Device Registration ====================
 
-  const registerDevice = useCallback(async (verificationToken?: string): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  const registerDevice = useCallback(
+    async (verificationToken?: string): Promise<boolean> => {
+      try {
+        setIsLoading(true);
+        setError(null);
 
-      const result = await SmartOTPService.registerDevice(verificationToken);
+        const result = await SmartOTPService.registerDevice(verificationToken);
 
-      if (result.success) {
-        setIsRegistered(true);
+        if (result.success) {
+          setIsRegistered(true);
 
-        // Generate initial OTP
-        const initialOtp = await SmartOTPService.generateTOTP();
-        setOtp(initialOtp);
-        setTimeRemaining(SmartOTPService.getRemainingSeconds());
+          // Generate initial OTP
+          const initialOtp = await SmartOTPService.generateTOTP();
+          setOtp(initialOtp);
+          setTimeRemaining(SmartOTPService.getRemainingSeconds());
 
-        // Refresh devices list
-        await fetchDevices();
+          // Refresh devices list
+          await fetchDevices();
 
-        return true;
+          return true;
+        }
+
+        return false;
+      } catch (err: any) {
+        console.error("[useSmartOTP] Register error:", err);
+        setError(err.response?.data?.message || err.message);
+        return false;
+      } finally {
+        setIsLoading(false);
       }
-
-      return false;
-    } catch (err: any) {
-      console.error('[useSmartOTP] Register error:', err);
-      setError(err.response?.data?.message || err.message);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   // ==================== Get Devices ====================
 
@@ -169,38 +182,41 @@ export const useSmartOTP = () => {
       setDevices(deviceList);
       return deviceList;
     } catch (err: any) {
-      console.error('[useSmartOTP] Fetch devices error:', err);
+      console.error("[useSmartOTP] Fetch devices error:", err);
       return [];
     }
   }, []);
 
   // ==================== Revoke Device ====================
 
-  const revokeDevice = useCallback(async (deviceId: string): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-      await SmartOTPService.revokeDevice(deviceId);
+  const revokeDevice = useCallback(
+    async (deviceId: string): Promise<boolean> => {
+      try {
+        setIsLoading(true);
+        await SmartOTPService.revokeDevice(deviceId);
 
-      // Refresh devices list
-      await fetchDevices();
+        // Refresh devices list
+        await fetchDevices();
 
-      // Check if current device was revoked
-      const registered = await SmartOTPService.isDeviceRegistered();
-      setIsRegistered(registered);
+        // Check if current device was revoked
+        const registered = await SmartOTPService.isDeviceRegistered();
+        setIsRegistered(registered);
 
-      if (!registered) {
-        setOtp('');
+        if (!registered) {
+          setOtp("");
+        }
+
+        return true;
+      } catch (err: any) {
+        console.error("[useSmartOTP] Revoke error:", err);
+        setError(err.response?.data?.message || err.message);
+        return false;
+      } finally {
+        setIsLoading(false);
       }
-
-      return true;
-    } catch (err: any) {
-      console.error('[useSmartOTP] Revoke error:', err);
-      setError(err.response?.data?.message || err.message);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchDevices]);
+    },
+    [fetchDevices],
+  );
 
   // ==================== OTP Session (for transactions) ====================
 
@@ -210,7 +226,7 @@ export const useSmartOTP = () => {
       actionData: Record<string, any> = {},
     ): Promise<SmartOtpSession | null> => {
       if (!isRegistered) {
-        setError('Device not registered');
+        setError("Device not registered");
         return null;
       }
 
@@ -218,12 +234,22 @@ export const useSmartOTP = () => {
         setIsLoading(true);
         setError(null);
 
-        const session = await SmartOTPService.requestOTPSession(actionType, actionData);
+        const session = await SmartOTPService.requestOTPSession(
+          actionType,
+          actionData,
+        );
 
-        setCurrentSession(session);
-        return session;
+        const mappedSession: SmartOtpSession = {
+          sessionId: session.sessionId,
+          actionType,
+          expiresAt: session.expiresAt,
+          expiresIn: session.expiresIn,
+        };
+
+        setCurrentSession(mappedSession);
+        return mappedSession;
       } catch (err: any) {
-        console.error('[useSmartOTP] Request session error:', err);
+        console.error("[useSmartOTP] Request session error:", err);
         setError(err.response?.data?.message || err.message);
         return null;
       } finally {
@@ -245,9 +271,13 @@ export const useSmartOTP = () => {
         setIsLoading(true);
         setError(null);
 
-        const result = await SmartOTPService.verifyOTP(sessionId, otpCode, actionType);
+        const result = await SmartOTPService.verifyOTP(
+          sessionId,
+          otpCode,
+          actionType,
+        );
 
-        if (result.success && result.verified) {
+        if (result.verified || result.success) {
           setCurrentSession(null);
           return {
             valid: true,
@@ -258,10 +288,10 @@ export const useSmartOTP = () => {
 
         return {
           valid: false,
-          message: result.message || 'Verification failed',
+          message: result.message || "Verification failed",
         };
       } catch (err: any) {
-        console.error('[useSmartOTP] Verify error:', err);
+        console.error("[useSmartOTP] Verify error:", err);
         const message = err.response?.data?.message || err.message;
         setError(message);
         return { valid: false, message };
@@ -291,7 +321,7 @@ export const useSmartOTP = () => {
           if (!session) {
             return {
               valid: false,
-              message: error || 'Failed to create OTP session',
+              message: error || "Failed to create OTP session",
             };
           }
         }
@@ -300,7 +330,7 @@ export const useSmartOTP = () => {
         const result = await verifyOTP(session.sessionId, otpCode, actionType);
         return result;
       } catch (err: any) {
-        console.error('[useSmartOTP] Verify transaction error:', err);
+        console.error("[useSmartOTP] Verify transaction error:", err);
         return {
           valid: false,
           message: err.message,
@@ -316,7 +346,7 @@ export const useSmartOTP = () => {
     try {
       return await SmartOTPService.getSmartOTPStatus();
     } catch (err: any) {
-      console.error('[useSmartOTP] Get status error:', err);
+      console.error("[useSmartOTP] Get status error:", err);
       return null;
     }
   }, []);

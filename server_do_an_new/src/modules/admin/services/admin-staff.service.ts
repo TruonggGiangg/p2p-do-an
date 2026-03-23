@@ -17,9 +17,12 @@ import { Role } from '../../rbac/schemas/role.schema';
 import { RegisterDto } from '../../auth/dto/register.dto';
 import { UpdateStaffDto } from '../dto/update-staff.dto';
 import {
+  CreateCreditScoreWeightConfigInput,
   CreditScoreService,
+  CreditScoreWeightConfigItem,
   CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
+  UpdateCreditScoreWeightConfigInput,
 } from '../../credit-score/credit-score.service';
 
 @Injectable()
@@ -46,6 +49,25 @@ export class AdminStaffService {
 
   async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
     return this.creditScoreService.upsertWeightConfig(input);
+  }
+
+  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
+    return this.creditScoreService.listWeightConfigs();
+  }
+
+  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
+    return this.creditScoreService.createWeightConfig(input);
+  }
+
+  async updateCreditScoreWeightConfigById(
+    id: string,
+    input: UpdateCreditScoreWeightConfigInput,
+  ): Promise<CreditScoreWeightConfigItem> {
+    return this.creditScoreService.updateWeightConfig(id, input);
+  }
+
+  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
+    return this.creditScoreService.applyWeightConfig(id);
   }
 
   // ── Staff CRUD ────────────────────────────────────────────────────────────
@@ -166,7 +188,8 @@ export class AdminStaffService {
       fineractClientId: user.fineractClientId || null,
       fineractStaffId: user.metadata?.fineractStaffId ?? null,
       roleId: user.metadata?.roleId ?? (Array.isArray(user.metadata?.roleIds) ? user.metadata.roleIds[0] : null),
-      roleName: user.metadata?.roleName ?? (Array.isArray(user.metadata?.roleNames) ? user.metadata.roleNames[0] : null),
+      roleName:
+        user.metadata?.roleName ?? (Array.isArray(user.metadata?.roleNames) ? user.metadata.roleNames[0] : null),
       phoneNumber: user.phoneNumber || user.username || null,
       displayName: [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
       createdAt: user.createdAt,
@@ -274,7 +297,8 @@ export class AdminStaffService {
     if (Types.ObjectId.isValid(staffId)) {
       user = await this.userModel.findOne({ _id: staffId, 'metadata.userType': 'staff', isDeleted: true });
     }
-    if (!user) user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff', isDeleted: true });
+    if (!user)
+      user = await this.userModel.findOne({ username: staffId, 'metadata.userType': 'staff', isDeleted: true });
     if (!user) throw new NotFoundException('Nhân viên không tồn tại hoặc chưa bị khóa');
 
     if (user.keycloakId) {
