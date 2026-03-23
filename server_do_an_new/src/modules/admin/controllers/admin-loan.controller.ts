@@ -117,6 +117,30 @@ export class AdminLoanController {
     return result ;
   }
 
+  @Post('loans/:fineractLoanId/reject')
+  @CheckPolicies(ability => ability.can(Action.Reject, 'Loan'))
+  @ApiOperation({ summary: 'Từ chối khoản vay' })
+  @ApiResponse({ status: 200 })
+  async rejectLoan(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Body('note') note?: string,
+  ) {
+    const result = await this.adminService.rejectLoan(fineractLoanId, note);
+    return result;
+  }
+
+  @Post('loans/:fineractLoanId/undo-approval')
+  @CheckPolicies(ability => ability.can(Action.Approve, 'Loan'))
+  @ApiOperation({ summary: 'Hoàn tác duyệt khoản vay' })
+  @ApiResponse({ status: 200 })
+  async undoApproval(
+    @Param('fineractLoanId', ParseIntPipe) fineractLoanId: number,
+    @Body('note') note?: string,
+  ) {
+    const result = await this.adminService.undoApproval(fineractLoanId, note);
+    return result;
+  }
+
   @Get('loans/:fineractLoanId/contract-status')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Kiểm tra trạng thái hợp đồng (đã ký chưa)' })

@@ -562,6 +562,13 @@ export class LoanService {
         schedulePreview: doc.schedulePreview,
         willing: doc.willing,
         rate: doc.monthlyRatePercent ? doc.monthlyRatePercent * 12 : undefined,
+        // Investment tracking
+        totalNotes: (doc as any).totalNotes || 0,
+        investedNotes: (doc as any).investedNotes || 0,
+        nodeMatch: (doc as any).nodeMatch || 0,
+        isFullMatch: (doc as any).isFullMatch || false,
+        // Delinquency from MongoDB
+        delinquentDays: doc.delinquentDays || 0,
       } as LoanHistoryItem;
       resultMap.set(item.id, item);
       fineractLoanIds.add(doc.fineractLoanId);
@@ -661,14 +668,23 @@ export class LoanService {
     // Filter by status
     let filtered = [...allLoans];
     if (options.status) {
-      const statusMap: Record<string, string[]> = {
-        waiting: ['waiting', 'pending', 'approved'],
-        success: ['success', 'disbursed'],
-        clean: ['clean', 'closed'],
-        fail: ['fail', 'rejected', 'cancelled'],
-      };
-      const mapped = statusMap[options.status] || [options.status];
-      filtered = filtered.filter(l => mapped.includes(l.status));
+      if (options.status === 'overdue') {
+        // Special case: overdue = active loans with delinquentDays > 0
+        filtered = filtered.filter(l => {
+          const fd = (l as any).fineractDetails;
+          const dDays = fd?.delinquency?.delinquentDays || fd?.delinquent?.delinquentDays || (l as any).delinquentDays || 0;
+          return dDays > 0;
+        });
+      } else {
+        const statusMap: Record<string, string[]> = {
+          waiting: ['waiting', 'pending', 'approved'],
+          success: ['success', 'disbursed'],
+          clean: ['clean', 'closed'],
+          fail: ['fail', 'rejected', 'cancelled'],
+        };
+        const mapped = statusMap[options.status] || [options.status];
+        filtered = filtered.filter(l => mapped.includes(l.status));
+      }
     }
 
     // Sort
@@ -722,6 +738,19 @@ export class LoanService {
         monthlyPay,
         rate: (loan as any).rate || details?.annualInterestRate || 0,
         statusInfo: details?.status || null,
+        // Investment tracking for borrower view
+        totalNotes: (loan as any).totalNotes || 0,
+        investedNotes: (loan as any).investedNotes || 0,
+        nodeMatch: (loan as any).nodeMatch || 0,
+        isFullMatch: (loan as any).isFullMatch || false,
+        // Delinquency: extract from Fineract details or fallback to MongoDB
+        delinquentDays:
+          details?.delinquency?.delinquentDays ||
+          details?.delinquent?.delinquentDays ||
+          (details?.summary?.totalOverdue > 0
+            ? (schedule?.periods?.filter((p: any) => p.period > 0 && !p.complete && p.dueDate && new Date(p.dueDate[0], p.dueDate[1] - 1, p.dueDate[2]) < new Date())?.length || 1)
+            : 0) ||
+          (loan as any).delinquentDays || 0,
       };
 
       // DEBUG: log key fields
@@ -903,5 +932,37 @@ export class LoanService {
     });
 
     return request;
+  }
+
+  /**
+   * Borrower withdraw (hủy) đơn vay đang chờ duyệt
+   * Chỉ cho phép khi status = pending (Submitted & Pending Approval)
+   */
+  async withdrawLoan(userId: string, loanId: string, reason?: string) {
+    this.logger.log(`[withdrawLoan] userId=${userId} loanId=${loanId}`);
+
+    const loan = await this.loanApplicationModel.findById(loanId);
+    if (!loan) throw new BadRequestException('Khoản vay không tồn tại');
+    if (loan.userId.toString() !== userId) throw new BadRequestException('Bạn không có quyền hủy khoản vay này');
+    if (loan.status !== 'pending') {
+      throw new BadRequestException(`Chỉ có thể hủy đơn vay đang chờ duyệt. Trạng thái hiện tại: ${loan.status}`);
+    }
+    if (!loan.fineractLoanId) {
+      throw new BadRequestException('Khoản vay chưa được tạo trên Fineract');
+    }
+
+    // 1. Withdraw on Fineract
+    await this.fineractLoanService.withdrawnByApplicant(
+      loan.fineractLoanId,
+      undefined,
+      reason || 'Người vay hủy đơn',
+    );
+
+    // 2. Update MongoDB
+    loan.status = 'cancelled' as any;
+    await loan.save();
+
+    this.logger.log(`[withdrawLoan] SUCCESS loanId=${loanId} fineractLoanId=${loan.fineractLoanId}`);
+    return { loanId, fineractLoanId: loan.fineractLoanId, status: 'cancelled', message: 'Đã hủy đơn vay' };
   }
 }

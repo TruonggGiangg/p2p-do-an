@@ -13,7 +13,7 @@ import {
 import {
     CloseOutlined, EyeOutlined, ClockCircleOutlined, DollarOutlined,
     UserOutlined, ExclamationCircleOutlined, CloseCircleOutlined,
-    CheckOutlined, SendOutlined
+    CheckOutlined, SendOutlined, StopOutlined, UndoOutlined
 } from '@ant-design/icons';
 import { adminApi } from '../api/admin';
 import { fmtVND } from '../utils/fineractStatus';
@@ -61,6 +61,8 @@ export default function LoanDetailDrawer({
     const [documentReviewing, setDocumentReviewing] = useState<Set<number>>(new Set());
     const [approving, setApproving] = useState(false);
     const [disbursing, setDisbursing] = useState(false);
+    const [rejecting, setRejecting] = useState(false);
+    const [undoingApproval, setUndoingApproval] = useState(false);
     const [availableDocTypes, setAvailableDocTypes] = useState<Array<{ _id: string; name: string }>>([]); 
     const [classifyingDocs, setClassifyingDocs] = useState<Set<number>>(new Set());
 
@@ -223,6 +225,34 @@ export default function LoanDetailDrawer({
         }
     }, [loanId, onClose]);
 
+    const handleRejectLoan = useCallback(async () => {
+        if (!loanId) return;
+        setRejecting(true);
+        try {
+            await adminApi.rejectLoan(loanId);
+            message.success(`Đã từ chối khoản vay #${loanId}`);
+            onClose();
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || 'Từ chối khoản vay thất bại');
+        } finally {
+            setRejecting(false);
+        }
+    }, [loanId, onClose]);
+
+    const handleUndoApproval = useCallback(async () => {
+        if (!loanId) return;
+        setUndoingApproval(true);
+        try {
+            await adminApi.undoApproval(loanId);
+            message.success(`Đã hoàn tác duyệt khoản vay #${loanId}`);
+            fetchData(loanId);
+        } catch (e: any) {
+            message.error(e?.response?.data?.message || 'Hoàn tác duyệt thất bại');
+        } finally {
+            setUndoingApproval(false);
+        }
+    }, [loanId, fetchData]);
+
     const handleClose = () => {
         setLoanDetails(null);
         setLoanDocuments([]);
@@ -294,6 +324,33 @@ export default function LoanDetailDrawer({
                             </Button>
                         </Tooltip>
                     ))}
+                    {ability.can(Action.Reject, 'Loan') && (
+                        <Popconfirm
+                            title="Từ chối khoản vay"
+                            description={`Xác nhận từ chối khoản vay #${loanId}? Hành động này không thể hoàn tác.`}
+                            onConfirm={handleRejectLoan}
+                            okText="Từ chối"
+                            cancelText="Hủy"
+                            okButtonProps={{ danger: true }}
+                        >
+                            <Button size="middle" danger icon={<StopOutlined />} loading={rejecting} style={{ borderRadius: 10, fontWeight: 600 }}>
+                                Từ chối
+                            </Button>
+                        </Popconfirm>
+                    )}
+                    {ability.can(Action.Approve, 'Loan') && loanDetails?.status?.waitingForDisbursal && (
+                        <Popconfirm
+                            title="Hoàn tác duyệt"
+                            description={`Hoàn tác duyệt khoản vay #${loanId}? Khoản vay sẽ quay lại trạng thái chờ duyệt.`}
+                            onConfirm={handleUndoApproval}
+                            okText="Hoàn tác"
+                            cancelText="Hủy"
+                        >
+                            <Button size="middle" icon={<UndoOutlined />} loading={undoingApproval} style={{ borderRadius: 10 }}>
+                                Hoàn tác duyệt
+                            </Button>
+                        </Popconfirm>
+                    )}
                 </Space>
             )}
             <Button type="text" icon={<CloseOutlined />} onClick={handleClose} />

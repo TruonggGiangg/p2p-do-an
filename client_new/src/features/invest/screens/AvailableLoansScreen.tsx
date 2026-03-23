@@ -12,7 +12,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, Pagination } from '../../../components';
 import investService, { AvailableLoanItem } from '../services/invest.service';
 import FilterBar from '../components/FilterBar';
 import FilterBottomSheet from '../components/FilterBottomSheet';
@@ -461,35 +461,13 @@ export default function AvailableLoansScreen() {
           }
           ListFooterComponent={
             totalPages > 1 ? (
-              <View style={[styles.paginationBar, { backgroundColor: theme.colors.surfaceLight }]}>
-                <TouchableOpacity
-                  style={[styles.pageBtn, { opacity: page <= 1 ? 0.3 : 1 }]}
-                  onPress={goToPrev}
-                  disabled={page <= 1}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
-                </TouchableOpacity>
-
-                <View style={styles.pageInfo}>
-                  <Text style={[styles.pageNum, { color: theme.colors.primary }]}>{page}</Text>
-                  <Text style={[styles.pageSep, { color: theme.colors.textMuted }]}>/</Text>
-                  <Text style={[styles.pageSep, { color: theme.colors.textMuted }]}>{totalPages}</Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.pageBtn, { opacity: page >= totalPages ? 0.3 : 1 }]}
-                  onPress={goToNext}
-                  disabled={page >= totalPages}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
-                </TouchableOpacity>
-
-                <Text style={[styles.footerText, { color: theme.colors.textMuted, marginLeft: 12 }]}>
-                  {totalCount} khoản vay
-                </Text>
-              </View>
+              <Pagination
+                mode="page"
+                currentPage={page}
+                totalPages={totalPages}
+                totalCount={totalCount}
+                onPageChange={setPage}
+              />
             ) : null
           }
         />
@@ -659,20 +637,7 @@ const styles = StyleSheet.create({
   sheetActions: { flexDirection: 'row', gap: 10 },
 
   // Wallet selector
-  // Footer (pagination bar)
-  paginationBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16,
-    marginTop: 8, gap: 4,
-  },
-  pageBtn: {
-    width: 36, height: 36, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pageInfo: { flexDirection: 'row', alignItems: 'baseline', gap: 3, marginHorizontal: 12 },
-  pageNum: { fontSize: 18, fontWeight: '800' },
-  pageSep: { fontSize: 14, fontWeight: '500' },
-  footerText: { fontSize: 12, fontWeight: '500' },
+  // Footer (pagination moved to shared component)
 
   walletSectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
   walletCard: {

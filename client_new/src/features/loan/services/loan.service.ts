@@ -105,6 +105,12 @@ export interface LoanHistoryItem {
   totalInstallments?: number;
   rate?: number;
   statusInfo?: any;
+  // Investment tracking
+  totalNotes?: number;
+  investedNotes?: number;
+  nodeMatch?: number;
+  isFullMatch?: boolean;
+  delinquentDays?: number;
 }
 
 export interface LoanListResponse {
@@ -606,6 +612,20 @@ class LoanService {
   }
 
   /**
+   * Hủy đơn vay đang chờ duyệt
+   */
+  async withdrawLoan(
+    loanId: string,
+    reason?: string,
+  ): Promise<{ loanId: string; status: string; message: string }> {
+    const response = await api.post<{
+      statusCode: number;
+      data: { loanId: string; status: string; message: string };
+    }>(`/api/loan/${loanId}/withdraw`, { reason });
+    return response.data.data;
+  }
+
+  /**
    * Lấy lịch trả nợ từ Fineract
    */
   async getRepaymentSchedule(loanId: string): Promise<RepaymentScheduleResult> {
@@ -924,6 +944,10 @@ export interface PrepayAmountResult {
   interestPortion: number;
   penaltyPortion: number;
   feesPortion: number;
+  prepaymentPenalty: number;     // phí phạt tất toán sớm (tính từ charge config)
+  totalWithPenalty: number;      // tổng cộng bao gồm phí phạt
+  penaltyRate: number;           // tỷ lệ phạt % (e.g. 3 = 3%) — lấy ĐỘNG từ Fineract
+  penaltyChargeName: string;     // tên charge (e.g. "Phí phạt tất toán sớm")
   date: string;
   charges?: ProductCharge[];
   loanId: string;

@@ -508,6 +508,75 @@ export class AdminService {
   }
 
   /**
+   * Admin reject loan: Fineract reject + update MongoDB status + notify borrower
+   */
+  async rejectLoan(fineractLoanId: number, note?: string) {
+    this.logger.log(`[rejectLoan] fineractLoanId=${fineractLoanId}`);
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+
+    // 1. Reject on Fineract
+    await this.fineractLoanService.rejectLoan(fineractLoanId, undefined, note);
+
+    // 2. Update MongoDB
+    app.status = 'rejected' as any;
+    await app.save();
+
+    // 3. Notify borrower
+    try {
+      await this.notificationModel.create({
+        userId: app.userId,
+        title: 'Đơn vay bị từ chối',
+        message: note
+          ? `Đơn vay ${app.capital?.toLocaleString('vi-VN')} đ đã bị từ chối. Lý do: ${note}`
+          : `Đơn vay ${app.capital?.toLocaleString('vi-VN')} đ đã bị từ chối.`,
+        type: 'loan_rejected',
+        data: { loanId: app._id?.toString(), fineractLoanId, reason: note || '' },
+      });
+    } catch (err) {
+      this.logger.warn(`[rejectLoan] Failed to create notification: ${err?.message}`);
+    }
+
+    // 4. Get borrower info
+    let borrowerName = '';
+    let borrowerUsername = '';
+    try {
+      const borrower = await this.userModel.findById(app.userId);
+      if (borrower) {
+        borrowerName = [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
+        borrowerUsername = borrower.username;
+      }
+    } catch { /* ignore */ }
+
+    return { fineractLoanId, status: 'rejected', borrowerName, borrowerUsername };
+  }
+
+  /**
+   * Admin undo approval: Fineract undoApproval + revert MongoDB status
+   */
+  async undoApproval(fineractLoanId: number, note?: string) {
+    this.logger.log(`[undoApproval] fineractLoanId=${fineractLoanId}`);
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+
+    // 1. Undo on Fineract
+    await this.fineractLoanService.undoApproval(fineractLoanId, note);
+
+    // 2. Revert MongoDB to pending
+    app.status = 'pending' as any;
+    await app.save();
+
+    // 3. Remove contract if created
+    try {
+      await this.loanContractModel.deleteOne({ loanId: app._id });
+    } catch (err) {
+      this.logger.warn(`[undoApproval] Failed to remove contract: ${err?.message}`);
+    }
+
+    return { fineractLoanId, status: 'pending', message: 'Đã hoàn tác duyệt' };
+  }
+
+  /**
    * Get contract status for a loan (used by admin to check before disburse)
    */
   async getContractStatus(fineractLoanId: number) {

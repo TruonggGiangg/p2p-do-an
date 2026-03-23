@@ -6,7 +6,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, Pagination } from '../../../components';
 import investService, { InvestmentOrderItem } from '../services/invest.service';
 
 const PAGE_SIZE = 10;
@@ -298,9 +298,11 @@ export default function InvestmentOrderListScreen() {
           onEndReached={() => { if (!loadingMore && hasMore && !loading) fetchOrders(page + 1); }}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
-            loadingMore ? <ActivityIndicator style={{ paddingVertical: 20 }} size="small" color={c.primary} />
-              : orders.length > 0 && !hasMore ? <Text style={[st.endText, { color: c.textSecondary }]}>— Hết —</Text>
-                : <View style={{ height: 80 }} />
+            <Pagination
+              mode="infinite"
+              loading={loadingMore}
+              hasMore={hasMore}
+            />
           }
         />
       )}
@@ -379,7 +381,7 @@ const st = StyleSheet.create({
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 28 },
   emptyBtnText: { fontSize: 16, fontWeight: '700' },
 
-  endText: { textAlign: 'center', fontSize: 12, paddingVertical: 20 },
+
 
   fab: {
     position: 'absolute', right: 20, bottom: 24,

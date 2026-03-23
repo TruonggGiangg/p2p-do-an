@@ -6,3 +6,5 @@ export * from './CommonTabs';
 export { default as FintechPullToRefresh } from './FintechPullToRefresh';
 export { default as VentoUltimateLoading } from './VentoSVGLoading';
 export { default as FintechScreenSkeleton } from './FintechScreenSkeleton';
+export { default as Pagination } from './Pagination';
+export type { PaginationProps } from './Pagination';

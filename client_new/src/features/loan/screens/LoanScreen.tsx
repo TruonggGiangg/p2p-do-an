@@ -25,16 +25,21 @@ const getStatusInfo = (loan: LoanHistoryItem) => {
     if (sf) {
         if (sf.active) return { text: 'Đang vay', color: '#3B82F6', icon: 'progress-clock' as const };
         if (sf.closedObligationsMet) return { text: 'Đã tất toán', color: '#0ECB81', icon: 'check-circle' as const };
+        if (sf.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', icon: 'close-circle' as const };
+        if (sf.overpaid) return { text: 'Trả thừa', color: '#0ECB81', icon: 'check-circle' as const };
         if (sf.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', icon: 'clock-outline' as const };
         if (sf.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', icon: 'bank-transfer' as const };
         if (sf.closed) return { text: 'Đã đóng', color: '#6B7280', icon: 'close-circle' as const };
-        if (sf.rejected || sf.withdrawnByClient) return { text: 'Thất bại', color: '#F6465D', icon: 'alert-circle' as const };
+        if (sf.rejected) return { text: 'Bị từ chối', color: '#F6465D', icon: 'alert-circle' as const };
+        if (sf.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', icon: 'close-circle' as const };
     }
     if (loan.status === 'clean' || loan.status === 'closed') return { text: 'Đã tất toán', color: '#0ECB81', icon: 'check-circle' as const };
     if (loan.status === 'success' || loan.status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', icon: 'progress-clock' as const };
     if (loan.status === 'waiting' || loan.status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', icon: 'clock-outline' as const };
     if (loan.status === 'approved') return { text: 'Đã duyệt', color: '#8B5CF6', icon: 'check-decagram' as const };
-    if (loan.status === 'fail' || loan.status === 'rejected') return { text: 'Thất bại', color: '#F6465D', icon: 'alert-circle' as const };
+    if (loan.status === 'rejected' || loan.status === 'fail') return { text: 'Bị từ chối', color: '#F6465D', icon: 'alert-circle' as const };
+    if (loan.status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', icon: 'close-circle' as const };
+    if (loan.status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', icon: 'close-circle' as const };
     return { text: loan.status || 'N/A', color: '#6B7280', icon: 'help-circle' as const };
 };
 

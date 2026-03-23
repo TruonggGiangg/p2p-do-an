@@ -43,7 +43,7 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
             case 'primary':
                 return {
                     container: { backgroundColor: theme.colors.primary },
-                    text: { color: '#14342B', fontWeight: '700' as const },
+                    text: { color: '#fff', fontWeight: '700' as const },
                 };
             case 'secondary':
                 return {
@@ -77,7 +77,7 @@ export const CommonButton: React.FC<CommonButtonProps> = ({
             default:
                 return {
                     container: { backgroundColor: theme.colors.primary },
-                    text: { color: '#14342B' },
+                    text: { color: '#fff' },
                 };
         }
     };

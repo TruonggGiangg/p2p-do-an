@@ -268,6 +268,36 @@ export class FineractSavingsService extends FineractBaseService {
     }
 
     /**
+     * Withdraw from a savings account (used for loan repayment wallet deduction)
+     * POST /savingsaccounts/{savingsId}/transactions?command=withdrawal
+     */
+    async withdrawFromSavings(
+        savingsId: number,
+        amount: number,
+        note: string = 'Wallet deduction for loan repayment',
+    ): Promise<{ transactionId: number }> {
+        try {
+            this.logger.log(`[withdrawFromSavings] savingsId=${savingsId} amount=${amount}`);
+            const response = await this.client.post(
+                `/savingsaccounts/${savingsId}/transactions?command=withdrawal`,
+                {
+                    transactionDate: this.getTodayFormatted('iso'),
+                    transactionAmount: amount,
+                    paymentTypeId: 1,
+                    dateFormat: 'yyyy-MM-dd',
+                    locale: 'en',
+                    note,
+                },
+            );
+            const txId = response.data.resourceId || response.data.savingsId;
+            this.logger.log(`[withdrawFromSavings] SUCCESS transactionId=${txId}`);
+            return { transactionId: txId };
+        } catch (error: any) {
+            this.handleError(error, `Failed to withdraw ${amount} from savings ${savingsId}`);
+        }
+    }
+
+    /**
      * Get Savings Account Transactions
      */
     async getSavingsAccountTransactions(

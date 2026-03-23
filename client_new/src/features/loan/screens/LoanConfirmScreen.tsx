@@ -303,7 +303,7 @@ export default function LoanConfirmScreen() {
                                     <View style={styles.feeLabelBlock}>
                                         <Text style={[styles.feeName, { color: theme.colors.textPrimary }]}>{fee.name}</Text>
                                         {isDisbursement && (
-                                            <Text style={[styles.feeNote, { color: theme.colors.textDim }]}>Thu khi giải ngân</Text>
+                                            <Text style={[styles.feeNote, { color: theme.colors.textSecondary }]}>Thu khi giải ngân</Text>
                                         )}
                                     </View>
                                     <View style={styles.feeValueBlock}>
@@ -313,7 +313,7 @@ export default function LoanConfirmScreen() {
                                                 : `${formatCurrency(pct)}`}
                                         </Text>
                                         {feeAmountCalc != null && (
-                                            <Text style={[styles.feeAmountText, { color: theme.colors.textDim }]}>
+                                            <Text style={[styles.feeAmountText, { color: theme.colors.textSecondary }]}>
                                                 ≈ {formatCurrency(feeAmountCalc)}
                                             </Text>
                                         )}
@@ -343,10 +343,10 @@ export default function LoanConfirmScreen() {
 
                         {/* Table header */}
                         <View style={[styles.tableHeader, { backgroundColor: theme.colors.background, borderRadius: 8 }]}>
-                            <Text style={[styles.colKy, styles.tableHeaderText, { color: theme.colors.textDim }]}>Kỳ</Text>
-                            <Text style={[styles.colGoc, styles.tableHeaderText, { color: theme.colors.textDim }]}>Gốc</Text>
-                            <Text style={[styles.colLai, styles.tableHeaderText, { color: theme.colors.textDim }]}>Lãi</Text>
-                            <Text style={[styles.colTong, styles.tableHeaderText, { color: theme.colors.textDim }]}>Tổng</Text>
+                            <Text style={[styles.colKy, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Kỳ</Text>
+                            <Text style={[styles.colGoc, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Gốc</Text>
+                            <Text style={[styles.colLai, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Lãi</Text>
+                            <Text style={[styles.colTong, styles.tableHeaderText, { color: theme.colors.textSecondary }]}>Tổng</Text>
                         </View>
 
                         {visibleRows.map((item, index) => (
@@ -403,19 +403,19 @@ export default function LoanConfirmScreen() {
                                     <Text style={[styles.walletName, { color: theme.colors.textPrimary }]}>
                                         {selectedWallet.productName || selectedWallet.metadata?.productName || 'Ví điện tử'}
                                     </Text>
-                                    <Text style={[styles.walletNo, { color: theme.colors.textDim }]}>
+                                    <Text style={[styles.walletNo, { color: theme.colors.textSecondary }]}>
                                         {selectedWallet.accountNo || selectedWallet.fineractId || 'N/A'}
                                     </Text>
                                 </View>
                             ) : (
-                                <Text style={[styles.walletPlaceholder, { color: theme.colors.textDim }]}>Chọn ví nhận giải ngân</Text>
+                                <Text style={[styles.walletPlaceholder, { color: theme.colors.textSecondary }]}>Chọn ví nhận giải ngân</Text>
                             )}
                             {selectedWallet?.isDefault && (
                                 <View style={[styles.defaultBadge, { backgroundColor: theme.colors.primary + '20' }]}>
                                     <Text style={[styles.defaultBadgeText, { color: theme.colors.primary }]}>Mặc định</Text>
                                 </View>
                             )}
-                            <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textDim} />
+                            <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.textSecondary} />
                         </TouchableOpacity>
                     )}
                 </CommonCard>
@@ -427,7 +427,7 @@ export default function LoanConfirmScreen() {
                             <MaterialCommunityIcons name="file-document-multiple-outline" size={20} color={theme.colors.primary} />
                             <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary, marginBottom: 0 }]}>Tài liệu đính kèm</Text>
                         </View>
-                        <Text style={[styles.docSectionHint, { color: theme.colors.textDim }]}>
+                        <Text style={[styles.docSectionHint, { color: theme.colors.textSecondary }]}>
                             Vui lòng cung cấp đầy đủ tài liệu yêu cầu
                         </Text>
                         {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
@@ -448,7 +448,7 @@ export default function LoanConfirmScreen() {
                                         <View style={styles.docNameBlock}>
                                             <Text style={[styles.docName, { color: theme.colors.textPrimary }]}>{doc.name}</Text>
                                             {doc.description ? (
-                                                <Text style={[styles.docDesc, { color: theme.colors.textDim }]} numberOfLines={1}>{doc.description}</Text>
+                                                <Text style={[styles.docDesc, { color: theme.colors.textSecondary }]} numberOfLines={1}>{doc.description}</Text>
                                             ) : null}
                                         </View>
                                         {doc.required ? (
@@ -483,7 +483,7 @@ export default function LoanConfirmScreen() {
                                                     <View style={[styles.docUploadIconCircle, { backgroundColor: theme.colors.primary + '15' }]}>
                                                         <MaterialCommunityIcons name="camera-plus-outline" size={28} color={theme.colors.primary} />
                                                     </View>
-                                                    <Text style={[styles.uploadHint, { color: theme.colors.textDim }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                                                    <Text style={[styles.uploadHint, { color: theme.colors.textSecondary }]}>Chụp ảnh hoặc chọn từ thư viện</Text>
                                                 </View>
                                             )}
                                         </TouchableOpacity>
@@ -536,7 +536,7 @@ export default function LoanConfirmScreen() {
                                 ) : (
                                     <MaterialCommunityIcons name="send-check-outline" size={20} color="#fff" />
                                 )}
-                                <Text style={[styles.submitBtnText, { color: isDisabled ? theme.colors.textDim : '#fff' }]}>
+                                <Text style={[styles.submitBtnText, { color: isDisabled ? theme.colors.textSecondary : '#fff' }]}>
                                     {submitting || isLoading ? 'Đang gửi...' : 'Xác nhận đăng ký vay'}
                                 </Text>
                             </TouchableOpacity>

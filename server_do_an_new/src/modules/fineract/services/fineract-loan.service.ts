@@ -58,6 +58,17 @@ export class FineractLoanService extends FineractBaseService {
             const submittedOnDate = this.getTodayFormatted('iso');
             const expectedDisbursementDate = data.expectedDisbursementDate || submittedOnDate;
 
+            // Lấy charges từ product config để gắn vào loan
+            const productCharges = (product.charges || []).map((c: any) => ({
+                chargeId: c.id || c.chargeId,
+                amount: c.amount,
+                ...(c.dueDate ? { dueDate: c.dueDate } : {}),
+            })).filter((c: any) => c.chargeId && c.amount != null);
+
+            if (productCharges.length > 0) {
+                this.logger.log(`[createLoanApplication] Attaching ${productCharges.length} charges from product: ${JSON.stringify(productCharges)}`);
+            }
+
             const payload = {
                 clientId: data.clientId,
                 productId: data.productId,
@@ -77,6 +88,7 @@ export class FineractLoanService extends FineractBaseService {
                 submittedOnDate,
                 ...this.getCommonLocaleParams('strict'),
                 locale: 'en',
+                ...(productCharges.length > 0 ? { charges: productCharges } : {}),
             };
 
             this.logger.log(`[createLoanApplication] POST /loans payload: ${JSON.stringify({ clientId: payload.clientId, principal: payload.principal, numberOfRepayments: payload.numberOfRepayments, expectedDisbursementDate: payload.expectedDisbursementDate, interestRatePerPeriod: payload.interestRatePerPeriod })}`);
@@ -148,6 +160,68 @@ export class FineractLoanService extends FineractBaseService {
             this.logger.error(`[disburseLoan] FAILED loanId=${loanId}: ${error.message}`);
             if (error.response?.data) this.logger.error(`[disburseLoan] Response: ${JSON.stringify(error.response.data)}`);
             this.handleError(error, `Failed to disburse loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Reject a loan application (Admin)
+     * POST /loans/{loanId}?command=reject
+     */
+    async rejectLoan(loanId: number, rejectedOnDate?: string, note?: string): Promise<void> {
+        try {
+            const finalDate = rejectedOnDate || this.getTodayFormatted('iso');
+            this.logger.log(`[rejectLoan] START | loanId=${loanId} rejectedOnDate=${finalDate}`);
+            await this.client.post(`/loans/${loanId}?command=reject`, {
+                rejectedOnDate: finalDate,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+                note: note || 'Rejected by admin',
+            });
+            this.logger.log(`[rejectLoan] SUCCESS | loanId=${loanId}`);
+        } catch (error: any) {
+            this.logger.error(`[rejectLoan] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[rejectLoan] Response: ${JSON.stringify(error.response.data)}`);
+            this.handleError(error, `Failed to reject loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Undo approval of a loan (Admin)
+     * POST /loans/{loanId}?command=undoApproval
+     */
+    async undoApproval(loanId: number, note?: string): Promise<void> {
+        try {
+            this.logger.log(`[undoApproval] START | loanId=${loanId}`);
+            await this.client.post(`/loans/${loanId}?command=undoApproval`, {
+                note: note || 'Undo approval by admin',
+            });
+            this.logger.log(`[undoApproval] SUCCESS | loanId=${loanId}`);
+        } catch (error: any) {
+            this.logger.error(`[undoApproval] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[undoApproval] Response: ${JSON.stringify(error.response.data)}`);
+            this.handleError(error, `Failed to undo approval for loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Withdraw loan application by client/borrower
+     * POST /loans/{loanId}?command=withdrawnByApplicant
+     */
+    async withdrawnByApplicant(loanId: number, withdrawnOnDate?: string, note?: string): Promise<void> {
+        try {
+            const finalDate = withdrawnOnDate || this.getTodayFormatted('iso');
+            this.logger.log(`[withdrawnByApplicant] START | loanId=${loanId} date=${finalDate}`);
+            await this.client.post(`/loans/${loanId}?command=withdrawnByApplicant`, {
+                withdrawnOnDate: finalDate,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+                note: note || 'Withdrawn by borrower',
+            });
+            this.logger.log(`[withdrawnByApplicant] SUCCESS | loanId=${loanId}`);
+        } catch (error: any) {
+            this.logger.error(`[withdrawnByApplicant] FAILED loanId=${loanId}: ${error.message}`);
+            if (error.response?.data) this.logger.error(`[withdrawnByApplicant] Response: ${JSON.stringify(error.response.data)}`);
+            this.handleError(error, `Failed to withdraw loan application ${loanId}`);
         }
     }
 
@@ -747,6 +821,64 @@ export class FineractLoanService extends FineractBaseService {
             return [];
         }
     }
+
+    /**
+     * Add a charge to an active loan (e.g., prepayment penalty)
+     * POST /loans/{loanId}/charges
+     * chargeId must be a charge with chargeTimeType=2 (Specified Due Date) or compatible
+     */
+    async addLoanCharge(loanId: number, data: {
+        chargeId: number;
+        amount: number;
+        dueDate: string; // yyyy-MM-dd
+    }): Promise<number> {
+        try {
+            this.logger.log(`[addLoanCharge] START | loanId=${loanId} chargeId=${data.chargeId} amount=${data.amount} dueDate=${data.dueDate}`);
+            const payload = {
+                chargeId: data.chargeId,
+                amount: data.amount,
+                dueDate: data.dueDate,
+                dateFormat: 'yyyy-MM-dd',
+                locale: 'en',
+            };
+            const response = await this.client.post(`/loans/${loanId}/charges`, payload);
+            const resourceId = response.data.resourceId;
+            this.logger.log(`[addLoanCharge] SUCCESS | loanId=${loanId} loanChargeId=${resourceId}`);
+            return resourceId;
+        } catch (error: any) {
+            this.logger.error(`[addLoanCharge] FAILED loanId=${loanId} chargeId=${data.chargeId}: ${error.message}`);
+            if (error.response?.data) {
+                this.logger.error(`[addLoanCharge] Response: ${JSON.stringify(error.response.data)}`);
+            }
+            this.handleError(error, `Failed to add charge ${data.chargeId} to loan ${loanId}`);
+        }
+    }
+
+    /**
+     * Get charge definition from Fineract (global charge template)
+     * GET /charges/{chargeId}
+     * Returns: name, amount (rate), chargeCalculationType, penalty flag, etc.
+     */
+    async getChargeDetails(chargeId: number): Promise<{
+        id: number;
+        name: string;
+        amount: number;
+        penalty: boolean;
+        chargeCalculationType: { id: number; code: string; value: string };
+        chargeTimeType: { id: number; code: string; value: string };
+    }> {
+        try {
+            this.logger.log(`[getChargeDetails] GET /charges/${chargeId}`);
+            const response = await this.client.get(`/charges/${chargeId}`);
+            const data = response.data;
+            this.logger.log(`[getChargeDetails] SUCCESS | name="${data.name}" amount=${data.amount} calcType=${data.chargeCalculationType?.value}`);
+            return data;
+        } catch (error: any) {
+            this.logger.error(`[getChargeDetails] FAILED chargeId=${chargeId}: ${error.message}`);
+            this.handleError(error, `Failed to get charge details for ${chargeId}`);
+        }
+    }
+
     /**
      * Waive a specific charge on a loan (e.g., penalty)
      */

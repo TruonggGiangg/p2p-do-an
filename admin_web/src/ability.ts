@@ -16,6 +16,7 @@ export enum Action {
   Delete = "delete",
   Approve = "approve",
   Disburse = "disburse",
+  Reject = "reject",
 }
 
 // ── Subjects ──

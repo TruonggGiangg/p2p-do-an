@@ -46,7 +46,11 @@ interface ScheduleData {
         principalPaid?: number;
         interestDue?: number;
         interestPaid?: number;
+        feeChargesDue?: number;
+        feeChargesPaid?: number;
+        penaltyChargesDue?: number;
         totalPaid?: number;
+        totalOutstanding?: number;
         complete?: boolean;
     }>;
     totalRepaymentExpected?: number;
@@ -56,6 +60,8 @@ interface ScheduleData {
     totalInterestCharged?: number;
     totalInterestPaid?: number;
     totalOutstanding?: number;
+    totalFeeChargesCharged?: number;
+    totalPenaltyChargesCharged?: number;
 }
 
 interface TransactionItem {
@@ -115,15 +121,21 @@ const getStatusInfo = (statusObj: any, status: string) => {
     if (statusObj) {
         if (statusObj.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#3B82F615' };
         if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
+        if (statusObj.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#6B728015' };
+        if (statusObj.overpaid) return { text: 'Trả thừa', color: '#10B981', bgColor: '#10B98115' };
         if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
         if (statusObj.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', bgColor: '#8B5CF615' };
         if (statusObj.approved) return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
-        if (statusObj.rejected || statusObj.withdrawnByClient) return { text: 'Thất bại', color: '#EF4444', bgColor: '#EF444415' };
+        if (statusObj.rejected) return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#EF444415' };
+        if (statusObj.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#9CA3AF15' };
     }
     if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
     if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#3B82F615' };
     if (status === 'approved') return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
     if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
+    if (status === 'rejected') return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#EF444415' };
+    if (status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#9CA3AF15' };
+    if (status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#6B728015' };
     return { text: status || 'N/A', color: '#6B7280', bgColor: '#6B728015' };
 };
 
@@ -169,7 +181,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const [schedule, setSchedule] = useState<ScheduleData | null>(null);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
     const [totalPaid, setTotalPaid] = useState(0);
-    const [prepayAmount, setPrepayAmount] = useState<{ amount: number; principalPortion: number; interestPortion: number } | null>(null);
+    const [prepayAmount, setPrepayAmount] = useState<{ amount: number; principalPortion: number; interestPortion: number; prepaymentPenalty?: number; totalWithPenalty?: number; penaltyRate?: number; penaltyChargeName?: string } | null>(null);
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'info' | 'schedule' | 'history'>('info');
     const [showRepayModal, setShowRepayModal] = useState(false);
@@ -187,6 +199,14 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
         fineractDetails?.status?.active === true ||
         loan.status === 'success' ||
         loan.status === 'disbursed',
+        [fineractDetails, loan.status]);
+
+    const isPending = useMemo(() =>
+        fineractDetails?.status?.pendingApproval === true ||
+        fineractDetails?.status?.waitingForDisbursal === true ||
+        loan.status === 'pending' ||
+        loan.status === 'waiting' ||
+        loan.status === 'approved',
         [fineractDetails, loan.status]);
 
     const isClean = useMemo(() =>
@@ -335,10 +355,21 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             Alert.alert('Thông báo', 'Dữ liệu tất toán chưa sẵn sàng.');
             return;
         }
-        const total = prepayAmount.amount;
+        const penalty = prepayAmount.prepaymentPenalty || 0;
+        const total = prepayAmount.totalWithPenalty || prepayAmount.amount;
+        const penaltyLabel = penalty > 0
+            ? `${prepayAmount.penaltyChargeName || 'Phí phạt tất toán sớm'}${prepayAmount.penaltyRate ? ` (${prepayAmount.penaltyRate}%)` : ''}: ${formatMoney(penalty)} đ`
+            : null;
+        const breakdownLines = [
+            `Gốc còn lại: ${formatMoney(prepayAmount.principalPortion)} đ`,
+            `Lãi đến ngày: ${formatMoney(prepayAmount.interestPortion)} đ`,
+            ...(penaltyLabel ? [penaltyLabel] : []),
+            `────────────────`,
+            `Tổng thanh toán: ${formatMoney(total)} đ`,
+        ].join('\n');
         Alert.alert(
             'Tất toán sớm',
-            `Tổng tất toán: ${formatMoney(total)} đ\n(Gốc + Lãi + Phí)`,
+            breakdownLines,
             [
                 { text: 'Hủy', style: 'cancel' },
                 {
@@ -447,6 +478,16 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
                                 <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
                             </View>
+                            {((outstanding.penaltyOutstanding || 0) > 0 || (schedule?.totalFeeChargesCharged || 0) > 0 || (schedule?.totalPenaltyChargesCharged || 0) > 0) && (
+                                <View style={[styles.outstandingDetail, { marginTop: 4 }]}>
+                                    {(schedule?.totalFeeChargesCharged || 0) > 0 && (
+                                        <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Phí: {formatMoney(schedule?.totalFeeChargesCharged)}</Text>
+                                    )}
+                                    {((outstanding.penaltyOutstanding || 0) > 0 || (schedule?.totalPenaltyChargesCharged || 0) > 0) && (
+                                        <Text style={[styles.outstandingDetailText, { color: '#FBBF24' }]}>Phạt: {formatMoney(outstanding.penaltyOutstanding || schedule?.totalPenaltyChargesCharged)}</Text>
+                                    )}
+                                </View>
+                            )}
                         </View>
                     )}
                     {(outstanding?.totalOverdue ?? 0) > 0 && (
@@ -523,12 +564,38 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             current: { label: 'Đang đến hạn', color: '#CDEA2D', bg: '#F5FFD6' },
             upcoming: { label: 'Chưa đến hạn', color: '#9CA3AF', bg: '#F9FAFB' },
         };
+
+        // Tổng phí/phạt từ Fineract data
+        const totalFees = schedule?.totalFeeChargesCharged || 0;
+        const totalPenalties = schedule?.totalPenaltyChargesCharged || 0;
+
         return (
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 0, overflow: 'hidden' }]}>
                 <Text style={[styles.cardTitle, { color: colors.textSecondary, padding: 16, paddingBottom: 0 }]}>LỊCH TRẢ NỢ</Text>
+
+                {/* Tổng kết phí/phạt từ Fineract */}
+                {(totalFees > 0 || totalPenalties > 0) && (
+                    <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8, gap: 8 }}>
+                        {totalFees > 0 && (
+                            <View style={{ flex: 1, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 8, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: '600' }}>Tổng phí</Text>
+                                <Text style={{ fontSize: 13, color: '#1E40AF', fontWeight: '700', marginTop: 2 }}>{formatMoney(totalFees)} đ</Text>
+                            </View>
+                        )}
+                        {totalPenalties > 0 && (
+                            <View style={{ flex: 1, backgroundColor: '#FEF3C7', borderRadius: 8, padding: 8, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 10, color: '#D97706', fontWeight: '600' }}>Tổng phạt</Text>
+                                <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '700', marginTop: 2 }}>{formatMoney(totalPenalties)} đ</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
                 {periods.length > 0 ? periods.map((p, i) => {
                     const status = getInstallmentStatus(p);
                     const cfg = statusConfig[status];
+                    const hasFees = (p.feeChargesDue || 0) > 0;
+                    const hasPenalties = (p.penaltyChargesDue || 0) > 0;
                     return (
                         <View key={i} style={[styles.scheduleItem, { borderBottomColor: '#F3F4F6', backgroundColor: cfg.bg }]}>
                             <View style={styles.scheduleLeft}>
@@ -545,6 +612,22 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 <Text style={[styles.scheduleAmount, { color: '#111827' }]}>
                                     {formatMoney(p.totalDue)} đ
                                 </Text>
+                                {/* Breakdown chi tiết từ Fineract */}
+                                <Text style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
+                                    G: {formatMoney(p.principalDue)} • L: {formatMoney(p.interestDue)}
+                                    {(p.feeChargesDue || 0) > 0 ? ` • Phí: ${formatMoney(p.feeChargesDue)}` : ''}
+                                    {(p.penaltyChargesDue || 0) > 0 ? ` • Phạt: ${formatMoney(p.penaltyChargesDue)}` : ''}
+                                </Text>
+                                {(p.feeChargesPaid || 0) > 0 && (
+                                    <Text style={{ fontSize: 10, color: '#10B981', marginTop: 1 }}>
+                                        Phí đã trả: {formatMoney(p.feeChargesPaid)}
+                                    </Text>
+                                )}
+                                {(p.totalOutstanding || 0) > 0 && status !== 'upcoming' && (
+                                    <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600', marginTop: 1 }}>
+                                        Còn nợ: {formatMoney(p.totalOutstanding)}
+                                    </Text>
+                                )}
                             </View>
                         </View>
                     );
@@ -629,7 +712,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             {/* Content */}
             <ScrollView
                 style={styles.content}
-                contentContainerStyle={{ paddingBottom: isActive ? 100 : 24 }}
+                contentContainerStyle={{ paddingBottom: (isActive || isPending) ? 100 : 24 }}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
             >
@@ -678,6 +761,49 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             : <>
                                 <Ionicons name="checkmark-done-circle-outline" size={18} color="#FFFFFF" />
                                 <Text style={[styles.btnPrimaryText, { color: '#FFFFFF' }]}>TẤT TOÁN</Text>
+                            </>
+                        }
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Withdraw (Pending loans only) */}
+            {isPending && (
+                <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
+                        onPress={() => {
+                            Alert.alert(
+                                'Hủy đơn vay',
+                                'Bạn chắc chắn muốn hủy đơn vay này? Hành động không thể hoàn tác.',
+                                [
+                                    { text: 'Không', style: 'cancel' },
+                                    {
+                                        text: 'Xác nhận hủy',
+                                        style: 'destructive',
+                                        onPress: async () => {
+                                            try {
+                                                setPaymentLoading(true);
+                                                await loanService.withdrawLoan(loan.id);
+                                                Alert.alert('Thành công', 'Đơn vay đã được hủy.');
+                                                navigation.goBack();
+                                            } catch (err: any) {
+                                                Alert.alert('Lỗi', err?.response?.data?.message || 'Không thể hủy đơn vay');
+                                            } finally {
+                                                setPaymentLoading(false);
+                                            }
+                                        },
+                                    },
+                                ],
+                            );
+                        }}
+                        disabled={paymentLoading}
+                    >
+                        {paymentLoading
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <>
+                                <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
+                                <Text style={[styles.btnPrimaryText, { color: '#FFFFFF' }]}>HỦY ĐƠN VAY</Text>
                             </>
                         }
                     </TouchableOpacity>

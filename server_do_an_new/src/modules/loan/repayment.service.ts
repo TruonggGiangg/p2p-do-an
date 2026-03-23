@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
+import { PREPAYMENT_PENALTY_CHARGE_ID } from '../fineract/fineract.constants';
 import { FineractSavingsService } from '../fineract/services/fineract-savings.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { AdminService } from '../admin/admin.service';
@@ -40,6 +41,49 @@ export class RepaymentService {
   ) {}
 
   /**
+   * Helper: Trừ tiền từ ví e-wallet của borrower trước khi gọi Fineract repay/prepay.
+   * Throws nếu ví không đủ tiền.
+   */
+  private async deductFromBorrowerWallet(
+    userId: string,
+    amount: number,
+    note: string,
+  ): Promise<{ walletTxId: number; savingsId: number }> {
+    // 1. Tìm user → fineractClientId
+    const user = await this.userModel.findById(userId);
+    if (!user?.fineractClientId) {
+      throw new BadRequestException('Người dùng chưa liên kết tài khoản Fineract');
+    }
+
+    // 2. Tìm ví e-wallet active
+    const eWallet = await this.fineractSavingsService.getActiveEWalletAccount(
+      Number(user.fineractClientId),
+    );
+    if (!eWallet) {
+      throw new BadRequestException('Không tìm thấy ví điện tử. Vui lòng tạo ví trước.');
+    }
+
+    // 3. Kiểm tra số dư
+    const balance = eWallet.summary?.accountBalance ?? 0;
+    if (balance < amount) {
+      throw new BadRequestException(
+        `Số dư ví không đủ. Hiện tại: ${balance.toLocaleString('vi-VN')} đ, cần: ${amount.toLocaleString('vi-VN')} đ`,
+      );
+    }
+
+    // 4. Withdrawal từ savings account
+    const result = await this.fineractSavingsService.withdrawFromSavings(
+      eWallet.id,
+      amount,
+      note,
+    );
+    this.logger.log(
+      `[deductFromBorrowerWallet] Deducted ${amount} from savings ${eWallet.id} for user ${userId}`,
+    );
+    return { walletTxId: result.transactionId, savingsId: eWallet.id };
+  }
+
+  /**
    * Thanh toán theo kỳ (Repayment)
    */
   async makeRepayment(userId: string, loanId: string, amount: number, repaymentDate?: string): Promise<any> {
@@ -71,7 +115,20 @@ export class RepaymentService {
       );
     }
 
-    // 4. Gọi Fineract repayment API
+    // 4. Trừ tiền từ ví borrower
+    let walletDeduction: { walletTxId: number; savingsId: number } | null = null;
+    try {
+      walletDeduction = await this.deductFromBorrowerWallet(
+        userId,
+        amount,
+        `Thanh toán kỳ hạn khoản vay (MongoDB: ${loanId})`,
+      );
+    } catch (walletErr: any) {
+      this.logger.error(`[makeRepayment] Wallet deduction failed: ${walletErr.message}`);
+      throw walletErr; // Don't proceed if wallet deduction fails
+    }
+
+    // 5. Gọi Fineract repayment API
     // Ưu tiên ngày server (local today) nếu ngày gửi lên bị cũ (stale)
     let date = repaymentDate || today;
     if (repaymentDate && repaymentDate < today) {
@@ -186,6 +243,15 @@ export class RepaymentService {
 
     const prepayInfo = await this.fineractLoanService.getPrepaymentAmount(loan.fineractLoanId);
 
+    // Fetch charge config ĐỘNG từ Fineract
+    const chargeInfo = await this.getPenaltyChargeInfo();
+    const penaltyRate = chargeInfo.rate; // e.g. 0.03 = 3%
+    const prepaymentPenalty = Math.round(prepayInfo.principalPortion * penaltyRate);
+    const totalWithPenalty = prepayInfo.amount + prepaymentPenalty;
+    this.logger.log(
+      `[getPrepayAmount] principal=${prepayInfo.principalPortion} penaltyRate=${penaltyRate} (${chargeInfo.name}) penalty=${prepaymentPenalty} totalWithPenalty=${totalWithPenalty}`,
+    );
+
     // Lấy phí từ Fineract product charges
     let charges: any[] = [];
     try {
@@ -194,6 +260,10 @@ export class RepaymentService {
 
     return {
       ...prepayInfo,
+      prepaymentPenalty,
+      totalWithPenalty,
+      penaltyRate: chargeInfo.ratePercent,   // e.g. 3 (hiện cho client: "3%")
+      penaltyChargeName: chargeInfo.name,    // e.g. "Phí phạt tất toán sớm"
       charges,
       loanId: loan._id,
       fineractLoanId: loan.fineractLoanId,
@@ -213,16 +283,11 @@ export class RepaymentService {
     }
 
     // 1. Lấy số tiền tất toán
-    const prepayInfo = await this.fineractLoanService.getPrepaymentAmount(loan.fineractLoanId);
+    let prepayInfo = await this.fineractLoanService.getPrepaymentAmount(loan.fineractLoanId);
     if (!prepayInfo.amount || prepayInfo.amount <= 0) {
       throw new BadRequestException('Khoản vay đã được thanh toán hoàn tất');
     }
 
-    this.logger.log(
-      `[prepayLoan] Prepay amount=${prepayInfo.amount} (principal=${prepayInfo.principalPortion} interest=${prepayInfo.interestPortion} fees=${prepayInfo.feesPortion} penalty=${prepayInfo.penaltyPortion})`,
-    );
-
-    // 2. Gọi Fineract prepay
     const today = this.fineractLoanService.getTodayFormatted();
     let date = repaymentDate || today;
     if (repaymentDate && repaymentDate < today) {
@@ -231,6 +296,50 @@ export class RepaymentService {
       );
       date = today;
     }
+
+    // 1.5. Add phí phạt tất toán sớm vào loan trước khi prepay
+    const chargeInfo = await this.getPenaltyChargeInfo();
+    const penaltyAmount = Math.round(prepayInfo.principalPortion * chargeInfo.rate);
+    if (penaltyAmount > 0) {
+      try {
+        this.logger.log(
+          `[prepayLoan] Adding prepayment penalty: chargeId=${PREPAYMENT_PENALTY_CHARGE_ID} rate=${chargeInfo.ratePercent}% amount=${penaltyAmount} dueDate=${date}`,
+        );
+        await this.fineractLoanService.addLoanCharge(loan.fineractLoanId, {
+          chargeId: PREPAYMENT_PENALTY_CHARGE_ID,
+          amount: penaltyAmount,
+          dueDate: date,
+        });
+        // Re-fetch prepay amount (now includes penalty in Fineract calculation)
+        prepayInfo = await this.fineractLoanService.getPrepaymentAmount(loan.fineractLoanId);
+        this.logger.log(
+          `[prepayLoan] Updated prepay amount after penalty: ${prepayInfo.amount} (penalty=${prepayInfo.penaltyPortion})`,
+        );
+      } catch (chargeError: any) {
+        this.logger.warn(
+          `[prepayLoan] Failed to add prepayment penalty charge (non-blocking): ${chargeError.message}`,
+        );
+        // Continue with prepay even if penalty charge failed
+      }
+    }
+
+    this.logger.log(
+      `[prepayLoan] Prepay amount=${prepayInfo.amount} (principal=${prepayInfo.principalPortion} interest=${prepayInfo.interestPortion} fees=${prepayInfo.feesPortion} penalty=${prepayInfo.penaltyPortion})`,
+    );
+
+    // 1.8. Trừ tiền từ ví borrower
+    try {
+      await this.deductFromBorrowerWallet(
+        userId,
+        prepayInfo.amount,
+        `Tất toán sớm khoản vay (MongoDB: ${loanId})`,
+      );
+    } catch (walletErr: any) {
+      this.logger.error(`[prepayLoan] Wallet deduction failed: ${walletErr.message}`);
+      throw walletErr;
+    }
+
+    // 2. Gọi Fineract prepay
     let fineractResult: any;
     try {
       fineractResult = await this.fineractLoanService.prepayLoan(
@@ -342,6 +451,16 @@ export class RepaymentService {
       return { source: 'mongo', periods: loan.schedulePreview || [] };
     }
 
+    // DEBUG: Log raw Fineract schedule data
+    this.logger.log(`[getRepaymentSchedule] Raw totals: totalFeeChargesCharged=${schedule.totalFeeChargesCharged}, totalPenaltyChargesCharged=${schedule.totalPenaltyChargesCharged}`);
+    (schedule.periods || []).forEach((p: any) => {
+      if (p.period > 0) {
+        this.logger.log(
+          `[getRepaymentSchedule] Period ${p.period}: feeChargesDue=${p.feeChargesDue} feeChargesPaid=${p.feeChargesPaid} penaltyChargesDue=${p.penaltyChargesDue} penaltyChargesPaid=${p.penaltyChargesPaid} totalDueForPeriod=${p.totalDueForPeriod}`,
+        );
+      }
+    });
+
     return {
       source: 'fineract',
       totalPrincipalExpected: schedule.totalPrincipalExpected,
@@ -393,6 +512,57 @@ export class RepaymentService {
   // =============================================
   // Private helpers
   // =============================================
+
+  /**
+   * Lấy thông tin charge phí phạt tất toán sớm ĐỘNG từ Fineract
+   * Hỗ trợ chargeCalculationType: "% Amount" hoặc "Flat"
+   * Fallback 3% nếu Fineract API lỗi hoặc charge không tồn tại
+   */
+  private async getPenaltyChargeInfo(): Promise<{
+    rate: number;        // decimal, e.g. 0.03
+    ratePercent: number; // e.g. 3
+    name: string;
+    isPercentage: boolean;
+    flatAmount: number;  // dùng khi isPercentage=false
+  }> {
+    try {
+      const charge = await this.fineractLoanService.getChargeDetails(PREPAYMENT_PENALTY_CHARGE_ID);
+      const calcType = charge.chargeCalculationType?.value || '';
+      const isPercentage = calcType.toLowerCase().includes('%') || calcType.toLowerCase().includes('percent');
+
+      if (isPercentage) {
+        // charge.amount = tỷ lệ phần trăm (e.g. 3 = 3%)
+        return {
+          rate: (charge.amount || 0) / 100,
+          ratePercent: charge.amount || 0,
+          name: charge.name || 'Phí phạt tất toán sớm',
+          isPercentage: true,
+          flatAmount: 0,
+        };
+      } else {
+        // Flat amount — charge.amount = số tiền cố định
+        return {
+          rate: 0,
+          ratePercent: 0,
+          name: charge.name || 'Phí phạt tất toán sớm',
+          isPercentage: false,
+          flatAmount: charge.amount || 0,
+        };
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `[getPenaltyChargeInfo] Failed to fetch charge ${PREPAYMENT_PENALTY_CHARGE_ID}, using fallback 3%: ${error.message}`,
+      );
+      // Fallback: mặc định 3% nếu không lấy được từ Fineract
+      return {
+        rate: 0.03,
+        ratePercent: 3,
+        name: 'Phí phạt tất toán sớm',
+        isPercentage: true,
+        flatAmount: 0,
+      };
+    }
+  }
 
   /**
    * Tìm và validate loan thuộc user

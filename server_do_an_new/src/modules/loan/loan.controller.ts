@@ -159,6 +159,18 @@ export class LoanController {
     res.send(response.data);
   }
 
+  @Post(':loanId/withdraw')
+  @ApiOperation({ summary: 'Hủy đơn vay đang chờ duyệt' })
+  @ApiResponse({ status: 200, description: 'Hủy đơn vay thành công' })
+  async withdrawLoan(
+    @CurrentUser('id') userId: string,
+    @Param('loanId') loanId: string,
+    @Body('reason') reason?: string,
+  ) {
+    const result = await this.loanService.withdrawLoan(userId, loanId, reason);
+    return result;
+  }
+
   // =============================================
   // REPAYMENT & PREPAYMENT
   // =============================================

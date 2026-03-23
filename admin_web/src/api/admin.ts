@@ -861,6 +861,20 @@ export const adminApi = {
       }>(`/api/admin/loans/${fineractLoanId}/disburse`)
       .then((r) => r.data.data),
 
+  rejectLoan: (fineractLoanId: number, note?: string) =>
+    api
+      .post<{
+        data: { fineractLoanId: number; status: string };
+      }>(`/api/admin/loans/${fineractLoanId}/reject`, { note })
+      .then((r) => r.data.data),
+
+  undoApproval: (fineractLoanId: number, note?: string) =>
+    api
+      .post<{
+        data: { fineractLoanId: number; status: string };
+      }>(`/api/admin/loans/${fineractLoanId}/undo-approval`, { note })
+      .then((r) => r.data.data),
+
   getContractStatus: (fineractLoanId: number) =>
     api
       .get<{

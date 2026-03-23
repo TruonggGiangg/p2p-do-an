@@ -19,4 +19,6 @@ export { OTPProtectedAction } from "./common/OTPProtectedAction";
 export { PinVerifyModal } from "./common/PinVerifyModal";
 export { default as VentoUltimateLoading } from "./common/VentoSVGLoading";
 export { default as FintechScreenSkeleton } from "./common/FintechScreenSkeleton";
+export { default as Pagination } from "./common/Pagination";
+export type { PaginationProps } from "./common/Pagination";
 export * from "./WalletCard";

@@ -1,487 +1,106 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+/**
+ * LoanCreateScreen — Tạo khoản vay
+ * Design: Finesse Wallet — Deep Teal + Lime Green
+ * Đồng bộ với InvestmentFlowScreen pattern
+ */
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    ScrollView,
-    TouchableOpacity,
-    ActivityIndicator,
-    Alert,
-    TextInput,
-    KeyboardAvoidingView,
-    Platform,
-    Animated,
-    Dimensions,
-    PanResponder,
-    GestureResponderEvent,
-    PanResponderGestureState,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
+    ActivityIndicator, Alert, TextInput, KeyboardAvoidingView,
+    Platform, Dimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CommonInput } from '../../../components/common/CommonInput';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, CommonCard } from '../../../components';
 import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, DelinquencyPolicyItem } from '../services/loan.service';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const DEFAULT_PERIOD_OPTIONS = [3, 6, 9, 12, 18, 24];
-const QUICK_AMOUNTS = [
-    { label: '5 triệu', value: 5000000 },
-    { label: '10 triệu', value: 10000000 },
-    { label: '20 triệu', value: 20000000 },
-    { label: '30 triệu', value: 30000000 },
-    { label: '50 triệu', value: 50000000 },
-    { label: '70 triệu', value: 70000000 },
-    { label: '100 triệu', value: 100000000 },
-];
-const SLIDER_MIN = 5000000;
-const SLIDER_MAX = 100000000;
-const SLIDER_STEP = 1000000;
-const PRIMARY = '#CDEA2D';
-const PRIMARY_SOFT = '#CDEA2D18';
-const PERIOD_COLOR = '#7C6DFF';
-const PERIOD_SOFT = '#7C6DFF14';
-const RATE_COLOR = '#0ACF83';
-const RATE_SOFT = '#0ACF8314';
-
-// ── Custom Amount Slider ─────────────────────────────────────────────────────
-function AmountSlider({
-    value,
-    onChange,
-    min = SLIDER_MIN,
-    max = SLIDER_MAX,
-    step = SLIDER_STEP,
-    primaryColor,
-    trackColor,
-}: {
-    value: number;
-    onChange: (v: number) => void;
-    min?: number;
-    max?: number;
-    step?: number;
-    primaryColor: string;
-    trackColor: string;
-}) {
-    const trackWidth = useRef(0);
-    const panX = useRef(new Animated.Value(0)).current;
-    const currentVal = useRef(value);
-
-    const clamp = (v: number) => {
-        const stepped = Math.round(v / step) * step;
-        return Math.max(min, Math.min(max, stepped));
-    };
-
-    const valToX = (v: number, w: number) => ((v - min) / (max - min)) * w;
-    const xToVal = (x: number, w: number) => min + (x / w) * (max - min);
-
-    useEffect(() => {
-        if (trackWidth.current > 0) {
-            const x = valToX(value, trackWidth.current);
-            panX.setValue(x);
-            currentVal.current = value;
-        }
-    }, [value]);
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: () => true,
-            onPanResponderGrant: (evt: GestureResponderEvent) => {
-                const x = evt.nativeEvent.locationX;
-                const w = trackWidth.current;
-                if (w <= 0) return;
-                const newVal = clamp(xToVal(x, w));
-                panX.setValue(valToX(newVal, w));
-                currentVal.current = newVal;
-                onChange(newVal);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            },
-            onPanResponderMove: (_, gesture: PanResponderGestureState) => {
-                const w = trackWidth.current;
-                if (w <= 0) return;
-                const curX = valToX(currentVal.current, w) + gesture.dx;
-                const boundedX = Math.max(0, Math.min(w, curX));
-                const newVal = clamp(xToVal(boundedX, w));
-                panX.setValue(valToX(newVal, w));
-                if (newVal !== currentVal.current) {
-                    currentVal.current = newVal;
-                    onChange(newVal);
-                }
-            },
-        })
-    ).current;
-
+// ── Step indicator: đồng bộ với LoanConfirmScreen ────────────────────────────
+function StepIndicator({ current, theme: t }: { current: number; theme: any }) {
+    const c = t.colors;
     return (
-        <View
-            style={sliderStyles.container}
-            onLayout={(e) => {
-                trackWidth.current = e.nativeEvent.layout.width;
-                panX.setValue(valToX(value, e.nativeEvent.layout.width));
-            }}
-            {...panResponder.panHandlers}
-        >
-            {/* Track background */}
-            <View style={[sliderStyles.track, { backgroundColor: trackColor }]}>
-                <Animated.View
-                    style={[sliderStyles.trackFill, { width: panX }]}
-                >
-                    <LinearGradient
-                        colors={[primaryColor + 'CC', primaryColor]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFill}
-                    />
-                </Animated.View>
+        <View style={stepS.container}>
+            <View style={stepS.stepsRow}>
+                {[0, 1].map((i) => (
+                    <React.Fragment key={i}>
+                        <View style={[
+                            stepS.dot,
+                            i <= current
+                                ? { backgroundColor: c.primary }
+                                : { backgroundColor: c.border + '60' },
+                        ]}>
+                            {i < current ? (
+                                <MaterialCommunityIcons name="check" size={11} color="#fff" />
+                            ) : (
+                                <Text style={[stepS.dotText, i <= current && { color: '#fff' }]}>{i + 1}</Text>
+                            )}
+                        </View>
+                        {i < 1 && (
+                            <View style={[
+                                stepS.connector,
+                                i < current
+                                    ? { backgroundColor: c.primary }
+                                    : { backgroundColor: c.border + '40' },
+                            ]} />
+                        )}
+                    </React.Fragment>
+                ))}
             </View>
-            {/* Thumb */}
-            <Animated.View
-                style={[
-                    sliderStyles.thumb,
-                    { transform: [{ translateX: Animated.subtract(panX, 13) }] },
-                ]}
-            >
-                <LinearGradient
-                    colors={[primaryColor, primaryColor + 'DD']}
-                    style={sliderStyles.thumbGradient}
-                />
-                <View style={sliderStyles.thumbInner} />
-            </Animated.View>
+            <Text style={[stepS.label, { color: c.textPrimary }]}>
+                {current === 0 ? 'Nhập thông tin vay' : 'Xác nhận & gửi đơn'}
+            </Text>
         </View>
     );
 }
 
-const sliderStyles = StyleSheet.create({
-    container: { height: 44, justifyContent: 'center', marginTop: 4 },
-    track: { height: 6, borderRadius: 3, overflow: 'visible' },
-    trackFill: { height: '100%', borderRadius: 3, overflow: 'hidden' },
-    thumb: {
-        position: 'absolute',
-        width: 26,
-        height: 26,
-        borderRadius: 13,
-        elevation: 6,
-        shadowColor: PRIMARY,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-        justifyContent: 'center',
-        alignItems: 'center',
-        overflow: 'hidden',
+const stepS = StyleSheet.create({
+    container: { paddingHorizontal: 20, paddingVertical: 14, gap: 6 },
+    stepsRow: { flexDirection: 'row', alignItems: 'center' },
+    dot: {
+        width: 24, height: 24, borderRadius: 12,
+        justifyContent: 'center', alignItems: 'center',
     },
-    thumbGradient: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 13,
-    },
-    thumbInner: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: '#fff',
-        opacity: 0.9,
-    },
+    dotText: { fontSize: 11, fontWeight: '700', color: '#999' },
+    connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
+    label: { fontSize: 15, fontWeight: '600', marginTop: 2 },
 });
+
+const QUICK_AMOUNTS = [
+    { label: '5 triệu', value: 5_000_000 },
+    { label: '10 triệu', value: 10_000_000 },
+    { label: '20 triệu', value: 20_000_000 },
+    { label: '30 triệu', value: 30_000_000 },
+    { label: '50 triệu', value: 50_000_000 },
+    { label: '100 triệu', value: 100_000_000 },
+];
+const PERIOD_QUICK = [3, 6, 12, 24];
+
+function fmt(n: number): string { return n.toLocaleString('vi-VN'); }
 
 type RouteParams = { product: LoanProduct; willing?: string };
 type LoanCreateNav = NativeStackNavigationProp<RootStackParamList, 'LoanCreate'>;
 
-// ── Step indicator ───────────────────────────────────────────────────────────
-function StepIndicator({ current, theme }: { current: number; theme: any }) {
-    const c = theme.colors;
-    const labels = ['Nhập thông tin vay', 'Xác nhận & gửi đơn'];
-    return (
-        <View style={stepStyles.wrapper}>
-            <View style={stepStyles.row}>
-                {[0, 1].map((i) => {
-                    const done = i < current;
-                    const active = i === current;
-                    return (
-                        <React.Fragment key={i}>
-                            <View style={stepStyles.stepCol}>
-                                <View style={[
-                                    stepStyles.dot,
-                                    done && { backgroundColor: PRIMARY },
-                                    active && { borderWidth: 0 },
-                                    !done && !active && { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: c.border + '50' },
-                                ]}>
-                                    {active ? (
-                                        <LinearGradient
-                                            colors={[PRIMARY + 'EE', PRIMARY]}
-                                            style={StyleSheet.absoluteFill}
-                                        />
-                                    ) : null}
-                                    {done ? (
-                                        <MaterialCommunityIcons name="check" size={12} color="#000" />
-                                    ) : (
-                                        <Text style={[stepStyles.dotNum, { color: active ? '#000' : c.border + '80' }]}>{i + 1}</Text>
-                                    )}
-                                </View>
-                                <Text style={[stepStyles.stepLabel, {
-                                    color: active ? c.textPrimary : done ? PRIMARY : c.textDim,
-                                    fontWeight: active ? '600' : '400',
-                                }]}>
-                                    {labels[i]}
-                                </Text>
-                            </View>
-                            {i < 1 && (
-                                <View style={stepStyles.lineWrap}>
-                                    {done ? (
-                                        <LinearGradient
-                                            colors={[PRIMARY, PRIMARY + 'AA']}
-                                            start={{ x: 0, y: 0 }}
-                                            end={{ x: 1, y: 0 }}
-                                            style={stepStyles.lineGrad}
-                                        />
-                                    ) : (
-                                        <View style={[stepStyles.lineBlank, { backgroundColor: c.border + '30' }]} />
-                                    )}
-                                </View>
-                            )}
-                        </React.Fragment>
-                    );
-                })}
-            </View>
-        </View>
-    );
-}
+// ═══════════════════════════════════════════════════════════
+//  MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════
 
-const stepStyles = StyleSheet.create({
-    wrapper: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
-    row: { flexDirection: 'row', alignItems: 'flex-start' },
-    stepCol: { alignItems: 'center', gap: 6, width: 72 },
-    dot: {
-        width: 28, height: 28, borderRadius: 14,
-        justifyContent: 'center', alignItems: 'center',
-        overflow: 'hidden',
-        elevation: 2,
-        shadowColor: PRIMARY,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    dotNum: { fontSize: 12, fontWeight: '700' },
-    stepLabel: { fontSize: 10, textAlign: 'center', lineHeight: 13 },
-    lineWrap: { flex: 1, marginTop: 13, paddingHorizontal: 4 },
-    lineGrad: { height: 2, borderRadius: 1 },
-    lineBlank: { height: 2, borderRadius: 1 },
-});
-
-// ── Period Stepper ───────────────────────────────────────────────────────────
-const PERIOD_QUICK_OPTIONS = [3, 6, 12, 24];
-
-function PeriodStepper({
-    value,
-    onChange,
-    min,
-    max,
-    primaryColor,
-    textColor,
-    borderColor,
-    dimColor,
-}: {
-    value: number;
-    onChange: (v: number) => void;
-    min: number;
-    max: number;
-    primaryColor: string;
-    textColor: string;
-    borderColor: string;
-    dimColor: string;
-}) {
-    const pressAnim = useRef(new Animated.Value(1)).current;
-    const [inputText, setInputText] = useState(String(value));
-
-    useEffect(() => {
-        setInputText(String(value));
-    }, [value]);
-
-    const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v)));
-
-    const animateBounce = () => {
-        Animated.sequence([
-            Animated.timing(pressAnim, { toValue: 0.96, duration: 50, useNativeDriver: true }),
-            Animated.timing(pressAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
-        ]).start();
-    };
-
-    const decrement = () => {
-        if (value <= min) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onChange(clamp(value - 1));
-        animateBounce();
-    };
-    const increment = () => {
-        if (value >= max) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onChange(clamp(value + 1));
-        animateBounce();
-    };
-
-    const handleTextChange = (t: string) => {
-        setInputText(t);
-        const num = parseInt(t, 10);
-        if (!isNaN(num)) onChange(clamp(num));
-    };
-
-    const quickChips = PERIOD_QUICK_OPTIONS.filter((p) => p >= min && p <= max);
-
-    return (
-        <Animated.View style={{ transform: [{ scale: pressAnim }] }}>
-            {/* Quick chips */}
-            {quickChips.length > 0 && (
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={periodStyles.chipRow}
-                    style={{ marginBottom: 18 }}
-                >
-                    {quickChips.map((p) => {
-                        const active = value === p;
-                        return (
-                            <TouchableOpacity
-                                key={p}
-                                onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                                activeOpacity={0.75}
-                                style={periodStyles.chipOuter}
-                            >
-                                {active ? (
-                                    <LinearGradient
-                                        colors={[PERIOD_COLOR + 'DD', PERIOD_COLOR]}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 1 }}
-                                        style={periodStyles.chipGradient}
-                                    >
-                                        <Text style={[periodStyles.chipText, { color: '#fff' }]}>{p} tháng</Text>
-                                    </LinearGradient>
-                                ) : (
-                                    <View style={[periodStyles.chipInactive, { borderColor: borderColor + '40' }]}>
-                                        <Text style={[periodStyles.chipText, { color: dimColor }]}>{p} tháng</Text>
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                        );
-                    })}
-                </ScrollView>
-            )}
-
-            {/* Stepper row */}
-            <View style={[periodStyles.stepperRow, { backgroundColor: PERIOD_SOFT, borderColor: PERIOD_COLOR + '30' }]}>
-                <TouchableOpacity
-                    style={[periodStyles.stepBtn, value <= min && periodStyles.stepBtnDisabled]}
-                    onPress={decrement}
-                    disabled={value <= min}
-                    activeOpacity={0.6}
-                >
-                    <MaterialCommunityIcons
-                        name="minus"
-                        size={22}
-                        color={value <= min ? dimColor + '35' : PERIOD_COLOR}
-                    />
-                </TouchableOpacity>
-
-                <View style={periodStyles.stepCenter}>
-                    <TextInput
-                        style={[periodStyles.stepInput, { color: PERIOD_COLOR }]}
-                        value={inputText}
-                        onChangeText={handleTextChange}
-                        keyboardType="number-pad"
-                        selectTextOnFocus
-                    />
-                    <Text style={[periodStyles.stepUnit, { color: dimColor }]}>tháng</Text>
-                </View>
-
-                <TouchableOpacity
-                    style={[periodStyles.stepBtn, value >= max && periodStyles.stepBtnDisabled]}
-                    onPress={increment}
-                    disabled={value >= max}
-                    activeOpacity={0.6}
-                >
-                    <MaterialCommunityIcons
-                        name="plus"
-                        size={22}
-                        color={value >= max ? dimColor + '35' : PERIOD_COLOR}
-                    />
-                </TouchableOpacity>
-            </View>
-
-            <Text style={[periodStyles.rangeHint, { color: dimColor }]}>
-                Khoảng: {min} – {max} tháng
-            </Text>
-        </Animated.View>
-    );
-}
-
-const periodStyles = StyleSheet.create({
-    chipRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 2, paddingVertical: 2 },
-    chipOuter: { borderRadius: 24, overflow: 'hidden' },
-    chipGradient: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 24 },
-    chipInactive: { paddingHorizontal: 22, paddingVertical: 9, borderRadius: 24, borderWidth: 1.2 },
-    chipText: { fontSize: 13, fontWeight: '600' },
-    stepperRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1.2,
-        borderRadius: 18,
-        overflow: 'hidden',
-    },
-    stepBtn: {
-        width: 58, height: 58,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    stepBtnDisabled: { opacity: 0.4 },
-    stepCenter: { flex: 1, alignItems: 'center', paddingVertical: 8 },
-    stepInput: { fontSize: 28, fontWeight: '800', textAlign: 'center', minWidth: 60 },
-    stepUnit: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-    rangeHint: { fontSize: 11, marginTop: 10, textAlign: 'center', opacity: 0.6 },
-});
-
-// ── Card Connector ───────────────────────────────────────────────────────────
-function CardConnector({ color, surfaceColor }: { color: string; surfaceColor: string }) {
-    return (
-        <View style={connStyles.wrapper}>
-            <View style={[connStyles.lineTop, { backgroundColor: color + '35' }]} />
-            <View style={[connStyles.badge, { backgroundColor: surfaceColor, borderColor: color + '45' }]}>
-                <MaterialCommunityIcons name="chevron-down" size={13} color={color + 'BB'} />
-            </View>
-            <View style={[connStyles.lineBot, { backgroundColor: color + '35' }]} />
-        </View>
-    );
-}
-
-const connStyles = StyleSheet.create({
-    wrapper: { alignItems: 'center', marginVertical: 2 },
-    lineTop: { width: 1.5, height: 14, borderRadius: 1 },
-    badge: {
-        width: 28, height: 28, borderRadius: 14,
-        borderWidth: 1.5,
-        justifyContent: 'center', alignItems: 'center',
-        elevation: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 2,
-    },
-    lineBot: { width: 1.5, height: 14, borderRadius: 1 },
-});
-
-// ── Main Screen ──────────────────────────────────────────────────────────────
 export default function LoanCreateScreen() {
     const { theme } = useTheme();
+    const c = theme.colors;
     const route = useRoute();
     const navigation = useNavigation<LoanCreateNav>();
-    const insets = useSafeAreaInsets();
     const { product, willing: initialWilling } = (route.params || {}) as RouteParams;
-    const [step, setStep] = useState(0); // 0 = input, 1 = confirm
 
     const [config, setConfig] = useState<LoanProductConfig | null>(null);
     const [capital, setCapital] = useState('');
     const [periodMonth, setPeriodMonth] = useState(12);
-    const [customPeriod, setCustomPeriod] = useState('');
-    // willing được fix cứng theo tên sản phẩm
     const [willing, setWilling] = useState(initialWilling ?? '');
     const [schedule, setSchedule] = useState<LoanScheduleResult | null>(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
@@ -491,22 +110,22 @@ export default function LoanCreateScreen() {
 
     const minRep = config?.minNumberOfRepayments ?? 1;
     const maxRep = config?.maxNumberOfRepayments ?? 360;
-    const periodOptions = DEFAULT_PERIOD_OPTIONS.filter((p) => p >= minRep && p <= maxRep);
-    if (periodOptions.length === 0) periodOptions.push(minRep);
-    const effectivePeriod = customPeriod ? parseInt(customPeriod, 10) || periodMonth : periodMonth;
     const capitalNum = parseInt(String(capital).replace(/\D/g, ''), 10) || 0;
 
+    const periodChips = PERIOD_QUICK.filter(p => p >= minRep && p <= maxRep);
+    if (periodChips.length === 0) periodChips.push(minRep);
+
+    // ── Data fetching ──
     const fetchConfig = useCallback(async () => {
         if (!product?.id) return;
         try {
-            const c = await loanService.getProductConfig(product.id);
-            setConfig(c);
-            // Fix cứng mục đích theo tên sản phẩm
-            setWilling(initialWilling || product.name || c?.name || c?.shortName || '');
-            const minR = c?.minNumberOfRepayments ?? 1;
-            const maxR = c?.maxNumberOfRepayments ?? 360;
-            setPeriodMonth((prev) => (prev >= minR && prev <= maxR ? prev : Math.max(minR, Math.min(maxR, 12))));
-        } catch (e) {
+            const cfg = await loanService.getProductConfig(product.id);
+            setConfig(cfg);
+            setWilling(initialWilling || product.name || cfg?.name || cfg?.shortName || '');
+            const minR = cfg?.minNumberOfRepayments ?? 1;
+            const maxR = cfg?.maxNumberOfRepayments ?? 360;
+            setPeriodMonth(prev => (prev >= minR && prev <= maxR ? prev : Math.max(minR, Math.min(maxR, 12))));
+        } catch {
             Alert.alert('Lỗi', 'Không thể tải cấu hình sản phẩm');
         } finally {
             setLoadingConfig(false);
@@ -514,89 +133,36 @@ export default function LoanCreateScreen() {
     }, [product?.id, product?.name, initialWilling]);
 
     const fetchPreview = useCallback(async () => {
-        if (!product?.id || capitalNum < 100000 || effectivePeriod < 1) return;
+        if (!product?.id || capitalNum < 100000 || periodMonth < 1) return;
         setLoadingPreview(true);
         try {
-            const result = await loanService.ratePreview({
-                capital: capitalNum,
-                periodMonth: effectivePeriod,
-                productId: product.id,
-            });
+            const result = await loanService.ratePreview({ capital: capitalNum, periodMonth, productId: product.id });
             setSchedule(result);
-        } catch (e) {
-            setSchedule(null);
-        } finally {
-            setLoadingPreview(false);
-        }
-    }, [product?.id, capitalNum, effectivePeriod]);
+        } catch { setSchedule(null); }
+        finally { setLoadingPreview(false); }
+    }, [product?.id, capitalNum, periodMonth]);
 
     useEffect(() => { fetchConfig(); }, [fetchConfig]);
+    useEffect(() => { const t = setTimeout(fetchPreview, 400); return () => clearTimeout(t); }, [fetchPreview]);
 
     useEffect(() => {
-        const t = setTimeout(fetchPreview, 400);
-        return () => clearTimeout(t);
-    }, [fetchPreview]);
-
-    useEffect(() => {
-        let isMounted = true;
+        let mounted = true;
         (async () => {
-            if (!product?.id) {
-                if (isMounted) {
-                    setDelinquencyPolicies([]);
-                    setAcceptedDelinquencyPolicy(false);
-                }
-                return;
-            }
-
+            if (!product?.id) { setDelinquencyPolicies([]); return; }
             const policies = await loanService.getDelinquencyPolicies(product.id);
-            if (!isMounted) return;
-            setDelinquencyPolicies((policies || []).sort((a, b) => a.debt_group - b.debt_group));
-            setAcceptedDelinquencyPolicy(false);
+            if (mounted) {
+                setDelinquencyPolicies((policies || []).sort((a, b) => a.debt_group - b.debt_group));
+                setAcceptedDelinquencyPolicy(false);
+            }
         })();
-
-        return () => {
-            isMounted = false;
-        };
+        return () => { mounted = false; };
     }, [product?.id]);
 
-    const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
-        const actions: string[] = [];
-        if (policy.send_notification) actions.push('Thông báo');
-        if (policy.send_email) actions.push('Gửi email');
-        if (policy.send_sms) actions.push('Gửi SMS');
-        if (policy.apply_penalty) actions.push('Áp dụng lãi phạt');
-        if (policy.block_new_loan) actions.push('Chặn vay mới');
-        const stageLabel: Record<string, string> = {
-            NONE: 'Theo dõi',
-            REMINDER: 'Nhắc nợ',
-            WARNING: 'Cảnh báo',
-            COLLECTION: 'Chuyển thu hồi',
-            LEGAL: 'Xử lý pháp lý',
-            WRITE_OFF: 'Nợ mất vốn',
-        };
-        actions.push(stageLabel[policy.collection_stage] || policy.collection_stage);
-        if (policy.legal_escalation) actions.push('Escalation pháp lý');
-        return actions.join(', ');
-    };
-
-    const formatPolicyGroup = (policy: DelinquencyPolicyItem) => {
-        if (policy.debt_group_name?.trim()) {
-            return `#${policy.debt_group} - ${policy.debt_group_name}`;
-        }
-        return `#${policy.debt_group}`;
-    };
-
-    const formatPolicyDays = (policy: DelinquencyPolicyItem) => {
-        const min = policy.min_days ?? 0;
-        const max = policy.max_days;
-        if (max == null || max >= 99999) {
-            return `>= ${min} ngày`;
-        }
-        return `${min} - ${max} ngày`;
-    };
+    // ── Handlers ──
+    const canProceed = !!schedule && capitalNum >= 100000 && periodMonth >= 1;
 
     const handleNext = () => {
-        if (!product || capitalNum < 100000 || effectivePeriod < 1) {
+        if (!product || capitalNum < 100000 || periodMonth < 1) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền và kỳ hạn hợp lệ');
             return;
         }
@@ -604,613 +170,361 @@ export default function LoanCreateScreen() {
             Alert.alert('Lỗi', 'Đang tính toán lịch trả nợ, vui lòng đợi');
             return;
         }
-        if (delinquencyPolicies.length > 0 && !acceptedDelinquencyPolicy) {
-            Alert.alert('Thiếu xác nhận', 'Vui lòng đọc và xác nhận chính sách xử lý quá hạn trước khi tiếp tục.');
-            return;
-        }
         navigation.navigate('LoanConfirm', {
-            product,
-            config: config!,
-            capital: capitalNum,
-            periodMonth: effectivePeriod,
-            willing: willing.trim(),
-            schedule,
+            product, config: config!, capital: capitalNum,
+            periodMonth, willing: willing.trim(), schedule,
         });
     };
 
+    const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
+        const actions: string[] = [];
+        if (policy.send_notification) actions.push('Thông báo');
+        if (policy.send_email) actions.push('Email');
+        if (policy.send_sms) actions.push('SMS');
+        if (policy.apply_penalty) actions.push('Lãi phạt');
+        if (policy.block_new_loan) actions.push('Chặn vay mới');
+        const stageLabel: Record<string, string> = {
+            NONE: 'Theo dõi', REMINDER: 'Nhắc nợ', WARNING: 'Cảnh báo',
+            COLLECTION: 'Thu hồi', LEGAL: 'Pháp lý', WRITE_OFF: 'Mất vốn',
+        };
+        actions.push(stageLabel[policy.collection_stage] || policy.collection_stage);
+        if (policy.legal_escalation) actions.push('Escalation');
+        return actions.join(', ');
+    };
+
+    // ── Fallback ──
     if (!product) {
         return (
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <View style={[s.container, { backgroundColor: c.background }]}>
                 <BinanceHeader showBack title="Tạo khoản vay" />
-                <View style={styles.centered}>
-                    <Text style={{ color: theme.colors.textSecondary }}>Không có thông tin sản phẩm</Text>
+                <View style={s.centered}>
+                    <Text style={{ color: c.textSecondary }}>Không có thông tin sản phẩm</Text>
                 </View>
             </View>
         );
     }
 
-    const canProceed =
-        !!schedule &&
-        capitalNum >= 100000 &&
-        effectivePeriod >= 1 &&
-        (delinquencyPolicies.length === 0 || acceptedDelinquencyPolicy);
-    const formatCurrency = (n: number) => n.toLocaleString('vi-VN');
-
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[s.container, { backgroundColor: c.background }]}>
             <BinanceHeader showBack title={`Vay ${product.shortName || product.name}`} />
             <StepIndicator current={0} theme={theme} />
 
             <KeyboardAvoidingView
-                style={styles.flex}
+                style={s.flex}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={s.scroll}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
-                    {/* ── Card 1: Số tiền vay ── */}
-                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
-                        <LinearGradient
-                            colors={[PRIMARY + 'AA', PRIMARY + '10']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.cardTopBar}
-                        />
-                        {/* Card title bar */}
-                        <View style={styles.cardTitleRow}>
+                    {/* ══ Product Info Card ══ */}
+                    <CommonCard style={[s.card, { backgroundColor: c.surface }]}>
+                        <View style={s.infoHeader}>
                             <LinearGradient
-                                colors={[PRIMARY + 'CC', PRIMARY]}
-                                style={styles.cardIconWrap}
+                                colors={[c.primary, c.success]}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                style={s.infoIcon}
                             >
-                                <MaterialCommunityIcons name="cash-fast" size={17} color="#111" />
+                                <MaterialCommunityIcons name="file-document-outline" size={18} color={c.onPrimary} />
                             </LinearGradient>
                             <View style={{ flex: 1 }}>
-                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Số tiền vay</Text>
-                                {product?.minPrincipal != null && (
-                                    <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>
-                                        {formatCurrency(product.minPrincipal)} – {formatCurrency(product.maxPrincipal!)} đ
-                                    </Text>
-                                )}
+                                <Text style={[s.infoTitle, { color: c.text }]} numberOfLines={1}>{product.name}</Text>
+                                <Text style={[s.infoSub, { color: c.textMuted }]}>
+                                    {product.shortName} • Lãi suất {config ? `${+config.annualRate.toFixed(1)}%/năm` : '...'}
+                                </Text>
                             </View>
-                            {capitalNum >= 100000 && (
-                                <View style={[styles.badgeValid, { backgroundColor: PRIMARY + '18' }]}>
-                                    <MaterialCommunityIcons name="check-circle" size={13} color={PRIMARY} />
-                                </View>
-                            )}
-                        </View>
-
-                        {/* Big amount display */}
-                        <View style={[styles.amountBox, { borderColor: capitalNum >= 100000 ? PRIMARY + '50' : theme.colors.border + '30' }]}>
-                            <TextInput
-                                style={[styles.amountInput, { color: theme.colors.textPrimary }]}
-                                placeholder="0"
-                                placeholderTextColor={theme.colors.textDim + '30'}
-                                value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
-                                onChangeText={(t) => setCapital(t.replace(/\D/g, ''))}
-                                keyboardType="number-pad"
-                            />
-                            <View style={[styles.currencyTag, { backgroundColor: PRIMARY + '12' }]}>
-                                <Text style={[styles.currencyText, { color: PRIMARY }]}>VND</Text>
+                            <View style={[s.verifiedBadge, { backgroundColor: c.successGlass }]}>
+                                <Ionicons name="shield-checkmark" size={11} color={c.success} />
+                                <Text style={[s.verifiedText, { color: c.success }]}>Hoạt động</Text>
                             </View>
                         </View>
-
-                        {/* Slider */}
-                        <AmountSlider
-                            value={capitalNum || SLIDER_MIN}
-                            onChange={(v) => setCapital(String(v))}
-                            min={SLIDER_MIN}
-                            max={SLIDER_MAX}
-                            primaryColor={PRIMARY}
-                            trackColor={theme.colors.border + '35'}
-                        />
-                        <View style={styles.sliderLabels}>
-                            <Text style={[styles.sliderLabel, { color: theme.colors.textDim }]}>5 triệu</Text>
-                            <Text style={[styles.sliderLabel, { color: theme.colors.textDim }]}>100 triệu</Text>
-                        </View>
-
-                        {/* Quick amount chips */}
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.chipScroll}
-                            style={{ marginTop: 16 }}
-                        >
-                            {QUICK_AMOUNTS.map((qa) => {
-                                const active = capitalNum === qa.value;
-                                return (
-                                    <TouchableOpacity
-                                        key={qa.value}
-                                        onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                                        activeOpacity={0.75}
-                                        style={styles.chipOuter}
-                                    >
-                                        {active ? (
-                                            <LinearGradient
-                                                colors={[PRIMARY + 'DD', PRIMARY]}
-                                                start={{ x: 0, y: 0 }}
-                                                end={{ x: 1, y: 1 }}
-                                                style={styles.chipActive}
-                                            >
-                                                <Text style={styles.chipTextActive}>{qa.label}</Text>
-                                            </LinearGradient>
-                                        ) : (
-                                            <View style={[styles.chipInactive, { borderColor: theme.colors.border + '40' }]}>
-                                                <Text style={[styles.chipTextInactive, { color: theme.colors.textSecondary }]}>{qa.label}</Text>
-                                            </View>
-                                        )}
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
-                    </View>
-
-                    <CardConnector color={PERIOD_COLOR} surfaceColor={theme.colors.surface} />
-
-                    {/* ── Card 2: Kỳ hạn ── */}
-                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
-                        <LinearGradient
-                            colors={[PERIOD_COLOR + 'AA', PERIOD_COLOR + '10']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.cardTopBar}
-                        />
-                        <View style={styles.cardTitleRow}>
-                            <LinearGradient
-                                colors={[PERIOD_COLOR + 'BB', PERIOD_COLOR]}
-                                style={styles.cardIconWrap}
-                            >
-                                <MaterialCommunityIcons name="calendar-clock" size={17} color="#fff" />
-                            </LinearGradient>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Kỳ hạn vay</Text>
-                                <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>
+                        <View style={[s.metricsGrid, { backgroundColor: c.background }]}>
+                            <View style={s.metricItem}>
+                                <Text style={[s.metricLabel, { color: c.textMuted }]}>VỐN VAY</Text>
+                                <Text style={[s.metricValue, { color: c.primary }]}>
+                                    {(product.minPrincipal || 0) >= 1_000_000
+                                        ? `${((product.minPrincipal || 0) / 1_000_000).toFixed(0)} – ${((product.maxPrincipal || 0) / 1_000_000).toFixed(0)} triệu`
+                                        : `${fmt(product.minPrincipal || 0)} – ${fmt(product.maxPrincipal || 0)} đ`}
+                                </Text>
+                            </View>
+                            <View style={[s.metricDivider, { backgroundColor: c.border }]} />
+                            <View style={[s.metricItem, { alignItems: 'flex-end' }]}>
+                                <Text style={[s.metricLabel, { color: c.textMuted }]}>KỲ HẠN</Text>
+                                <Text style={[s.metricValue, { color: c.textPrimary }]}>
                                     {minRep} – {maxRep} tháng
                                 </Text>
                             </View>
                         </View>
+                    </CommonCard>
 
-                        {loadingConfig ? (
-                            <View style={styles.loadingRow}>
-                                <ActivityIndicator color={PERIOD_COLOR} size="small" />
-                                <Text style={[styles.loadingText, { color: theme.colors.textDim }]}>Đang tải...</Text>
-                            </View>
-                        ) : (
-                            <PeriodStepper
-                                value={effectivePeriod}
-                                onChange={(v) => { setPeriodMonth(v); setCustomPeriod(''); }}
-                                min={minRep}
-                                max={maxRep}
-                                primaryColor={PERIOD_COLOR}
-                                textColor={theme.colors.textPrimary}
-                                borderColor={theme.colors.border}
-                                dimColor={theme.colors.textDim}
-                            />
-                        )}
-                    </View>
-
-                    <CardConnector color={RATE_COLOR} surfaceColor={theme.colors.surface} />
-
-                    {/* ── Card 3: Lãi suất ── */}
-                    <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
-                        <LinearGradient
-                            colors={[RATE_COLOR + 'AA', RATE_COLOR + '10']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.cardTopBar}
+                    {/* ══ Số tiền vay ══ */}
+                    <CommonCard style={[s.card, { backgroundColor: c.surface }]}>
+                        <Text style={[s.sectionTitle, { color: c.textPrimary }]}>Nhập số tiền vay</Text>
+                        {/* Amount input */}
+                        <CommonInput
+                            variant="standard"
+                            value={capital ? capital.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
+                            onChangeText={t => setCapital(t.replace(/\D/g, ''))}
+                            placeholder="Nhập số tiền"
+                            suffix="₫"
+                            keyboardType="number-pad"
+                            icon="cash-fast"
+                            selectTextOnFocus
                         />
-                        <View style={styles.cardTitleRow}>
-                            <LinearGradient
-                                colors={[RATE_COLOR + 'BB', RATE_COLOR]}
-                                style={styles.cardIconWrap}
-                            >
-                                <MaterialCommunityIcons name="percent-outline" size={17} color="#fff" />
-                            </LinearGradient>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Lãi suất</Text>
-                            </View>
-                        </View>
 
+                        {/* Quick amount chips */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+                            {QUICK_AMOUNTS.filter(qa => {
+                                const minP = product.minPrincipal || 0;
+                                const maxP = product.maxPrincipal || 1_000_000_000;
+                                return qa.value >= minP && qa.value <= maxP;
+                            }).map(qa => {
+                                const active = capitalNum === qa.value;
+                                return (
+                                    <TouchableOpacity
+                                        key={qa.value}
+                                        style={[
+                                            s.chip,
+                                            { borderColor: active ? c.primary : c.textMuted + '30' },
+                                            active && { backgroundColor: c.primaryGlass },
+                                        ]}
+                                        onPress={() => { setCapital(String(qa.value)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                    >
+                                        <Text style={[s.chipText, { color: active ? c.primary : c.textSecondary }]}>{qa.label}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </CommonCard>
+
+                    {/* ══ Kỳ hạn vay ══ */}
+                    <CommonCard style={[s.card, { backgroundColor: c.surface }]}>
+                        <Text style={[s.sectionTitle, { color: c.textPrimary }]}>Kỳ hạn vay</Text>
                         {loadingConfig ? (
-                            <View style={styles.loadingRow}>
-                                <ActivityIndicator color={RATE_COLOR} size="small" />
-                            </View>
-                        ) : config ? (
-                            <View style={[styles.rateBody, { backgroundColor: RATE_SOFT, borderColor: RATE_COLOR + '25' }]}>
-                                <View style={styles.rateMain}>
-                                    <Text style={[styles.rateMainValue, { color: RATE_COLOR }]}>
-                                        {+config.monthlyRate.toFixed(2)}%
-                                    </Text>
-                                    <Text style={[styles.rateMainUnit, { color: theme.colors.textDim }]}>/ tháng</Text>
+                            <ActivityIndicator size="small" color={c.primary} />
+                        ) : (
+                            <>
+                                {/* Counter — compact */}
+                                <View style={s.counterRow}>
+                                    <TouchableOpacity
+                                        style={[s.counterBtn, { backgroundColor: c.surfaceBright }]}
+                                        onPress={() => { if (periodMonth > minRep) { setPeriodMonth(periodMonth - 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
+                                        disabled={periodMonth <= minRep}
+                                        activeOpacity={0.6}
+                                    >
+                                        <Ionicons name="remove" size={20} color={periodMonth <= minRep ? c.textDim : c.text} />
+                                    </TouchableOpacity>
+                                    <CommonInput
+                                        variant="compact"
+                                        value={String(periodMonth)}
+                                        onChangeText={t => {
+                                            const v = parseInt(t.replace(/\D/g, ''), 10);
+                                            if (!isNaN(v) && v >= minRep && v <= maxRep) setPeriodMonth(v);
+                                            else if (t === '') setPeriodMonth(minRep);
+                                        }}
+                                        suffix="tháng"
+                                        keyboardType="number-pad"
+                                        containerStyle={{ flex: 1 }}
+                                        selectTextOnFocus
+                                    />
+                                    <TouchableOpacity
+                                        style={[s.counterBtn, { backgroundColor: c.surfaceBright }]}
+                                        onPress={() => { if (periodMonth < maxRep) { setPeriodMonth(periodMonth + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }}
+                                        disabled={periodMonth >= maxRep}
+                                        activeOpacity={0.6}
+                                    >
+                                        <Ionicons name="add" size={20} color={periodMonth >= maxRep ? c.textDim : c.text} />
+                                    </TouchableOpacity>
                                 </View>
-                                <View style={[styles.rateDivider, { backgroundColor: RATE_COLOR + '25' }]} />
-                                <View style={styles.rateSub}>
-                                    <Text style={[styles.rateSubValue, { color: RATE_COLOR + 'BB' }]}>
-                                        ≈ {+config.annualRate.toFixed(2)}%
-                                    </Text>
-                                    <Text style={[styles.rateSubUnit, { color: theme.colors.textDim }]}>/ năm</Text>
-                                </View>
-                            </View>
-                        ) : null}
-                    </View>
 
-                    {/* ── Preview kết quả ── */}
-                    {(loadingPreview || (schedule && capitalNum >= 100000)) && (
-                        <CardConnector color={PRIMARY} surfaceColor={theme.colors.surface} />
+                                {/* Quick period chips */}
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+                                    {periodChips.map(p => {
+                                        const active = periodMonth === p;
+                                        return (
+                                            <TouchableOpacity
+                                                key={p}
+                                                style={[
+                                                    s.chip,
+                                                    { borderColor: active ? c.primary : c.textMuted + '30' },
+                                                    active && { backgroundColor: c.primaryGlass },
+                                                ]}
+                                                onPress={() => { setPeriodMonth(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                            >
+                                                <Text style={[s.chipText, { color: active ? c.primary : c.textSecondary }]}>{p} tháng</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+
+                                <Text style={[s.rangeHint, { color: c.textMuted }]}>
+                                    Từ {minRep} đến {maxRep} tháng
+                                </Text>
+                            </>
+                        )}
+                    </CommonCard>
+
+                    {/* ══ Lãi suất ══ */}
+                    {config && (
+                        <CommonCard style={[s.card, { backgroundColor: c.surface }]}>
+                            <Text style={[s.sectionTitle, { color: c.textPrimary }]}>Lãi suất áp dụng</Text>
+                            <View style={[s.rateRow, { backgroundColor: c.background, borderRadius: 14, padding: 16 }]}>
+                                <View style={s.rateCol}>
+                                    <Text style={[s.rateLabel, { color: c.textMuted }]}>HÀNG THÁNG</Text>
+                                    <Text style={[s.rateValue, { color: c.primary }]}>{+config.monthlyRate.toFixed(2)}%</Text>
+                                </View>
+                                <View style={[s.rateDivider, { backgroundColor: c.border }]} />
+                                <View style={[s.rateCol, { alignItems: 'flex-end' }]}>
+                                    <Text style={[s.rateLabel, { color: c.textMuted }]}>HÀNG NĂM</Text>
+                                    <Text style={[s.rateValue, { color: c.textPrimary }]}>≈ {+config.annualRate.toFixed(2)}%</Text>
+                                </View>
+                            </View>
+                        </CommonCard>
                     )}
-                    {(loadingPreview || (schedule && capitalNum >= 100000)) && (
-                        <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
-                            {/* Gold top bar */}
-                            <LinearGradient
-                                colors={[PRIMARY + 'AA', PRIMARY + '10']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.cardTopBar}
-                            />
-                            <View style={styles.cardTitleRow}>
-                                <LinearGradient
-                                    colors={[PRIMARY + 'BB', PRIMARY]}
-                                    style={styles.cardIconWrap}
-                                >
-                                    <MaterialCommunityIcons name="calculator-variant-outline" size={17} color="#111" />
-                                </LinearGradient>
-                                <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Dự tính khoản trả</Text>
-                            </View>
 
+                    {/* ══ Dự tính khoản trả ══ */}
+                    {(loadingPreview || (schedule && capitalNum >= 100000)) && (
+                        <CommonCard style={[s.card, { backgroundColor: c.surface }]}>
+                            <Text style={[s.sectionTitle, { color: c.textPrimary }]}>Dự tính khoản trả</Text>
                             {loadingPreview ? (
-                                <View style={styles.loadingRow}>
-                                    <ActivityIndicator color={PRIMARY} size="small" />
-                                    <Text style={[styles.loadingText, { color: theme.colors.textDim }]}>Đang tính toán...</Text>
+                                <View style={s.loadingBox}>
+                                    <ActivityIndicator size="small" color={c.primary} />
+                                    <Text style={[s.loadingText, { color: c.textSecondary }]}>Đang tính toán...</Text>
                                 </View>
                             ) : schedule ? (
                                 <>
-                                    <View style={styles.previewRow}>
-                                        <View style={styles.previewCol}>
-                                            <Text style={[styles.previewLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
-                                            <Text style={[styles.previewBigValue, { color: PRIMARY }]} numberOfLines={1} adjustsFontSizeToFit>
-                                                {formatCurrency(schedule.monthlyPay)}
+                                    <View style={[s.previewColumns, { backgroundColor: c.background, borderRadius: 14, padding: 16 }]}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[s.previewLabel, { color: c.textMuted }]}>TRẢ HÀNG THÁNG</Text>
+                                            <Text style={[s.previewBig, { color: c.primary }]} numberOfLines={1} adjustsFontSizeToFit>
+                                                {fmt(schedule.monthlyPay)} ₫
                                             </Text>
-                                            <Text style={[styles.previewUnit, { color: theme.colors.textDim }]}>đồng</Text>
                                         </View>
-                                        <View style={[styles.previewVDivider, { backgroundColor: theme.colors.border + '30' }]} />
-                                        <View style={styles.previewCol}>
-                                            <Text style={[styles.previewLabel, { color: theme.colors.textDim }]}>Tổng phải trả</Text>
-                                            <Text style={[styles.previewMidValue, { color: theme.colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
-                                                {formatCurrency(schedule.entirelyPay)}
+                                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                                            <Text style={[s.previewLabel, { color: c.textMuted }]}>TỔNG PHẢI TRẢ</Text>
+                                            <Text style={[s.previewMid, { color: c.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
+                                                {fmt(schedule.entirelyPay)} ₫
                                             </Text>
-                                            <Text style={[styles.previewUnit, { color: theme.colors.textDim }]}>đồng</Text>
                                         </View>
                                     </View>
-                                    <View style={[styles.previewInterestRow, { backgroundColor: theme.colors.background }]}>
-                                        <MaterialCommunityIcons name="trending-up" size={14} color={theme.colors.textDim} />
-                                        <Text style={[styles.previewInterestText, { color: theme.colors.textDim }]}>
-                                            Tổng lãi: <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>{formatCurrency(schedule.entirelyPay - capitalNum)} đ</Text>
+                                    <View style={[s.previewInterest, { backgroundColor: c.background }]}>
+                                        <MaterialCommunityIcons name="trending-up" size={14} color={c.primary} />
+                                        <Text style={[s.previewInterestText, { color: c.textSecondary }]}>
+                                            Tổng lãi: <Text style={{ color: c.primary, fontWeight: '700' }}>{fmt(schedule.entirelyPay - capitalNum)} ₫</Text>
                                         </Text>
                                     </View>
                                 </>
                             ) : null}
-                        </View>
+                        </CommonCard>
                     )}
 
-                    {delinquencyPolicies.length > 0 && (
-                        <>
-                            <CardConnector color={PRIMARY} surfaceColor={theme.colors.surface} />
-                            <View style={[styles.card, { backgroundColor: theme.colors.surface, overflow: 'hidden' }]}>
-                                <LinearGradient
-                                    colors={[PRIMARY + 'AA', PRIMARY + '10']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.cardTopBar}
-                                />
-                                <View style={styles.cardTitleRow}>
-                                    <LinearGradient
-                                        colors={[PRIMARY + 'BB', PRIMARY]}
-                                        style={styles.cardIconWrap}
-                                    >
-                                        <MaterialCommunityIcons name="file-document-alert-outline" size={17} color="#111" />
-                                    </LinearGradient>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>Chính sách xử lý quá hạn</Text>
-                                        <Text style={[styles.cardSubtitle, { color: theme.colors.textDim }]}>Đọc kỹ trước khi gửi đơn vay</Text>
-                                    </View>
-                                </View>
-
-                                <View style={[styles.policyTableHeader, { borderBottomColor: theme.colors.border }]}>
-                                    <Text style={[styles.policyHeaderText, { flex: 1.2, color: theme.colors.textDim }]}>Nhóm nợ</Text>
-                                    <Text style={[styles.policyHeaderText, { flex: 1.2, color: theme.colors.textDim }]}>Số ngày</Text>
-                                    <Text style={[styles.policyHeaderText, { flex: 2, color: theme.colors.textDim }]}>Biện pháp</Text>
-                                </View>
-
-                                {delinquencyPolicies.map((policy) => (
-                                    <View key={policy._id} style={[styles.policyDataRow, { borderBottomColor: theme.colors.border + '40' }]}>
-                                        <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textPrimary }]}>
-                                            {formatPolicyGroup(policy)}
-                                        </Text>
-                                        <Text style={[styles.policyCellText, { flex: 1.2, color: theme.colors.textSecondary }]}>
-                                            {formatPolicyDays(policy)}
-                                        </Text>
-                                        <Text style={[styles.policyCellText, { flex: 2, color: theme.colors.textSecondary }]}>
-                                            {mapPolicyActions(policy)}
-                                        </Text>
-                                    </View>
-                                ))}
-
-                                <TouchableOpacity
-                                    style={styles.policyConfirmRow}
-                                    activeOpacity={0.8}
-                                    onPress={() => setAcceptedDelinquencyPolicy((prev) => !prev)}
-                                >
-                                    <View
-                                        style={[
-                                            styles.checkboxBase,
-                                            { borderColor: theme.colors.border },
-                                            acceptedDelinquencyPolicy && { backgroundColor: PRIMARY, borderColor: PRIMARY },
-                                        ]}
-                                    >
-                                        {acceptedDelinquencyPolicy ? (
-                                            <MaterialCommunityIcons name="check" size={13} color="#111" />
-                                        ) : null}
-                                    </View>
-                                    <Text style={[styles.policyConfirmText, { color: theme.colors.textSecondary }]}>
-                                        Tôi đã đọc và đồng ý với chính sách xử lý quá hạn.
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </>
-                    )}
-
-                    <View style={{ height: 110 }} />
-                </ScrollView>
-
-                {/* ── Sticky Bottom Bar ── */}
-                <View style={[styles.bottomBar, {
-                    backgroundColor: theme.colors.surface,
-                    borderTopColor: theme.colors.border + '20',
-                    paddingBottom: Math.max(insets.bottom, 14),
-                }]}>
-                    <View style={styles.bottomInfo}>
-                        {schedule && capitalNum >= 100000 ? (
-                            <>
-                                <Text style={[styles.bottomLabel, { color: theme.colors.textDim }]}>Trả hàng tháng</Text>
-                                <Text style={[styles.bottomValue, { color: PRIMARY }]} numberOfLines={1}>
-                                    {formatCurrency(schedule.monthlyPay)} đ
-                                </Text>
-                            </>
-                        ) : (
-                            <Text style={[styles.bottomHint, { color: theme.colors.textDim }]}>
-                                {capitalNum > 0 && capitalNum < 100000
-                                    ? 'Tối thiểu 100.000 đ'
-                                    : 'Nhập số tiền để tính toán'}
-                            </Text>
-                        )}
-                    </View>
-
+                    {/* ══ Submit Button (full-width, same as LoanConfirm) ══ */}
                     <TouchableOpacity
+                        style={[s.submitBtn, { backgroundColor: canProceed ? c.primary : c.border }]}
                         onPress={handleNext}
                         disabled={!canProceed}
                         activeOpacity={0.85}
-                        style={styles.nextBtnOuter}
                     >
-                        {canProceed ? (
-                            <LinearGradient
-                                colors={[PRIMARY + 'EE', PRIMARY]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 0 }}
-                                style={styles.nextBtnGradient}
-                            >
-                                <Text style={styles.nextBtnText}>Tiếp tục</Text>
-                                <MaterialCommunityIcons name="arrow-right" size={17} color="#111" />
-                            </LinearGradient>
-                        ) : (
-                            <View style={[styles.nextBtnDisabled, { backgroundColor: theme.colors.border + '35' }]}>
-                                <Text style={[styles.nextBtnTextDisabled, { color: theme.colors.textDim }]}>Tiếp tục</Text>
-                                <MaterialCommunityIcons name="arrow-right" size={17} color={theme.colors.textDim} />
-                            </View>
-                        )}
+                        <Ionicons name="arrow-forward" size={20} color={canProceed ? '#fff' : c.textDim} />
+                        <Text style={[s.submitBtnText, { color: canProceed ? '#fff' : c.textDim }]}>Tiếp tục</Text>
                     </TouchableOpacity>
-                </View>
+
+                    <View style={{ height: 40 }} />
+                </ScrollView>
             </KeyboardAvoidingView>
         </View>
     );
 }
 
-const styles = StyleSheet.create({
+// ═══════════════════════════════════════════════════════════
+//  STYLES — follows InvestmentFlowScreen pattern
+// ═══════════════════════════════════════════════════════════
+const s = StyleSheet.create({
     container: { flex: 1 },
     flex: { flex: 1 },
-    scrollContent: { padding: 14, paddingTop: 8, paddingBottom: 20, gap: 0 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    scroll: { padding: 16, paddingBottom: 24 },
 
-    // Card
-    card: {
-        borderRadius: 20,
-        padding: 20,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.07,
-        shadowRadius: 8,
-    },
-    cardTitleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        marginBottom: 20,
-    },
-    cardIconWrap: {
-        width: 36,
-        height: 36,
-        borderRadius: 11,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.1 },
-    cardSubtitle: { fontSize: 11, marginTop: 2, opacity: 0.65 },
-    badgeValid: {
-        width: 26, height: 26, borderRadius: 13,
-        justifyContent: 'center', alignItems: 'center',
-    },
+    // Step badge (unused)
+    stepBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+    stepBadgeText: { fontSize: 12, fontWeight: '700' },
 
-    // Amount input
-    amountBox: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1.5,
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        marginBottom: 14,
-        minHeight: 60,
-    },
-    amountInput: {
-        flex: 1,
-        fontSize: 28,
-        fontWeight: '800',
-        paddingVertical: 10,
-        letterSpacing: 0.5,
-    },
-    currencyTag: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: 8,
-        marginLeft: 8,
-    },
-    currencyText: { fontSize: 12, fontWeight: '700' },
+    // Card — đồng bộ với LoanConfirmScreen
+    card: { padding: 16, marginBottom: 14, borderRadius: 16 },
 
-    // Slider labels
-    sliderLabels: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 4,
-        paddingHorizontal: 2,
-    },
-    sliderLabel: { fontSize: 11, fontWeight: '500', opacity: 0.6 },
+    // Info header
+    infoHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+    infoIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    infoTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+    infoSub: { fontSize: 12, marginTop: 3 },
+    verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+    verifiedText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
 
-    // Quick chips
-    chipScroll: { flexDirection: 'row', gap: 9, paddingHorizontal: 2, paddingVertical: 2 },
-    chipOuter: { borderRadius: 22, overflow: 'hidden' },
-    chipActive: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 22 },
-    chipInactive: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 22, borderWidth: 1.2 },
-    chipTextActive: { fontSize: 12, fontWeight: '700', color: '#111' },
-    chipTextInactive: { fontSize: 12, fontWeight: '600' },
+    // Metrics grid — Stitch: tonal surface, clean 2-col
+    metricsGrid: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, overflow: 'hidden' },
+    metricItem: { flex: 1, paddingVertical: 14, paddingHorizontal: 16 },
+    metricRight: {},
+    metricDivider: { width: 1, height: 32 },
+    metricLabel: { fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', fontWeight: '700', marginBottom: 6 },
+    metricValue: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
-    // Rate card
-    rateBody: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 14,
-        borderWidth: 1,
-        padding: 16,
-        gap: 12,
-    },
-    rateMain: { flex: 1, alignItems: 'center' },
-    rateMainValue: { fontSize: 28, fontWeight: '800' },
-    rateMainUnit: { fontSize: 11, marginTop: 2, opacity: 0.65 },
-    rateDivider: { width: 1, height: 34 },
-    rateSub: { flex: 1, alignItems: 'center' },
-    rateSubValue: { fontSize: 18, fontWeight: '700' },
-    rateSubUnit: { fontSize: 11, marginTop: 2, opacity: 0.65 },
+    // Section — Stitch: editorial section headers
+    sectionTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, marginBottom: 12, marginTop: 22 },
 
-    // Card accent bar (top of each card)
-    cardTopBar: { height: 3, borderRadius: 2, marginBottom: 16, marginHorizontal: -20, marginTop: -20 },
-    previewRow: { flexDirection: 'row', alignItems: 'center' },
-    previewCol: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-    previewLabel: { fontSize: 11, marginBottom: 4, fontWeight: '500' },
-    previewBigValue: { fontSize: 20, fontWeight: '800' },
-    previewMidValue: { fontSize: 16, fontWeight: '700' },
-    previewUnit: { fontSize: 11, marginTop: 3, opacity: 0.55 },
-    previewVDivider: { width: 1, height: 44, marginHorizontal: 8 },
-    previewInterestRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginTop: 14,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 12,
-    },
-    previewInterestText: { fontSize: 12 },
+    // Amount input (unused, CommonInput replaces this)
+    amountBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 16, paddingHorizontal: 16, marginBottom: 16 },
+    amountInput: { flex: 1, fontSize: 28, fontWeight: '800', paddingVertical: 14, letterSpacing: 0.5 },
+    currencyLabel: { fontSize: 20, fontWeight: '800', marginLeft: 8 },
+
+    // Chips — horizontal scroll, single row
+    chipRow: { flexDirection: 'row', gap: 10, paddingVertical: 4, marginTop: 10 },
+    chip: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 20, borderWidth: 1.2 },
+    chipText: { fontSize: 13, fontWeight: '600' },
+
+    // Counter — compact row with CommonInput
+    counterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+    counterBtn: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    rangeHint: { fontSize: 11, textAlign: 'center', marginTop: 6, fontWeight: '500' },
+
+    // Rate card — Stitch: editorial numbers
+    rateCard: { borderRadius: 20, padding: 22, marginBottom: 6 },
+    rateRow: { flexDirection: 'row', alignItems: 'center' },
+    rateCol: { flex: 1 },
+    rateLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+    rateValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+    rateDivider: { width: 1, height: 40, marginHorizontal: 16 },
+
+    // Preview — Stitch: gradient card
+    previewCard: { borderRadius: 20, padding: 22, marginBottom: 6 },
+    previewColumns: { flexDirection: 'row', gap: 16 },
+    previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+    previewBig: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+    previewMid: { fontSize: 17, fontWeight: '700' },
+    previewInterest: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18, padding: 14, borderRadius: 14 },
+    previewInterestText: { fontSize: 13 },
 
     // Loading
-    loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+    loadingBox: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center', paddingVertical: 12 },
     loadingText: { fontSize: 13 },
 
-    // Bottom bar
-    bottomBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        gap: 14,
-    },
-    bottomInfo: { flex: 1 },
-    bottomLabel: { fontSize: 11, marginBottom: 3 },
-    bottomValue: { fontSize: 18, fontWeight: '800' },
-    bottomHint: { fontSize: 12, lineHeight: 18 },
+    // Policy table
+    policyHint: { fontSize: 12, marginBottom: 12 },
+    policyRow: { flexDirection: 'row', paddingVertical: 10, gap: 6 },
+    policyCell: { fontSize: 11, lineHeight: 16 },
+    policyCellFlex1: { flex: 1 },
+    policyCellFlex2: { flex: 1.8 },
 
-    // Next button
-    nextBtnOuter: { borderRadius: 16, overflow: 'hidden' },
-    nextBtnGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingVertical: 14,
-        paddingHorizontal: 28,
-        borderRadius: 16,
-    },
-    nextBtnDisabled: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingVertical: 14,
-        paddingHorizontal: 28,
-        borderRadius: 16,
-    },
-    nextBtnText: { fontSize: 15, fontWeight: '700', color: '#111' },
-    nextBtnTextDisabled: { fontSize: 15, fontWeight: '700' },
+    // Terms
+    termsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, marginTop: 4 },
+    checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+    termsText: { fontSize: 13, flex: 1 },
 
-    // Delinquency policy table
-    policyTableHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        paddingBottom: 8,
-        marginBottom: 4,
-        gap: 8,
+    // Submit button — đồng bộ với LoanConfirmScreen
+    submitBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
     },
-    policyHeaderText: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    policyDataRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        borderBottomWidth: 1,
-        paddingVertical: 12,
-        gap: 8,
-    },
-    policyCellText: {
-        fontSize: 12,
-        lineHeight: 18,
-    },
-    policyConfirmRow: {
-        marginTop: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-    },
-    checkboxBase: {
-        width: 20,
-        height: 20,
-        borderRadius: 6,
-        borderWidth: 1.2,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    policyConfirmText: {
-        flex: 1,
-        fontSize: 12,
-        lineHeight: 18,
-    },
+    submitBtnText: { fontSize: 16, fontWeight: '700' },
 });
