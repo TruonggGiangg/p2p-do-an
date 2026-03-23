@@ -74,6 +74,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
 
   const [otpInput, setOtpInput] = useState<string[]>(['', '', '', '', '', '']);
   const [session, setSession] = useState<{ sessionId: string } | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [localError, setLocalError] = useState('');
@@ -81,12 +82,17 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
   const progressAnim = useRef(new Animated.Value(1)).current;
   const inputRefs = useRef<(TextInput | null)[]>([]);
   const prevOTPRef = useRef<string | null>(null);
+  const verifyLockRef = useRef(false);
+  const verifiedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
       setOtpInput(['', '', '', '', '', '']);
+      setSession(null);
       setLocalError('');
       setAttempts(0);
+      verifyLockRef.current = false;
+      verifiedRef.current = false;
       prevOTPRef.current = null;
       initSession();
     }
@@ -120,6 +126,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
       setLocalError('Vui lòng kích hoạt Smart OTP trước');
       return;
     }
+    setSessionLoading(true);
     try {
       const newSession = await requestOTPSession(actionType, actionData);
       if (newSession) {
@@ -129,6 +136,8 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
       }
     } catch (err: any) {
       setLocalError(err.message);
+    } finally {
+      setSessionLoading(false);
     }
   };
 
@@ -144,9 +153,6 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
       inputRefs.current[index + 1]?.focus();
     }
 
-    if (newOtp.every((d) => d !== '')) {
-      setTimeout(() => handleVerify(newOtp.join('')), 300);
-    }
   };
 
   const handleKeyPress = (index: number, key: string) => {
@@ -156,13 +162,23 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
   };
 
   const handleVerify = async (code: string) => {
+    if (verifyLockRef.current || verifying || verifiedRef.current) {
+      return;
+    }
+
     if (!session) {
       setLocalError('Session không tồn tại. Đang thử lại...');
       await initSession();
       return;
     }
 
+    if (sessionLoading) {
+      setLocalError('Đang khởi tạo phiên xác thực, vui lòng thử lại sau vài giây.');
+      return;
+    }
+
     Keyboard.dismiss();
+    verifyLockRef.current = true;
     setVerifying(true);
     setLocalError('');
 
@@ -170,6 +186,8 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
       const result = await verifyOTP(session.sessionId, code, actionType);
 
       if (result.valid) {
+        verifiedRef.current = true;
+        setSession(null);
         onSuccess({
           sessionId: session.sessionId,
           actionData: result.actionData,
@@ -190,6 +208,9 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
       setLocalError(err.message);
     } finally {
       setVerifying(false);
+      if (!verifiedRef.current) {
+        verifyLockRef.current = false;
+      }
     }
   };
 
@@ -260,6 +281,15 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
               <Text style={[styles.actionLabel, { color: theme.colors.textMuted }]}>
                 Xác nhận {actionTitle}
               </Text>
+
+              {sessionLoading ? (
+                <View style={[styles.autoFillBadge, { backgroundColor: theme.colors.warning + '15' }]}>
+                  <ActivityIndicator size="small" color={theme.colors.warning} style={{ marginRight: 6 }} />
+                  <Text style={[styles.autoFillText, { color: theme.colors.warning }]}>
+                    Đang tạo phiên xác thực...
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.otpContainer}>
                 {otpInput.map((digit, index) => (
@@ -332,10 +362,10 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
                   style={[
                     styles.verifyButton,
                     { backgroundColor: theme.colors.primary },
-                    (!otpInput.every((d) => d) || verifying) && styles.verifyButtonDisabled,
+                    (!otpInput.every((d) => d) || verifying || sessionLoading || !session) && styles.verifyButtonDisabled,
                   ]}
                   onPress={() => handleVerify(otpInput.join(''))}
-                  disabled={!otpInput.every((d) => d) || verifying}
+                  disabled={!otpInput.every((d) => d) || verifying || sessionLoading || !session}
                 >
                   {verifying ? (
                     <ActivityIndicator size="small" color="#fff" />

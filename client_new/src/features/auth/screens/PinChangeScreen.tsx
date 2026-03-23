@@ -80,6 +80,7 @@ export default function PinChangeScreen() {
     const shakeAnim = useRef(new Animated.Value(0)).current;
     const successScale = useRef(new Animated.Value(0)).current;
     const successOpacity = useRef(new Animated.Value(0)).current;
+    const otpSuccessHandledRef = useRef(false);
 
     const currentPin =
         step === 'oldPin' ? oldPin :
@@ -181,10 +182,15 @@ export default function PinChangeScreen() {
     const handleOtpCancel = useCallback(() => {
         setOtpVisible(false);
         setConfirmPin('');
+        otpSuccessHandledRef.current = false;
     }, []);
 
     const handleOtpSuccess = useCallback(
         async ({ sessionId }: { sessionId: string }) => {
+            if (otpSuccessHandledRef.current) {
+                return;
+            }
+            otpSuccessHandledRef.current = true;
             setOtpVisible(false);
             setSubmitting(true);
             try {
@@ -198,6 +204,7 @@ export default function PinChangeScreen() {
                 const message = err?.response?.data?.message || err?.message || 'Đã có lỗi xảy ra';
                 Alert.alert('Lỗi', message);
                 setConfirmPin('');
+                otpSuccessHandledRef.current = false;
             } finally {
                 setSubmitting(false);
             }

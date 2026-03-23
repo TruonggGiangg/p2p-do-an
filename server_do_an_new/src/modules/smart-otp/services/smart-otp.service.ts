@@ -4,6 +4,7 @@ import { OtpSessionService } from './otp-session.service';
 import { TotpService } from './totp.service';
 import { SignatureService } from './signature.service';
 import { OtpActionType } from '../enums/otp-action-type.enum';
+import { OtpSessionStatus } from '../enums/otp-session-status.enum';
 import { DeviceBinding } from '../schemas/device-binding.schema';
 
 /**
@@ -102,6 +103,25 @@ export class SmartOtpService {
       if (!session) {
         throw new NotFoundException('Session không tồn tại');
       }
+
+      // Idempotent verify: nếu session đã VERIFIED (request verify bị gọi lặp),
+      // trả success để tránh fail giả do race condition ở client/dev mode.
+      if (session.status === OtpSessionStatus.VERIFIED) {
+        if (session.actionType !== actionType) {
+          throw new BadRequestException('Loại giao dịch không khớp');
+        }
+        if (session.expiresAt < new Date()) {
+          throw new BadRequestException('Session đã hết hạn. Vui lòng thử lại.');
+        }
+
+        this.logger.log(`Session ${sessionId} already verified, returning idempotent success`);
+        return {
+          valid: true,
+          message: 'Xác thực OTP thành công',
+          actionData: session.actionData,
+        };
+      }
+
       this.otpSessionService.validateSession(session, actionType);
 
       // 2. Lấy device binding để verify

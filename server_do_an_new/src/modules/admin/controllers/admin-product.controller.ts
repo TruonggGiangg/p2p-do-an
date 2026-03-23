@@ -1,6 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Patch, Param, Body, Query, Req, Res, UploadedFiles, UseGuards, UseInterceptors, ParseIntPipe, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../guards/admin.guard';
@@ -8,8 +7,6 @@ import { AdminService } from '../admin.service';
 import { PoliciesGuard } from '../../casl/policies.guard';
 import { CheckPolicies } from '../../../common/decorators/check-policies.decorator';
 import { Action } from '../../casl/actions.enum';
-import { CurrentUser } from '../../../common/decorators/current-user.decorator';
-import type { UserPayload } from '../../auth/interfaces/auth.interface';
 import { CreateDocumentTypeDto } from '../dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from '../dto/update-document-type.dto';
 import { SetProductDocumentTypesDto } from '../dto/set-product-document-types.dto';
@@ -19,9 +16,7 @@ import { SetProductDocumentTypesDto } from '../dto/set-product-document-types.dt
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
 export class AdminProductController {
-  constructor(
-    private readonly adminService: AdminService,
-  ) {}
+  constructor(private readonly adminService: AdminService) {}
 
   @Get('credit-score/weights')
   @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
@@ -50,13 +45,73 @@ export class AdminProductController {
     return { statusCode: 200, message: 'Cập nhật thành công', data };
   }
 
+  @Get('credit-score/weight-configs')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Lấy danh sách cấu hình trọng số điểm tín dụng' })
+  @ApiResponse({ status: 200 })
+  async listCreditScoreWeightConfigs() {
+    const data = await this.adminService.listCreditScoreWeightConfigs();
+    return { statusCode: 200, message: 'OK', data };
+  }
+
+  @Post('credit-score/weight-configs')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Tạo cấu hình trọng số điểm tín dụng' })
+  @ApiResponse({ status: 201 })
+  async createCreditScoreWeightConfig(
+    @Body()
+    body: {
+      name: string;
+      description?: string;
+      paymentHistory: number;
+      debtLevel: number;
+      creditAge: number;
+      creditMix: number;
+      newCredit: number;
+    },
+  ) {
+    const data = await this.adminService.createCreditScoreWeightConfig(body);
+    return { statusCode: 201, message: 'Tạo cấu hình thành công', data };
+  }
+
+  @Put('credit-score/weight-configs/:id')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Cập nhật cấu hình trọng số điểm tín dụng theo id' })
+  @ApiResponse({ status: 200 })
+  async updateCreditScoreWeightConfigById(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      description?: string;
+      isActive?: boolean;
+      paymentHistory: number;
+      debtLevel: number;
+      creditAge: number;
+      creditMix: number;
+      newCredit: number;
+    },
+  ) {
+    const data = await this.adminService.updateCreditScoreWeightConfigById(id, body);
+    return { statusCode: 200, message: 'Cập nhật cấu hình thành công', data };
+  }
+
+  @Post('credit-score/weight-configs/:id/apply')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Áp dụng cấu hình trọng số điểm tín dụng làm mặc định' })
+  @ApiResponse({ status: 200 })
+  async applyCreditScoreWeightConfig(@Param('id') id: string) {
+    const data = await this.adminService.applyCreditScoreWeightConfig(id);
+    return { statusCode: 200, message: 'Đã áp dụng cấu hình', data };
+  }
+
   @Get('loan-products')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
   @ApiOperation({ summary: 'Danh sách sản phẩm vay từ Fineract (cho admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách sản phẩm vay' })
   async getLoanProducts() {
     const products = await this.adminService.getLoanProductsForAdmin();
-    return { products  };
+    return { products };
   }
 
   @Get('loan-products/:productId/details')
@@ -65,7 +120,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getLoanProductDetails(@Param('productId', ParseIntPipe) productId: number) {
     const details = await this.adminService.getLoanProductDetails(productId);
-    return details ;
+    return details;
   }
 
   @Get('document-types')
@@ -74,7 +129,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getDocumentTypes() {
     const list = await this.adminService.findAllDocumentTypes();
-    return list ;
+    return list;
   }
 
   @Post('document-types')
@@ -83,7 +138,7 @@ export class AdminProductController {
   @ApiResponse({ status: 201 })
   async createDocumentType(@Body() dto: CreateDocumentTypeDto) {
     const doc = await this.adminService.createDocumentType(dto);
-    return doc ;
+    return doc;
   }
 
   @Get('document-types/:id')
@@ -92,7 +147,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getDocumentType(@Param('id') id: string) {
     const doc = await this.adminService.findOneDocumentType(id);
-    return doc ;
+    return doc;
   }
 
   @Put('document-types/:id')
@@ -101,7 +156,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async updateDocumentType(@Param('id') id: string, @Body() dto: UpdateDocumentTypeDto) {
     const doc = await this.adminService.updateDocumentType(id, dto);
-    return doc ;
+    return doc;
   }
 
   @Delete('document-types/:id')
@@ -119,7 +174,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getProductDocumentTypes(@Param('fineractProductId', ParseIntPipe) fineractProductId: number) {
     const list = await this.adminService.getDocumentTypesByProduct(fineractProductId);
-    return list ;
+    return list;
   }
 
   @Put('loan-products/:fineractProductId/document-types')
@@ -131,7 +186,7 @@ export class AdminProductController {
     @Body() dto: SetProductDocumentTypesDto,
   ) {
     const result = await this.adminService.setDocumentTypesForProduct(fineractProductId, dto.items);
-    return result ;
+    return result;
   }
 
   @Get('sync-drift')
@@ -141,7 +196,7 @@ export class AdminProductController {
   async getSyncDriftLogs(@Query('limit') limit?: string, @Query('scope') scope?: 'loan' | 'savings') {
     const limitNum = limit ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
     const logs = await this.adminService.getSyncDriftLogs(limitNum, scope);
-    return logs ;
+    return logs;
   }
 
   @Post('sync-compare')
@@ -150,7 +205,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async syncCompare() {
     const diff = await this.adminService.compareAndSync(true);
-    return diff ;
+    return diff;
   }
 
   @Get('savings-products')
@@ -159,7 +214,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200, description: 'Danh sách sản phẩm tiết kiệm' })
   async getSavingsProducts() {
     const products = await this.adminService.getSavingsProductsForAdmin();
-    return { products  };
+    return { products };
   }
 
   @Get('savings-products/:productId/details')
@@ -168,7 +223,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getSavingsProductDetails(@Param('productId', ParseIntPipe) productId: number) {
     const details = await this.adminService.getSavingsProductDetails(productId);
-    return details ;
+    return details;
   }
 
   @Post('sync-compare-savings')
@@ -177,7 +232,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async syncCompareSavings() {
     const diff = await this.adminService.compareAndSyncSavings(true);
-    return diff ;
+    return diff;
   }
 
   @Get('fd-products')
@@ -186,7 +241,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getFDProducts() {
     const products = await this.adminService.getFDProductsForAdmin();
-    return { products  };
+    return { products };
   }
 
   @Get('fd-products/:productId/details')
@@ -195,7 +250,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getFDProductDetails(@Param('productId', ParseIntPipe) productId: number) {
     const details = await this.adminService.getFDProductDetails(productId);
-    return details ;
+    return details;
   }
 
   @Post('sync-compare-fd')
@@ -204,6 +259,6 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async syncCompareFD() {
     const diff = await this.adminService.compareAndSyncFD(true);
-    return diff ;
+    return diff;
   }
 }
