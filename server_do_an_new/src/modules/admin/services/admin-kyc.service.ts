@@ -106,8 +106,12 @@ export class AdminKycService {
         await this.fineractClientService.activateClient(clientIdNum);
         this.logger.log(`[approveKyc] Activated Fineract client ${clientIdNum}`);
       } catch (err: any) {
-        this.logger.error(`[approveKyc] Failed to activate Fineract client: ${err.message}`);
-        throw new BadRequestException(`Không thể kích hoạt client trên Fineract: ${err.message}`);
+        if (err.message && err.message.toLowerCase().includes('already active')) {
+          this.logger.warn(`[approveKyc] Fineract client is already active. Bypassing and continuing to update MongoDB.`);
+        } else {
+          this.logger.error(`[approveKyc] Failed to activate Fineract client: ${err.message}`);
+          throw new BadRequestException(`Không thể kích hoạt client trên Fineract: ${err.message}`);
+        }
       }
     }
 
