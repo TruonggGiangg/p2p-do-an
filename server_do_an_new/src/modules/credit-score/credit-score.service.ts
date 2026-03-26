@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { createHash } from 'crypto';
 import { CreditScore } from './schemas/credit-score.schema';
 import { CreditScoreHistory } from './schemas/credit-score-history.schema';
 import { CreditScoreWeightConfig } from './schemas/credit-score-weight-config.schema';
 import { LoanEvaluationConfig } from './schemas/loan-evaluation-config.schema';
-import { LoanEvaluationConfigHistory } from './schemas/loan-evaluation-config.schema';
+import type { CreditGrade, ScoreWeights } from './schemas/loan-evaluation-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 
 const SCORE_MIN = 150;
@@ -99,26 +100,46 @@ export interface UpdateCreditScoreWeightConfigInput extends CreditScoreWeightCon
   isActive?: boolean;
 }
 
+export interface CreditGradeInput {
+  grade: string;
+  label: string;
+  minScore: number;
+  maxScore: number;
+  maxLoanAmount: number;
+  baseInterestRate: number;
+}
+
+export interface ScoreWeightsInput {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
 export interface LoanEvaluationConfigInput {
-  autoApprovalScore: number;
-  lowRiskMaxScore: number;
-  lowRiskMaxAmount: number;
-  mediumRiskMaxScore: number;
-  mediumRiskMaxAmount: number;
-  highRiskMaxScore: number;
-  highRiskMaxAmount: number;
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeInput[];
+  scoreWeights: ScoreWeightsInput;
+  changeNote?: string;
 }
 
-export interface LoanEvaluationConfigValue extends LoanEvaluationConfigInput {
-  updatedBy?: string;
-  updatedAt?: Date;
-}
-
-export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigInput {
-  _id: string;
+export interface LoanEvaluationConfigValue {
+  version: number;
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeInput[];
+  scoreWeights: ScoreWeightsInput;
+  configHash: string;
+  blockchainTxHash: string;
   changedBy?: string;
   changeNote?: string;
   createdAt?: Date;
+}
+
+export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigValue {
+  _id: string;
 }
 
 @Injectable()
@@ -182,8 +203,6 @@ export class CreditScoreService {
     private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(LoanEvaluationConfig.name)
     private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
-    @InjectModel(LoanEvaluationConfigHistory.name)
-    private readonly loanEvaluationConfigHistoryModel: Model<LoanEvaluationConfigHistory>,
   ) {}
 
   private sanitizeWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
@@ -724,102 +743,177 @@ export class CreditScoreService {
   }
 
   // ══════════════════════════════════════════════════════════════
-  // LOAN EVALUATION CONFIG — Cấu hình đánh giá khoản vay
+  // LOAN EVALUATION CONFIG — Rule Engine cấu hình đánh giá khoản vay
   // ══════════════════════════════════════════════════════════════
 
   private readonly defaultLoanEvalConfig: LoanEvaluationConfigInput = {
-    autoApprovalScore: 82,
-    lowRiskMaxScore: 100,
-    lowRiskMaxAmount: 50_000_000,
-    mediumRiskMaxScore: 79,
-    mediumRiskMaxAmount: 20_000_000,
-    highRiskMaxScore: 59,
-    highRiskMaxAmount: 8_000_000,
+    autoRejectScore: 40,
+    autoApproveScore: 80,
+    creditGrades: [
+      {
+        grade: 'A',
+        label: 'Rủi ro cực thấp',
+        minScore: 80,
+        maxScore: 100,
+        maxLoanAmount: 100_000_000,
+        baseInterestRate: 12,
+      },
+      {
+        grade: 'B',
+        label: 'Rủi ro trung bình',
+        minScore: 60,
+        maxScore: 79,
+        maxLoanAmount: 50_000_000,
+        baseInterestRate: 15,
+      },
+      { grade: 'C', label: 'Rủi ro cao', minScore: 40, maxScore: 59, maxLoanAmount: 20_000_000, baseInterestRate: 18 },
+    ],
+    scoreWeights: { paymentHistory: 35, debtLevel: 30, creditAge: 15, creditMix: 10, newCredit: 10 },
   };
 
-  private validateLoanEvalConfig(input: LoanEvaluationConfigInput): void {
-    const { autoApprovalScore, lowRiskMaxScore, mediumRiskMaxScore, highRiskMaxScore } = input;
+  /** Tính SHA-256 hash cho toàn bộ payload config (dùng để verify trên blockchain). */
+  private computeConfigHash(input: LoanEvaluationConfigInput): string {
+    const payload = JSON.stringify({
+      autoRejectScore: input.autoRejectScore,
+      autoApproveScore: input.autoApproveScore,
+      creditGrades: input.creditGrades,
+      scoreWeights: input.scoreWeights,
+    });
+    return createHash('sha256').update(payload).digest('hex');
+  }
 
-    if (!(lowRiskMaxScore > mediumRiskMaxScore && mediumRiskMaxScore > highRiskMaxScore)) {
-      throw new BadRequestException('Ngưỡng điểm phải theo thứ tự: Rủi ro thấp > Trung bình > Cao');
+  private validateLoanEvalConfig(input: LoanEvaluationConfigInput): void {
+    const { autoRejectScore, autoApproveScore, creditGrades, scoreWeights } = input;
+
+    // Validate thresholds
+    if (!Number.isFinite(autoRejectScore) || autoRejectScore < 0 || autoRejectScore > 100) {
+      throw new BadRequestException('Ngưỡng từ chối tự động phải từ 0 đến 100');
     }
-    if (
-      !(input.lowRiskMaxAmount >= input.mediumRiskMaxAmount && input.mediumRiskMaxAmount >= input.highRiskMaxAmount)
-    ) {
-      throw new BadRequestException('Ngưỡng khoản vay phải theo thứ tự: Rủi ro thấp >= Trung bình >= Cao');
+    if (!Number.isFinite(autoApproveScore) || autoApproveScore < 0 || autoApproveScore > 100) {
+      throw new BadRequestException('Ngưỡng duyệt tự động phải từ 0 đến 100');
     }
-    for (const score of [autoApprovalScore, lowRiskMaxScore, mediumRiskMaxScore, highRiskMaxScore]) {
-      if (!Number.isFinite(score) || score < 0 || score > 100) {
-        throw new BadRequestException('Ngưỡng điểm phải từ 0 đến 100');
+    if (autoRejectScore >= autoApproveScore) {
+      throw new BadRequestException('Ngưỡng từ chối phải nhỏ hơn ngưỡng duyệt tự động');
+    }
+
+    // Validate credit grades
+    if (!Array.isArray(creditGrades) || creditGrades.length === 0) {
+      throw new BadRequestException('Phải có ít nhất 1 hạng tín dụng');
+    }
+    const sorted = [...creditGrades].sort((a, b) => b.maxScore - a.maxScore);
+    for (let i = 0; i < sorted.length; i++) {
+      const g = sorted[i];
+      if (g.minScore > g.maxScore) {
+        throw new BadRequestException(`Hạng ${g.grade}: Điểm tối thiểu phải <= tối đa`);
+      }
+      if (g.maxLoanAmount < 0) {
+        throw new BadRequestException(`Hạng ${g.grade}: Hạn mức phải >= 0`);
+      }
+      if (g.baseInterestRate < 0 || g.baseInterestRate > 100) {
+        throw new BadRequestException(`Hạng ${g.grade}: Lãi suất phải từ 0-100%`);
+      }
+      // Check no gaps / overlaps between adjacent grades
+      if (i > 0) {
+        const prev = sorted[i - 1];
+        if (g.maxScore !== prev.minScore - 1) {
+          throw new BadRequestException(
+            `Dải điểm bị hổng hoặc chồng lấn giữa hạng ${prev.grade} (${prev.minScore}-${prev.maxScore}) và ${g.grade} (${g.minScore}-${g.maxScore})`,
+          );
+        }
       }
     }
-    for (const amount of [input.lowRiskMaxAmount, input.mediumRiskMaxAmount, input.highRiskMaxAmount]) {
-      if (!Number.isFinite(amount) || amount < 0) {
-        throw new BadRequestException('Khoản vay tối đa phải >= 0');
+    // Top grade must reach autoApproveScore, bottom grade must reach autoRejectScore
+    if (sorted[0].maxScore !== 100) {
+      throw new BadRequestException('Hạng cao nhất phải có điểm tối đa = 100');
+    }
+    if (sorted[sorted.length - 1].minScore !== autoRejectScore) {
+      throw new BadRequestException(`Hạng thấp nhất phải bắt đầu từ ngưỡng từ chối (${autoRejectScore})`);
+    }
+
+    // Validate score weights sum = 100
+    if (!scoreWeights) {
+      throw new BadRequestException('Thiếu cấu hình trọng số');
+    }
+    const wSum =
+      (scoreWeights.paymentHistory || 0) +
+      (scoreWeights.debtLevel || 0) +
+      (scoreWeights.creditAge || 0) +
+      (scoreWeights.creditMix || 0) +
+      (scoreWeights.newCredit || 0);
+    if (wSum !== 100) {
+      throw new BadRequestException(`Tổng trọng số phải = 100% (hiện tại: ${wSum}%)`);
+    }
+    for (const [key, val] of Object.entries(scoreWeights)) {
+      if (!Number.isFinite(val) || val < 0 || val > 100) {
+        throw new BadRequestException(`Trọng số ${key} phải từ 0 đến 100`);
       }
     }
   }
 
   async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
-    const doc = await this.loanEvaluationConfigModel.findOne({ key: 'current' }).lean();
+    const doc = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
     if (!doc) {
-      return { ...this.defaultLoanEvalConfig };
+      return {
+        version: 0,
+        ...this.defaultLoanEvalConfig,
+        configHash: this.computeConfigHash(this.defaultLoanEvalConfig),
+        blockchainTxHash: '',
+      };
     }
     return {
-      autoApprovalScore: doc.autoApprovalScore,
-      lowRiskMaxScore: doc.lowRiskMaxScore,
-      lowRiskMaxAmount: doc.lowRiskMaxAmount,
-      mediumRiskMaxScore: doc.mediumRiskMaxScore,
-      mediumRiskMaxAmount: doc.mediumRiskMaxAmount,
-      highRiskMaxScore: doc.highRiskMaxScore,
-      highRiskMaxAmount: doc.highRiskMaxAmount,
-      updatedBy: doc.updatedBy,
-      updatedAt: (doc as any).updatedAt,
+      version: doc.version,
+      autoRejectScore: doc.autoRejectScore,
+      autoApproveScore: doc.autoApproveScore,
+      creditGrades: doc.creditGrades,
+      scoreWeights: doc.scoreWeights,
+      configHash: doc.configHash,
+      blockchainTxHash: doc.blockchainTxHash || '',
+      changedBy: doc.changedBy,
+      changeNote: doc.changeNote,
+      createdAt: (doc as any).createdAt,
     };
   }
 
-  async upsertLoanEvaluationConfig(
+  async createLoanEvaluationConfig(
     input: LoanEvaluationConfigInput,
     adminId?: string,
   ): Promise<LoanEvaluationConfigValue> {
     this.validateLoanEvalConfig(input);
 
-    const updated = await this.loanEvaluationConfigModel.findOneAndUpdate(
-      { key: 'current' },
-      {
-        $set: {
-          autoApprovalScore: input.autoApprovalScore,
-          lowRiskMaxScore: input.lowRiskMaxScore,
-          lowRiskMaxAmount: input.lowRiskMaxAmount,
-          mediumRiskMaxScore: input.mediumRiskMaxScore,
-          mediumRiskMaxAmount: input.mediumRiskMaxAmount,
-          highRiskMaxScore: input.highRiskMaxScore,
-          highRiskMaxAmount: input.highRiskMaxAmount,
-          updatedBy: adminId,
-        },
-      },
-      { upsert: true, new: true },
-    );
+    // Tìm version cao nhất hiện tại
+    const latest = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+    const nextVersion = (latest?.version ?? 0) + 1;
 
-    // Lưu lịch sử thay đổi
-    await this.loanEvaluationConfigHistoryModel.create({
-      ...input,
+    const configHash = this.computeConfigHash(input);
+
+    // INSERT-only: tạo document mới, không bao giờ update document cũ
+    const created = await this.loanEvaluationConfigModel.create({
+      version: nextVersion,
+      autoRejectScore: input.autoRejectScore,
+      autoApproveScore: input.autoApproveScore,
+      creditGrades: input.creditGrades,
+      scoreWeights: input.scoreWeights,
+      configHash,
+      blockchainTxHash: '',
       changedBy: adminId,
-      changeNote: 'Cập nhật cấu hình đánh giá khoản vay',
+      changeNote: input.changeNote || `Cấu hình phiên bản ${nextVersion}`,
     });
 
-    this.logger.log(`[upsertLoanEvaluationConfig] Config updated by admin=${adminId}`);
+    this.logger.log(
+      `[createLoanEvaluationConfig] v${nextVersion} by admin=${adminId} hash=${configHash.slice(0, 16)}…`,
+    );
 
     return {
-      autoApprovalScore: updated.autoApprovalScore,
-      lowRiskMaxScore: updated.lowRiskMaxScore,
-      lowRiskMaxAmount: updated.lowRiskMaxAmount,
-      mediumRiskMaxScore: updated.mediumRiskMaxScore,
-      mediumRiskMaxAmount: updated.mediumRiskMaxAmount,
-      highRiskMaxScore: updated.highRiskMaxScore,
-      highRiskMaxAmount: updated.highRiskMaxAmount,
-      updatedBy: updated.updatedBy,
-      updatedAt: (updated as any).updatedAt,
+      version: created.version,
+      autoRejectScore: created.autoRejectScore,
+      autoApproveScore: created.autoApproveScore,
+      creditGrades: created.creditGrades,
+      scoreWeights: created.scoreWeights,
+      configHash: created.configHash,
+      blockchainTxHash: created.blockchainTxHash || '',
+      changedBy: created.changedBy,
+      changeNote: created.changeNote,
+      createdAt: (created as any).createdAt,
     };
   }
 
@@ -829,20 +923,20 @@ export class CreditScoreService {
   ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
-      this.loanEvaluationConfigHistoryModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      this.loanEvaluationConfigHistoryModel.countDocuments(),
+      this.loanEvaluationConfigModel.find().sort({ version: -1 }).skip(skip).limit(limit).lean(),
+      this.loanEvaluationConfigModel.countDocuments(),
     ]);
 
     return {
       items: items.map((doc: any) => ({
         _id: doc._id.toString(),
-        autoApprovalScore: doc.autoApprovalScore,
-        lowRiskMaxScore: doc.lowRiskMaxScore,
-        lowRiskMaxAmount: doc.lowRiskMaxAmount,
-        mediumRiskMaxScore: doc.mediumRiskMaxScore,
-        mediumRiskMaxAmount: doc.mediumRiskMaxAmount,
-        highRiskMaxScore: doc.highRiskMaxScore,
-        highRiskMaxAmount: doc.highRiskMaxAmount,
+        version: doc.version,
+        autoRejectScore: doc.autoRejectScore,
+        autoApproveScore: doc.autoApproveScore,
+        creditGrades: doc.creditGrades,
+        scoreWeights: doc.scoreWeights,
+        configHash: doc.configHash,
+        blockchainTxHash: doc.blockchainTxHash || '',
         changedBy: doc.changedBy,
         changeNote: doc.changeNote,
         createdAt: doc.createdAt,
@@ -854,28 +948,56 @@ export class CreditScoreService {
   }
 
   /**
-   * Đánh giá khoản vay dựa trên điểm tín dụng và cấu hình hiện tại.
-   * Trả về: mức rủi ro, hạn mức tối đa, có đủ điều kiện tự động duyệt hay không.
+   * Đánh giá khoản vay dựa trên điểm tín dụng và cấu hình Rule Engine hiện tại.
+   * Trả về: hạng tín dụng, hạn mức, lãi suất, trạng thái tự động, version cấu hình.
    */
   async evaluateLoanByScore(creditScore: number): Promise<{
-    riskLevel: 'low' | 'medium' | 'high' | 'rejected';
+    decision: 'auto_approved' | 'pending_review' | 'auto_rejected';
+    grade?: string;
+    gradeLabel?: string;
     maxLoanAmount: number;
-    autoApprovable: boolean;
+    baseInterestRate: number;
     creditScore: number;
+    configVersion: number;
   }> {
     const config = await this.getLoanEvaluationConfig();
 
-    const autoApprovable = creditScore >= config.autoApprovalScore;
+    // Auto-reject
+    if (creditScore < config.autoRejectScore) {
+      return {
+        decision: 'auto_rejected',
+        maxLoanAmount: 0,
+        baseInterestRate: 0,
+        creditScore,
+        configVersion: config.version,
+      };
+    }
 
-    if (creditScore > config.mediumRiskMaxScore) {
-      return { riskLevel: 'low', maxLoanAmount: config.lowRiskMaxAmount, autoApprovable, creditScore };
+    // Tìm grade phù hợp
+    const sorted = [...config.creditGrades].sort((a, b) => b.maxScore - a.maxScore);
+    const matched = sorted.find(g => creditScore >= g.minScore && creditScore <= g.maxScore);
+
+    const decision = creditScore >= config.autoApproveScore ? 'auto_approved' : 'pending_review';
+
+    if (matched) {
+      return {
+        decision,
+        grade: matched.grade,
+        gradeLabel: matched.label,
+        maxLoanAmount: matched.maxLoanAmount,
+        baseInterestRate: matched.baseInterestRate,
+        creditScore,
+        configVersion: config.version,
+      };
     }
-    if (creditScore > config.highRiskMaxScore) {
-      return { riskLevel: 'medium', maxLoanAmount: config.mediumRiskMaxAmount, autoApprovable, creditScore };
-    }
-    if (creditScore > 0) {
-      return { riskLevel: 'high', maxLoanAmount: config.highRiskMaxAmount, autoApprovable, creditScore };
-    }
-    return { riskLevel: 'rejected', maxLoanAmount: 0, autoApprovable: false, creditScore };
+
+    // Fallback — score nằm ngoài tất cả grades (shouldn't happen with valid config)
+    return {
+      decision: 'pending_review',
+      maxLoanAmount: 0,
+      baseInterestRate: 0,
+      creditScore,
+      configVersion: config.version,
+    };
   }
 }

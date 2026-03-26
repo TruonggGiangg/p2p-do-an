@@ -263,41 +263,52 @@ export class AdminProductController {
     return diff;
   }
 
-  // ── Loan Evaluation Config ─────────────────────────────────────────────────
+  // ── Loan Evaluation Config (Rule Engine) ────────────────────────────────────
 
   @Get('loan-evaluation-config')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
-  @ApiOperation({ summary: 'Lấy cấu hình đánh giá khoản vay hiện tại' })
+  @ApiOperation({ summary: 'Lấy cấu hình đánh giá khoản vay hiện tại (version cao nhất)' })
   @ApiResponse({ status: 200 })
   async getLoanEvaluationConfig() {
     const data = await this.adminService.getLoanEvaluationConfig();
     return { statusCode: 200, message: 'OK', data };
   }
 
-  @Put('loan-evaluation-config')
+  @Post('loan-evaluation-config')
   @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Cập nhật cấu hình đánh giá khoản vay' })
-  @ApiResponse({ status: 200 })
-  async upsertLoanEvaluationConfig(
+  @ApiOperation({ summary: 'Tạo phiên bản mới cấu hình đánh giá khoản vay (INSERT-only, không UPDATE)' })
+  @ApiResponse({ status: 201 })
+  async createLoanEvaluationConfig(
     @CurrentUser('id') adminId: string,
     @Body()
     body: {
-      autoApprovalScore: number;
-      lowRiskMaxScore: number;
-      lowRiskMaxAmount: number;
-      mediumRiskMaxScore: number;
-      mediumRiskMaxAmount: number;
-      highRiskMaxScore: number;
-      highRiskMaxAmount: number;
+      autoRejectScore: number;
+      autoApproveScore: number;
+      creditGrades: {
+        grade: string;
+        label: string;
+        minScore: number;
+        maxScore: number;
+        maxLoanAmount: number;
+        baseInterestRate: number;
+      }[];
+      scoreWeights: {
+        paymentHistory: number;
+        debtLevel: number;
+        creditAge: number;
+        creditMix: number;
+        newCredit: number;
+      };
+      changeNote?: string;
     },
   ) {
-    const data = await this.adminService.upsertLoanEvaluationConfig(body, adminId);
-    return { statusCode: 200, message: 'Cập nhật cấu hình thành công', data };
+    const data = await this.adminService.createLoanEvaluationConfig(body, adminId);
+    return { statusCode: 201, message: 'Tạo phiên bản cấu hình thành công', data };
   }
 
   @Get('loan-evaluation-config/history')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
-  @ApiOperation({ summary: 'Lịch sử thay đổi cấu hình đánh giá khoản vay' })
+  @ApiOperation({ summary: 'Lịch sử phiên bản cấu hình đánh giá khoản vay' })
   @ApiResponse({ status: 200 })
   async getLoanEvaluationConfigHistory(@Query('page') page?: string, @Query('limit') limit?: string) {
     const data = await this.adminService.getLoanEvaluationConfigHistory(

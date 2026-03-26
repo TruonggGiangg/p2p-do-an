@@ -190,7 +190,7 @@ export default function LoanCreateScreen() {
     return (
         <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
             <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
-            
+
             <BinanceHeader title={`Vay ${product.shortName || product.name}`} mode="standard" />
 
             <StepIndicator current={0} theme={theme} />
@@ -226,7 +226,7 @@ export default function LoanCreateScreen() {
                     {/* ══ Số tiền vay ══ */}
                     <View style={s.card}>
                         <Text style={s.sectionTitle}>NHẬP SỐ TIỀN VAY</Text>
-                        
+
                         {/* Amount input: Luminous styling */}
                         <View style={s.amountInputContainer}>
                             <TextInput
@@ -282,7 +282,7 @@ export default function LoanCreateScreen() {
                                     >
                                         <Ionicons name="remove" size={24} color={periodMonth <= minRep ? EMERALD_THEME.textDim : EMERALD_THEME.primary} />
                                     </TouchableOpacity>
-                                    
+
                                     <View style={s.counterInputContainer}>
                                         <TextInput
                                             style={s.counterInput}
@@ -385,7 +385,7 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     container: { flex: 1 },
     flex: { flex: 1 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    
+
     scroll: { padding: 20, paddingBottom: 24, gap: 16 },
 
     card: {
@@ -406,13 +406,13 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     sectionTitle: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 16 },
 
     // Amount input
-    amountInputContainer: { 
-        flexDirection: 'row', alignItems: 'baseline', 
-        borderBottomWidth: 2, borderBottomColor: EMERALD_THEME.border, 
+    amountInputContainer: {
+        flexDirection: 'row', alignItems: 'baseline',
+        borderBottomWidth: 2, borderBottomColor: EMERALD_THEME.border,
         paddingBottom: 8, marginBottom: 16
     },
-    amountInput: { flex: 1, fontSize: 36, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: 0.5 },
-    amountCurrency: { fontSize: 24, fontWeight: '700', color: EMERALD_THEME.textSecondary, marginLeft: 8 },
+    amountInput: { flex: 1, fontSize: 28, fontWeight: '700', color: EMERALD_THEME.primary, letterSpacing: -0.3 },
+    amountCurrency: { fontSize: 20, fontWeight: '600', color: EMERALD_THEME.textSecondary, marginLeft: 8 },
 
     // Chips
     chipRow: { flexDirection: 'row', gap: 10, paddingVertical: 4 },
@@ -425,7 +425,7 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     counterRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 16 },
     counterBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
     counterInputContainer: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: EMERALD_THEME.border, paddingBottom: 8 },
-    counterInput: { fontSize: 32, fontWeight: '800', color: EMERALD_THEME.textPrimary, textAlign: 'center' },
+    counterInput: { fontSize: 28, fontWeight: '700', color: EMERALD_THEME.textPrimary, textAlign: 'center' },
     counterUnit: { fontSize: 16, fontWeight: '600', color: EMERALD_THEME.textSecondary, marginLeft: 6 },
     rangeHint: { fontSize: 12, textAlign: 'center', marginTop: 12, color: EMERALD_THEME.textDim },
 
@@ -433,7 +433,7 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     rateRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: EMERALD_THEME.surfaceHigh, borderRadius: 16, padding: 16 },
     rateCol: { flex: 1 },
     rateLabel: { fontSize: 10, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 4 },
-    rateValue: { fontSize: 24, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: -0.5 },
+    rateValue: { fontSize: 20, fontWeight: '700', color: EMERALD_THEME.primary, letterSpacing: -0.3 },
     rateDivider: { width: 1, height: 40, backgroundColor: EMERALD_THEME.border, marginHorizontal: 16 },
 
     // Footer
@@ -443,8 +443,8 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     },
     previewFooter: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
     previewLabel: { fontSize: 10, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 4 },
-    previewValue: { fontSize: 22, fontWeight: '800', color: EMERALD_THEME.primary },
-    previewSub: { fontSize: 18, fontWeight: '700', color: EMERALD_THEME.textPrimary },
+    previewValue: { fontSize: 20, fontWeight: '700', color: EMERALD_THEME.primary },
+    previewSub: { fontSize: 16, fontWeight: '700', color: EMERALD_THEME.textPrimary },
 
     submitBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

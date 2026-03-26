@@ -1,78 +1,82 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-/**
- * Cấu hình đánh giá khoản vay — lưu ngưỡng điểm tín dụng & hạn mức cho từng mức rủi ro.
- * Luôn chỉ có 1 bản ghi active (dùng singleton key 'current').
- * Mỗi lần admin cập nhật → tạo snapshot lịch sử (LoanEvaluationConfigHistory).
- */
-@Schema({ collection: 'loan_evaluation_configs', timestamps: true })
-export class LoanEvaluationConfig extends Document {
-  /** Singleton key — luôn = 'current' */
-  @Prop({ type: String, required: true, unique: true, default: 'current', index: true })
-  key: string;
+/* ──────────────────────────────────────────────────────────────
+ * Rule Engine – Cấu hình đánh giá khoản vay (Versioned, INSERT-only)
+ *
+ * Mỗi lần admin lưu → tạo document mới (version++).
+ * Document có version cao nhất = cấu hình đang active.
+ * Không bao giờ UPDATE document cũ → đảm bảo audit trail minh bạch.
+ * configHash (SHA-256) được ghi kèm để chứng minh tính toàn vẹn.
+ * ──────────────────────────────────────────────────────────── */
 
-  /** Ngưỡng điểm tự động duyệt khoản vay (0-100). Chỉ duyệt khi score >= ngưỡng */
-  @Prop({ type: Number, required: true, min: 0, max: 100 })
-  autoApprovalScore: number;
-
-  /** Rủi ro thấp: điểm tối đa (upper bound). VD: 100 → score từ (mediumRiskMaxScore+1) đến 100 */
-  @Prop({ type: Number, required: true, min: 0, max: 100 })
-  lowRiskMaxScore: number;
-
-  /** Rủi ro thấp: khoản vay tối đa (VND) */
-  @Prop({ type: Number, required: true, min: 0 })
-  lowRiskMaxAmount: number;
-
-  /** Rủi ro trung bình: điểm tối đa */
-  @Prop({ type: Number, required: true, min: 0, max: 100 })
-  mediumRiskMaxScore: number;
-
-  /** Rủi ro trung bình: khoản vay tối đa (VND) */
-  @Prop({ type: Number, required: true, min: 0 })
-  mediumRiskMaxAmount: number;
-
-  /** Rủi ro cao: điểm tối đa */
-  @Prop({ type: Number, required: true, min: 0, max: 100 })
-  highRiskMaxScore: number;
-
-  /** Rủi ro cao: khoản vay tối đa (VND) */
-  @Prop({ type: Number, required: true, min: 0 })
-  highRiskMaxAmount: number;
-
-  /** Admin cập nhật lần cuối */
-  @Prop({ type: String })
-  updatedBy?: string;
+/** Hạng tín dụng (Credit Grade) — sub-document */
+export interface CreditGrade {
+  grade: string; // 'A', 'B', 'C', …
+  label: string; // 'Rủi ro cực thấp', …
+  minScore: number; // Lower bound (inclusive)
+  maxScore: number; // Upper bound (inclusive)
+  maxLoanAmount: number; // VND
+  baseInterestRate: number; // % / năm
 }
 
-export const LoanEvaluationConfigSchema = SchemaFactory.createForClass(LoanEvaluationConfig);
+/** Trọng số tính điểm — sub-document */
+export interface ScoreWeights {
+  paymentHistory: number; // %
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
 
-/**
- * Lưu lịch sử mỗi lần admin thay đổi cấu hình đánh giá khoản vay.
- */
-@Schema({ collection: 'loan_evaluation_config_histories', timestamps: true })
-export class LoanEvaluationConfigHistory extends Document {
-  @Prop({ type: Number, required: true })
-  autoApprovalScore: number;
+@Schema({ collection: 'loan_evaluation_configs', timestamps: true })
+export class LoanEvaluationConfig extends Document {
+  /** Phiên bản cấu hình, tự tăng: 1, 2, 3 … */
+  @Prop({ type: Number, required: true, index: true })
+  version: number;
 
-  @Prop({ type: Number, required: true })
-  lowRiskMaxScore: number;
+  // ── Block 1: Global Thresholds ────────────────────────────────
+  /** Điểm dưới ngưỡng này → tự động từ chối (REJECTED) */
+  @Prop({ type: Number, required: true, min: 0, max: 100 })
+  autoRejectScore: number;
 
-  @Prop({ type: Number, required: true })
-  lowRiskMaxAmount: number;
+  /** Điểm >= ngưỡng này → tự động duyệt (APPROVED) */
+  @Prop({ type: Number, required: true, min: 0, max: 100 })
+  autoApproveScore: number;
 
-  @Prop({ type: Number, required: true })
-  mediumRiskMaxScore: number;
+  // ── Block 2: Credit Grading ───────────────────────────────────
+  @Prop({
+    type: [
+      {
+        grade: String,
+        label: String,
+        minScore: Number,
+        maxScore: Number,
+        maxLoanAmount: Number,
+        baseInterestRate: Number,
+      },
+    ],
+    required: true,
+  })
+  creditGrades: CreditGrade[];
 
-  @Prop({ type: Number, required: true })
-  mediumRiskMaxAmount: number;
+  // ── Block 3: Score Weights ────────────────────────────────────
+  @Prop({
+    type: { paymentHistory: Number, debtLevel: Number, creditAge: Number, creditMix: Number, newCredit: Number },
+    required: true,
+  })
+  scoreWeights: ScoreWeights;
 
-  @Prop({ type: Number, required: true })
-  highRiskMaxScore: number;
+  // ── Block 4: Audit & Integrity ────────────────────────────────
+  /** SHA-256 hash toàn bộ payload config (dùng để verify trên blockchain) */
+  @Prop({ type: String, required: true })
+  configHash: string;
 
-  @Prop({ type: Number, required: true })
-  highRiskMaxAmount: number;
+  /** Transaction hash trên blockchain (nếu ghi thành công) */
+  @Prop({ type: String, default: '' })
+  blockchainTxHash: string;
 
+  /** Admin tạo phiên bản này */
   @Prop({ type: String })
   changedBy?: string;
 
@@ -80,4 +84,5 @@ export class LoanEvaluationConfigHistory extends Document {
   changeNote?: string;
 }
 
-export const LoanEvaluationConfigHistorySchema = SchemaFactory.createForClass(LoanEvaluationConfigHistory);
+export const LoanEvaluationConfigSchema = SchemaFactory.createForClass(LoanEvaluationConfig);
+LoanEvaluationConfigSchema.index({ version: -1 });

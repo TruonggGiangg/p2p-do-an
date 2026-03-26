@@ -3,12 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CreditScore, CreditScoreSchema } from './schemas/credit-score.schema';
 import { CreditScoreHistory, CreditScoreHistorySchema } from './schemas/credit-score-history.schema';
 import { CreditScoreWeightConfig, CreditScoreWeightConfigSchema } from './schemas/credit-score-weight-config.schema';
-import {
-  LoanEvaluationConfig,
-  LoanEvaluationConfigSchema,
-  LoanEvaluationConfigHistory,
-  LoanEvaluationConfigHistorySchema,
-} from './schemas/loan-evaluation-config.schema';
+import { LoanEvaluationConfig, LoanEvaluationConfigSchema } from './schemas/loan-evaluation-config.schema';
 import { CreditScoreService } from './credit-score.service';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 
@@ -19,7 +14,6 @@ import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-app
       { name: CreditScoreHistory.name, schema: CreditScoreHistorySchema },
       { name: CreditScoreWeightConfig.name, schema: CreditScoreWeightConfigSchema },
       { name: LoanEvaluationConfig.name, schema: LoanEvaluationConfigSchema },
-      { name: LoanEvaluationConfigHistory.name, schema: LoanEvaluationConfigHistorySchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
     ]),
   ],

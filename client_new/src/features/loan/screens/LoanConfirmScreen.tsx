@@ -252,7 +252,7 @@ export default function LoanConfirmScreen() {
     return (
         <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
             <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
-            
+
             <BinanceHeader title="Xác nhận đơn vay" mode="standard" />
 
             <StepIndicator current={1} theme={theme} />
@@ -262,8 +262,8 @@ export default function LoanConfirmScreen() {
                 {/* ── Hero: Tóm tắt chính ── */}
                 <View style={s.heroVaultCard}>
                     <Text style={s.heroLabel}>TỔNG SỐ TIỀN VAY</Text>
-                    <Text style={s.heroAmount}>{formatCurrency(capital)} ₫</Text>
-                    
+                    <Text style={s.heroAmount}>{formatCurrency(capital)}</Text>
+
                     <View style={s.heroGrid}>
                         <View style={s.heroCol}>
                             <Text style={s.heroColLabel}>KỲ HẠN</Text>
@@ -283,7 +283,7 @@ export default function LoanConfirmScreen() {
 
                     <View style={s.heroTotalBox}>
                         <Text style={s.heroTotalLabel}>Tổng số tiền phải trả</Text>
-                        <Text style={s.heroTotalValue}>{formatCurrency(schedule.entirelyPay)} ₫</Text>
+                        <Text style={s.heroTotalValue}>{formatCurrency(schedule.entirelyPay)}</Text>
                     </View>
                 </View>
 
@@ -296,7 +296,7 @@ export default function LoanConfirmScreen() {
                             const pct = fee.amount ?? 0;
                             const feeAmountCalc = isPercent && capital > 0 ? Math.round(capital * pct / 100) : null;
                             const isDisbursement = /disbursement/i.test(fee.chargeTimeType);
-                            
+
                             return (
                                 <View key={fee.id} style={s.feeRow}>
                                     <View style={s.feeLabelBlock}>
@@ -400,7 +400,7 @@ export default function LoanConfirmScreen() {
                             <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={EMERALD_THEME.textDim} />
                             <Text style={s.sectionTitle}>TÀI LIỆU ĐÍNH KÈM</Text>
                         </View>
-                        
+
                         {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
                             const hasValue = !!documents[doc.id]?.name;
 
@@ -539,7 +539,7 @@ export default function LoanConfirmScreen() {
 // ═══════════════════════════════════════════════════════════
 const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     container: { flex: 1 },
-    
+
     scroll: { flex: 1 },
     scrollContent: { padding: 20, paddingBottom: 24, gap: 16 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -555,20 +555,20 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
         borderWidth: 1, borderColor: EMERALD_THEME.border, // subtle highlight
     },
     heroLabel: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1.5, marginBottom: 8 },
-    heroAmount: { fontSize: 36, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: 0.5, marginBottom: 24 },
-    
+    heroAmount: { fontSize: 28, fontWeight: '700', color: EMERALD_THEME.primary, letterSpacing: -0.3, marginBottom: 20 },
+
     heroGrid: { flexDirection: 'row', width: '100%', alignItems: 'center', marginBottom: 24 },
     heroCol: { flex: 1, alignItems: 'center' },
     heroColLabel: { fontSize: 10, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 4 },
     heroColValue: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
     heroDivider: { width: 1, height: 24, backgroundColor: EMERALD_THEME.border },
 
-    heroTotalBox: { 
+    heroTotalBox: {
         width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         paddingTop: 16, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border,
     },
     heroTotalLabel: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.textSecondary },
-    heroTotalValue: { fontSize: 18, fontWeight: '800', color: EMERALD_THEME.textPrimary },
+    heroTotalValue: { fontSize: 16, fontWeight: '700', color: EMERALD_THEME.textPrimary },
 
     // Fees
     feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
@@ -590,13 +590,13 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     colGoc: { flex: 1.1, textAlign: 'right' },
     colLai: { flex: 1, textAlign: 'right' },
     colTong: { flex: 1.1, textAlign: 'right' },
-    
+
     tableRowText: { fontSize: 13, fontWeight: '500', color: EMERALD_THEME.textPrimary, textAlign: 'right' },
     tableRowTextBold: { fontSize: 13, fontWeight: '700', color: EMERALD_THEME.primary, textAlign: 'right' },
-    
+
     periodCircle: { width: 28, height: 28, borderRadius: 8, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
     periodCircleText: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-    
+
     showMoreBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
     showMoreText: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.primary },
 
@@ -626,7 +626,7 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
     badgeRequiredText: { color: '#ffb4ab', fontSize: 10, fontWeight: '700' },
     badgeOptional: { backgroundColor: EMERALD_THEME.surfaceHigh, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
     badgeOptionalText: { color: EMERALD_THEME.textSecondary, fontSize: 10, fontWeight: '600' },
-    
+
     bigCameraBtn: {
         width: '100%', height: 110, borderRadius: 12,
         backgroundColor: EMERALD_THEME.background,

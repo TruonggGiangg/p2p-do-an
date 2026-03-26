@@ -239,7 +239,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       font-size: 16pt;
       font-weight: bold;
       text-transform: uppercase;
-      color: #1a5276;
+      color: #14342B;
       margin-bottom: 4px;
     }
     .header .company-info {
@@ -272,7 +272,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       font-size: 14pt;
       font-weight: bold;
       margin: 24px 0 10px;
-      color: #1a5276;
+      color: #14342B;
       text-transform: uppercase;
       border-bottom: 1px solid #ccc;
       padding-bottom: 4px;
@@ -309,7 +309,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       table-layout: auto;
     }
     table thead th {
-      background-color: #1a5276;
+      background-color: #14342B;
       color: #fff;
       padding: 6px 3px;
       text-align: center;
@@ -405,7 +405,7 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       body { padding: 12px 10px; font-size: 11pt; }
       .header .company-name { font-size: 13pt; }
       .contract-title h1 { font-size: 16pt; }
-      h2 { font-size: 12pt; }
+      h2 { font-size: 12pt; color: #14342B; }
       .info-table .label { width: 100px; min-width: 100px; font-size: 10pt; }
       .info-table td { font-size: 10pt; padding: 3px 4px; }
       table { font-size: 8pt; }
@@ -427,9 +427,9 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       <svg viewBox="10 20 300 80" width="220" height="55" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="ventoGold" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#F0B90B"/>
-            <stop offset="50%" style="stop-color:#FCD535"/>
-            <stop offset="100%" style="stop-color:#F0B90B"/>
+            <stop offset="0%" style="stop-color:#14342B"/>
+            <stop offset="50%" style="stop-color:#1A3B34"/>
+            <stop offset="100%" style="stop-color:#14342B"/>
           </linearGradient>
         </defs>
         <g fill="none" stroke="url(#ventoGold)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
@@ -478,6 +478,9 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
     <tr><td class="label">Họ và tên:</td><td><strong>${b.fullName || '________________________'}</strong></td></tr>
     <tr><td class="label">Số CCCD/CMND:</td><td>${b.idNumber || '________________________'}</td></tr>
     <tr><td class="label">Ngày sinh:</td><td>${b.dateOfBirth ? formatDate(b.dateOfBirth) : '________________________'}</td></tr>
+    <tr><td class="label">Giới tính:</td><td>${b.gender || '________________________'}</td></tr>
+    <tr><td class="label">Quốc tịch:</td><td>${b.nationality || 'Việt Nam'}</td></tr>
+    <tr><td class="label">Ngày cấp:</td><td>${b.issueDate ? formatDate(b.issueDate) : '________________________'}</td></tr>
     <tr><td class="label">Địa chỉ:</td><td>${b.address || '________________________'}</td></tr>
     <tr><td class="label">Số điện thoại:</td><td>${b.phone || '________________________'}</td></tr>
     <tr><td class="label">Email:</td><td>${b.email || '________________________'}</td></tr>

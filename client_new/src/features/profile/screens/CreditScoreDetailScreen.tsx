@@ -170,7 +170,8 @@ export default function CreditScoreDetailScreen() {
                             style={[
                                 styles.heroCard,
                                 {
-                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : '#FFF8E7',
+                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : c.surface,
+                                    borderColor: c.border + '40',
                                 },
                             ]}
                         >
@@ -260,7 +261,7 @@ const styles = StyleSheet.create({
         borderRadius: 18,
         padding: 20,
         borderWidth: 1,
-        borderColor: 'rgba(194,157,70,0.25)',
+        borderColor: 'transparent',
         marginBottom: 16,
     },
     heroCaption: {
@@ -268,8 +269,8 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_500Medium',
     },
     heroScore: {
-        fontSize: 64,
-        lineHeight: 72,
+        fontSize: 48,
+        lineHeight: 56,
         fontFamily: 'Poppins_700Bold',
         marginTop: 4,
     },

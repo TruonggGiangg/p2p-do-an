@@ -136,11 +136,11 @@ export class AdminService {
   async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
     return this.staffService.getLoanEvaluationConfig();
   }
-  async upsertLoanEvaluationConfig(
+  async createLoanEvaluationConfig(
     input: LoanEvaluationConfigInput,
     adminId?: string,
   ): Promise<LoanEvaluationConfigValue> {
-    return this.staffService.upsertLoanEvaluationConfig(input, adminId);
+    return this.staffService.createLoanEvaluationConfig(input, adminId);
   }
   async getLoanEvaluationConfigHistory(
     page?: number,

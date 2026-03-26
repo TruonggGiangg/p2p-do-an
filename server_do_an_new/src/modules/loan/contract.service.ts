@@ -102,9 +102,15 @@ export class ContractService {
 
     const kycData = user.kycData || {};
     const borrowerInfo: BorrowerInfo = {
-      fullName: kycData.fullName || [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') || user.username,
+      fullName:
+        kycData.fullName ||
+        [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') ||
+        user.username,
       idNumber: kycData.ssn || kycData.idNumber || kycData.cccd || '',
       dateOfBirth: kycData.dateOfBirth || kycData.dob || '',
+      gender: kycData.sex || kycData.gender || '',
+      nationality: kycData.nationality || 'Việt Nam',
+      issueDate: kycData.issueDate || '',
       address: kycData.address || kycData.permanentAddress || '',
       phone: user.username || '',
       email: user.email || '',
@@ -251,8 +257,6 @@ export class ContractService {
         .lean()
         .exec();
     }
-
-
 
     if (contract) return contract as LoanContract;
 

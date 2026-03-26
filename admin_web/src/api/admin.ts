@@ -349,16 +349,34 @@ export interface CreditScoreWeightConfigDto {
   total: number;
 }
 
+export interface CreditGradeDto {
+  grade: string;
+  label: string;
+  minScore: number;
+  maxScore: number;
+  maxLoanAmount: number;
+  baseInterestRate: number;
+}
+
+export interface ScoreWeightsDto {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
 export interface LoanEvaluationConfigDto {
-  autoApprovalScore: number;
-  lowRiskMaxScore: number;
-  lowRiskMaxAmount: number;
-  mediumRiskMaxScore: number;
-  mediumRiskMaxAmount: number;
-  highRiskMaxScore: number;
-  highRiskMaxAmount: number;
-  updatedBy?: string;
-  updatedAt?: string;
+  version?: number;
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeDto[];
+  scoreWeights: ScoreWeightsDto;
+  configHash?: string;
+  blockchainTxHash?: string;
+  changedBy?: string;
+  changeNote?: string;
+  createdAt?: string;
 }
 
 export const adminApi = {
@@ -1303,7 +1321,7 @@ export const adminApi = {
       })
       .then((r) => r.data.data),
 
-  // ── Loan Evaluation Config ──────────────────────────────────────────────
+  // ── Loan Evaluation Config (Rule Engine) ─────────────────────────────────
   getLoanEvaluationConfig: () =>
     api
       .get<{
@@ -1311,9 +1329,14 @@ export const adminApi = {
       }>("/api/admin/loan-evaluation-config")
       .then((r) => r.data.data),
 
-  upsertLoanEvaluationConfig: (body: LoanEvaluationConfigDto) =>
+  createLoanEvaluationConfig: (
+    body: Omit<
+      LoanEvaluationConfigDto,
+      "version" | "configHash" | "blockchainTxHash" | "changedBy" | "createdAt"
+    >,
+  ) =>
     api
-      .put<{
+      .post<{
         data: LoanEvaluationConfigDto;
       }>("/api/admin/loan-evaluation-config", body)
       .then((r) => r.data.data),
@@ -1322,12 +1345,7 @@ export const adminApi = {
     api
       .get<{
         data: {
-          items: (LoanEvaluationConfigDto & {
-            _id: string;
-            changedBy?: string;
-            changeNote?: string;
-            createdAt?: string;
-          })[];
+          items: (LoanEvaluationConfigDto & { _id: string })[];
           total: number;
           page: number;
           limit: number;

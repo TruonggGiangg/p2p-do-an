@@ -78,11 +78,11 @@ export class AdminStaffService {
     return this.creditScoreService.getLoanEvaluationConfig();
   }
 
-  async upsertLoanEvaluationConfig(
+  async createLoanEvaluationConfig(
     input: LoanEvaluationConfigInput,
     adminId?: string,
   ): Promise<LoanEvaluationConfigValue> {
-    return this.creditScoreService.upsertLoanEvaluationConfig(input, adminId);
+    return this.creditScoreService.createLoanEvaluationConfig(input, adminId);
   }
 
   async getLoanEvaluationConfigHistory(
