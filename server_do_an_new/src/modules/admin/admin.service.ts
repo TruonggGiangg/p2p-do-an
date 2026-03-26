@@ -140,10 +140,11 @@ export class AdminService {
   }
 
   private mapDebtGroup(delinquentDays: number, overdueAmount: number): number {
-    if (overdueAmount <= 0 || delinquentDays <= 0) return 1;
-    if (delinquentDays <= 10) return 2;
-    if (delinquentDays <= 90) return 3;
-    if (delinquentDays <= 180) return 4;
+    if (overdueAmount <= 0 || delinquentDays <= 0) return 0;
+    if (delinquentDays < 10) return 1;
+    if (delinquentDays < 30) return 2;
+    if (delinquentDays < 90) return 3;
+    if (delinquentDays < 180) return 4;
     return 5;
   }
 
@@ -164,10 +165,10 @@ export class AdminService {
 
   private mapCollectionStage(delinquentDays: number, overdueAmount: number): LoanCollectionStage {
     if (overdueAmount <= 0 || delinquentDays <= 0) return 'none';
-    if (delinquentDays <= 7) return 'reminder';
-    if (delinquentDays <= 30) return 'warning';
-    if (delinquentDays <= 90) return 'collection';
-    return 'legal';
+    if (delinquentDays < 10) return 'reminder'; // Nhóm 1
+    if (delinquentDays < 30) return 'warning'; // Nhóm 2
+    if (delinquentDays < 90) return 'collection'; // Nhóm 3
+    return 'legal'; // Nhóm 4-5
   }
 
   private async syncLoanDelinquencySnapshot(app: LoanApplication, fl: any, dData: any): Promise<void> {
@@ -207,6 +208,12 @@ export class AdminService {
             status,
             collectionStage: this.mapCollectionStage(delinquentDays, overdueAmount),
             lastSyncedAt: app.lastSyncedAt ?? now,
+            // Nếu đang overdue/defaulted → reactivate (xóa soft-delete nếu có)
+            ...(status === 'overdue' || status === 'defaulted'
+              ? { isDeleted: false, deletedAt: null, resolvedAt: null }
+              : {}),
+            // Nếu resolved → ghi resolvedAt (chỉ lần đầu)
+            ...(status === 'resolved' && !existing?.resolvedAt ? { resolvedAt: now } : {}),
           },
         },
         { upsert: true, new: true },
@@ -1749,10 +1756,13 @@ export class AdminService {
         block_new_loan: dto.block_new_loan,
         collection_stage: dto.collection_stage,
         legal_escalation: dto.legal_escalation ?? false,
+        retention_months: dto.retention_months ?? undefined,
+        freeze_account: dto.freeze_account ?? false,
+        permanent_ban: dto.permanent_ban ?? false,
         is_active: dto.is_active ?? true,
         description: dto.description,
       });
-      return policy.toObject();
+      return (policy as any).toObject();
     } catch (error: any) {
       if (error?.code === 11000) {
         throw new ConflictException(
@@ -1806,6 +1816,9 @@ export class AdminService {
     if (dto.block_new_loan != null) existing.block_new_loan = dto.block_new_loan;
     if (dto.collection_stage != null) existing.collection_stage = dto.collection_stage;
     if (dto.legal_escalation != null) existing.legal_escalation = dto.legal_escalation;
+    if (dto.retention_months !== undefined) existing.retention_months = dto.retention_months;
+    if (dto.freeze_account != null) existing.freeze_account = dto.freeze_account;
+    if (dto.permanent_ban != null) existing.permanent_ban = dto.permanent_ban;
     if (dto.is_active != null) existing.is_active = dto.is_active;
     if (dto.description !== undefined) existing.description = dto.description;
     // Legacy cleanup: remove old configurable multiplier from existing documents.

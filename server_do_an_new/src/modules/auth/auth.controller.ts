@@ -124,6 +124,11 @@ export class AuthController {
 
     const tokens = await this.authService.login(userSession, res);
 
+    // Event 0: Chấm lại điểm tín dụng khi đăng nhập
+    this.creditScoreService.recalculateScore(mongoUser._id).catch(err => {
+      console.log(err);
+    });
+
     return res.json({
       message: 'Đăng nhập thành công',
       data: userSession,

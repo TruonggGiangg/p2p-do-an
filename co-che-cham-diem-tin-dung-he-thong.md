@@ -42,7 +42,19 @@ Khi user mới đăng ký hoặc user cũ login mà chưa có hồ sơ điểm t
 
 ## 4. Kiến trúc Hướng Sự Kiện (Event-Driven Architecture)
 
-Điểm tín dụng tĩnh (Credit Score) của user **không thay đổi nếu họ không có hành động gì mới**. Hệ thống **KHÔNG dùng cronjob quét định kỳ (polling)** mà chỉ kích hoạt tính toán lại điểm khi bắt được **3 Sự kiện cốt lõi (Core Events)**:
+Điểm tín dụng tĩnh (Credit Score) của user **không thay đổi nếu họ không có hành động gì mới**. Hệ thống **KHÔNG dùng cronjob quét định kỳ (polling)** mà chỉ kích hoạt tính toán lại điểm khi bắt được **4 Sự kiện cốt lõi (Core Events)**:
+
+### Sự kiện 0: Đăng nhập (User Login)
+
+Khi user đăng nhập thành công, hệ thống tự động tính lại điểm tín dụng ở background (non-blocking).
+
+Luồng xử lý:
+
+1. `AuthController.login()` xác thực qua Keycloak, sync user.
+2. Sau khi generate JWT token, gọi `CreditScoreService.recalculateScore(userId)` (fire-and-forget).
+3. Điểm được cập nhật mà không ảnh hưởng tốc độ đăng nhập.
+
+Trigger: `recalculate_api` (login context)
 
 ### Sự kiện 1: Thanh toán thành công (Repayment Made)
 
@@ -188,6 +200,14 @@ Bảng credit_score_history:
 ## 7. Pseudo-flow
 
 ```text
+── Event 0: Đăng nhập ──
+AuthController.login() success
+  → CreditScoreService.recalculateScore(userId)  [fire-and-forget]
+    → compute 5 factor scores (with Volume Penalty)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history (trigger: recalculate_api)
+
 ── Event 1: Thanh toán ──
 Loan Repayment / Prepayment success (Fineract)
   → RepaymentService estimate overdueDays
@@ -200,9 +220,12 @@ Loan Repayment / Prepayment success (Fineract)
 ── Event 2: Nợ xấu (Batch Job 0h hàng đêm) ──
 @Cron('0 0 * * *') handleDelinquencyBatchJob()
   → query loan_applications where status='disbursed' AND delinquentDays > 0
-  → for each overdue loan (chưa trừ trong 24h)
-    → applyRepaymentEvent(isLatePayment=true, overdueDays)
-    → trừ điểm + ghi history
+  → for each overdue loan:
+    → classifyDebtGroup(overdueDays) → nhóm 1-5
+    → upsert LoanDelinquency record
+    → applyRepaymentEvent(isLatePayment=true, overdueDays) (nếu chưa trừ trong 24h)
+    → Nhóm 4+: set user.metadata.accountFrozen = true
+    → Nhóm 5: set user.metadata.permanentBan = true
 
 ── Event 3: Giải ngân ──
 AdminLoanService.disburseLoan()
@@ -219,7 +242,79 @@ AdminLoanService.disburseLoan()
 
 Thiết kế phân hạng rủi ro (150-750) được tham chiếu theo bài viết tổng quan điểm tín dụng từ Techcombank và thông lệ CIC phổ biến trên thị trường Việt Nam.
 
-## 9. Hướng mở rộng (đề xuất)
+## 9. Phân loại Nhóm Nợ (Debt Group Classification)
+
+Hệ thống phân loại nợ xấu theo 5 nhóm tham chiếu chuẩn CIC Việt Nam. Batch Job hàng đêm (Event 2) tự động phân loại và áp dụng chế tài tương ứng.
+
+### 9.1. Bảng phân nhóm nợ
+
+| Nhóm | Tên nhóm               | Số ngày quá hạn | Thời gian lưu vết | Chế tài hệ thống (NestJS)                                                         |
+| ---- | ---------------------- | --------------- | ----------------- | --------------------------------------------------------------------------------- |
+| 1    | Nợ đủ tiêu chuẩn       | 1 – 9 ngày      | 6 tháng           | Trừ nhẹ điểm uy tín. Vẫn cho vay mới nhưng báo cáo AI tần suất trễ                |
+| 2    | Nợ cần chú ý           | 10 – 29 ngày    | 12 tháng          | Giảm mạnh điểm uy tín. Ép lãi suất phạt, giảm hạn mức, cảnh báo nhà đầu tư        |
+| 3    | Nợ dưới tiêu chuẩn     | 30 – 89 ngày    | 60 tháng (5 năm)  | Auto-Reject: Tự động từ chối mọi hồ sơ xin vay mới trong suốt 5 năm               |
+| 4    | Nợ nghi ngờ            | 90 – 179 ngày   | 60 tháng (5 năm)  | Blacklist: Đóng băng tài khoản, đẩy hồ sơ sang bộ phận thu hồi nợ                 |
+| 5    | Nợ có khả năng mất vốn | ≥ 180 ngày      | Vĩnh viễn         | Permanent Ban: Khóa vĩnh viễn toàn nền tảng, không bao giờ cấp lại quyền vay mượn |
+
+> **Lưu ý:** "Thời gian lưu vết" tính từ ngày trả xong nợ (`resolvedAt`). Hết hạn → hệ thống soft-delete (`isDeleted = true`) — KHÔNG xóa vật lý, luôn giữ audit trail.
+
+### 9.2. Cơ chế thực thi (Enforcement)
+
+**Batch Job (Event 2) — `handleDelinquencyBatchJob()`:**
+
+1. Quét tất cả khoản vay `status: 'disbursed'` có `delinquentDays > 0`.
+2. Gọi `classifyDebtGroup(overdueDays)` để xác định nhóm nợ (1-5).
+3. Upsert bản ghi `LoanDelinquency` với: `debtGroup`, `overdueAmount`, `delinquentDays`, `collectionStage`, `status` (overdue/defaulted).
+4. Trừ điểm tín dụng qua `applyRepaymentEvent(isLatePayment=true)`.
+5. Nhóm 4+: Ghi `user.metadata.accountFrozen = true` → user không thể tạo khoản vay.
+6. Nhóm 5: Ghi `user.metadata.permanentBan = true` → user bị cấm hoàn toàn.
+7. Auto-resolve: Khoản vay không còn trong danh sách overdue → cập nhật `status: 'resolved'`, `resolvedAt: now`.
+8. Retention cleanup: Quét các bản ghi `resolved` + `isDeleted: false`. Nếu `resolvedAt + retention_months` đã qua → `isDeleted = true`, `deletedAt = now`. Không xóa vật lý.
+
+**Tạo khoản vay — `LoanService.createApplication()`:**
+
+- **Bước 0:** Kiểm tra `permanentBan` và `accountFrozen` trên User metadata → reject ngay.
+- **Bước 2.5:** Query `LoanDelinquency` của borrower (`isDeleted: false`), tìm nhóm nợ cao nhất. Nếu `DelinquencyPolicy` tương ứng có `block_new_loan: true` → reject.
+
+**Nhà đầu tư — `InvestService.getAvailableLoans()`:**
+
+- Với mỗi khoản vay available, kiểm tra borrower có bản ghi `LoanDelinquency` nhóm ≥ 2 (`isDeleted: false`) không.
+- Nếu có → enrich thêm `borrowerDelinquencyWarning` gồm: `debtGroup`, `overdueAmount`, `delinquentDays`, `message`.
+
+### 9.3. Schema liên quan
+
+**DelinquencyPolicy** (cấu hình theo debt_group):
+
+| Field              | Type    | Mô tả                                                |
+| ------------------ | ------- | ---------------------------------------------------- |
+| `debt_group`       | number  | Nhóm nợ (1-5)                                        |
+| `block_new_loan`   | boolean | Chặn tạo khoản vay mới                               |
+| `apply_penalty`    | boolean | Áp dụng phạt lãi trễ hạn                             |
+| `retention_months` | number  | Thời gian lưu hồ sơ nợ xấu (tháng), null = vĩnh viễn |
+| `freeze_account`   | boolean | Đóng băng tài khoản                                  |
+| `permanent_ban`    | boolean | Cấm vĩnh viễn                                        |
+| `legal_escalation` | boolean | Chuyển xử lý pháp lý                                 |
+| `collection_stage` | string  | Giai đoạn thu hồi (none/soft/hard/legal)             |
+
+**LoanDelinquency** (bản ghi per-loan):
+
+| Field              | Type     | Mô tả                                            |
+| ------------------ | -------- | ------------------------------------------------ |
+| `loanId`           | ObjectId | Tham chiếu loan_application                      |
+| `borrowerId`       | ObjectId | Tham chiếu user                                  |
+| `fineractLoanId`   | number   | ID khoản vay trên Fineract (unique)              |
+| `debtGroup`        | number   | Nhóm nợ hiện tại (1-5)                           |
+| `overdueAmount`    | number   | Số tiền quá hạn (VNĐ)                            |
+| `delinquentDays`   | number   | Số ngày quá hạn                                  |
+| `status`           | string   | normal / overdue / defaulted / resolved          |
+| `collectionStage`  | string   | none / reminder / warning / collection / legal   |
+| `firstOverdueDate` | Date     | Ngày phát sinh quá hạn đầu tiên                  |
+| `lastSyncedAt`     | Date     | Lần kiểm tra gần nhất                            |
+| `resolvedAt`       | Date     | Ngày trả xong nợ (mốc tính retention)            |
+| `isDeleted`        | boolean  | Đã soft-delete (hết hạn lưu vết). Default: false |
+| `deletedAt`        | Date     | Thời điểm soft-delete                            |
+
+## 10. Hướng mở rộng (đề xuất)
 
 - Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả để tăng độ chính xác cho yếu tố debt level.
 - Tích hợp Blockchain để ghi lại audit trail cho mỗi lần thay đổi điểm.

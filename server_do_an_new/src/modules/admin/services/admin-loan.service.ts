@@ -108,10 +108,11 @@ export class AdminLoanService {
   }
 
   private mapDebtGroup(delinquentDays: number, overdueAmount: number): number {
-    if (overdueAmount <= 0 || delinquentDays <= 0) return 1;
-    if (delinquentDays <= 10) return 2;
-    if (delinquentDays <= 90) return 3;
-    if (delinquentDays <= 180) return 4;
+    if (overdueAmount <= 0 || delinquentDays <= 0) return 0;
+    if (delinquentDays < 10) return 1;
+    if (delinquentDays < 30) return 2;
+    if (delinquentDays < 90) return 3;
+    if (delinquentDays < 180) return 4;
     return 5;
   }
 
@@ -132,10 +133,10 @@ export class AdminLoanService {
 
   private mapCollectionStage(delinquentDays: number, overdueAmount: number): LoanCollectionStage {
     if (overdueAmount <= 0 || delinquentDays <= 0) return 'none';
-    if (delinquentDays <= 7) return 'reminder';
-    if (delinquentDays <= 30) return 'warning';
-    if (delinquentDays <= 90) return 'collection';
-    return 'legal';
+    if (delinquentDays < 10) return 'reminder'; // Nhóm 1
+    if (delinquentDays < 30) return 'warning'; // Nhóm 2
+    if (delinquentDays < 90) return 'collection'; // Nhóm 3
+    return 'legal'; // Nhóm 4-5
   }
 
   private async syncLoanDelinquencySnapshot(app: LoanApplication, fl: any, dData: any): Promise<void> {
@@ -175,6 +176,10 @@ export class AdminLoanService {
             status,
             collectionStage: this.mapCollectionStage(delinquentDays, overdueAmount),
             lastSyncedAt: app.lastSyncedAt ?? now,
+            ...(status === 'overdue' || status === 'defaulted'
+              ? { isDeleted: false, deletedAt: null, resolvedAt: null }
+              : {}),
+            ...(status === 'resolved' && !existing?.resolvedAt ? { resolvedAt: now } : {}),
           },
         },
         { upsert: true, new: true },

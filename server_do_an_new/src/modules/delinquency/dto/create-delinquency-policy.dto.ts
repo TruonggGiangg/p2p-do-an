@@ -41,6 +41,18 @@ export class CreateDelinquencyPolicyDto {
   legal_escalation?: boolean;
 
   @IsOptional()
+  @IsInt()
+  retention_months?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  freeze_account?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  permanent_ban?: boolean;
+
+  @IsOptional()
   @IsBoolean()
   is_active?: boolean;
 

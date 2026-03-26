@@ -6,6 +6,8 @@ import { LoanEvaluationConfig, LoanEvaluationConfigSchema } from './schemas/loan
 import { CreditScoreService } from './credit-score.service';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { LoanDelinquency, LoanDelinquencySchema } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy, DelinquencyPolicySchema } from '../delinquency/entities/delinquency-policy.schema';
 
 @Module({
   imports: [
@@ -15,6 +17,8 @@ import { User, UserSchema } from '../users/schemas/user.schema';
       { name: LoanEvaluationConfig.name, schema: LoanEvaluationConfigSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
       { name: User.name, schema: UserSchema },
+      { name: LoanDelinquency.name, schema: LoanDelinquencySchema },
+      { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
     ]),
   ],
   providers: [CreditScoreService],

@@ -8,6 +8,8 @@ import { CreditScoreHistory } from './schemas/credit-score-history.schema';
 import { LoanEvaluationConfig } from './schemas/loan-evaluation-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { User } from '../users/schemas/user.schema';
+import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
@@ -179,6 +181,10 @@ export class CreditScoreService implements OnModuleInit {
     private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    @InjectModel(LoanDelinquency.name)
+    private readonly loanDelinquencyModel: Model<LoanDelinquency>,
+    @InjectModel(DelinquencyPolicy.name)
+    private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
   ) {}
 
   async onModuleInit() {
@@ -209,9 +215,13 @@ export class CreditScoreService implements OnModuleInit {
 
   /**
    * Event 2 — Batch Job: Rà quét nợ quá hạn mỗi đêm 0h.
-   * Quét toàn bộ khoản vay đang disbursed, check delinquentDays từ Fineract sync.
-   * Ai quá hạn → trừ điểm (applyRepaymentEvent dưới dạng late_payment).
-   * Chỉ trừ 1 lần/ngày cho mỗi khoản quá hạn (kiểm tra history).
+   * Phân loại theo 5 Nhóm Nợ chuẩn CIC:
+   *   Nhóm 1 (1-9 ngày):   Trừ nhẹ điểm, vẫn cho vay.
+   *   Nhóm 2 (10-29 ngày): Trừ mạnh điểm, ép lãi phạt, giảm hạn mức.
+   *   Nhóm 3 (30-89 ngày): Auto-Reject mọi hồ sơ vay mới (5 năm).
+   *   Nhóm 4 (90-179 ngày): Blacklist, đóng băng tài khoản.
+   *   Nhóm 5 (>=180 ngày): Permanent Ban.
+   * Chỉ trừ 1 lần/ngày cho mỗi khoản quá hạn.
    */
   @Cron('0 0 * * *')
   async handleDelinquencyBatchJob() {
@@ -222,11 +232,13 @@ export class CreditScoreService implements OnModuleInit {
         status: 'disbursed',
         delinquentDays: { $gt: 0 },
       })
-      .select('userId fineractLoanId delinquentDays totalOverdue')
+      .select('_id userId fineractLoanId delinquentDays totalOverdue')
       .lean();
 
     if (!overdueLoans.length) {
       this.logger.log('[delinquency-batch] No overdue loans found.');
+      // Still run retention cleanup even when no new overdue
+      await this.handleRetentionCleanup();
       return;
     }
 
@@ -237,7 +249,6 @@ export class CreditScoreService implements OnModuleInit {
     for (const loan of overdueLoans) {
       try {
         const uid = loan.userId;
-        // Kiểm tra đã trừ điểm cho khoản này trong 24h chưa
         const alreadyPenalized = await this.creditScoreHistoryModel.findOne({
           userId: uid,
           reason: 'late_payment',
@@ -248,14 +259,78 @@ export class CreditScoreService implements OnModuleInit {
         if (alreadyPenalized) continue;
 
         const overdueDays = Math.max(1, Number(loan.delinquentDays || 0));
+        const debtGroup = this.classifyDebtGroup(overdueDays);
+        const groupLabel = this.getDebtGroupLabel(debtGroup);
+
+        // ── Upsert LoanDelinquency record ──
+        const delinquencyStatus = debtGroup >= 3 ? 'defaulted' : 'overdue';
+        const collectionStage =
+          debtGroup >= 5
+            ? 'legal'
+            : debtGroup >= 4
+              ? 'collection'
+              : debtGroup >= 3
+                ? 'warning'
+                : debtGroup >= 2
+                  ? 'reminder'
+                  : 'none';
+        await this.loanDelinquencyModel.findOneAndUpdate(
+          { fineractLoanId: loan.fineractLoanId },
+          {
+            $set: {
+              loanId: loan._id,
+              borrowerId: uid,
+              delinquentDays: overdueDays,
+              debtGroup,
+              overdueAmount: loan.totalOverdue || 0,
+              status: delinquencyStatus,
+              collectionStage,
+              lastSyncedAt: new Date(),
+              isDeleted: false,
+              resolvedAt: null,
+              deletedAt: null,
+            },
+            $setOnInsert: {
+              firstOverdueDate: new Date(),
+            },
+          },
+          { upsert: true, new: true },
+        );
+
         await this.applyRepaymentEvent({
           userId: uid,
           isLatePayment: true,
           overdueDays,
           isPrepayment: false,
           trigger: 'delinquency_batch',
-          note: `Khoản vay #${loan.fineractLoanId} quá hạn ${overdueDays} ngày`,
+          note: `Khoản vay #${loan.fineractLoanId} quá hạn ${overdueDays} ngày — ${groupLabel}`,
         });
+
+        // Nhóm 4-5: Đóng băng tài khoản
+        if (debtGroup >= 4) {
+          await this.userModel.updateOne(
+            { _id: uid },
+            {
+              $set: { 'metadata.accountFrozen': true, 'metadata.frozenReason': `Nợ nhóm ${debtGroup}: ${groupLabel}` },
+            },
+          );
+          this.logger.warn(`[delinquency-batch] FROZEN account for user ${uid} — debt group ${debtGroup}`);
+        }
+
+        // Nhóm 5: Permanent Ban
+        if (debtGroup >= 5) {
+          await this.userModel.updateOne(
+            { _id: uid },
+            {
+              $set: {
+                'metadata.permanentBan': true,
+                'metadata.banReason': `Nợ có khả năng mất vốn (>=${overdueDays} ngày)`,
+              },
+            },
+          );
+          this.logger.warn(`[delinquency-batch] PERMANENT BAN for user ${uid} — debt group 5`);
+        }
+
         penalized++;
       } catch (err) {
         this.logger.warn(`[delinquency-batch] Failed for loan #${loan.fineractLoanId}: ${(err as Error).message}`);
@@ -263,6 +338,93 @@ export class CreditScoreService implements OnModuleInit {
     }
 
     this.logger.log(`[delinquency-batch] Penalized ${penalized}/${overdueLoans.length} overdue loans.`);
+
+    // ── Resolve: khoản vay đã trả hết nợ → resolved ──
+    const overdueFineractIds = overdueLoans.map(l => l.fineractLoanId).filter((id): id is number => id != null);
+    await this.loanDelinquencyModel.updateMany(
+      {
+        status: { $in: ['overdue', 'defaulted'] } as any,
+        isDeleted: false,
+        fineractLoanId: { $nin: overdueFineractIds },
+      },
+      {
+        $set: { status: 'resolved', resolvedAt: new Date() },
+      },
+    );
+
+    // ── Retention cleanup: soft-delete resolved records past retention period ──
+    await this.handleRetentionCleanup();
+  }
+
+  /**
+   * Soft-delete hồ sơ nợ xấu đã resolved khi hết thời gian lưu vết (retention_months).
+   * isDeleted = true, deletedAt = now. KHÔNG xóa vật lý — luôn giữ audit trail.
+   */
+  private async handleRetentionCleanup() {
+    const resolvedRecords = await this.loanDelinquencyModel
+      .find({ status: 'resolved', isDeleted: false, resolvedAt: { $ne: null } })
+      .select('debtGroup resolvedAt fineractLoanId')
+      .lean();
+
+    if (!resolvedRecords.length) return;
+
+    // Load retention policies by debt_group
+    const policies = await this.delinquencyPolicyModel
+      .find({ is_active: true })
+      .select('debt_group retention_months')
+      .lean();
+    const retentionMap = new Map<number, number | null>();
+    for (const p of policies) {
+      retentionMap.set(p.debt_group, p.retention_months ?? null);
+    }
+
+    const now = new Date();
+    let cleaned = 0;
+    for (const rec of resolvedRecords) {
+      const retentionMonths = retentionMap.get(rec.debtGroup);
+      // null or undefined = vĩnh viễn (permanent) → never soft-delete
+      if (retentionMonths == null) continue;
+
+      const expiresAt = new Date(rec.resolvedAt!);
+      expiresAt.setMonth(expiresAt.getMonth() + retentionMonths);
+      if (now >= expiresAt) {
+        await this.loanDelinquencyModel.updateOne({ _id: rec._id }, { $set: { isDeleted: true, deletedAt: now } });
+        cleaned++;
+        this.logger.log(
+          `[retention-cleanup] Soft-deleted delinquency record for loan #${rec.fineractLoanId} (group ${rec.debtGroup}, resolved ${retentionMonths}m ago)`,
+        );
+      }
+    }
+
+    if (cleaned > 0) {
+      this.logger.log(`[retention-cleanup] Soft-deleted ${cleaned} expired delinquency records.`);
+    }
+  }
+
+  /** Phân loại nhóm nợ theo số ngày trễ — chuẩn CIC */
+  private classifyDebtGroup(overdueDays: number): number {
+    if (overdueDays >= 180) return 5;
+    if (overdueDays >= 90) return 4;
+    if (overdueDays >= 30) return 3;
+    if (overdueDays >= 10) return 2;
+    return 1;
+  }
+
+  private getDebtGroupLabel(group: number): string {
+    switch (group) {
+      case 1:
+        return 'Nhóm 1 — Nợ đủ tiêu chuẩn (1-9 ngày)';
+      case 2:
+        return 'Nhóm 2 — Nợ cần chú ý (10-29 ngày)';
+      case 3:
+        return 'Nhóm 3 — Nợ dưới tiêu chuẩn (30-89 ngày)';
+      case 4:
+        return 'Nhóm 4 — Nợ nghi ngờ (90-179 ngày)';
+      case 5:
+        return 'Nhóm 5 — Nợ có khả năng mất vốn (≥180 ngày)';
+      default:
+        return `Nhóm ${group}`;
+    }
   }
 
   /**

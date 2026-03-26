@@ -38,6 +38,15 @@ export class LoanDelinquency extends Document {
 
   @Prop({ required: true, default: () => new Date(), index: true })
   lastSyncedAt: Date;
+
+  @Prop({ required: false })
+  resolvedAt?: Date;
+
+  @Prop({ required: true, default: false, index: true })
+  isDeleted: boolean;
+
+  @Prop({ required: false })
+  deletedAt?: Date;
 }
 
 export const LoanDelinquencySchema = SchemaFactory.createForClass(LoanDelinquency);
