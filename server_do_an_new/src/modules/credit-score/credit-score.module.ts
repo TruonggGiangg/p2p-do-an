@@ -5,6 +5,7 @@ import { CreditScoreHistory, CreditScoreHistorySchema } from './schemas/credit-s
 import { LoanEvaluationConfig, LoanEvaluationConfigSchema } from './schemas/loan-evaluation-config.schema';
 import { CreditScoreService } from './credit-score.service';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-app
       { name: CreditScoreHistory.name, schema: CreditScoreHistorySchema },
       { name: LoanEvaluationConfig.name, schema: LoanEvaluationConfigSchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   providers: [CreditScoreService],

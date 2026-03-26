@@ -1,6 +1,6 @@
 # Cơ Chế Chấm Điểm Tín Dụng Hiện Tại Của Hệ Thống
 
-Ngày cập nhật: 2026-03-15
+Ngày cập nhật: 2026-03-26
 
 ## 1. Mục tiêu
 
@@ -40,23 +40,57 @@ Khi user mới đăng ký hoặc user cũ login mà chưa có hồ sơ điểm t
 - Với chấm điểm tín dụng thực tế, điểm được hình thành từ lịch sử tín dụng và dữ liệu hành vi tín dụng của từng người.
 - Vì vậy, giá trị 570 trong hệ thống này là điểm khởi tạo nội bộ (internal bootstrap score) do hệ thống quy ước để bắt đầu chấm điểm cho user chưa có dữ liệu, không phải điểm CIC mặc định chính thức.
 
-## 4. Sự kiện làm thay đổi điểm
+## 4. Kiến trúc Hướng Sự Kiện (Event-Driven Architecture)
 
-Điểm tín dụng hiện được cập nhật tự động khi có giao dịch trả nợ tại Loan Service:
+Điểm tín dụng tĩnh (Credit Score) của user **không thay đổi nếu họ không có hành động gì mới**. Hệ thống **KHÔNG dùng cronjob quét định kỳ (polling)** mà chỉ kích hoạt tính toán lại điểm khi bắt được **3 Sự kiện cốt lõi (Core Events)**:
 
-- Trả nợ kỳ hạn (repay)
-- Tất toán sớm (prepay)
+### Sự kiện 1: Thanh toán thành công (Repayment Made)
 
-Luồng xử lý kỹ thuật:
+Khi user thanh toán một kỳ hạn (EMI) hoặc tất toán sớm, Fineract ghi nhận và báo về NestJS.
 
-1. Loan Service xử lý repayment/prepayment thành công với Fineract.
-2. Loan Service ước lượng số ngày trễ (overdueDays) từ lịch trả nợ.
-3. Gọi CreditScoreService.applyRepaymentEvent(...).
-4. CreditScoreService cập nhật điểm và ghi lịch sử credit_score_history.
+Luồng xử lý:
+
+1. `RepaymentService.makeRepayment()` / `prepayLoan()` xử lý thành công với Fineract.
+2. Ước lượng `overdueDays` từ lịch trả nợ.
+3. Gọi `CreditScoreService.applyRepaymentEvent(...)`.
+4. CreditScoreService cập nhật điểm và ghi lịch sử.
+
+Trigger: `loan_repayment` hoặc `loan_prepayment`
+
+### Sự kiện 2: Trễ hạn / Nợ xấu (Delinquency / Default) — Batch Job hàng đêm
+
+Đây là ngoại lệ duy nhất dùng Batch Job, chạy mỗi đêm lúc **00:00** (sau khi Fineract sync delinquency data).
+
+Luồng xử lý:
+
+1. `@Cron('0 0 * * *') handleDelinquencyBatchJob()` khởi chạy.
+2. Quét toàn bộ `loan_applications` có `status: 'disbursed'` và `delinquentDays > 0`.
+3. Với mỗi khoản quá hạn, kiểm tra đã trừ điểm trong 24h chưa (tránh trùng lặp).
+4. Nếu chưa → gọi `applyRepaymentEvent(isLatePayment: true, overdueDays)` để trừ điểm.
+
+Trigger: `delinquency_batch`
+
+### Sự kiện 3: Khoản vay mới được giải ngân (Loan Disbursed)
+
+Khi Admin giải ngân khoản vay, tổng dư nợ (Debt) tăng và "Tín dụng mới" (New Credit) phát sinh.
+
+Luồng xử lý:
+
+1. `AdminLoanService.disburseLoan()` thực hiện giải ngân trên Fineract.
+2. Update MongoDB `status = 'disbursed'`.
+3. Gọi `CreditScoreService.applyDisbursementEvent(userId)`.
+4. CreditScoreService tính lại toàn bộ 5 yếu tố dựa trên data hiện tại.
+
+Trigger: `loan_disbursed`
+
+### Lưu ý quan trọng
+
+- Khi user chỉ mới **"Tạo hồ sơ xin vay"** (status: pending), điểm tín dụng tĩnh **KHÔNG thay đổi**.
+- Lúc đó hệ thống chỉ mang điểm tĩnh đi hỏi server AI để lấy "Điểm rủi ro AI" (`aiScore`) cho riêng hồ sơ đó.
 
 ## 5. Công thức chấm điểm hiện tại (đã áp dụng)
 
-Hệ thống hiện tính điểm theo mô hình 5 yếu tố có trọng số, thay vì cộng/trừ điểm cố định:
+Hệ thống hiện tính điểm theo mô hình 5 yếu tố có trọng số:
 
 - Payment history: 35%
 - Debt level: 30%
@@ -79,11 +113,29 @@ creditScore = clamp(150 + weighted100/100 * 600, 150, 750)
 
 ### 5.1. Cách chấm từng yếu tố
 
-1. Payment history (35%)
+1. Payment history (35%) — Có Volume Penalty Factor
 
 - Dựa trên tỷ lệ trả trễ lịch sử, số khoản trễ nặng (>=30 ngày) và sự kiện trả nợ mới nhất.
-- Nếu giao dịch mới là đúng hạn: cộng nhẹ vào thành phần payment history.
-- Nếu giao dịch mới là trễ hạn: trừ theo số ngày trễ (mức phạt tăng theo overdueDays).
+
+**Volume Penalty Factor (Thin Credit File Protection):**
+
+Người dùng có ít giao dịch không thể đạt 100/100 ngay. Áp dụng hệ số chiết khấu theo khối lượng:
+
+```
+Score_payment = Score_ratio × W_volume
+```
+
+| Level                     | Số giao dịch | W_volume | Điểm tối đa |
+| ------------------------- | ------------ | -------- | ----------- |
+| Level 1 (Hồ sơ siêu mỏng) | 1 - 4        | 0.60     | 60/100      |
+| Level 2 (Hồ sơ cơ bản)    | 5 - 10       | 0.80     | 80/100      |
+| Level 3 (Hồ sơ chín muồi) | > 10         | 1.00     | 100/100     |
+
+Ví dụ: User mới có 4 khoản vay trả đúng hạn → 100 × 0.6 = 60/100 (không phải 100/100).
+
+- Nếu giao dịch mới là đúng hạn: cộng nhẹ (+3, prepay +5).
+- Nếu giao dịch mới là trễ hạn: trừ theo số ngày trễ (overdueDays × 1.2, tối đa -25).
+- Số khoản trễ nặng (>=30 ngày): trừ thêm 4 điểm/khoản.
 
 2. Debt level (30%)
 
@@ -136,14 +188,31 @@ Bảng credit_score_history:
 ## 7. Pseudo-flow
 
 ```text
-Loan Repayment / Prepayment success
-    -> estimate overdueDays
-    -> applyRepaymentEvent
-  -> compute 5 factor scores (35/30/15/10/10)
-  -> weighted score 0..100
-        -> clamp 150..750
-        -> update credit_score
-        -> insert credit_score_history
+── Event 1: Thanh toán ──
+Loan Repayment / Prepayment success (Fineract)
+  → RepaymentService estimate overdueDays
+  → CreditScoreService.applyRepaymentEvent(...)
+    → compute 5 factor scores (with Volume Penalty)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history
+
+── Event 2: Nợ xấu (Batch Job 0h hàng đêm) ──
+@Cron('0 0 * * *') handleDelinquencyBatchJob()
+  → query loan_applications where status='disbursed' AND delinquentDays > 0
+  → for each overdue loan (chưa trừ trong 24h)
+    → applyRepaymentEvent(isLatePayment=true, overdueDays)
+    → trừ điểm + ghi history
+
+── Event 3: Giải ngân ──
+AdminLoanService.disburseLoan()
+  → Fineract disburse
+  → update MongoDB status='disbursed'
+  → CreditScoreService.applyDisbursementEvent(userId)
+    → compute 5 factor scores (Debt Level & New Credit thay đổi)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history
 ```
 
 ## 8. Mapping tham chiếu thị trường
@@ -152,5 +221,6 @@ Thiết kế phân hạng rủi ro (150-750) được tham chiếu theo bài vi�
 
 ## 9. Hướng mở rộng (đề xuất)
 
-- Tạo job định kỳ recalculation toàn bộ users để score phản ánh toàn cảnh, không chỉ tại thời điểm repay/prepay.
 - Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả để tăng độ chính xác cho yếu tố debt level.
+- Tích hợp Blockchain để ghi lại audit trail cho mỗi lần thay đổi điểm.
+- Mở rộng Volume Penalty Factor cho các yếu tố khác (credit age, credit mix) nếu cần.

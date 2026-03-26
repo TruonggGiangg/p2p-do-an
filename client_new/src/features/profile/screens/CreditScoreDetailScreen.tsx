@@ -66,14 +66,13 @@ const formatDateTime = (value?: string) => {
 };
 
 export default function CreditScoreDetailScreen() {
-    const { user, refreshUser } = useAuth();
+    const { user } = useAuth();
     const { theme } = useTheme();
     const c = theme.colors;
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
-    const [recalculating, setRecalculating] = useState(false);
     const [items, setItems] = useState<UserCreditScoreHistoryItem[]>([]);
     const [page, setPage] = useState(1);
     const [hasNextPage, setHasNextPage] = useState(true);
@@ -135,21 +134,6 @@ export default function CreditScoreDetailScreen() {
         }
     }, [fetchHistory, hasNextPage, loading, page, refreshing]);
 
-    const handleRecalculate = useCallback(async () => {
-        setRecalculating(true);
-        try {
-            const result = await authAPI.recalculateCreditScore();
-            setFactors(result.factors);
-            // Refresh user context to get the updated score
-            await refreshUser?.();
-            await fetchHistory(1, false);
-        } catch (error) {
-            console.error('Không thể tính lại điểm:', error);
-        } finally {
-            setRecalculating(false);
-        }
-    }, [refreshUser, fetchHistory]);
-
     const renderFactorBar = (meta: typeof FACTOR_META[0], value: number) => (
         <View key={meta.key} style={styles.factorRow}>
             <View style={styles.factorLabelRow}>
@@ -203,9 +187,16 @@ export default function CreditScoreDetailScreen() {
                             ))}
                         </View>
                     )}
+                    {item.note ? (
+                        <Text style={[styles.historyNote, { color: c.textMuted }]} numberOfLines={2}>
+                            {item.note}
+                        </Text>
+                    ) : null}
                 </View>
                 <View style={styles.historyRight}>
-                    <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item.afterScore ?? '--'}</Text>
+                    <Text style={[styles.historyScoreRange, { color: c.textMuted }]}>
+                        {item.beforeScore ?? '--'} → {item.afterScore ?? '--'}
+                    </Text>
                     <Text style={[styles.historyDelta, { color: changeColor }]}>
                         {isUp ? `+${change}` : `${change}`}
                     </Text>
@@ -294,23 +285,8 @@ export default function CreditScoreDetailScreen() {
                             <View style={styles.factorHeader}>
                                 <View>
                                     <Text style={[styles.factorTitle, { color: c.textPrimary }]}>5 Yếu tố tín dụng</Text>
-                                    <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm</Text>
+                                    <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm · Cập nhật theo sự kiện</Text>
                                 </View>
-                                <TouchableOpacity
-                                    style={[styles.recalcBtn, { backgroundColor: c.primary + '15', borderColor: c.primary + '40' }]}
-                                    onPress={handleRecalculate}
-                                    disabled={recalculating}
-                                    activeOpacity={0.7}
-                                >
-                                    {recalculating ? (
-                                        <ActivityIndicator size="small" color={c.primary} />
-                                    ) : (
-                                        <>
-                                            <MaterialCommunityIcons name="refresh" size={14} color={c.primary} />
-                                            <Text style={[styles.recalcText, { color: c.primary }]}>Tính lại</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
                             </View>
 
                             {factors ? (
@@ -321,7 +297,7 @@ export default function CreditScoreDetailScreen() {
                                 <View style={styles.noFactors}>
                                     <MaterialCommunityIcons name="chart-bar" size={24} color={c.textMuted} />
                                     <Text style={[styles.noFactorsText, { color: c.textMuted }]}>
-                                        Nhấn "Tính lại" để xem phân tích 5 yếu tố
+                                        Đang tải phân tích 5 yếu tố...
                                     </Text>
                                 </View>
                             )}
@@ -458,19 +434,6 @@ const styles = StyleSheet.create({
         fontFamily: 'Poppins_400Regular',
         marginTop: 1,
     },
-    recalcBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 999,
-        borderWidth: 1,
-    },
-    recalcText: {
-        fontSize: 12,
-        fontFamily: 'Poppins_600SemiBold',
-    },
     factorsContainer: {
         gap: 12,
     },
@@ -564,6 +527,16 @@ const styles = StyleSheet.create({
     historyAfter: {
         fontSize: 16,
         fontFamily: 'Poppins_700Bold',
+    },
+    historyScoreRange: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+    },
+    historyNote: {
+        marginTop: 4,
+        fontSize: 11,
+        fontFamily: 'Poppins_400Regular',
+        lineHeight: 15,
     },
     historyDelta: {
         marginTop: 1,
