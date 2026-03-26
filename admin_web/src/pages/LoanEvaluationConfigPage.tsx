@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-    Alert, Button, Card, Col, Divider, InputNumber, Progress, Row, Space, Spin, Table,
+    Alert, Button, Card, Col, Descriptions, Divider, Drawer, InputNumber, Progress, Row, Space, Spin, Table,
     Tag, Tooltip, Typography, message,
 } from 'antd';
 import {
-    CheckCircleOutlined, CloseCircleOutlined, HistoryOutlined,
+    CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, HistoryOutlined,
     LockOutlined, SafetyCertificateOutlined, PieChartOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/PageHeader';
@@ -49,10 +49,14 @@ export default function LoanEvaluationConfigPage() {
     const [showHistory, setShowHistory] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [drawerRecord, setDrawerRecord] = useState<any>(null);
 
     // ── Derived ──
     const manualZone = useMemo(() => ({ min: autoReject, max: autoApprove - 1 }), [autoReject, autoApprove]);
-    const weightSum = useMemo(() => Object.values(weights).reduce((s, v) => s + (v || 0), 0), [weights]);
+    const weightSum = useMemo(() =>
+        (Number(weights.paymentHistory) || 0) + (Number(weights.debtLevel) || 0) +
+        (Number(weights.creditAge) || 0) + (Number(weights.creditMix) || 0) + (Number(weights.newCredit) || 0),
+        [weights]);
 
     /** Rebuild grade score ranges cascading from thresholds. Top grade maxScore=100, bottom grade minScore=autoReject. */
     const rebuildGrades = useCallback(
@@ -92,7 +96,16 @@ export default function LoanEvaluationConfigPage() {
                 setAutoReject(data.autoRejectScore);
                 setAutoApprove(data.autoApproveScore);
                 if (data.creditGrades?.length) setGrades(data.creditGrades);
-                if (data.scoreWeights) setWeights(data.scoreWeights);
+                if (data.scoreWeights) {
+                    const sw = data.scoreWeights;
+                    setWeights({
+                        paymentHistory: Number(sw.paymentHistory) || 0,
+                        debtLevel: Number(sw.debtLevel) || 0,
+                        creditAge: Number(sw.creditAge) || 0,
+                        creditMix: Number(sw.creditMix) || 0,
+                        newCredit: Number(sw.newCredit) || 0,
+                    });
+                }
                 setCurrentVersion(data.version ?? 0);
                 setConfigHash(data.configHash ?? '');
             }
@@ -442,6 +455,7 @@ export default function LoanEvaluationConfigPage() {
                         <Table
                             dataSource={history} rowKey="_id" loading={historyLoading}
                             pagination={false} size="small" scroll={{ x: 900 }}
+                            onRow={(record) => ({ onClick: () => setDrawerRecord(record), style: { cursor: 'pointer' } })}
                             columns={[
                                 { title: 'Version', dataIndex: 'version', key: 'v', width: 80, render: (v: number) => v ? <Tag>v{v}</Tag> : <Tag color="orange">legacy</Tag> },
                                 { title: 'Thời gian', dataIndex: 'createdAt', key: 't', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('vi-VN') : '-' },
@@ -453,7 +467,7 @@ export default function LoanEvaluationConfigPage() {
                                     }
                                 },
                                 {
-                                    title: 'Hạng', key: 'grades', render: (_: any, r: any) => (r.creditGrades && r.creditGrades.length > 0)
+                                    title: 'Hạng', key: 'grades', width: 240, render: (_: any, r: any) => (r.creditGrades && r.creditGrades.length > 0)
                                         ? r.creditGrades.map((g: any) => <Tag key={g.grade} color={GRADE_COLORS[g.grade]}>{g.grade}: {g.minScore}-{g.maxScore}</Tag>)
                                         : <Tag color="default">Chưa cấu hình</Tag>
                                 },
@@ -465,11 +479,95 @@ export default function LoanEvaluationConfigPage() {
                                     }
                                 },
                                 { title: 'Hash', dataIndex: 'configHash', key: 'hash', width: 180, render: (v: string) => v ? <code style={{ fontSize: 10 }}>{v.slice(0, 24)}…</code> : '-' },
-                                { title: 'Ghi chú', dataIndex: 'changeNote', key: 'note', ellipsis: true },
+                                {
+                                    title: '', key: 'action', width: 60, render: (_: any, r: any) => (
+                                        <Button type="link" size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); setDrawerRecord(r); }}>Xem</Button>
+                                    )
+                                },
                             ]}
                         />
                     </Card>
                 )}
+
+                {/* ── Config Detail Drawer ── */}
+                <Drawer
+                    title={drawerRecord ? `Chi tiết cấu hình v${drawerRecord.version || 'legacy'}` : 'Chi tiết'}
+                    open={!!drawerRecord}
+                    onClose={() => setDrawerRecord(null)}
+                    width={560}
+                >
+                    {drawerRecord && (
+                        <>
+                            <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
+                                <Descriptions.Item label="Phiên bản">
+                                    {drawerRecord.version ? <Tag color="blue">v{drawerRecord.version}</Tag> : <Tag color="orange">legacy</Tag>}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Thời gian">
+                                    {drawerRecord.createdAt ? new Date(drawerRecord.createdAt).toLocaleString('vi-VN') : '-'}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Ngưỡng từ chối">
+                                    {drawerRecord.autoRejectScore != null ? <Tag color="red">&lt; {drawerRecord.autoRejectScore}</Tag> : 'N/A'}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Ngưỡng duyệt">
+                                    {drawerRecord.autoApproveScore != null ? <Tag color="green">≥ {drawerRecord.autoApproveScore}</Tag> : 'N/A'}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Admin thay đổi" span={2}>
+                                    {drawerRecord.changedBy || '-'}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Ghi chú" span={2}>
+                                    {drawerRecord.changeNote || '-'}
+                                </Descriptions.Item>
+                            </Descriptions>
+
+                            <Typography.Title level={5}>Phân hạng tín dụng</Typography.Title>
+                            {drawerRecord.creditGrades?.length > 0 ? (
+                                <Table
+                                    dataSource={drawerRecord.creditGrades} rowKey="grade" pagination={false} size="small"
+                                    columns={[
+                                        { title: 'Hạng', dataIndex: 'grade', width: 60, render: (g: string) => <Tag color={GRADE_COLORS[g] || 'default'}>{g}</Tag> },
+                                        { title: 'Nhãn', dataIndex: 'label' },
+                                        { title: 'Điểm', key: 'range', render: (_: any, r: any) => `${r.minScore} – ${r.maxScore}` },
+                                        { title: 'Hạn mức', dataIndex: 'maxLoanAmount', render: (v: number) => FMT.format(v ?? 0) },
+                                        { title: 'Lãi suất', dataIndex: 'baseInterestRate', render: (v: number) => `${v}%/năm` },
+                                    ]}
+                                    style={{ marginBottom: 16 }}
+                                />
+                            ) : (
+                                <Alert message="Chưa có phân hạng" type="warning" showIcon style={{ marginBottom: 16 }} />
+                            )}
+
+                            <Typography.Title level={5}>Trọng số tính điểm</Typography.Title>
+                            {drawerRecord.scoreWeights ? (
+                                <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
+                                    <Descriptions.Item label="Lịch sử thanh toán">{drawerRecord.scoreWeights.paymentHistory}%</Descriptions.Item>
+                                    <Descriptions.Item label="Dư nợ tín dụng">{drawerRecord.scoreWeights.debtLevel}%</Descriptions.Item>
+                                    <Descriptions.Item label="Tuổi tín dụng">{drawerRecord.scoreWeights.creditAge}%</Descriptions.Item>
+                                    <Descriptions.Item label="Đa dạng tín dụng">{drawerRecord.scoreWeights.creditMix}%</Descriptions.Item>
+                                    <Descriptions.Item label="Tín dụng mới">{drawerRecord.scoreWeights.newCredit}%</Descriptions.Item>
+                                    <Descriptions.Item label="Tổng">
+                                        {(drawerRecord.scoreWeights.paymentHistory || 0) +
+                                            (drawerRecord.scoreWeights.debtLevel || 0) +
+                                            (drawerRecord.scoreWeights.creditAge || 0) +
+                                            (drawerRecord.scoreWeights.creditMix || 0) +
+                                            (drawerRecord.scoreWeights.newCredit || 0)}%
+                                    </Descriptions.Item>
+                                </Descriptions>
+                            ) : (
+                                <Alert message="Chưa có cấu hình trọng số" type="warning" showIcon style={{ marginBottom: 16 }} />
+                            )}
+
+                            <Typography.Title level={5}>Tính toàn vẹn</Typography.Title>
+                            <Descriptions column={1} bordered size="small">
+                                <Descriptions.Item label="SHA-256 Hash">
+                                    <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{drawerRecord.configHash || 'N/A'}</code>
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Blockchain TxHash">
+                                    <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{drawerRecord.blockchainTxHash || 'Chưa ghi'}</code>
+                                </Descriptions.Item>
+                            </Descriptions>
+                        </>
+                    )}
+                </Drawer>
             </Spin>
         </div>
     );

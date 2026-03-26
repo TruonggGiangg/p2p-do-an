@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { createHash } from 'crypto';
@@ -55,7 +55,7 @@ export interface CreditScoreHistoryPaginationResult {
   hasNextPage: boolean;
 }
 
-interface CreditFactorScores {
+export interface CreditFactorScores {
   paymentHistory: number;
   debtLevel: number;
   creditAge: number;
@@ -118,7 +118,7 @@ export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigVal
 }
 
 @Injectable()
-export class CreditScoreService {
+export class CreditScoreService implements OnModuleInit {
   private readonly logger = new Logger(CreditScoreService.name);
   private readonly defaultWeights: CreditScoreWeightConfigInput = {
     paymentHistory: 35,
@@ -176,6 +176,16 @@ export class CreditScoreService {
     @InjectModel(LoanEvaluationConfig.name)
     private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
   ) {}
+
+  async onModuleInit() {
+    // Drop legacy key_1 unique index that causes E11000 duplicate key errors
+    try {
+      await this.loanEvaluationConfigModel.collection.dropIndex('key_1');
+      this.logger.log('Dropped legacy key_1 index from loan_evaluation_configs');
+    } catch {
+      // Index doesn't exist — ignore
+    }
+  }
 
   /**
    * Lấy trọng số tính điểm từ LoanEvaluationConfig (version cao nhất).
@@ -434,6 +444,7 @@ export class CreditScoreService {
         : 'loan_repayment';
 
     scoreDoc.score = afterScore;
+    scoreDoc.factors = { ...factors };
     if (isLatePayment) {
       scoreDoc.latePayments = (scoreDoc.latePayments || 0) + 1;
     }
@@ -449,6 +460,7 @@ export class CreditScoreService {
       changeAmount: afterScore - beforeScore,
       reason,
       trigger: input.trigger || 'loan_service',
+      factors: { ...factors },
       note: `${
         input.note ||
         (isLatePayment
@@ -473,6 +485,59 @@ export class CreditScoreService {
       risk,
       factors,
     };
+  }
+
+  /**
+   * Tính lại điểm tín dụng cho user dựa trên toàn bộ dữ liệu hiện tại.
+   * Gọi từ mobile app hoặc hệ thống để refresh score.
+   */
+  async recalculateScore(userId: string | Types.ObjectId): Promise<{
+    score: number;
+    factors: CreditFactorScores;
+    risk: CreditRiskClassification;
+  }> {
+    const uid = this.toObjectId(userId);
+    const scoreDoc = await this.ensureCreditScoreForUser(uid);
+    const beforeScore = scoreDoc.score;
+
+    // Build factors from current loan data (neutral event — not late, not prepay)
+    const factors = await this.buildWeightedFactors(uid, {
+      userId: uid,
+      isLatePayment: false,
+      isPrepayment: false,
+      overdueDays: 0,
+    });
+    const weights = await this.getWeightConfig();
+    const afterScore = this.calculateCompositeScore(factors, weights);
+
+    scoreDoc.score = afterScore;
+    scoreDoc.factors = { ...factors };
+    scoreDoc.totalLoans = await this.loanApplicationModel.countDocuments({ userId: uid });
+    scoreDoc.lastUpdated = new Date();
+    await scoreDoc.save();
+
+    if (afterScore !== beforeScore) {
+      await this.creditScoreHistoryModel.create({
+        userId: uid,
+        creditScoreId: scoreDoc._id,
+        beforeScore,
+        afterScore,
+        changeAmount: afterScore - beforeScore,
+        reason: 'system_recalculation',
+        trigger: 'recalculate_api',
+        factors: { ...factors },
+        note: `Tính lại điểm tín dụng | ${this.buildFactorNote(factors)}`,
+      });
+    }
+
+    return { score: afterScore, factors, risk: this.classifyRisk(afterScore) };
+  }
+
+  /**
+   * Chuẩn hóa điểm từ thang 150-750 về thang 0-100 để so sánh với Rule Engine.
+   */
+  private normalizeScore(rawScore: number): number {
+    return Math.round(((rawScore - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -691,26 +756,30 @@ export class CreditScoreService {
     maxLoanAmount: number;
     baseInterestRate: number;
     creditScore: number;
+    normalizedScore: number;
     configVersion: number;
   }> {
     const config = await this.getLoanEvaluationConfig();
+    // Rule Engine operates on 0-100 scale; credit scores are 150-750
+    const norm = this.normalizeScore(creditScore);
 
     // Auto-reject
-    if (creditScore < config.autoRejectScore) {
+    if (norm < config.autoRejectScore) {
       return {
         decision: 'auto_rejected',
         maxLoanAmount: 0,
         baseInterestRate: 0,
         creditScore,
+        normalizedScore: norm,
         configVersion: config.version,
       };
     }
 
     // Tìm grade phù hợp
     const sorted = [...config.creditGrades].sort((a, b) => b.maxScore - a.maxScore);
-    const matched = sorted.find(g => creditScore >= g.minScore && creditScore <= g.maxScore);
+    const matched = sorted.find(g => norm >= g.minScore && norm <= g.maxScore);
 
-    const decision = creditScore >= config.autoApproveScore ? 'auto_approved' : 'pending_review';
+    const decision = norm >= config.autoApproveScore ? 'auto_approved' : 'pending_review';
 
     if (matched) {
       return {
@@ -720,6 +789,7 @@ export class CreditScoreService {
         maxLoanAmount: matched.maxLoanAmount,
         baseInterestRate: matched.baseInterestRate,
         creditScore,
+        normalizedScore: norm,
         configVersion: config.version,
       };
     }
@@ -730,6 +800,7 @@ export class CreditScoreService {
       maxLoanAmount: 0,
       baseInterestRate: 0,
       creditScore,
+      normalizedScore: norm,
       configVersion: config.version,
     };
   }

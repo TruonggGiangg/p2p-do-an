@@ -54,7 +54,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Dữ liệu không hợp lệ hoặc người dùng đã tồn tại' })
   async register(@Body() body: RegisterDto) {
     const result = await this.fineractSignupService.signup(body);
-    return result ;
+    return result;
   }
 
   @Public()
@@ -167,6 +167,7 @@ export class AuthController {
             totalLoans: creditScore.totalLoans,
             latePayments: creditScore.latePayments,
             lastUpdated: creditScore.lastUpdated,
+            factors: creditScore.factors ?? null,
           }
         : null,
       creditScoreHistory,
@@ -199,6 +200,27 @@ export class AuthController {
         total: result.total,
         totalPages: result.totalPages,
         hasNextPage: result.hasNextPage,
+      },
+    };
+  }
+
+  // ── Credit Score Recalculate ────────────────────────────────────────────
+
+  @Post('me/credit-score/recalculate')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Recalculate credit score based on current data' })
+  @ApiResponse({ status: 200, description: 'Trả về điểm tín dụng mới và 5 yếu tố' })
+  async recalculateCreditScore(@CurrentUser() user: UserPayload) {
+    if (!user._id) throw new UnauthorizedException();
+
+    const result = await this.creditScoreService.recalculateScore(user._id);
+    return {
+      message: 'Đã tính lại điểm tín dụng',
+      data: {
+        score: result.score,
+        factors: result.factors,
+        risk: result.risk,
       },
     };
   }

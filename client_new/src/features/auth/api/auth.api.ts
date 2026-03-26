@@ -6,6 +6,7 @@ import type {
   RegisterResponse,
   User,
   CreditScoreHistoryPageResponse,
+  CreditScoreFactors,
 } from "../../../types/auth.types";
 
 export const authAPI = {
@@ -58,6 +59,22 @@ export const authAPI = {
       { params: { page, limit } },
     );
 
+    return response.data.data;
+  },
+
+  /** Recalculate credit score based on current data */
+  recalculateCreditScore: async (): Promise<{
+    score: number;
+    factors: CreditScoreFactors;
+    risk: { riskLevel: string; label: string; description: string };
+  }> => {
+    const response = await api.post<{
+      data: {
+        score: number;
+        factors: CreditScoreFactors;
+        risk: { riskLevel: string; label: string; description: string };
+      };
+    }>("/api/auth/me/credit-score/recalculate");
     return response.data.data;
   },
 
