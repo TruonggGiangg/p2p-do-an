@@ -1,12 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { createHash } from 'crypto';
 import { CreditScore } from './schemas/credit-score.schema';
 import { CreditScoreHistory } from './schemas/credit-score-history.schema';
-import { CreditScoreWeightConfig } from './schemas/credit-score-weight-config.schema';
 import { LoanEvaluationConfig } from './schemas/loan-evaluation-config.schema';
-import type { CreditGrade, ScoreWeights } from './schemas/loan-evaluation-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 
 const SCORE_MIN = 150;
@@ -77,29 +75,6 @@ export interface CreditScoreWeightConfigValue extends CreditScoreWeightConfigInp
   total: number;
 }
 
-export interface CreditScoreWeightConfigItem extends CreditScoreWeightConfigValue {
-  _id: string;
-  name: string;
-  description?: string;
-  key: string;
-  isDefault: boolean;
-  isActive: boolean;
-  appliedAt?: Date | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
-
-export interface CreateCreditScoreWeightConfigInput extends CreditScoreWeightConfigInput {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateCreditScoreWeightConfigInput extends CreditScoreWeightConfigInput {
-  name?: string;
-  description?: string;
-  isActive?: boolean;
-}
-
 export interface CreditGradeInput {
   grade: string;
   label: string;
@@ -145,7 +120,6 @@ export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigVal
 @Injectable()
 export class CreditScoreService {
   private readonly logger = new Logger(CreditScoreService.name);
-  private readonly legacyConfigKey = 'default';
   private readonly defaultWeights: CreditScoreWeightConfigInput = {
     paymentHistory: 35,
     debtLevel: 30,
@@ -197,274 +171,33 @@ export class CreditScoreService {
     private readonly creditScoreModel: Model<CreditScore>,
     @InjectModel(CreditScoreHistory.name)
     private readonly creditScoreHistoryModel: Model<CreditScoreHistory>,
-    @InjectModel(CreditScoreWeightConfig.name)
-    private readonly creditScoreWeightConfigModel: Model<CreditScoreWeightConfig>,
     @InjectModel(LoanApplication.name)
     private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(LoanEvaluationConfig.name)
     private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
   ) {}
 
-  private sanitizeWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
-    return {
-      paymentHistory: Number(Number(weights.paymentHistory || 0).toFixed(2)),
-      debtLevel: Number(Number(weights.debtLevel || 0).toFixed(2)),
-      creditAge: Number(Number(weights.creditAge || 0).toFixed(2)),
-      creditMix: Number(Number(weights.creditMix || 0).toFixed(2)),
-      newCredit: Number(Number(weights.newCredit || 0).toFixed(2)),
-    };
-  }
-
-  private validateWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
-    const sanitized = this.sanitizeWeights(weights);
-
-    const values = Object.entries(sanitized) as Array<[keyof CreditScoreWeightConfigInput, number]>;
-    for (const [key, value] of values) {
-      if (!Number.isFinite(value)) {
-        throw new BadRequestException(`Trọng số ${key} không hợp lệ`);
-      }
-      if (value < 0 || value > 100) {
-        throw new BadRequestException(`Trọng số ${key} phải nằm trong khoảng 0-100`);
-      }
-    }
-
-    const total =
-      sanitized.paymentHistory + sanitized.debtLevel + sanitized.creditAge + sanitized.creditMix + sanitized.newCredit;
-
-    if (Math.abs(total - 100) > 0.01) {
-      throw new BadRequestException(`Tổng trọng số phải bằng 100%, hiện tại là ${total.toFixed(2)}%`);
-    }
-
-    return sanitized;
-  }
-
-  private toWeightValue(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigValue {
-    const validated = this.validateWeights(weights);
-    const total =
-      validated.paymentHistory + validated.debtLevel + validated.creditAge + validated.creditMix + validated.newCredit;
-
-    return {
-      ...validated,
-      total: Number(total.toFixed(4)),
-    };
-  }
-
-  private toConfigItem(doc: any): CreditScoreWeightConfigItem {
-    const value = this.toWeightValue({
-      paymentHistory: Number(doc.paymentHistory || 0),
-      debtLevel: Number(doc.debtLevel || 0),
-      creditAge: Number(doc.creditAge || 0),
-      creditMix: Number(doc.creditMix || 0),
-      newCredit: Number(doc.newCredit || 0),
-    });
-
-    return {
-      _id: String(doc._id),
-      name: String(doc.name || 'Unnamed'),
-      description: doc.description || '',
-      key: String(doc.key || ''),
-      isDefault: Boolean(doc.isDefault),
-      isActive: doc.isActive !== false,
-      appliedAt: doc.appliedAt || null,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-      ...value,
-    };
-  }
-
-  private buildKey(name: string): string {
-    const base = name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48);
-    const suffix = Date.now().toString(36);
-    return `${base || 'weight-config'}-${suffix}`;
-  }
-
+  /**
+   * Lấy trọng số tính điểm từ LoanEvaluationConfig (version cao nhất).
+   * Nếu chưa có config → dùng default weights.
+   */
   async getWeightConfig(): Promise<CreditScoreWeightConfigValue> {
-    const current = await this.getDefaultWeightConfigItem();
-    if (!current) {
-      return this.toWeightValue(this.defaultWeights);
+    const doc = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+    if (doc?.scoreWeights) {
+      const w = doc.scoreWeights;
+      const total =
+        (w.paymentHistory || 0) + (w.debtLevel || 0) + (w.creditAge || 0) + (w.creditMix || 0) + (w.newCredit || 0);
+      return {
+        paymentHistory: w.paymentHistory || 0,
+        debtLevel: w.debtLevel || 0,
+        creditAge: w.creditAge || 0,
+        creditMix: w.creditMix || 0,
+        newCredit: w.newCredit || 0,
+        total,
+      };
     }
-
-    return {
-      paymentHistory: current.paymentHistory,
-      debtLevel: current.debtLevel,
-      creditAge: current.creditAge,
-      creditMix: current.creditMix,
-      newCredit: current.newCredit,
-      total: current.total,
-    };
-  }
-
-  async upsertWeightConfig(input: CreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigValue> {
-    const validated = this.validateWeights(input);
-
-    const currentDefault = await this.creditScoreWeightConfigModel
-      .findOne({ isDefault: true })
-      .sort({ updatedAt: -1 })
-      .exec();
-
-    if (currentDefault) {
-      currentDefault.paymentHistory = validated.paymentHistory;
-      currentDefault.debtLevel = validated.debtLevel;
-      currentDefault.creditAge = validated.creditAge;
-      currentDefault.creditMix = validated.creditMix;
-      currentDefault.newCredit = validated.newCredit;
-      currentDefault.isActive = true;
-      currentDefault.appliedAt = new Date();
-      await currentDefault.save();
-      return this.toWeightValue(validated);
-    }
-
-    await this.creditScoreWeightConfigModel.findOneAndUpdate(
-      { key: this.legacyConfigKey },
-      {
-        $set: {
-          ...validated,
-          key: this.legacyConfigKey,
-          name: 'Cấu hình mặc định',
-          description: 'Auto-created default config',
-          isDefault: true,
-          isActive: true,
-          appliedAt: new Date(),
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-
-    return this.toWeightValue(validated);
-  }
-
-  async listWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    const items = await this.creditScoreWeightConfigModel.find({}).sort({ isDefault: -1, updatedAt: -1 }).lean();
-
-    return items.map((item: any) => this.toConfigItem(item));
-  }
-
-  async createWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    const name = String(input.name || '').trim();
-    if (!name) {
-      throw new BadRequestException('Tên cấu hình là bắt buộc');
-    }
-
-    const exists = await this.creditScoreWeightConfigModel
-      .findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } })
-      .lean();
-    if (exists) {
-      throw new BadRequestException('Tên cấu hình đã tồn tại');
-    }
-
-    const validated = this.validateWeights(input);
-    const created = await this.creditScoreWeightConfigModel.create({
-      ...validated,
-      name,
-      description: String(input.description || '').trim(),
-      key: this.buildKey(name),
-      isDefault: false,
-      isActive: true,
-    });
-
-    return this.toConfigItem(created.toObject());
-  }
-
-  async updateWeightConfig(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    const doc = await this.creditScoreWeightConfigModel.findById(id);
-    if (!doc) {
-      throw new NotFoundException('Không tìm thấy cấu hình trọng số');
-    }
-
-    if (input.name != null) {
-      const nextName = String(input.name).trim();
-      if (!nextName) {
-        throw new BadRequestException('Tên cấu hình không hợp lệ');
-      }
-
-      const exists = await this.creditScoreWeightConfigModel
-        .findOne({
-          _id: { $ne: doc._id },
-          name: { $regex: `^${nextName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        })
-        .lean();
-      if (exists) {
-        throw new BadRequestException('Tên cấu hình đã tồn tại');
-      }
-      doc.name = nextName;
-    }
-
-    if (input.description != null) {
-      doc.description = String(input.description).trim();
-    }
-
-    if (input.isActive != null) {
-      doc.isActive = Boolean(input.isActive);
-    }
-
-    const validated = this.validateWeights(input);
-    doc.paymentHistory = validated.paymentHistory;
-    doc.debtLevel = validated.debtLevel;
-    doc.creditAge = validated.creditAge;
-    doc.creditMix = validated.creditMix;
-    doc.newCredit = validated.newCredit;
-
-    await doc.save();
-    return this.toConfigItem(doc.toObject());
-  }
-
-  async applyWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    const target = await this.creditScoreWeightConfigModel.findById(id);
-    if (!target) {
-      throw new NotFoundException('Không tìm thấy cấu hình trọng số để áp dụng');
-    }
-    if (!target.isActive) {
-      throw new BadRequestException('Không thể áp dụng cấu hình đang bị vô hiệu hóa');
-    }
-
-    await this.creditScoreWeightConfigModel.updateMany(
-      { _id: { $ne: target._id }, isDefault: true },
-      { $set: { isDefault: false } },
-    );
-
-    target.isDefault = true;
-    target.appliedAt = new Date();
-    await target.save();
-
-    return this.toConfigItem(target.toObject());
-  }
-
-  async getDefaultWeightConfigItem(): Promise<CreditScoreWeightConfigItem | null> {
-    let current = await this.creditScoreWeightConfigModel.findOne({ isDefault: true }).sort({ updatedAt: -1 }).lean();
-
-    if (!current) {
-      current = await this.creditScoreWeightConfigModel.findOne({ key: this.legacyConfigKey }).lean();
-      if (current) {
-        await this.creditScoreWeightConfigModel.updateOne(
-          { _id: current._id },
-          { $set: { isDefault: true, isActive: true, appliedAt: current.appliedAt || new Date() } },
-        );
-        current.isDefault = true;
-        current.isActive = true;
-      }
-    }
-
-    if (!current) {
-      current = await this.creditScoreWeightConfigModel.findOne({}).sort({ updatedAt: -1 }).lean();
-      if (current) {
-        await this.creditScoreWeightConfigModel.updateOne(
-          { _id: current._id },
-          { $set: { isDefault: true, isActive: true, appliedAt: current.appliedAt || new Date() } },
-        );
-        current.isDefault = true;
-        current.isActive = true;
-      }
-    }
-
-    return current ? this.toConfigItem(current) : null;
+    const dw = this.defaultWeights;
+    return { ...dw, total: dw.paymentHistory + dw.debtLevel + dw.creditAge + dw.creditMix + dw.newCredit };
   }
 
   private toObjectId(userId: string | Types.ObjectId): Types.ObjectId {
@@ -930,15 +663,15 @@ export class CreditScoreService {
     return {
       items: items.map((doc: any) => ({
         _id: doc._id.toString(),
-        version: doc.version,
-        autoRejectScore: doc.autoRejectScore,
-        autoApproveScore: doc.autoApproveScore,
-        creditGrades: doc.creditGrades,
-        scoreWeights: doc.scoreWeights,
-        configHash: doc.configHash,
+        version: doc.version ?? 0,
+        autoRejectScore: doc.autoRejectScore ?? doc.autoRejectThreshold ?? null,
+        autoApproveScore: doc.autoApproveScore ?? doc.autoApprovalScore ?? doc.autoApproveThreshold ?? null,
+        creditGrades: doc.creditGrades ?? [],
+        scoreWeights: doc.scoreWeights ?? null,
+        configHash: doc.configHash ?? '',
         blockchainTxHash: doc.blockchainTxHash || '',
-        changedBy: doc.changedBy,
-        changeNote: doc.changeNote,
+        changedBy: doc.changedBy ?? '',
+        changeNote: doc.changeNote ?? (doc.key ? `Legacy config (key=${doc.key})` : ''),
         createdAt: doc.createdAt,
       })),
       total,

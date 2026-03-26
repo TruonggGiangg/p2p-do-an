@@ -331,24 +331,6 @@ export interface PermissionDto {
   allowed: boolean;
 }
 
-export interface CreditScoreWeightConfigDto {
-  _id?: string;
-  name?: string;
-  description?: string;
-  key?: string;
-  isDefault?: boolean;
-  isActive?: boolean;
-  appliedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  paymentHistory: number;
-  debtLevel: number;
-  creditAge: number;
-  creditMix: number;
-  newCredit: number;
-  total: number;
-}
-
 export interface CreditGradeDto {
   grade: string;
   label: string;
@@ -442,74 +424,6 @@ export const adminApi = {
       .patch<{
         data: { fontSize: "compact" | "default" | "large" };
       }>("/api/admin/me/preferences", prefs)
-      .then((r) => r.data.data),
-
-  getCreditScoreWeightConfig: () =>
-    api
-      .get<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weights")
-      .then((r) => r.data.data),
-
-  updateCreditScoreWeightConfig: (body: {
-    paymentHistory: number;
-    debtLevel: number;
-    creditAge: number;
-    creditMix: number;
-    newCredit: number;
-  }) =>
-    api
-      .put<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weights", body)
-      .then((r) => r.data.data),
-
-  listCreditScoreWeightConfigs: () =>
-    api
-      .get<{
-        data: CreditScoreWeightConfigDto[];
-      }>("/api/admin/credit-score/weight-configs")
-      .then((r) => r.data.data),
-
-  createCreditScoreWeightConfig: (body: {
-    name: string;
-    description?: string;
-    paymentHistory: number;
-    debtLevel: number;
-    creditAge: number;
-    creditMix: number;
-    newCredit: number;
-  }) =>
-    api
-      .post<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weight-configs", body)
-      .then((r) => r.data.data),
-
-  updateCreditScoreWeightConfigById: (
-    id: string,
-    body: {
-      name?: string;
-      description?: string;
-      isActive?: boolean;
-      paymentHistory: number;
-      debtLevel: number;
-      creditAge: number;
-      creditMix: number;
-      newCredit: number;
-    },
-  ) =>
-    api
-      .put<{
-        data: CreditScoreWeightConfigDto;
-      }>(`/api/admin/credit-score/weight-configs/${id}`, body)
-      .then((r) => r.data.data),
-
-  applyCreditScoreWeightConfig: (id: string) =>
-    api
-      .post<{
-        data: CreditScoreWeightConfigDto;
-      }>(`/api/admin/credit-score/weight-configs/${id}/apply`)
       .then((r) => r.data.data),
 
   getLoanProducts: () =>

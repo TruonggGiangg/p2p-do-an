@@ -36,11 +36,7 @@ import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import {
-  CreateCreditScoreWeightConfigInput,
-  CreditScoreWeightConfigItem,
-  CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
-  UpdateCreditScoreWeightConfigInput,
   LoanEvaluationConfigInput,
   LoanEvaluationConfigValue,
   LoanEvaluationConfigHistoryItem,
@@ -112,24 +108,6 @@ export class AdminService {
   // FACADE DELEGATES â€” Products
   async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
     return this.staffService.getCreditScoreWeightConfig();
-  }
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
-    return this.staffService.updateCreditScoreWeightConfig(input);
-  }
-  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    return this.staffService.listCreditScoreWeightConfigs();
-  }
-  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.createCreditScoreWeightConfig(input);
-  }
-  async updateCreditScoreWeightConfigById(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.updateCreditScoreWeightConfigById(id, input);
-  }
-  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.applyCreditScoreWeightConfig(id);
   }
 
   // FACADE DELEGATES — Loan Evaluation Config

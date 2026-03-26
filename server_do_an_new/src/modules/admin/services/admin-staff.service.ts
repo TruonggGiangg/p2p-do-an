@@ -17,12 +17,8 @@ import { Role } from '../../rbac/schemas/role.schema';
 import { RegisterDto } from '../../auth/dto/register.dto';
 import { UpdateStaffDto } from '../dto/update-staff.dto';
 import {
-  CreateCreditScoreWeightConfigInput,
   CreditScoreService,
-  CreditScoreWeightConfigItem,
-  CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
-  UpdateCreditScoreWeightConfigInput,
   LoanEvaluationConfigInput,
   LoanEvaluationConfigValue,
   LoanEvaluationConfigHistoryItem,
@@ -48,29 +44,6 @@ export class AdminStaffService {
   // ── Credit Score ──────────────────────────────────────────────────────────
   async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
     return this.creditScoreService.getWeightConfig();
-  }
-
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
-    return this.creditScoreService.upsertWeightConfig(input);
-  }
-
-  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    return this.creditScoreService.listWeightConfigs();
-  }
-
-  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.createWeightConfig(input);
-  }
-
-  async updateCreditScoreWeightConfigById(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.updateWeightConfig(id, input);
-  }
-
-  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.applyWeightConfig(id);
   }
 
   // ── Loan Evaluation Config ───────────────────────────────────────────────────────

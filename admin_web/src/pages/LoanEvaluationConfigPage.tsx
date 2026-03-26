@@ -443,11 +443,28 @@ export default function LoanEvaluationConfigPage() {
                             dataSource={history} rowKey="_id" loading={historyLoading}
                             pagination={false} size="small" scroll={{ x: 900 }}
                             columns={[
-                                { title: 'Version', dataIndex: 'version', key: 'v', width: 80, render: (v: number) => <Tag>v{v}</Tag> },
+                                { title: 'Version', dataIndex: 'version', key: 'v', width: 80, render: (v: number) => v ? <Tag>v{v}</Tag> : <Tag color="orange">legacy</Tag> },
                                 { title: 'Thời gian', dataIndex: 'createdAt', key: 't', width: 160, render: (v: string) => v ? new Date(v).toLocaleString('vi-VN') : '-' },
-                                { title: 'Reject / Approve', key: 'thresholds', width: 140, render: (_: any, r: any) => `< ${r.autoRejectScore} / ≥ ${r.autoApproveScore}` },
-                                { title: 'Hạng', key: 'grades', render: (_: any, r: any) => (r.creditGrades || []).map((g: any) => <Tag key={g.grade} color={GRADE_COLORS[g.grade]}>{g.grade}: {g.minScore}-{g.maxScore}</Tag>) },
-                                { title: 'Hash', dataIndex: 'configHash', key: 'hash', width: 180, render: (v: string) => <code style={{ fontSize: 10 }}>{v?.slice(0, 24)}…</code> },
+                                {
+                                    title: 'Reject / Approve', key: 'thresholds', width: 140, render: (_: any, r: any) => {
+                                        const rej = r.autoRejectScore != null ? r.autoRejectScore : 'N/A';
+                                        const app = r.autoApproveScore != null ? r.autoApproveScore : 'N/A';
+                                        return `< ${rej} / ≥ ${app}`;
+                                    }
+                                },
+                                {
+                                    title: 'Hạng', key: 'grades', render: (_: any, r: any) => (r.creditGrades && r.creditGrades.length > 0)
+                                        ? r.creditGrades.map((g: any) => <Tag key={g.grade} color={GRADE_COLORS[g.grade]}>{g.grade}: {g.minScore}-{g.maxScore}</Tag>)
+                                        : <Tag color="default">Chưa cấu hình</Tag>
+                                },
+                                {
+                                    title: 'Trọng số', key: 'weights', width: 200, render: (_: any, r: any) => {
+                                        const w = r.scoreWeights;
+                                        if (!w) return <Tag color="default">Chưa cấu hình</Tag>;
+                                        return <span style={{ fontSize: 11 }}>PH:{w.paymentHistory} DL:{w.debtLevel} CA:{w.creditAge} CM:{w.creditMix} NC:{w.newCredit}</span>;
+                                    }
+                                },
+                                { title: 'Hash', dataIndex: 'configHash', key: 'hash', width: 180, render: (v: string) => v ? <code style={{ fontSize: 10 }}>{v.slice(0, 24)}…</code> : '-' },
                                 { title: 'Ghi chú', dataIndex: 'changeNote', key: 'note', ellipsis: true },
                             ]}
                         />
