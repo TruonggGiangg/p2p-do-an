@@ -404,7 +404,7 @@ export default function LoanConfirmScreen() {
                         <TouchableOpacity style={s.scheduleTitleRow} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setPolicyExpanded(v => !v); }} activeOpacity={0.7}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <MaterialCommunityIcons name="shield-alert-outline" size={18} color={EMERALD_THEME.warning ?? '#f59e0b'} />
-                                <Text style={s.sectionTitle}>ĐIỀU KHOẢN XỬ LÝ NỢ QUÁ HẠN</Text>
+                                <Text style={s.sectionTitle}>CHÍNH SÁCH NỢ QUÁ HẠN</Text>
                             </View>
                             <MaterialCommunityIcons name={policyExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={EMERALD_THEME.primary} />
                         </TouchableOpacity>
@@ -415,33 +415,64 @@ export default function LoanConfirmScreen() {
                             </Text>
                         )}
 
-                        {policyExpanded && policies.map((p, idx) => {
-                            const actions: string[] = [];
-                            if (p.send_notification) actions.push('Thông báo nhắc nợ');
-                            if (p.apply_penalty) actions.push('Tính lãi phạt');
-                            if (p.block_new_loan) actions.push('Chặn vay mới');
-                            if (p.freeze_account) actions.push('Đóng băng tài khoản');
-                            if (p.permanent_ban) actions.push('Cấm vĩnh viễn');
-                            if (p.legal_escalation) actions.push('Xử lý pháp lý');
-                            const severity = p.debt_group >= 4 ? '#dc2626' : p.debt_group >= 3 ? '#ea580c' : p.debt_group >= 2 ? '#d97706' : EMERALD_THEME.textSecondary;
-
-                            return (
-                                <View key={p._id || idx} style={{ paddingVertical: 12, borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: EMERALD_THEME.border }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: severity }} />
-                                        <Text style={{ fontSize: 13, fontWeight: '700', color: EMERALD_THEME.textPrimary }}>{p.debt_group_name}</Text>
-                                        {p.description ? <Text style={{ fontSize: 11, color: EMERALD_THEME.textSecondary, flex: 1 }} numberOfLines={1}>({p.description})</Text> : null}
-                                    </View>
-                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingLeft: 16 }}>
-                                        {actions.map((a, i) => (
-                                            <View key={i} style={{ backgroundColor: severity + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                                                <Text style={{ fontSize: 11, fontWeight: '600', color: severity }}>{a}</Text>
-                                            </View>
-                                        ))}
-                                    </View>
+                        {policyExpanded && (
+                            <View style={{ marginTop: 4 }}>
+                                {/* Table Header */}
+                                <View style={{
+                                    flexDirection: 'row',
+                                    paddingVertical: 10,
+                                    paddingHorizontal: 8,
+                                    backgroundColor: EMERALD_THEME.background,
+                                    borderRadius: 8,
+                                    marginBottom: 2,
+                                }}>
+                                    <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Nhóm</Text>
+                                    <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Ngày quá hạn</Text>
+                                    <Text style={{ flex: 1.5, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Hành động</Text>
                                 </View>
-                            );
-                        })}
+                                {/* Table Rows */}
+                                {policies.map((p, idx) => {
+                                    const actions: string[] = [];
+                                    if (p.send_notification) actions.push('Thông báo');
+                                    if (p.send_email) actions.push('Email');
+                                    if (p.send_sms) actions.push('SMS');
+                                    if (p.apply_penalty) actions.push('Áp dụng lãi phạt');
+                                    if (p.block_new_loan) actions.push('Chặn vay mới');
+                                    if (p.freeze_account) actions.push('Đóng băng tài khoản');
+                                    if (p.permanent_ban) actions.push('Cấm vĩnh viễn');
+                                    if (p.legal_escalation) actions.push('Xử lý pháp lý');
+                                    const dayRange = p.min_days != null && p.max_days != null
+                                        ? `${p.min_days} - ${p.max_days} ngày`
+                                        : p.min_days != null
+                                            ? `≥ ${p.min_days} ngày`
+                                            : '--';
+
+                                    return (
+                                        <View
+                                            key={p._id || idx}
+                                            style={{
+                                                flexDirection: 'row',
+                                                paddingVertical: 12,
+                                                paddingHorizontal: 8,
+                                                borderTopWidth: idx > 0 ? 1 : 0,
+                                                borderTopColor: EMERALD_THEME.border,
+                                                alignItems: 'flex-start',
+                                            }}
+                                        >
+                                            <View style={{ flex: 1.2 }}>
+                                                <Text style={{ fontSize: 12, fontWeight: '600', color: EMERALD_THEME.textPrimary }}>
+                                                    #{p.debt_group} – {p.debt_group_name}
+                                                </Text>
+                                            </View>
+                                            <Text style={{ flex: 1, fontSize: 12, color: EMERALD_THEME.textSecondary }}>{dayRange}</Text>
+                                            <Text style={{ flex: 1.5, fontSize: 12, color: EMERALD_THEME.textSecondary, lineHeight: 18 }}>
+                                                {actions.join(', ')}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
 
                         <TouchableOpacity
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border }}

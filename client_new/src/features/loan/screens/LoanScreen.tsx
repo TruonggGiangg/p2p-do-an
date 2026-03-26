@@ -69,13 +69,17 @@ export default function LoanScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const fetchProducts = async () => {
+    const fetchData = async () => {
         const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
         try {
-            const [data] = await Promise.all([loanService.getLoanProducts(), minDelay]);
+            const [data, loanRes] = await Promise.all([
+                loanService.getLoanProducts(),
+                loanService.getApplications({ page: 1, pageSize: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
+                minDelay,
+            ]);
             setProducts(data);
         } catch (error) {
-            console.error('Failed to fetch loan products:', error);
+            console.error('Failed to fetch loan data:', error);
             Alert.alert('Lỗi', 'Không thể tải danh sách sản phẩm vay');
         } finally {
             setLoading(false);
@@ -85,10 +89,10 @@ export default function LoanScreen() {
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await fetchProducts();
+        await fetchData();
     }, []);
 
-    useEffect(() => { fetchProducts(); }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const navToHistory = () => (navigation as any).navigate('LoanHistory');
 
@@ -160,7 +164,7 @@ export default function LoanScreen() {
                 primaryColor={c.primary}
                 glowColor={c.primaryLight}
             >
-                {/* ═══ LOAN HISTORY BTN (New Design) ═══ */}
+                {/* ═══ LOAN HISTORY BTN ═══ */}
                 <View style={styles.historySection}>
                     <TouchableOpacity
                         style={[styles.historyBtnTop, { backgroundColor: isDark ? c.surfaceLight : '#EDF0F2', borderWidth: 1, borderColor: isDark ? 'transparent' : '#E2E6E8' }]}
@@ -174,7 +178,6 @@ export default function LoanScreen() {
                         <Ionicons name="chevron-forward" size={20} color={isDark ? '#9CA3AF' : '#6B7280'} />
                     </TouchableOpacity>
                 </View>
-
                 {/* ═══ HEADER ═══ */}
                 <View style={styles.headerSection}>
                     <View style={styles.headerRow}>
@@ -222,19 +225,18 @@ const styles = StyleSheet.create({
     // ── History Link ──
     historySection: { marginTop: 20 },
     historyBtnTop: {
-        flexDirection: 'row', alignItems: 'center', 
-        paddingLeft: 12, paddingRight: 20, paddingVertical: 12, 
+        flexDirection: 'row', alignItems: 'center',
+        paddingLeft: 12, paddingRight: 20, paddingVertical: 12,
         borderRadius: 24,
     },
     historyIconWrap: {
-        width: 44, height: 44, borderRadius: 14, 
+        width: 44, height: 44, borderRadius: 14,
         justifyContent: 'center', alignItems: 'center',
     },
     historyBtnText: { flex: 1, marginLeft: 16, fontSize: 15, fontFamily: 'Poppins_500Medium' },
 
     // ── Header ──
-    headerSection: { marginTop: 32, marginBottom: 20 },
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+    headerSection: { marginTop: 32, marginBottom: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
     sectionTitle: { fontSize: 22, fontFamily: 'Poppins_700Bold', marginBottom: 4 },
     sectionSubtitle: { fontSize: 13, fontFamily: 'Poppins_400Regular', lineHeight: 18 },
     loadingContainer: { marginTop: 28 },

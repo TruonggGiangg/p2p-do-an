@@ -44,7 +44,12 @@ export default function RepaymentConfirmScreen() {
     const [wallets, setWallets] = useState<Wallet[]>([]);
     const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
     const [showWalletModal, setShowWalletModal] = useState(false);
-    const [amount, setAmount] = useState(suggestedAmount?.toString() || '');
+    const [rawAmount, setRawAmount] = useState(suggestedAmount ?? 0);
+    const amount = rawAmount > 0 ? rawAmount.toLocaleString('vi-VN') : '';
+    const setAmount = (text: string) => {
+        const digits = text.replace(/[^0-9]/g, '');
+        setRawAmount(digits ? parseInt(digits, 10) : 0);
+    };
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [showPinVerify, setShowPinVerify] = useState(false);
@@ -63,7 +68,7 @@ export default function RepaymentConfirmScreen() {
     }, []);
 
     const handleRepay = useCallback(async (payload?: { otpSessionId?: string }) => {
-        const numAmount = parseFloat(amount.replace(/[^0-9.]/g, ''));
+        const numAmount = rawAmount;
         if (!numAmount || numAmount <= 0) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
@@ -101,10 +106,10 @@ export default function RepaymentConfirmScreen() {
         } finally {
             setSubmitting(false);
         }
-    }, [amount, selectedWallet, loanId, loan, outstanding, nextPeriod, navigation]);
+    }, [rawAmount, selectedWallet, loanId, loan, outstanding, nextPeriod, navigation]);
 
     const walletBalance = selectedWallet?.balance ?? 0;
-    const numericAmount = parseFloat(amount.replace(/[^0-9.]/g, '')) || 0;
+    const numericAmount = rawAmount;
     const isInsufficient = numericAmount > 0 && walletBalance > 0 && numericAmount > walletBalance;
 
     return (
@@ -122,11 +127,11 @@ export default function RepaymentConfirmScreen() {
                     </View>
                     <View style={s.infoRow}>
                         <Text style={[s.infoLabel, { color: C.textSecondary }]}>Gốc vay</Text>
-                        <Text style={[s.infoValue, { color: C.textPrimary }]}>{formatCurrency(loan?.capital)} đ</Text>
+                        <Text style={[s.infoValue, { color: C.textPrimary }]}>{formatCurrency(loan?.capital)}</Text>
                     </View>
                     <View style={s.infoRow}>
                         <Text style={[s.infoLabel, { color: C.textSecondary }]}>Dư nợ còn lại</Text>
-                        <Text style={[s.infoValue, { color: C.primary, fontWeight: '700' }]}>{formatCurrency(outstanding?.totalOutstanding)} đ</Text>
+                        <Text style={[s.infoValue, { color: C.primary, fontWeight: '700' }]}>{formatCurrency(outstanding?.totalOutstanding)}</Text>
                     </View>
                 </View>
 
@@ -184,7 +189,7 @@ export default function RepaymentConfirmScreen() {
                                         {selectedWallet.productName || 'Ví điện tử'}
                                     </Text>
                                     <Text style={[s.walletBalance, { color: C.textSecondary }]}>
-                                        Số dư: {formatCurrency(walletBalance)} đ
+                                        Số dư: {formatCurrency(walletBalance)}
                                     </Text>
                                 </View>
                             ) : (
@@ -219,17 +224,17 @@ export default function RepaymentConfirmScreen() {
                     {/* Quick chips */}
                     <View style={s.chipRow}>
                         {nextPeriod && (
-                            <TouchableOpacity style={[s.chip, { backgroundColor: C.primary + '15' }]} onPress={() => setAmount(String(nextPeriod.totalDue || nextPeriod.totalOutstanding || 0))}>
+                            <TouchableOpacity style={[s.chip, { backgroundColor: C.primary + '15' }]} onPress={() => setRawAmount(nextPeriod.totalDue || nextPeriod.totalOutstanding || 0)}>
                                 <Text style={[s.chipText, { color: C.primary }]}>1 Kỳ hạn</Text>
                             </TouchableOpacity>
                         )}
                         {outstanding && (
-                            <TouchableOpacity style={[s.chip, { backgroundColor: C.primary + '15' }]} onPress={() => setAmount(String(outstanding.totalOutstanding || 0))}>
+                            <TouchableOpacity style={[s.chip, { backgroundColor: C.primary + '15' }]} onPress={() => setRawAmount(outstanding.totalOutstanding || 0)}>
                                 <Text style={[s.chipText, { color: C.primary }]}>Toàn bộ nợ</Text>
                             </TouchableOpacity>
                         )}
                         {outstanding && (outstanding.totalOverdue || 0) > 0 && (
-                            <TouchableOpacity style={[s.chip, { backgroundColor: '#dc262615' }]} onPress={() => setAmount(String(outstanding.totalOverdue || 0))}>
+                            <TouchableOpacity style={[s.chip, { backgroundColor: '#dc262615' }]} onPress={() => setRawAmount(outstanding.totalOverdue || 0)}>
                                 <Text style={[s.chipText, { color: '#dc2626' }]}>Nợ quá hạn</Text>
                             </TouchableOpacity>
                         )}
@@ -240,7 +245,7 @@ export default function RepaymentConfirmScreen() {
                 <View style={[s.summaryCard, { backgroundColor: C.primary + '08' }]}>
                     <View style={s.summaryRow}>
                         <Text style={[s.summaryLabel, { color: C.textSecondary }]}>Thanh toán</Text>
-                        <Text style={[s.summaryValue, { color: C.textPrimary }]}>{formatCurrency(numericAmount)} đ</Text>
+                        <Text style={[s.summaryValue, { color: C.textPrimary }]}>{formatCurrency(numericAmount)}</Text>
                     </View>
                     <View style={s.summaryRow}>
                         <Text style={[s.summaryLabel, { color: C.textSecondary }]}>Nguồn</Text>
@@ -249,7 +254,7 @@ export default function RepaymentConfirmScreen() {
                     <View style={[s.summaryRow, { borderTopWidth: 1, borderTopColor: C.border, paddingTop: 12, marginTop: 4 }]}>
                         <Text style={[s.summaryLabel, { color: C.textPrimary, fontWeight: '700' }]}>Số dư sau giao dịch</Text>
                         <Text style={[s.summaryValue, { color: numericAmount > walletBalance ? '#dc2626' : C.primary, fontWeight: '700' }]}>
-                            {formatCurrency(Math.max(0, walletBalance - numericAmount))} đ
+                            {formatCurrency(Math.max(0, walletBalance - numericAmount))}
                         </Text>
                     </View>
                 </View>
@@ -279,7 +284,7 @@ export default function RepaymentConfirmScreen() {
                                     ) : (
                                         <>
                                             <MaterialCommunityIcons name="shield-check-outline" size={20} color="#fff" />
-                                            <Text style={s.submitBtnText}>Thanh toán {formatCurrency(numericAmount)} đ</Text>
+                                            <Text style={s.submitBtnText}>Thanh toán {formatCurrency(numericAmount)}</Text>
                                         </>
                                     )}
                                 </TouchableOpacity>

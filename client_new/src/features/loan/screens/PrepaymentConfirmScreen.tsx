@@ -127,7 +127,7 @@ export default function PrepaymentConfirmScreen() {
                     </View>
                     <View style={s.infoRow}>
                         <Text style={[s.infoLabel, { color: C.textSecondary }]}>Gốc vay</Text>
-                        <Text style={[s.infoValue, { color: C.textPrimary }]}>{formatCurrency(loan?.capital)} đ</Text>
+                        <Text style={[s.infoValue, { color: C.textPrimary }]}>{formatCurrency(loan?.capital)}</Text>
                     </View>
                     <View style={s.infoRow}>
                         <Text style={[s.infoLabel, { color: C.textSecondary }]}>Kỳ hạn</Text>
@@ -185,7 +185,7 @@ export default function PrepaymentConfirmScreen() {
                                         {selectedWallet.productName || 'Ví điện tử'}
                                     </Text>
                                     <Text style={[s.walletBalance, { color: C.textSecondary }]}>
-                                        Số dư: {formatCurrency(walletBalance)} đ
+                                        Số dư: {formatCurrency(walletBalance)}
                                     </Text>
                                 </View>
                             ) : (
@@ -215,7 +215,7 @@ export default function PrepaymentConfirmScreen() {
                     <View style={[s.summaryRow, { borderTopWidth: 1, borderTopColor: C.border, paddingTop: 12, marginTop: 4 }]}>
                         <Text style={[s.summaryLabel, { color: C.textPrimary, fontWeight: '700' }]}>Số dư sau giao dịch</Text>
                         <Text style={[s.summaryValue, { color: totalAmount > walletBalance ? '#dc2626' : C.primary, fontWeight: '700' }]}>
-                            {formatCurrency(Math.max(0, walletBalance - totalAmount))} đ
+                            {formatCurrency(Math.max(0, walletBalance - totalAmount))}
                         </Text>
                     </View>
                 </View>

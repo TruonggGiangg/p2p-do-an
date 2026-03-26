@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -66,7 +66,7 @@ const formatDateTime = (value?: string) => {
 };
 
 export default function CreditScoreDetailScreen() {
-    const { user } = useAuth();
+    const { user, refreshUser } = useAuth();
     const { theme } = useTheme();
     const c = theme.colors;
 
@@ -101,10 +101,8 @@ export default function CreditScoreDetailScreen() {
             let active = true;
             (async () => {
                 setLoading(true);
-                // Load factors from user profile
-                if (user?.creditScore?.factors) {
-                    setFactors(user.creditScore.factors);
-                }
+                // Refresh user to get latest credit score
+                try { await refreshUser(); } catch { }
                 await fetchHistory(1, false);
                 if (active) setLoading(false);
             })();
@@ -112,14 +110,22 @@ export default function CreditScoreDetailScreen() {
             return () => {
                 active = false;
             };
-        }, [fetchHistory, user?.creditScore?.factors]),
+        }, [fetchHistory, refreshUser]),
     );
+
+    // Keep factors in sync with user credit score
+    useEffect(() => {
+        if (user?.creditScore?.factors) {
+            setFactors(user.creditScore.factors);
+        }
+    }, [user?.creditScore?.factors]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        try { await refreshUser(); } catch { }
         await fetchHistory(1, false);
         setRefreshing(false);
-    }, [fetchHistory]);
+    }, [fetchHistory, refreshUser]);
 
     const onLoadMore = useCallback(async () => {
         if (loadingMoreRef.current || !hasNextPage || loading || refreshing) return;
