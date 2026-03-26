@@ -159,6 +159,8 @@ export interface DelinquencyPolicyItem {
     | "WRITE_OFF";
   legal_escalation: boolean;
   is_active: boolean;
+  freeze_account: boolean;
+  permanent_ban: boolean;
   description?: string;
 }
 
@@ -652,27 +654,12 @@ class LoanService {
     loanProductId?: number,
   ): Promise<DelinquencyPolicyItem[]> {
     try {
-      const response = await api.get<{ data: DelinquencyPolicyItem[] }>(
-        "/api/delinquency/policies",
-        {
-          params: {
-            is_active: true,
-            ...(Number.isFinite(loanProductId)
-              ? { loan_product_id: loanProductId }
-              : {}),
-          },
-        },
-      );
-      const policies = response.data.data ?? [];
-
-      // Safety net: never render cross-product policies when product id is known.
-      if (Number.isFinite(loanProductId)) {
-        return policies.filter(
-          (p) => Number(p.loan_product_id) === Number(loanProductId),
-        );
-      }
-
-      return policies;
+      const response = await api.get<{
+        data: { policies: DelinquencyPolicyItem[] };
+      }>("/api/loan/delinquency-policies", {
+        params: loanProductId != null ? { loan_product_id: loanProductId } : {},
+      });
+      return response.data.data?.policies ?? [];
     } catch {
       return [];
     }
@@ -951,10 +938,10 @@ export interface PrepayAmountResult {
   interestPortion: number;
   penaltyPortion: number;
   feesPortion: number;
-  prepaymentPenalty: number;     // phí phạt tất toán sớm (tính từ charge config)
-  totalWithPenalty: number;      // tổng cộng bao gồm phí phạt
-  penaltyRate: number;           // tỷ lệ phạt % (e.g. 3 = 3%) — lấy ĐỘNG từ Fineract
-  penaltyChargeName: string;     // tên charge (e.g. "Phí phạt tất toán sớm")
+  prepaymentPenalty: number; // phí phạt tất toán sớm (tính từ charge config)
+  totalWithPenalty: number; // tổng cộng bao gồm phí phạt
+  penaltyRate: number; // tỷ lệ phạt % (e.g. 3 = 3%) — lấy ĐỘNG từ Fineract
+  penaltyChargeName: string; // tên charge (e.g. "Phí phạt tất toán sớm")
   date: string;
   charges?: ProductCharge[];
   loanId: string;

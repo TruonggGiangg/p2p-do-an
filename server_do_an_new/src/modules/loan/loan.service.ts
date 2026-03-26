@@ -176,6 +176,50 @@ export class LoanService {
   }
 
   /**
+   * Lấy chính sách xử lý nợ xấu (delinquency policy) để hiển thị trong xác nhận đơn vay.
+   * Chỉ trả về policy active, sắp theo debt_group tăng dần.
+   */
+  async getDelinquencyPolicySummary(loanProductId?: number): Promise<any[]> {
+    const selectFields =
+      'debt_group debt_group_name description send_notification apply_penalty block_new_loan freeze_account permanent_ban collection_stage retention_months loan_product_id';
+
+    let policies: any[];
+    if (loanProductId != null) {
+      // Try product-specific policies first
+      policies = await this.delinquencyPolicyModel
+        .find({ is_active: true, loan_product_id: loanProductId })
+        .select(selectFields)
+        .sort({ debt_group: 1 })
+        .lean();
+
+      // Fallback to global policies (no product_id) if none found for this product
+      if (!policies.length) {
+        policies = await this.delinquencyPolicyModel
+          .find({ is_active: true, $or: [{ loan_product_id: null }, { loan_product_id: { $exists: false } }] })
+          .select(selectFields)
+          .sort({ debt_group: 1 })
+          .lean();
+      }
+    } else {
+      policies = await this.delinquencyPolicyModel
+        .find({ is_active: true })
+        .select(selectFields)
+        .sort({ debt_group: 1 })
+        .lean();
+    }
+
+    // De-duplicate by debt_group (keep the one with most restrictions)
+    const groupMap = new Map<number, any>();
+    for (const p of policies) {
+      const existing = groupMap.get(p.debt_group);
+      if (!existing || p.block_new_loan || p.freeze_account || p.permanent_ban) {
+        groupMap.set(p.debt_group, p);
+      }
+    }
+    return Array.from(groupMap.values()).sort((a, b) => a.debt_group - b.debt_group);
+  }
+
+  /**
    * Calculate loan schedule with rounding (p2p-style: flat vs declining, last-period adjustment)
    */
   calculateLoanSchedule(

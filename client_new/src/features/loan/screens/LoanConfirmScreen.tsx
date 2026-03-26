@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OTPProtectedAction, PinVerifyModal, BinanceHeader } from '../../../components';
 import ImagePickerSheet from '../../../components/common/ImagePickerSheet';
-import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge } from '../services/loan.service';
+import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, LoanDocumentType, ProductCharge, DelinquencyPolicyItem } from '../services/loan.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
 import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal';
@@ -113,6 +113,9 @@ export default function LoanConfirmScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [scheduleExpanded, setScheduleExpanded] = useState(false);
+    const [policies, setPolicies] = useState<DelinquencyPolicyItem[]>([]);
+    const [policyExpanded, setPolicyExpanded] = useState(false);
+    const [policyAgreed, setPolicyAgreed] = useState(false);
 
     // PIN verification trước OTP
     const [showPinVerify, setShowPinVerify] = useState(false);
@@ -120,13 +123,15 @@ export default function LoanConfirmScreen() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [docTypes, walletRes, productCharges] = await Promise.all([
+            const [docTypes, walletRes, productCharges, policyList] = await Promise.all([
                 loanService.getDocumentTypesByProduct(product.id),
                 walletAPI.getWallets(),
                 loanService.getProductCharges(product.id),
+                loanService.getDelinquencyPolicies(product.id),
             ]);
             setDocumentTypes(docTypes);
             setCharges(productCharges);
+            setPolicies(policyList);
             const wList = walletRes.wallets ?? [];
             setWallets(wList);
             const defaultWallet = wList.find((w) => w.isDefault) ?? wList[0];
@@ -393,6 +398,71 @@ export default function LoanConfirmScreen() {
                     )}
                 </View>
 
+                {/* ── Chính sách xử lý nợ ── */}
+                {policies.length > 0 && (
+                    <View style={s.card}>
+                        <TouchableOpacity style={s.scheduleTitleRow} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setPolicyExpanded(v => !v); }} activeOpacity={0.7}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <MaterialCommunityIcons name="shield-alert-outline" size={18} color={EMERALD_THEME.warning ?? '#f59e0b'} />
+                                <Text style={s.sectionTitle}>ĐIỀU KHOẢN XỬ LÝ NỢ QUÁ HẠN</Text>
+                            </View>
+                            <MaterialCommunityIcons name={policyExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={EMERALD_THEME.primary} />
+                        </TouchableOpacity>
+
+                        {!policyExpanded && (
+                            <Text style={{ fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: -8, marginBottom: 4 }}>
+                                Nhấn để xem chi tiết các biện pháp xử lý khi trễ hạn thanh toán
+                            </Text>
+                        )}
+
+                        {policyExpanded && policies.map((p, idx) => {
+                            const actions: string[] = [];
+                            if (p.send_notification) actions.push('Thông báo nhắc nợ');
+                            if (p.apply_penalty) actions.push('Tính lãi phạt');
+                            if (p.block_new_loan) actions.push('Chặn vay mới');
+                            if (p.freeze_account) actions.push('Đóng băng tài khoản');
+                            if (p.permanent_ban) actions.push('Cấm vĩnh viễn');
+                            if (p.legal_escalation) actions.push('Xử lý pháp lý');
+                            const severity = p.debt_group >= 4 ? '#dc2626' : p.debt_group >= 3 ? '#ea580c' : p.debt_group >= 2 ? '#d97706' : EMERALD_THEME.textSecondary;
+
+                            return (
+                                <View key={p._id || idx} style={{ paddingVertical: 12, borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: EMERALD_THEME.border }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: severity }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: EMERALD_THEME.textPrimary }}>{p.debt_group_name}</Text>
+                                        {p.description ? <Text style={{ fontSize: 11, color: EMERALD_THEME.textSecondary, flex: 1 }} numberOfLines={1}>({p.description})</Text> : null}
+                                    </View>
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingLeft: 16 }}>
+                                        {actions.map((a, i) => (
+                                            <View key={i} style={{ backgroundColor: severity + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                                                <Text style={{ fontSize: 11, fontWeight: '600', color: severity }}>{a}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </View>
+                            );
+                        })}
+
+                        <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border }}
+                            onPress={() => setPolicyAgreed(v => !v)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={{
+                                width: 22, height: 22, borderRadius: 6,
+                                borderWidth: 2, borderColor: policyAgreed ? EMERALD_THEME.primary : EMERALD_THEME.textDim,
+                                backgroundColor: policyAgreed ? EMERALD_THEME.primary : 'transparent',
+                                justifyContent: 'center', alignItems: 'center',
+                            }}>
+                                {policyAgreed && <MaterialCommunityIcons name="check" size={14} color={EMERALD_THEME.onPrimary} />}
+                            </View>
+                            <Text style={{ flex: 1, fontSize: 12, color: EMERALD_THEME.textSecondary, lineHeight: 18 }}>
+                                Tôi đã đọc và đồng ý với các điều khoản xử lý nợ quá hạn của hệ thống P2P Lending
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* ── Tài liệu đính kèm ── */}
                 {documentTypes.length > 0 && (
                     <View style={s.card}>
@@ -470,6 +540,7 @@ export default function LoanConfirmScreen() {
                             otpTriggerRef.current = trigger;
                             const handlePress = () => {
                                 if (!selectedWallet) { Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân'); return; }
+                                if (policies.length > 0 && !policyAgreed) { Alert.alert('Lỗi', 'Vui lòng đọc và đồng ý điều khoản xử lý nợ quá hạn'); return; }
                                 const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
                                 if (requiredMissing.length > 0) {
                                     Alert.alert('Lỗi', `Thiếu tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
@@ -477,7 +548,7 @@ export default function LoanConfirmScreen() {
                                 }
                                 setShowPinVerify(true);
                             };
-                            const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized;
+                            const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized || (policies.length > 0 && !policyAgreed);
                             return (
                                 <TouchableOpacity
                                     style={[s.submitBtn, { backgroundColor: isDisabled ? (theme.mode === 'dark' ? EMERALD_THEME.surfaceHigh : 'rgba(0,0,0,0.06)') : EMERALD_THEME.primary }]}
@@ -499,38 +570,40 @@ export default function LoanConfirmScreen() {
                 </View>
 
                 <View style={{ height: 40 }} />
+
+
+                <WalletSelectorModal
+                    visible={showWalletModal}
+                    onClose={() => setShowWalletModal(false)}
+                    wallets={wallets}
+                    selectedWalletId={selectedWallet?.id ?? selectedWallet?._id}
+                    onSelect={setSelectedWallet}
+                    title="Chọn ví nhận giải ngân"
+                />
+
+                <ImagePickerSheet
+                    visible={imagePickerVisible}
+                    onClose={() => { setImagePickerVisible(false); setImagePickerDocId(null); }}
+                    onSelect={handleImagePicked}
+                    title="Tải tài liệu lên"
+                    allowCamera
+                    quality={0.8}
+                />
+
+                <PinVerifyModal
+                    visible={showPinVerify}
+                    dismissable
+                    onCancel={() => setShowPinVerify(false)}
+                    onSuccess={() => {
+                        setShowPinVerify(false);
+                        setTimeout(() => otpTriggerRef.current?.(), 300);
+                    }}
+                    title="Xác thực mã PIN"
+                    subtitle="Nhập mã PIN để tiếp tục giao dịch an toàn"
+                />
+
             </ScrollView>
-
-            <WalletSelectorModal
-                visible={showWalletModal}
-                onClose={() => setShowWalletModal(false)}
-                wallets={wallets}
-                selectedWalletId={selectedWallet?.id ?? selectedWallet?._id}
-                onSelect={setSelectedWallet}
-                title="Chọn ví nhận giải ngân"
-            />
-
-            <ImagePickerSheet
-                visible={imagePickerVisible}
-                onClose={() => { setImagePickerVisible(false); setImagePickerDocId(null); }}
-                onSelect={handleImagePicked}
-                title="Tải tài liệu lên"
-                allowCamera
-                quality={0.8}
-            />
-
-            <PinVerifyModal
-                visible={showPinVerify}
-                dismissable
-                onCancel={() => setShowPinVerify(false)}
-                onSuccess={() => {
-                    setShowPinVerify(false);
-                    setTimeout(() => otpTriggerRef.current?.(), 300);
-                }}
-                title="Xác thực mã PIN"
-                subtitle="Nhập mã PIN để tiếp tục giao dịch an toàn"
-            />
-        </View>
+        </View >
     );
 }
 

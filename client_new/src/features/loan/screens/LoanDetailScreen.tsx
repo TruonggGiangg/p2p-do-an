@@ -1,12 +1,11 @@
 /**
- * LoanDetailScreen.tsx - Chi tiết khoản vay với 3 tabs
- * Redesign theo reference p2p/client HistoryDetail.js
+ * LoanDetailScreen.tsx - Chi tiết khoản vay - Bank-Grade UI
+ * Redesign: Compact hero, detailed repayment modal, success page navigation
  */
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    Keyboard,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -89,7 +88,6 @@ const formatDate = (dateString?: any) => {
     return new Date(dateString).toLocaleDateString('vi-VN');
 };
 
-/** Trạng thái từng kỳ (giống Mifos): paid | overdue | current | upcoming */
 const getInstallmentStatus = (period: any): 'paid' | 'overdue' | 'current' | 'upcoming' => {
     const complete = period?.complete === true || (period?.obligationsMetOnDate != null && Array.isArray(period.obligationsMetOnDate));
     if (complete) return 'paid';
@@ -119,24 +117,24 @@ const formatInputVND = (text: string) => {
 
 const getStatusInfo = (statusObj: any, status: string) => {
     if (statusObj) {
-        if (statusObj.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#3B82F615' };
-        if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
-        if (statusObj.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#6B728015' };
-        if (statusObj.overpaid) return { text: 'Trả thừa', color: '#10B981', bgColor: '#10B98115' };
-        if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
-        if (statusObj.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', bgColor: '#8B5CF615' };
-        if (statusObj.approved) return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
-        if (statusObj.rejected) return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#EF444415' };
-        if (statusObj.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#9CA3AF15' };
+        if (statusObj.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
+        if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
+        if (statusObj.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB' };
+        if (statusObj.overpaid) return { text: 'Trả thừa', color: '#10B981', bgColor: '#F0FDF4' };
+        if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
+        if (statusObj.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', bgColor: '#F5F3FF' };
+        if (statusObj.approved) return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#FFFBEB' };
+        if (statusObj.rejected) return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
+        if (statusObj.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
     }
-    if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#10B98115' };
-    if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#3B82F615' };
-    if (status === 'approved') return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#F59E0B15' };
-    if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#F59E0B15' };
-    if (status === 'rejected') return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#EF444415' };
-    if (status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#9CA3AF15' };
-    if (status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#6B728015' };
-    return { text: status || 'N/A', color: '#6B7280', bgColor: '#6B728015' };
+    if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
+    if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
+    if (status === 'approved') return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#FFFBEB' };
+    if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
+    if (status === 'rejected') return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
+    if (status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
+    if (status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB' };
+    return { text: status || 'N/A', color: '#6B7280', bgColor: '#F9FAFB' };
 };
 
 const getTxTypeInfo = (typeObj: any): { text: string; icon: any; color: string } => {
@@ -144,6 +142,11 @@ const getTxTypeInfo = (typeObj: any): { text: string; icon: any; color: string }
     if (typeObj.disbursement || typeObj.code?.includes('disbursement')) return { text: 'Giải ngân', icon: 'arrow-down-circle' as any, color: '#10B981' };
     if (typeObj.repayment || typeObj.code?.includes('repayment')) return { text: 'Trả nợ', icon: 'arrow-up-circle' as any, color: '#3B82F6' };
     return { text: typeObj.value || 'Giao dịch', icon: 'swap-horizontal' as any, color: '#6B7280' };
+};
+
+/** Extract error message from Axios error or plain Error */
+const extractErrorMessage = (err: any, fallback: string): string => {
+    return err?.response?.data?.message || err?.message || fallback;
 };
 
 // ============================= MAIN SCREEN ==============================
@@ -154,11 +157,10 @@ interface RouteParams {
 
 const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const { loan: rawLoan, autoOpenRepay } = route.params;
-    const navigation = useNavigation<NativeStackNavigationProp<any>>();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { theme } = useTheme();
     const colors = theme.colors;
 
-    // Normalize loan data
     const loan = useMemo(() => ({
         id: rawLoan?.id,
         fineractLoanId: rawLoan?.fineractLoanId,
@@ -181,14 +183,14 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const [schedule, setSchedule] = useState<ScheduleData | null>(null);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
     const [totalPaid, setTotalPaid] = useState(0);
-    const [prepayAmount, setPrepayAmount] = useState<{ amount: number; principalPortion: number; interestPortion: number; prepaymentPenalty?: number; totalWithPenalty?: number; penaltyRate?: number; penaltyChargeName?: string } | null>(null);
+    const [prepayAmount, setPrepayAmount] = useState<any>(null);
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'info' | 'schedule' | 'history'>('info');
     const [showRepayModal, setShowRepayModal] = useState(false);
     const [repaymentAmount, setRepaymentAmount] = useState('');
     const [fineractDetails, setFineractDetails] = useState<any>(null);
 
-    // Support Request States
+    // Support
     const [showSupportModal, setShowSupportModal] = useState(false);
     const [supportType, setSupportType] = useState<'WAIVE_PENALTY' | 'RESCHEDULE' | null>(null);
     const [supportReason, setSupportReason] = useState('');
@@ -217,41 +219,37 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     const hasAutoOpenedRef = useRef(false);
 
+    // Next unpaid period
+    const nextUnpaidPeriod = useMemo(() => {
+        if (!schedule?.periods) return null;
+        return schedule.periods.find((p: any) => p.period > 0 && !p.complete) || null;
+    }, [schedule]);
+
     // Fetch data
     const fetchData = useCallback(async () => {
         if (!loan.id) return;
         try {
             setLoading(true);
-
-            // Try to load Fineract details via loan service
             const scheduleRes = await loanService.getRepaymentSchedule(loan.id);
             const scheduleData = (scheduleRes as any)?.data || scheduleRes;
             if (scheduleData?.periods) {
                 setSchedule(scheduleData);
                 const periods: any[] = scheduleData.periods || [];
-
-                // Tính dư nợ từ các kỳ chưa hoàn thành
                 const incompletePeriods = periods.filter((p: any) => p.period > 0 && !p.complete);
                 const principalFromPeriods = incompletePeriods.reduce((s: number, p: any) => s + ((p.principalDue || 0) - (p.principalPaid || 0)), 0);
                 const interestFromPeriods = incompletePeriods.reduce((s: number, p: any) => s + ((p.interestDue || 0) - (p.interestPaid || 0)), 0);
-
-                // Ưu tiên dùng totalOutstanding từ Fineract schedule, fallback tính từ periods
                 const totalOut = scheduleData.totalOutstanding || (principalFromPeriods + interestFromPeriods);
                 const principalOut = (scheduleData.totalPrincipalExpected || 0) - (scheduleData.totalPrincipalPaid || 0) || principalFromPeriods;
                 const interestOut = ((scheduleData.totalInterestCharged || 0) - (scheduleData.totalInterestPaid || 0)) || interestFromPeriods;
-
                 setOutstanding({
                     totalOutstanding: totalOut,
                     principalOutstanding: principalOut,
                     interestOutstanding: interestOut,
                 });
-
-                // Tổng đã trả
                 const paid = periods.filter((p: any) => p.period > 0).reduce((s: number, p: any) => s + (p.totalPaid || 0), 0);
                 setTotalPaid(paid || scheduleData.totalRepayment || 0);
             }
 
-            // Lấy outstanding từ API riêng (Fineract summary)
             try {
                 const outRes = await loanService.getOutstanding(loan.id);
                 const outData = (outRes as any)?.data || outRes;
@@ -276,16 +274,11 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 if (prepayData) setPrepayAmount(prepayData);
             }
 
-            // Lấy danh sách giao dịch
             try {
                 const txRes = await loanService.getTransactions(loan.id);
-                console.log('[LoanDetail] txRes data:', (txRes as any)?.data);
-                
-                // Mongoose/Axios response might be double-wrapped inside `data.data` because of NestJS TransformInterceptor
                 const responseBody = (txRes as any)?.data || txRes;
                 const actualData = responseBody.data || responseBody;
                 const txData = actualData.transactions || [];
-                
                 if (Array.isArray(txData)) {
                     const mapped: TransactionItem[] = txData.map((t: any) => {
                         const typeInfo = getTxTypeInfo(t.type);
@@ -300,14 +293,12 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             isDisbursement: !!isDisburs,
                         };
                     });
-                    // Sort by id descending (newest first)
                     mapped.sort((a, b) => b.id - a.id);
                     setTransactions(mapped);
                 }
             } catch (txErr) {
                 console.warn('[LoanDetail] getTransactions failed', txErr);
             }
-
         } catch (err) {
             console.error('[LoanDetail] Error:', err);
         } finally {
@@ -317,21 +308,17 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // Auto-open repay modal
     useEffect(() => {
         if (autoOpenRepay && isActive && !loading && outstanding && !hasAutoOpenedRef.current) {
             hasAutoOpenedRef.current = true;
             let amount = loan.monthlyPay || 0;
-            if (amount === 0 && schedule?.periods) {
-                const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
-                if (firstUnpaid) {
-                    amount = firstUnpaid.totalDue || 0;
-                }
+            if (amount === 0 && nextUnpaidPeriod) {
+                amount = nextUnpaidPeriod.totalDue || 0;
             }
             setRepaymentAmount(formatMoney(amount));
             setShowRepayModal(true);
         }
-    }, [autoOpenRepay, isActive, loading, outstanding, schedule]);
+    }, [autoOpenRepay, isActive, loading, outstanding, nextUnpaidPeriod]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -339,7 +326,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
         setRefreshing(false);
     };
 
-    // Repayment handler
+    // Repayment handler — navigate to dedicated RepaymentConfirmScreen
     const processRepayment = async () => {
         const amount = parseFloat(repaymentAmount.replace(/[^0-9]/g, ''));
         if (!amount || amount <= 0) {
@@ -350,87 +337,30 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             Alert.alert('Lỗi', `Số tiền không được vượt quá dư nợ: ${formatMoney(outstanding.totalOutstanding)} đ`);
             return;
         }
-        Alert.alert(
-            'Xác nhận trả nợ',
-            `Bạn muốn trả ${formatInputVND(String(amount))} đ?`,
-            [
-                { text: 'Hủy', style: 'cancel' },
-                {
-                    text: 'Xác nhận', onPress: async () => {
-                        try {
-                            setPaymentLoading(true);
-                            setShowRepayModal(false);
-                            const result = await loanService.makeRepayment(
-                                loan.id!,
-                                amount,
-                                new Date().toISOString().split('T')[0],
-                            );
-                            const ok = (result as any)?.data?.success || (result as any)?.success;
-                            if (ok) {
-                                Alert.alert('Thành công', `Đã trả ${formatMoney(amount)} đ`, [{ text: 'OK', onPress: fetchData }]);
-                            } else {
-                                throw new Error((result as any)?.message || 'Trả nợ thất bại');
-                            }
-                        } catch (err: any) {
-                            Alert.alert('Lỗi', err.message || 'Không thể trả nợ. Vui lòng thử lại.');
-                        } finally {
-                            setPaymentLoading(false);
-                        }
-                    }
-                }
-            ]
-        );
+        setShowRepayModal(false);
+        navigation.navigate('RepaymentConfirm', {
+            loanId: loan.id!,
+            loan,
+            outstanding,
+            nextPeriod: nextUnpaidPeriod,
+            suggestedAmount: amount,
+        });
     };
 
-    // Prepayment handler
+    // Prepayment handler — navigate to dedicated PrepaymentConfirmScreen
     const handlePrepayment = () => {
         if (!isActive || !prepayAmount) {
             Alert.alert('Thông báo', 'Dữ liệu tất toán chưa sẵn sàng.');
             return;
         }
-        const penalty = prepayAmount.prepaymentPenalty || 0;
-        const total = prepayAmount.totalWithPenalty || prepayAmount.amount;
-        const penaltyLabel = penalty > 0
-            ? `${prepayAmount.penaltyChargeName || 'Phí phạt tất toán sớm'}${prepayAmount.penaltyRate ? ` (${prepayAmount.penaltyRate}%)` : ''}: ${formatMoney(penalty)} đ`
-            : null;
-        const breakdownLines = [
-            `Gốc còn lại: ${formatMoney(prepayAmount.principalPortion)} đ`,
-            `Lãi đến ngày: ${formatMoney(prepayAmount.interestPortion)} đ`,
-            ...(penaltyLabel ? [penaltyLabel] : []),
-            `────────────────`,
-            `Tổng thanh toán: ${formatMoney(total)} đ`,
-        ].join('\n');
-        Alert.alert(
-            'Tất toán sớm',
-            breakdownLines,
-            [
-                { text: 'Hủy', style: 'cancel' },
-                {
-                    text: 'Tất toán ngay', style: 'destructive', onPress: async () => {
-                        try {
-                            setPaymentLoading(true);
-                            const result = await loanService.prepayLoan(
-                                loan.id!,
-                                new Date().toISOString().split('T')[0],
-                            );
-                            const ok = (result as any)?.data?.success || (result as any)?.success;
-                            if (ok) {
-                                Alert.alert('Tất toán thành công', 'Khoản vay đã được tất toán!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
-                            } else {
-                                throw new Error((result as any)?.message || 'Tất toán thất bại');
-                            }
-                        } catch (err: any) {
-                            Alert.alert('Lỗi', err.message || 'Không thể tất toán. Vui lòng thử lại.');
-                        } finally {
-                            setPaymentLoading(false);
-                        }
-                    }
-                }
-            ]
-        );
+        navigation.navigate('PrepaymentConfirm', {
+            loanId: loan.id!,
+            loan,
+            prepayAmount,
+        });
     };
 
-    // Submitting Support Request handler
+    // Support handler
     const handleSupportSubmit = async () => {
         if (!supportType) return;
         if (!supportReason.trim()) {
@@ -441,7 +371,6 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             Alert.alert('Chưa nhập ngày', 'Vui lòng nhập ngày bạn muốn dời lịch trả nợ (VD: YYYY-MM-DD)');
             return;
         }
-
         try {
             setSubmittingSupport(true);
             const res = await loanService.submitSupportRequest({
@@ -456,7 +385,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 Alert.alert('Gửi thất bại', res.message || 'Đã có lỗi xảy ra');
             }
         } catch (error: any) {
-            Alert.alert('Lỗi', error.response?.data?.message || 'Đã có lỗi hệ thống xảy ra');
+            Alert.alert('Lỗi', extractErrorMessage(error, 'Đã có lỗi hệ thống xảy ra'));
         } finally {
             setSubmittingSupport(false);
         }
@@ -465,18 +394,23 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     // ---- Render Tabs ----
     const renderInfoTab = () => {
         const statusDisplay = getStatusInfo(fineractDetails?.status || rawLoan?.statusInfo, loan.status);
+        const progressPercent = outstanding && loan.capital > 0
+            ? Math.min(100, Math.round((totalPaid / (loan.capital + (outstanding.interestOutstanding + totalPaid - loan.capital > 0 ? outstanding.interestOutstanding + totalPaid - loan.capital : 0))) * 100))
+            : 0;
+
         return (
             <>
                 {/* Loan Info Card */}
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.cardTitleRow}>
                         <View style={[styles.cardTitleDot, { backgroundColor: '#14342B' }]} />
-                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>THÔNG TIN CHUNG</Text>
+                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>THÔNG TIN KHOẢN VAY</Text>
                     </View>
                     <InfoRow label="Mục đích vay" value={loan.willing} colors={colors} />
                     <InfoRow label="Ngày giải ngân" value={formatDate(loan.disbursementDate)} colors={colors} />
                     <InfoRow label="Lãi suất" value={`${loan.rate}%/năm`} colors={colors} />
                     <InfoRow label="Thời hạn" value={`${loan.periodMonth} tháng`} colors={colors} />
+                    <InfoRow label="Trả hàng tháng" value={`${formatMoney(loan.monthlyPay)} đ`} colors={colors} />
                     <View style={[styles.divider, { backgroundColor: colors.border + '50' }]} />
                     <View style={styles.statusRow}>
                         <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Trạng thái</Text>
@@ -486,83 +420,103 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     </View>
                 </View>
 
-                {/* Finance Card */}
+                {/* Finance Overview Card */}
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.cardTitleRow}>
                         <View style={[styles.cardTitleDot, { backgroundColor: '#10B981' }]} />
-                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>TÀI CHÍNH</Text>
+                        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>TỔNG QUAN TÀI CHÍNH</Text>
                     </View>
-                    <View style={styles.financeRow}>
-                        <View style={[styles.financeCol, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <Text style={[styles.financeLabel, { color: colors.textMuted }]}>Gốc vay</Text>
-                            <Text style={[styles.financeValue, { color: colors.text }]}>{formatMoney(loan.capital)} đ</Text>
+
+                    <View style={styles.miniStatRow}>
+                        <View style={[styles.miniStat, { backgroundColor: colors.background }]}>
+                            <Text style={[styles.miniStatLabel, { color: colors.textMuted }]}>Gốc vay</Text>
+                            <Text style={[styles.miniStatValue, { color: colors.text }]}>{formatMoney(loan.capital)}</Text>
                         </View>
-                        <View style={[styles.financeCol, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                            <Text style={[styles.financeLabel, { color: colors.textMuted }]}>Đã thanh toán</Text>
-                            <Text style={[styles.financeValue, { color: '#10B981' }]}>{formatMoney(totalPaid)} đ</Text>
+                        <View style={[styles.miniStat, { backgroundColor: colors.background }]}>
+                            <Text style={[styles.miniStatLabel, { color: colors.textMuted }]}>Đã trả</Text>
+                            <Text style={[styles.miniStatValue, { color: '#10B981' }]}>{formatMoney(totalPaid)}</Text>
+                        </View>
+                        <View style={[styles.miniStat, { backgroundColor: colors.background }]}>
+                            <Text style={[styles.miniStatLabel, { color: colors.textMuted }]}>Còn nợ</Text>
+                            <Text style={[styles.miniStatValue, { color: '#EF4444' }]}>{formatMoney(outstanding?.totalOutstanding)}</Text>
                         </View>
                     </View>
 
-                    {outstanding && (
-                        <View style={[styles.outstandingBox, { backgroundColor: '#14342B' }]}>
-                            <Text style={[styles.outstandingLabel, { color: 'rgba(255,255,255,0.6)' }]}>DƯ NỢ CÒN LẠI</Text>
-                            <Text style={[styles.outstandingValue, { color: '#FFFFFF' }]}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
-                            <View style={styles.outstandingDetail}>
-                                <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Gốc: {formatMoney(outstanding.principalOutstanding)}</Text>
-                                <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Lãi: {formatMoney(outstanding.interestOutstanding)}</Text>
+                    {outstanding && isActive && (
+                        <View style={styles.progressContainer}>
+                            <View style={[styles.progressTrack, { backgroundColor: colors.border + '40' }]}>
+                                <View style={[styles.progressFill, { width: `${Math.min(progressPercent, 100)}%`, backgroundColor: '#10B981' }]} />
                             </View>
-                            {((outstanding.penaltyOutstanding || 0) > 0 || (schedule?.totalFeeChargesCharged || 0) > 0 || (schedule?.totalPenaltyChargesCharged || 0) > 0) && (
-                                <View style={[styles.outstandingDetail, { marginTop: 4 }]}>
-                                    {(schedule?.totalFeeChargesCharged || 0) > 0 && (
-                                        <Text style={[styles.outstandingDetailText, { color: 'rgba(255,255,255,0.5)' }]}>Phí: {formatMoney(schedule?.totalFeeChargesCharged)}</Text>
-                                    )}
-                                    {((outstanding.penaltyOutstanding || 0) > 0 || (schedule?.totalPenaltyChargesCharged || 0) > 0) && (
-                                        <Text style={[styles.outstandingDetailText, { color: '#FBBF24' }]}>Phạt: {formatMoney(outstanding.penaltyOutstanding || schedule?.totalPenaltyChargesCharged)}</Text>
-                                    )}
-                                </View>
-                            )}
+                            <Text style={[styles.progressText, { color: colors.textMuted }]}>Đã hoàn thành {progressPercent}%</Text>
                         </View>
                     )}
+
+                    {outstanding && isActive && (
+                        <View style={[styles.outstandingBox, { backgroundColor: '#14342B' }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={styles.outstandingLabel}>DƯ NỢ CÒN LẠI</Text>
+                                <Text style={styles.outstandingValue}>{formatMoney(outstanding.totalOutstanding)} đ</Text>
+                            </View>
+                            <View style={[styles.outstandingDetail, { marginTop: 10 }]}>
+                                <View style={styles.outstandingDetailItem}>
+                                    <Text style={styles.outstandingDetailLabel}>Gốc</Text>
+                                    <Text style={styles.outstandingDetailValue}>{formatMoney(outstanding.principalOutstanding)}</Text>
+                                </View>
+                                <View style={styles.outstandingDetailItem}>
+                                    <Text style={styles.outstandingDetailLabel}>Lãi</Text>
+                                    <Text style={styles.outstandingDetailValue}>{formatMoney(outstanding.interestOutstanding)}</Text>
+                                </View>
+                                {(outstanding.penaltyOutstanding || 0) > 0 && (
+                                    <View style={styles.outstandingDetailItem}>
+                                        <Text style={[styles.outstandingDetailLabel, { color: '#FBBF24' }]}>Phạt</Text>
+                                        <Text style={[styles.outstandingDetailValue, { color: '#FBBF24' }]}>{formatMoney(outstanding.penaltyOutstanding)}</Text>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+                    )}
+
                     {(outstanding?.totalOverdue ?? 0) > 0 && (
-                        <View style={[styles.outstandingBox, { backgroundColor: '#FFF0F0', borderWidth: 1, borderColor: '#FECACA', marginTop: 12 }]}>
-                            <Text style={[styles.outstandingLabel, { color: '#EF4444' }]}>NỢ QUÁ HẠN</Text>
-                            <Text style={[styles.outstandingValue, { color: '#EF4444', fontSize: 18 }]}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
+                        <View style={styles.overdueBox}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <Ionicons name="warning" size={14} color="#EF4444" />
+                                <Text style={styles.overdueTitle}>NỢ QUÁ HẠN</Text>
+                            </View>
+                            <Text style={styles.overdueAmount}>{formatMoney(outstanding!.totalOverdue)} đ</Text>
                             {(outstanding!.delinquentDays ?? 0) > 0 && (
-                                <Text style={[styles.outstandingDetailText, { color: '#EF4444', marginTop: 4 }]}>
+                                <Text style={styles.overdueDays}>
                                     Quá hạn {outstanding!.delinquentDays} ngày
-                                    {outstanding!.delinquencyClassification ? ` • ${outstanding!.delinquencyClassification}` : ''}
+                                    {outstanding!.delinquencyClassification ? ` · ${outstanding!.delinquencyClassification}` : ''}
                                 </Text>
                             )}
                         </View>
                     )}
                 </View>
 
-                {/* Overdue Alerts & Support Actions */}
+                {/* Overdue Alert */}
                 {outstanding && isActive && ((outstanding.penaltyOutstanding && outstanding.penaltyOutstanding > 0) || fineractDetails?.isOverdue) && (
-                    <View style={[styles.card, { backgroundColor: colors.errorGlass, borderColor: colors.errorBorder }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                            <Ionicons name="warning" size={20} color={colors.error} />
-                            <Text style={[styles.cardTitle, { color: colors.error, marginBottom: 0, marginLeft: 8 }]}>CẢNH BÁO QUÁ HẠN</Text>
+                    <View style={[styles.card, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                            <Ionicons name="warning" size={18} color="#EF4444" />
+                            <Text style={[styles.cardTitle, { color: '#EF4444', marginBottom: 0, marginLeft: 8 }]}>CẢNH BÁO QUÁ HẠN</Text>
                         </View>
-                        <Text style={{ color: colors.error, fontSize: 13, marginBottom: 14 }}>
-                            Khoản vay của bạn đã trễ hạn quá mức quy định. Vui lòng thanh toán sớm để tránh ảnh hưởng đến điểm tín dụng.
+                        <Text style={{ color: '#991B1B', fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+                            Khoản vay của bạn đã trễ hạn. Vui lòng thanh toán sớm để tránh ảnh hưởng đến điểm tín dụng.
                         </Text>
-
-                        {/* Support buttons */}
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
                             <TouchableOpacity
-                                style={[styles.actionBtn, { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                                style={[styles.supportBtn, { backgroundColor: '#FFF', borderColor: '#EF4444' }]}
                                 onPress={() => { setSupportType('WAIVE_PENALTY'); setShowSupportModal(true); setSupportReason(''); }}
                             >
-                                <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary, marginLeft: 4 }}>Xin Xóa Phạt</Text>
+                                <Ionicons name="shield-checkmark-outline" size={14} color="#EF4444" />
+                                <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444', marginLeft: 4 }}>Xin Xóa Phạt</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={[styles.actionBtn, { flex: 1, backgroundColor: colors.primary }]}
+                                style={[styles.supportBtn, { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}
                                 onPress={() => { setSupportType('RESCHEDULE'); setShowSupportModal(true); setSupportReason(''); setRescheduleDate(''); }}
                             >
-                                <Ionicons name="calendar-outline" size={16} color="#000" />
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#000', marginLeft: 4 }}>Xin Cơ Cấu Nợ</Text>
+                                <Ionicons name="calendar-outline" size={14} color="#FFF" />
+                                <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFF', marginLeft: 4 }}>Xin Cơ Cấu Nợ</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -570,20 +524,18 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
                 {/* Contract Button */}
                 <TouchableOpacity
-                    style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', padding: 16 }]}
+                    style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', padding: 14 }]}
                     onPress={() => navigation.navigate('LoanContractDetail' as any, { loanId: loan.id, fineractLoanId: loan.fineractLoanId })}
                     activeOpacity={0.7}
                 >
                     <View style={[styles.contractIcon, { backgroundColor: '#14342B10' }]}>
-                        <MaterialCommunityIcons name="file-document-check-outline" size={20} color="#14342B" />
+                        <MaterialCommunityIcons name="file-document-check-outline" size={18} color="#14342B" />
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text }]}>Hợp đồng vay</Text>
-                        <Text style={[{ fontSize: 12, color: colors.textMuted, marginTop: 2 }]}>Xem và ký hợp đồng vay</Text>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Hợp đồng vay</Text>
+                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>Xem và ký hợp đồng vay</Text>
                     </View>
-                    <View style={[styles.contractChevron, { backgroundColor: colors.background }]}>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
             </>
         );
@@ -592,33 +544,30 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const renderScheduleTab = () => {
         const periods = schedule?.periods?.filter(p => p.period > 0) || [];
         const statusConfig = {
-            paid: { label: 'Đã trả', color: colors.success, bg: colors.success + '10' },
-            overdue: { label: 'Quá hạn', color: '#EF4444', bg: '#FFF0F0' },
-            current: { label: 'Đang đến hạn', color: '#CDEA2D', bg: '#F5FFD6' },
-            upcoming: { label: 'Chưa đến hạn', color: '#9CA3AF', bg: '#F9FAFB' },
+            paid: { label: 'Đã trả', color: '#10B981', bg: '#F0FDF4', badgeBg: '#D1FAE5' },
+            overdue: { label: 'Quá hạn', color: '#EF4444', bg: '#FEF2F2', badgeBg: '#FECACA' },
+            current: { label: 'Đến hạn', color: '#F59E0B', bg: '#FFFBEB', badgeBg: '#FEF3C7' },
+            upcoming: { label: 'Sắp tới', color: '#9CA3AF', bg: '#FFFFFF', badgeBg: '#F3F4F6' },
         };
-
-        // Tổng phí/phạt từ Fineract data
         const totalFees = schedule?.totalFeeChargesCharged || 0;
         const totalPenalties = schedule?.totalPenaltyChargesCharged || 0;
 
         return (
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 0, overflow: 'hidden' }]}>
-                <Text style={[styles.cardTitle, { color: colors.textSecondary, padding: 16, paddingBottom: 0 }]}>LỊCH TRẢ NỢ</Text>
+                <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+                    <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>LỊCH TRẢ NỢ</Text>
+                </View>
 
-                {/* Tổng kết phí/phạt từ Fineract */}
                 {(totalFees > 0 || totalPenalties > 0) && (
-                    <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8, gap: 8 }}>
+                    <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 6 }}>
                         {totalFees > 0 && (
-                            <View style={{ flex: 1, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 8, alignItems: 'center' }}>
-                                <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: '600' }}>Tổng phí</Text>
-                                <Text style={{ fontSize: 13, color: '#1E40AF', fontWeight: '700', marginTop: 2 }}>{formatMoney(totalFees)} đ</Text>
+                            <View style={styles.feeTag}>
+                                <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: '600' }}>Tổng phí: {formatMoney(totalFees)} đ</Text>
                             </View>
                         )}
                         {totalPenalties > 0 && (
-                            <View style={{ flex: 1, backgroundColor: '#FEF3C7', borderRadius: 8, padding: 8, alignItems: 'center' }}>
-                                <Text style={{ fontSize: 10, color: '#D97706', fontWeight: '600' }}>Tổng phạt</Text>
-                                <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '700', marginTop: 2 }}>{formatMoney(totalPenalties)} đ</Text>
+                            <View style={[styles.feeTag, { backgroundColor: '#FEF3C7' }]}>
+                                <Text style={{ fontSize: 10, color: '#D97706', fontWeight: '600' }}>Tổng phạt: {formatMoney(totalPenalties)} đ</Text>
                             </View>
                         )}
                     </View>
@@ -627,33 +576,29 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {periods.length > 0 ? periods.map((p, i) => {
                     const status = getInstallmentStatus(p);
                     const cfg = statusConfig[status];
-                    const hasFees = (p.feeChargesDue || 0) > 0;
-                    const hasPenalties = (p.penaltyChargesDue || 0) > 0;
                     return (
                         <View key={i} style={[styles.scheduleItem, { borderBottomColor: '#F3F4F6', backgroundColor: cfg.bg }]}>
                             <View style={styles.scheduleLeft}>
-                                <View style={[styles.scheduleNumBadge, { backgroundColor: status === 'overdue' ? '#FECACA' : status === 'paid' ? '#D1FAE5' : '#E5E7EB' }]}>
-                                    <Text style={[styles.scheduleNumText, { color: status === 'overdue' ? '#EF4444' : status === 'paid' ? '#10B981' : '#6B7280' }]}>{p.period}</Text>
+                                <View style={[styles.scheduleNumBadge, { backgroundColor: cfg.badgeBg }]}>
+                                    <Text style={[styles.scheduleNumText, { color: cfg.color }]}>{p.period}</Text>
                                 </View>
                                 <View>
                                     <Text style={[styles.schedulePeriod, { color: '#111827' }]}>Kỳ {p.period}</Text>
                                     <Text style={[styles.scheduleDate, { color: '#6B7280' }]}>{formatDate(p.dueDate)}</Text>
-                                    <Text style={[styles.schedulePaidTag, { color: cfg.color, marginTop: 2 }]}>{cfg.label}</Text>
+                                    <View style={[styles.scheduleStatusBadge, { backgroundColor: cfg.color + '15' }]}>
+                                        <Text style={{ fontSize: 10, fontWeight: '600', color: cfg.color }}>{cfg.label}</Text>
+                                    </View>
                                 </View>
                             </View>
                             <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={[styles.scheduleAmount, { color: '#111827' }]}>
-                                    {formatMoney(p.totalDue)} đ
+                                <Text style={[styles.scheduleAmount, { color: '#111827' }]}>{formatMoney(p.totalDue)} đ</Text>
+                                <Text style={styles.scheduleBreakdown}>
+                                    G: {formatMoney(p.principalDue)} · L: {formatMoney(p.interestDue)}
                                 </Text>
-                                {/* Breakdown chi tiết từ Fineract */}
-                                <Text style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
-                                    G: {formatMoney(p.principalDue)} • L: {formatMoney(p.interestDue)}
-                                    {(p.feeChargesDue || 0) > 0 ? ` • Phí: ${formatMoney(p.feeChargesDue)}` : ''}
-                                    {(p.penaltyChargesDue || 0) > 0 ? ` • Phạt: ${formatMoney(p.penaltyChargesDue)}` : ''}
-                                </Text>
-                                {(p.feeChargesPaid || 0) > 0 && (
-                                    <Text style={{ fontSize: 10, color: '#10B981', marginTop: 1 }}>
-                                        Phí đã trả: {formatMoney(p.feeChargesPaid)}
+                                {((p.feeChargesDue || 0) > 0 || (p.penaltyChargesDue || 0) > 0) && (
+                                    <Text style={[styles.scheduleBreakdown, { color: '#D97706' }]}>
+                                        {(p.feeChargesDue || 0) > 0 ? `Phí: ${formatMoney(p.feeChargesDue)}` : ''}
+                                        {(p.penaltyChargesDue || 0) > 0 ? ` Phạt: ${formatMoney(p.penaltyChargesDue)}` : ''}
                                     </Text>
                                 )}
                                 {(p.totalOutstanding || 0) > 0 && status !== 'upcoming' && (
@@ -675,15 +620,15 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.textSecondary }]}>LỊCH SỬ GIAO DỊCH</Text>
             {transactions.length > 0 ? transactions.map((tx, i) => (
-                <View key={i} style={[styles.txItem, { borderBottomColor: colors.border }]}>
-                    <View style={[styles.txIconBox, { backgroundColor: tx.typeColor + '20' }]}>
-                        <Ionicons name={tx.typeIcon as any} size={18} color={tx.typeColor} />
+                <View key={i} style={[styles.txItem, { borderBottomColor: colors.border + '40' }]}>
+                    <View style={[styles.txIconBox, { backgroundColor: tx.typeColor + '15' }]}>
+                        <Ionicons name={tx.typeIcon as any} size={16} color={tx.typeColor} />
                     </View>
                     <View style={styles.txContent}>
                         <Text style={[styles.txType, { color: colors.text }]}>{tx.type}</Text>
                         <Text style={[styles.txDate, { color: colors.textMuted }]}>{tx.date}</Text>
                     </View>
-                    <Text style={[styles.txAmount, { color: tx.isDisbursement ? colors.success : colors.error }]}>
+                    <Text style={[styles.txAmount, { color: tx.isDisbursement ? '#10B981' : '#EF4444' }]}>
                         {tx.isDisbursement ? '+' : '-'}{formatMoney(tx.amount)} đ
                     </Text>
                 </View>
@@ -694,15 +639,14 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     );
 
     const TABS = [
-        { key: 'info', label: 'Chi tiết' },
-        { key: 'schedule', label: 'Lịch trả' },
-        { key: 'history', label: 'Lịch sử' },
+        { key: 'info', label: 'Chi tiết', icon: 'information-circle-outline' },
+        { key: 'schedule', label: 'Lịch trả', icon: 'calendar-outline' },
+        { key: 'history', label: 'Lịch sử', icon: 'time-outline' },
     ] as const;
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-            {/* Shared Header */}
             <BinanceHeader
                 mode="standard"
                 title="Chi Tiết Khoản Vay"
@@ -710,20 +654,30 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 rightComponents={<View />}
             />
 
-            {/* Amount Hero */}
+            {/* Compact Hero Card */}
             <View style={[styles.heroCard, { backgroundColor: '#14342B' }]}>
-                <View style={styles.heroIconRow}>
+                <View style={styles.heroRow}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.heroLabel}>Số tiền vay</Text>
+                        <Text style={styles.heroAmount}>
+                            {formatMoney(loan.capital)} <Text style={styles.heroCurrency}>đ</Text>
+                        </Text>
+                    </View>
                     <View style={styles.heroIconCircle}>
-                        <MaterialCommunityIcons name="hand-coin-outline" size={20} color="#CDEA2D" />
+                        <MaterialCommunityIcons name="hand-coin-outline" size={18} color="#CDEA2D" />
                     </View>
-                    <Text style={[styles.heroLabel, { color: 'rgba(255,255,255,0.6)' }]}>Số tiền vay</Text>
                 </View>
-                <Text style={styles.heroAmount}>{formatMoney(loan.capital)} <Text style={{ fontSize: 16, fontWeight: '500', color: 'rgba(255,255,255,0.5)' }}>đ</Text></Text>
                 {outstanding && isActive && (
-                    <View style={styles.heroSub}>
-                        <View style={styles.heroSubDot} />
-                        <Text style={styles.heroSubText}>Dư nợ: {formatMoney(outstanding.totalOutstanding)} đ</Text>
+                    <View style={styles.heroBottomRow}>
+                        <View style={styles.heroPill}>
+                            <View style={[styles.heroDot, { backgroundColor: '#CDEA2D' }]} />
+                            <Text style={styles.heroPillText}>Dư nợ: {formatMoney(outstanding.totalOutstanding)} đ</Text>
+                        </View>
+                        <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
                     </View>
+                )}
+                {(!outstanding || !isActive) && (
+                    <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
                 )}
             </View>
 
@@ -732,10 +686,20 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
-                        style={[styles.tabItem, activeTab === tab.key && [styles.tabItemActive, { borderBottomColor: '#14342B' }]]}
+                        style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
                         onPress={() => setActiveTab(tab.key)}
                     >
-                        <Text style={[styles.tabText, { color: colors.textMuted }, activeTab === tab.key && { color: '#14342B', fontWeight: '700' }]}>
+                        <Ionicons
+                            name={tab.icon as any}
+                            size={16}
+                            color={activeTab === tab.key ? '#14342B' : colors.textMuted}
+                            style={{ marginBottom: 2 }}
+                        />
+                        <Text style={[
+                            styles.tabText,
+                            { color: colors.textMuted },
+                            activeTab === tab.key && { color: '#14342B', fontWeight: '700' }
+                        ]}>
                             {tab.label}
                         </Text>
                     </TouchableOpacity>
@@ -770,19 +734,16 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         style={[styles.actionBtn, styles.btnOutline, { borderColor: '#14342B' }]}
                         onPress={() => {
                             let amount = loan.monthlyPay || 0;
-                            if (amount === 0 && schedule?.periods) {
-                                const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
-                                if (firstUnpaid) {
-                                    amount = firstUnpaid.totalDue || 0;
-                                }
+                            if (amount === 0 && nextUnpaidPeriod) {
+                                amount = nextUnpaidPeriod.totalDue || 0;
                             }
                             setRepaymentAmount(formatMoney(amount));
                             setShowRepayModal(true);
                         }}
                         disabled={paymentLoading}
                     >
-                        <Ionicons name="cash-outline" size={18} color="#14342B" />
-                        <Text style={[styles.btnOutlineText, { color: '#14342B' }]}>TRẢ MỘT PHẦN</Text>
+                        <Ionicons name="cash-outline" size={16} color="#14342B" />
+                        <Text style={[styles.btnOutlineText, { color: '#14342B' }]}>Trả nợ</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.actionBtn, styles.btnPrimary, { backgroundColor: '#14342B' }]}
@@ -792,15 +753,14 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         {paymentLoading
                             ? <ActivityIndicator size="small" color="#FFF" />
                             : <>
-                                <Ionicons name="checkmark-done-circle-outline" size={18} color="#FFFFFF" />
-                                <Text style={[styles.btnPrimaryText, { color: '#FFFFFF' }]}>TẤT TOÁN</Text>
+                                <Ionicons name="checkmark-done-circle-outline" size={16} color="#FFFFFF" />
+                                <Text style={styles.btnPrimaryText}>Tất toán</Text>
                             </>
                         }
                     </TouchableOpacity>
                 </View>
             )}
 
-            {/* Withdraw (Pending loans only) */}
             {isPending && (
                 <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
                     <TouchableOpacity
@@ -808,20 +768,18 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         onPress={() => {
                             Alert.alert(
                                 'Hủy đơn vay',
-                                'Bạn chắc chắn muốn hủy đơn vay này? Hành động không thể hoàn tác.',
+                                'Bạn chắc chắn muốn hủy đơn vay này?',
                                 [
                                     { text: 'Không', style: 'cancel' },
                                     {
-                                        text: 'Xác nhận hủy',
-                                        style: 'destructive',
-                                        onPress: async () => {
+                                        text: 'Xác nhận hủy', style: 'destructive', onPress: async () => {
                                             try {
                                                 setPaymentLoading(true);
                                                 await loanService.withdrawLoan(loan.id);
                                                 Alert.alert('Thành công', 'Đơn vay đã được hủy.');
                                                 navigation.goBack();
                                             } catch (err: any) {
-                                                Alert.alert('Lỗi', err?.response?.data?.message || 'Không thể hủy đơn vay');
+                                                Alert.alert('Lỗi', extractErrorMessage(err, 'Không thể hủy đơn vay'));
                                             } finally {
                                                 setPaymentLoading(false);
                                             }
@@ -835,15 +793,15 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         {paymentLoading
                             ? <ActivityIndicator size="small" color="#FFF" />
                             : <>
-                                <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
-                                <Text style={[styles.btnPrimaryText, { color: '#FFFFFF' }]}>HỦY ĐƠN VAY</Text>
+                                <Ionicons name="close-circle-outline" size={16} color="#FFFFFF" />
+                                <Text style={styles.btnPrimaryText}>Hủy đơn vay</Text>
                             </>
                         }
                     </TouchableOpacity>
                 </View>
             )}
 
-            {/* Repay Modal */}
+            {/* Repay Modal — Bank-Grade with Period Detail */}
             <Modal visible={showRepayModal} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShowRepayModal(false)}>
                 <View style={styles.modalOverlay}>
                     <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowRepayModal(false)} />
@@ -851,9 +809,52 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
                             <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
                             <Text style={[styles.modalHeader, { color: colors.text }]}>Trả nợ khoản vay</Text>
-                            <Text style={[styles.modalSubHeader, { color: colors.textSecondary }]}>Nhập số tiền bạn muốn thanh toán</Text>
 
-                            <View style={[styles.inputContainer, { borderColor: colors.primary, backgroundColor: colors.background }]}>
+                            {/* Current Period Detail */}
+                            {nextUnpaidPeriod && (
+                                <View style={[styles.periodDetailBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                                    <View style={styles.periodDetailHeader}>
+                                        <Ionicons name="calendar" size={14} color="#14342B" />
+                                        <Text style={[styles.periodDetailTitle, { color: colors.text }]}>
+                                            Kỳ {nextUnpaidPeriod.period} — {formatDate(nextUnpaidPeriod.dueDate)}
+                                        </Text>
+                                        {getInstallmentStatus(nextUnpaidPeriod) === 'overdue' && (
+                                            <View style={styles.overdueBadge}>
+                                                <Text style={styles.overdueBadgeText}>Quá hạn</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={styles.periodBreakdown}>
+                                        <View style={styles.periodBreakdownRow}>
+                                            <Text style={[styles.periodBreakdownLabel, { color: colors.textMuted }]}>Gốc</Text>
+                                            <Text style={[styles.periodBreakdownValue, { color: colors.text }]}>{formatMoney(nextUnpaidPeriod.principalDue)} đ</Text>
+                                        </View>
+                                        <View style={styles.periodBreakdownRow}>
+                                            <Text style={[styles.periodBreakdownLabel, { color: colors.textMuted }]}>Lãi</Text>
+                                            <Text style={[styles.periodBreakdownValue, { color: colors.text }]}>{formatMoney(nextUnpaidPeriod.interestDue)} đ</Text>
+                                        </View>
+                                        {(nextUnpaidPeriod.feeChargesDue || 0) > 0 && (
+                                            <View style={styles.periodBreakdownRow}>
+                                                <Text style={[styles.periodBreakdownLabel, { color: colors.textMuted }]}>Phí</Text>
+                                                <Text style={[styles.periodBreakdownValue, { color: '#F59E0B' }]}>{formatMoney(nextUnpaidPeriod.feeChargesDue)} đ</Text>
+                                            </View>
+                                        )}
+                                        {(nextUnpaidPeriod.penaltyChargesDue || 0) > 0 && (
+                                            <View style={styles.periodBreakdownRow}>
+                                                <Text style={[styles.periodBreakdownLabel, { color: colors.textMuted }]}>Phạt</Text>
+                                                <Text style={[styles.periodBreakdownValue, { color: '#EF4444' }]}>{formatMoney(nextUnpaidPeriod.penaltyChargesDue)} đ</Text>
+                                            </View>
+                                        )}
+                                        <View style={[styles.periodBreakdownRow, { borderTopWidth: 1, borderTopColor: colors.border + '60', paddingTop: 8, marginTop: 4 }]}>
+                                            <Text style={[styles.periodBreakdownLabel, { color: colors.text, fontWeight: '700' }]}>Tổng kỳ này</Text>
+                                            <Text style={[styles.periodBreakdownValue, { color: '#14342B', fontWeight: '800', fontSize: 15 }]}>{formatMoney(nextUnpaidPeriod.totalDue)} đ</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+
+                            <Text style={[styles.modalSubLabel, { color: colors.textSecondary }]}>Số tiền thanh toán</Text>
+                            <View style={[styles.inputContainer, { borderColor: '#14342B', backgroundColor: colors.background }]}>
                                 <TextInput
                                     style={[styles.moneyInput, { color: colors.text }]}
                                     value={repaymentAmount}
@@ -868,34 +869,39 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
                             <View style={styles.quickOptions}>
                                 <TouchableOpacity
-                                    style={[styles.chip, { borderColor: colors.primary, backgroundColor: colors.primary + '15' }]}
+                                    style={[styles.chip, { borderColor: '#14342B', backgroundColor: '#14342B10' }]}
                                     onPress={() => {
                                         let amount = loan.monthlyPay || 0;
-                                        if (amount === 0 && schedule?.periods) {
-                                            const firstUnpaid = schedule.periods.find((p: any) => p.period > 0 && !p.complete);
-                                            if (firstUnpaid) {
-                                                amount = firstUnpaid.totalDue || 0;
-                                            }
+                                        if (amount === 0 && nextUnpaidPeriod) {
+                                            amount = nextUnpaidPeriod.totalDue || 0;
                                         }
                                         setRepaymentAmount(formatMoney(amount));
                                     }}
                                 >
-                                    <Text style={[styles.chipText, { color: colors.primary }]}>1 Kỳ hạn</Text>
+                                    <Text style={[styles.chipText, { color: '#14342B' }]}>1 Kỳ hạn</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.chip, { borderColor: colors.primary, backgroundColor: colors.primary + '15' }]}
+                                    style={[styles.chip, { borderColor: '#14342B', backgroundColor: '#14342B10' }]}
                                     onPress={() => setRepaymentAmount(formatMoney(outstanding?.totalOutstanding))}
                                 >
-                                    <Text style={[styles.chipText, { color: colors.primary }]}>Toàn bộ nợ</Text>
+                                    <Text style={[styles.chipText, { color: '#14342B' }]}>Toàn bộ nợ</Text>
                                 </TouchableOpacity>
+                                {(outstanding?.totalOverdue ?? 0) > 0 && (
+                                    <TouchableOpacity
+                                        style={[styles.chip, { borderColor: '#EF4444', backgroundColor: '#FEF2F2' }]}
+                                        onPress={() => setRepaymentAmount(formatMoney(outstanding?.totalOverdue))}
+                                    >
+                                        <Text style={[styles.chipText, { color: '#EF4444' }]}>Nợ quá hạn</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
 
                             <View style={styles.modalActions}>
                                 <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1.5 }]} onPress={() => setShowRepayModal(false)}>
                                     <Text style={[styles.btnCancelText, { color: colors.textSecondary }]}>Hủy</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={processRepayment}>
-                                    <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>Xác nhận</Text>
+                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#14342B' }]} onPress={processRepayment}>
+                                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Thanh toán</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -903,7 +909,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 </View>
             </Modal>
 
-            {/* Support Request Modal */}
+            {/* Support Modal */}
             <Modal visible={showSupportModal} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShowSupportModal(false)}>
                 <View style={styles.modalOverlay}>
                     <TouchableOpacity style={styles.modalDismiss} onPress={() => setShowSupportModal(false)} />
@@ -913,16 +919,16 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             <Text style={[styles.modalHeader, { color: colors.text }]}>
                                 {supportType === 'WAIVE_PENALTY' ? 'Yêu cầu Xóa Phạt' : 'Yêu cầu Cơ cấu nợ'}
                             </Text>
-                            <Text style={[styles.modalSubHeader, { color: colors.textSecondary }]}>
+                            <Text style={[styles.modalSubLabel, { color: colors.textSecondary, marginBottom: 12 }]}>
                                 {supportType === 'WAIVE_PENALTY'
-                                    ? 'Xin vui lòng cho biết lý do bạn không thể thanh toán đúng hạn và mức phí phạt mong muốn được miễn giảm.'
-                                    : 'Xin vui lòng đề xuất ngày dời lịch thanh toán và lý do khó khăn tài chính hiện tại của bạn.'}
+                                    ? 'Cho biết lý do bạn không thể thanh toán đúng hạn.'
+                                    : 'Đề xuất ngày dời lịch và lý do khó khăn tài chính.'}
                             </Text>
 
                             {supportType === 'RESCHEDULE' && (
                                 <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, paddingHorizontal: 12 }]}>
                                     <TextInput
-                                        style={[styles.moneyInput, { color: colors.text, fontSize: 16, fontWeight: '500' }]}
+                                        style={[styles.moneyInput, { color: colors.text, fontSize: 15, fontWeight: '500' }]}
                                         value={rescheduleDate}
                                         onChangeText={setRescheduleDate}
                                         placeholder="Ngày (VD: 2024-12-30)"
@@ -931,9 +937,9 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 </View>
                             )}
 
-                            <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, height: 100, padding: 12, alignItems: 'flex-start' }]}>
+                            <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, height: 90, padding: 12, alignItems: 'flex-start' }]}>
                                 <TextInput
-                                    style={[{ color: colors.text, flex: 1, fontSize: 15, width: '100%' }]}
+                                    style={{ color: colors.text, flex: 1, fontSize: 14, width: '100%' }}
                                     value={supportReason}
                                     onChangeText={setSupportReason}
                                     placeholder="Lý do chi tiết..."
@@ -947,10 +953,10 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                                 <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1.5 }]} onPress={() => setShowSupportModal(false)} disabled={submittingSupport}>
                                     <Text style={[styles.btnCancelText, { color: colors.textSecondary }]}>Hủy</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSupportSubmit} disabled={submittingSupport}>
+                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#14342B' }]} onPress={handleSupportSubmit} disabled={submittingSupport}>
                                     {submittingSupport
-                                        ? <ActivityIndicator size="small" color="#000" />
-                                        : <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>Gửi Yêu Cầu</Text>
+                                        ? <ActivityIndicator size="small" color="#FFF" />
+                                        : <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Gửi Yêu Cầu</Text>
                                     }
                                 </TouchableOpacity>
                             </View>
@@ -972,105 +978,135 @@ const InfoRow = ({ label, value, colors }: { label: string; value: string; color
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 50 : 16, paddingBottom: 12, borderBottomWidth: 1 },
-    backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-    headerCenter: { flex: 1, alignItems: 'center' },
-    headerTitle: { fontSize: 17, fontWeight: '700' },
-    headerSubtitle: { fontSize: 12, marginTop: 2 },
 
-    // Hero
-    heroCard: { marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 20, borderRadius: 18, alignItems: 'center' },
-    heroIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-    heroIconCircle: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(205,234,45,0.15)', justifyContent: 'center', alignItems: 'center' },
-    heroLabel: { fontSize: 12, fontWeight: '500' },
-    heroAmount: { fontSize: 32, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
-    heroSub: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
-    heroSubDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CDEA2D' },
-    heroSubText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
+    // Compact Hero
+    heroCard: { marginHorizontal: 16, marginTop: 8, marginBottom: 4, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14 },
+    heroRow: { flexDirection: 'row', alignItems: 'center' },
+    heroLabel: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginBottom: 2 },
+    heroAmount: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
+    heroCurrency: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.4)' },
+    heroIconCircle: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(205,234,45,0.15)', justifyContent: 'center', alignItems: 'center' },
+    heroBottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+    heroPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    heroDot: { width: 5, height: 5, borderRadius: 3 },
+    heroPillText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
+    heroPeriod: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 },
 
     // Tab Bar
     tabBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16, marginTop: 4 },
-    tabItem: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
-    tabItemActive: {},
-    tabText: { fontSize: 14, fontWeight: '600' },
+    tabItem: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2.5, borderBottomColor: 'transparent' },
+    tabItemActive: { borderBottomColor: '#14342B' },
+    tabText: { fontSize: 12, fontWeight: '600' },
 
-    content: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+    content: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 80, gap: 12 },
-    loadingText: { fontSize: 14 },
+    loadingText: { fontSize: 13 },
 
     // Cards
-    card: { borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-    cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-    cardTitleDot: { width: 4, height: 16, borderRadius: 2 },
-    cardTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6 },
+    card: { borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
+    cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+    cardTitleDot: { width: 3, height: 14, borderRadius: 2 },
+    cardTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
 
     // Info rows
-    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-    infoLabel: { fontSize: 14 },
-    infoValue: { fontSize: 14, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
-    divider: { height: 1, marginVertical: 10 },
+    infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    infoLabel: { fontSize: 13 },
+    infoValue: { fontSize: 13, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
+    divider: { height: 1, marginVertical: 8 },
     statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    statusPill: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
-    statusPillText: { fontSize: 12, fontWeight: '700' },
+    statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16 },
+    statusPillText: { fontSize: 11, fontWeight: '700' },
 
-    // Finance
-    financeRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-    financeCol: { flex: 1, borderRadius: 12, padding: 12, borderWidth: 1 },
-    financeLabel: { fontSize: 11, marginBottom: 6, fontWeight: '500' },
-    financeValue: { fontSize: 17, fontWeight: '700' },
-    outstandingBox: { padding: 16, borderRadius: 14, alignItems: 'center' },
-    outstandingLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
-    outstandingValue: { fontSize: 26, fontWeight: '800' },
-    outstandingDetail: { flexDirection: 'row', gap: 16, marginTop: 8 },
-    outstandingDetailText: { fontSize: 12 },
+    // Mini stats
+    miniStatRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+    miniStat: { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center' },
+    miniStatLabel: { fontSize: 10, fontWeight: '500', marginBottom: 4 },
+    miniStatValue: { fontSize: 13, fontWeight: '700' },
 
-    // Contract button
-    contractIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    contractChevron: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+    // Progress
+    progressContainer: { marginBottom: 12 },
+    progressTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+    progressFill: { height: 4, borderRadius: 2 },
+    progressText: { fontSize: 10, marginTop: 4, textAlign: 'right' },
+
+    // Outstanding
+    outstandingBox: { padding: 14, borderRadius: 12 },
+    outstandingLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4, color: 'rgba(255,255,255,0.5)' },
+    outstandingValue: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
+    outstandingDetail: { flexDirection: 'row', gap: 12 },
+    outstandingDetailItem: { alignItems: 'center' },
+    outstandingDetailLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 2 },
+    outstandingDetailValue: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
+
+    // Overdue
+    overdueBox: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', borderRadius: 12, padding: 12, marginTop: 10 },
+    overdueTitle: { fontSize: 10, fontWeight: '700', color: '#EF4444', letterSpacing: 0.4 },
+    overdueAmount: { fontSize: 16, fontWeight: '800', color: '#EF4444' },
+    overdueDays: { fontSize: 11, color: '#EF4444', marginTop: 2 },
+
+    // Support
+    supportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
+
+    // Contract
+    contractIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
 
     // Schedule
-    scheduleItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
-    scheduleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    scheduleNumBadge: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    scheduleNumText: { fontSize: 13, fontWeight: '700' },
-    schedulePeriod: { fontSize: 15, fontWeight: '600' },
-    scheduleDate: { fontSize: 12, marginTop: 4 },
-    scheduleAmount: { fontSize: 15, fontWeight: '600' },
-    schedulePaidTag: { fontSize: 12, marginTop: 4 },
-    noDataText: { textAlign: 'center', paddingVertical: 24, fontSize: 14 },
+    scheduleItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1 },
+    scheduleLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    scheduleNumBadge: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+    scheduleNumText: { fontSize: 12, fontWeight: '700' },
+    schedulePeriod: { fontSize: 13, fontWeight: '600' },
+    scheduleDate: { fontSize: 11, marginTop: 2 },
+    scheduleAmount: { fontSize: 13, fontWeight: '600' },
+    scheduleBreakdown: { fontSize: 10, color: '#6B7280', marginTop: 2 },
+    scheduleStatusBadge: { marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, alignSelf: 'flex-start' },
+    feeTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+    noDataText: { textAlign: 'center', paddingVertical: 20, fontSize: 13 },
 
     // Transactions
-    txItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
-    txIconBox: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+    txItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
+    txIconBox: { width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
     txContent: { flex: 1 },
-    txType: { fontSize: 14, fontWeight: '600' },
-    txDate: { fontSize: 12, marginTop: 2 },
-    txAmount: { fontSize: 14, fontWeight: '700' },
+    txType: { fontSize: 13, fontWeight: '600' },
+    txDate: { fontSize: 11, marginTop: 1 },
+    txAmount: { fontSize: 13, fontWeight: '700' },
 
     // Footer
-    footer: { flexDirection: 'row', gap: 12, padding: 16, borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 30 : 16 },
-    actionBtn: { flex: 1, height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    footer: { flexDirection: 'row', gap: 10, padding: 14, borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+    actionBtn: { flex: 1, height: 46, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
     btnOutline: { borderWidth: 1.5 },
-    btnOutlineText: { fontSize: 14, fontWeight: '700' },
+    btnOutlineText: { fontSize: 13, fontWeight: '700' },
     btnPrimary: {},
-    btnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#000' },
+    btnPrimaryText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
     // Repay Modal
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalDismiss: { flex: 1 },
-    modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20 },
-    modalHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-    modalHeader: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
-    modalSubHeader: { fontSize: 14, marginBottom: 16 },
-    inputContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 16, height: 58, marginBottom: 14 },
-    moneyInput: { flex: 1, fontSize: 22, fontWeight: '700' },
-    currencySuffix: { fontSize: 16, fontWeight: '600' },
-    quickOptions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-    chip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20, borderWidth: 1.5 },
-    chipText: { fontSize: 13, fontWeight: '600' },
-    modalActions: { flexDirection: 'row', gap: 12 },
-    modalBtn: { flex: 1, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    btnCancelText: { fontSize: 15, fontWeight: '600' },
+    modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: Platform.OS === 'ios' ? 32 : 18 },
+    modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
+    modalHeader: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
+    modalSubLabel: { fontSize: 12, marginBottom: 6 },
+
+    // Period detail in modal
+    periodDetailBox: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 14 },
+    periodDetailHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+    periodDetailTitle: { fontSize: 13, fontWeight: '700', flex: 1 },
+    overdueBadge: { backgroundColor: '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    overdueBadgeText: { fontSize: 10, fontWeight: '600', color: '#EF4444' },
+    periodBreakdown: {},
+    periodBreakdownRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+    periodBreakdownLabel: { fontSize: 12 },
+    periodBreakdownValue: { fontSize: 12, fontWeight: '600' },
+
+    inputContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, height: 52, marginBottom: 12 },
+    moneyInput: { flex: 1, fontSize: 20, fontWeight: '700' },
+    currencySuffix: { fontSize: 14, fontWeight: '600' },
+    quickOptions: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+    chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1.5 },
+    chipText: { fontSize: 12, fontWeight: '600' },
+    modalActions: { flexDirection: 'row', gap: 10 },
+    modalBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    btnCancelText: { fontSize: 14, fontWeight: '600' },
 });
 
 export default LoanDetailScreen;

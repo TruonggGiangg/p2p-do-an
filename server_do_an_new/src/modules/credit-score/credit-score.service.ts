@@ -262,6 +262,15 @@ export class CreditScoreService implements OnModuleInit {
         const debtGroup = this.classifyDebtGroup(overdueDays);
         const groupLabel = this.getDebtGroupLabel(debtGroup);
 
+        // ── Fetch existing delinquency record to check if status changed ──
+        const existingDelinquency = await this.loanDelinquencyModel
+          .findOne({
+            fineractLoanId: loan.fineractLoanId,
+          })
+          .lean();
+        const previousDebtGroup = existingDelinquency?.debtGroup ?? 0;
+        const previousStatus = existingDelinquency?.status ?? 'normal';
+
         // ── Upsert LoanDelinquency record ──
         const delinquencyStatus = debtGroup >= 3 ? 'defaulted' : 'overdue';
         const collectionStage =
@@ -297,14 +306,26 @@ export class CreditScoreService implements OnModuleInit {
           { upsert: true, new: true },
         );
 
-        await this.applyRepaymentEvent({
-          userId: uid,
-          isLatePayment: true,
-          overdueDays,
-          isPrepayment: false,
-          trigger: 'delinquency_batch',
-          note: `Khoản vay #${loan.fineractLoanId} quá hạn ${overdueDays} ngày — ${groupLabel}`,
-        });
+        // ── Only recalculate credit score if debtGroup or status changed ──
+        const statusChanged = previousStatus !== delinquencyStatus;
+        const debtGroupChanged = previousDebtGroup !== debtGroup;
+        if (statusChanged || debtGroupChanged) {
+          this.logger.log(
+            `[delinquency-batch] Loan #${loan.fineractLoanId}: status ${previousStatus}→${delinquencyStatus}, group ${previousDebtGroup}→${debtGroup}. Recalculating credit score.`,
+          );
+          await this.applyRepaymentEvent({
+            userId: uid,
+            isLatePayment: true,
+            overdueDays,
+            isPrepayment: false,
+            trigger: 'delinquency_batch',
+            note: `Khoản vay #${loan.fineractLoanId} quá hạn ${overdueDays} ngày — ${groupLabel} (nhóm ${previousDebtGroup}→${debtGroup})`,
+          });
+        } else {
+          this.logger.debug(
+            `[delinquency-batch] Loan #${loan.fineractLoanId}: no change (group=${debtGroup}, status=${delinquencyStatus}). Skipping credit score recalc.`,
+          );
+        }
 
         // Nhóm 4-5: Đóng băng tài khoản
         if (debtGroup >= 4) {

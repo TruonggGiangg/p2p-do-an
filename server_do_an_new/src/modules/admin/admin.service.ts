@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   Logger,
   NotFoundException,
@@ -6,6 +6,7 @@ import {
   ConflictException,
   Inject,
   forwardRef,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -78,7 +79,7 @@ function parsePeriodDueDate(due: any): string | null {
 const SNAPSHOT_SCOPE = 'default';
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnModuleInit {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(
@@ -104,6 +105,36 @@ export class AdminService {
     private readonly kycService: AdminKycService,
     private readonly staffService: AdminStaffService,
   ) {}
+
+  /**
+   * One-time migration: Fix delinquency_policy debt_group numbers to match CIC standard.
+   * The admin may have created policies with old mapDebtGroup() numbers (off by 1).
+   * This migration extracts the correct group number from debt_group_name and updates debt_group.
+   */
+  async onModuleInit() {
+    try {
+      const policies = await this.delinquencyPolicyModel.find({}).lean().exec();
+      let fixedCount = 0;
+      for (const p of policies) {
+        const nameMatch = p.debt_group_name?.match(/Nhóm\s+(\d+)/i);
+        if (nameMatch) {
+          const correctGroup = parseInt(nameMatch[1], 10);
+          if (p.debt_group !== correctGroup) {
+            await this.delinquencyPolicyModel.updateOne({ _id: p._id }, { $set: { debt_group: correctGroup } });
+            fixedCount++;
+            this.logger.warn(
+              `[PolicyMigration] Fixed "${p.debt_group_name}": debt_group ${p.debt_group} -> ${correctGroup}`,
+            );
+          }
+        }
+      }
+      if (fixedCount > 0) {
+        this.logger.log(`[PolicyMigration] Fixed ${fixedCount}/${policies.length} delinquency policies`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[PolicyMigration] Non-critical migration error: ${err.message}`);
+    }
+  }
 
   // FACADE DELEGATES â€” Products
   async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {

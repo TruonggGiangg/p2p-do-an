@@ -11,6 +11,7 @@ import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
+import { WalletTransaction } from '../wallets/schemas/wallet-transaction.schema';
 
 /**
  * RepaymentService - Xử lý thanh toán khoản vay (repayment & prepayment)
@@ -37,6 +38,7 @@ export class RepaymentService {
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
+    @InjectModel(WalletTransaction.name) private readonly walletTransactionModel: Model<WalletTransaction>,
     private readonly creditScoreService: CreditScoreService,
   ) {}
 
@@ -48,6 +50,7 @@ export class RepaymentService {
     userId: string,
     amount: number,
     note: string,
+    metadata?: { loanId?: string; fineractLoanId?: number; type?: string },
   ): Promise<{ walletTxId: number; savingsId: number }> {
     // 1. Tìm user → fineractClientId
     const user = await this.userModel.findById(userId);
@@ -56,9 +59,7 @@ export class RepaymentService {
     }
 
     // 2. Tìm ví e-wallet active
-    const eWallet = await this.fineractSavingsService.getActiveEWalletAccount(
-      Number(user.fineractClientId),
-    );
+    const eWallet = await this.fineractSavingsService.getActiveEWalletAccount(Number(user.fineractClientId));
     if (!eWallet) {
       throw new BadRequestException('Không tìm thấy ví điện tử. Vui lòng tạo ví trước.');
     }
@@ -72,14 +73,26 @@ export class RepaymentService {
     }
 
     // 4. Withdrawal từ savings account
-    const result = await this.fineractSavingsService.withdrawFromSavings(
-      eWallet.id,
-      amount,
-      note,
-    );
-    this.logger.log(
-      `[deductFromBorrowerWallet] Deducted ${amount} from savings ${eWallet.id} for user ${userId}`,
-    );
+    const result = await this.fineractSavingsService.withdrawFromSavings(eWallet.id, amount, note);
+    this.logger.log(`[deductFromBorrowerWallet] Deducted ${amount} from savings ${eWallet.id} for user ${userId}`);
+
+    // 5. Log transaction to MongoDB for audit trail
+    await this.walletTransactionModel
+      .create({
+        userId: new Types.ObjectId(userId),
+        fineractSavingsId: String(eWallet.id),
+        fineractTransactionId: result.transactionId,
+        type: metadata?.type || 'withdrawal',
+        amount,
+        balanceBefore: balance,
+        balanceAfter: balance - amount,
+        note,
+        loanId: metadata?.loanId ? new Types.ObjectId(metadata.loanId) : undefined,
+        fineractLoanId: metadata?.fineractLoanId,
+        status: 'success',
+      })
+      .catch(err => this.logger.warn(`[deductFromBorrowerWallet] Failed to log wallet tx: ${err?.message}`));
+
     return { walletTxId: result.transactionId, savingsId: eWallet.id };
   }
 
@@ -122,6 +135,7 @@ export class RepaymentService {
         userId,
         amount,
         `Thanh toán kỳ hạn khoản vay (MongoDB: ${loanId})`,
+        { loanId, fineractLoanId, type: 'repayment' },
       );
     } catch (walletErr: any) {
       this.logger.error(`[makeRepayment] Wallet deduction failed: ${walletErr.message}`);
@@ -262,8 +276,8 @@ export class RepaymentService {
       ...prepayInfo,
       prepaymentPenalty,
       totalWithPenalty,
-      penaltyRate: chargeInfo.ratePercent,   // e.g. 3 (hiện cho client: "3%")
-      penaltyChargeName: chargeInfo.name,    // e.g. "Phí phạt tất toán sớm"
+      penaltyRate: chargeInfo.ratePercent, // e.g. 3 (hiện cho client: "3%")
+      penaltyChargeName: chargeInfo.name, // e.g. "Phí phạt tất toán sớm"
       charges,
       loanId: loan._id,
       fineractLoanId: loan.fineractLoanId,
@@ -316,9 +330,7 @@ export class RepaymentService {
           `[prepayLoan] Updated prepay amount after penalty: ${prepayInfo.amount} (penalty=${prepayInfo.penaltyPortion})`,
         );
       } catch (chargeError: any) {
-        this.logger.warn(
-          `[prepayLoan] Failed to add prepayment penalty charge (non-blocking): ${chargeError.message}`,
-        );
+        this.logger.warn(`[prepayLoan] Failed to add prepayment penalty charge (non-blocking): ${chargeError.message}`);
         // Continue with prepay even if penalty charge failed
       }
     }
@@ -329,11 +341,11 @@ export class RepaymentService {
 
     // 1.8. Trừ tiền từ ví borrower
     try {
-      await this.deductFromBorrowerWallet(
-        userId,
-        prepayInfo.amount,
-        `Tất toán sớm khoản vay (MongoDB: ${loanId})`,
-      );
+      await this.deductFromBorrowerWallet(userId, prepayInfo.amount, `Tất toán sớm khoản vay (MongoDB: ${loanId})`, {
+        loanId,
+        fineractLoanId: loan.fineractLoanId!,
+        type: 'prepayment',
+      });
     } catch (walletErr: any) {
       this.logger.error(`[prepayLoan] Wallet deduction failed: ${walletErr.message}`);
       throw walletErr;
@@ -452,7 +464,9 @@ export class RepaymentService {
     }
 
     // DEBUG: Log raw Fineract schedule data
-    this.logger.log(`[getRepaymentSchedule] Raw totals: totalFeeChargesCharged=${schedule.totalFeeChargesCharged}, totalPenaltyChargesCharged=${schedule.totalPenaltyChargesCharged}`);
+    this.logger.log(
+      `[getRepaymentSchedule] Raw totals: totalFeeChargesCharged=${schedule.totalFeeChargesCharged}, totalPenaltyChargesCharged=${schedule.totalPenaltyChargesCharged}`,
+    );
     (schedule.periods || []).forEach((p: any) => {
       if (p.period > 0) {
         this.logger.log(
@@ -519,11 +533,11 @@ export class RepaymentService {
    * Fallback 3% nếu Fineract API lỗi hoặc charge không tồn tại
    */
   private async getPenaltyChargeInfo(): Promise<{
-    rate: number;        // decimal, e.g. 0.03
+    rate: number; // decimal, e.g. 0.03
     ratePercent: number; // e.g. 3
     name: string;
     isPercentage: boolean;
-    flatAmount: number;  // dùng khi isPercentage=false
+    flatAmount: number; // dùng khi isPercentage=false
   }> {
     try {
       const charge = await this.fineractLoanService.getChargeDetails(PREPAYMENT_PENALTY_CHARGE_ID);
