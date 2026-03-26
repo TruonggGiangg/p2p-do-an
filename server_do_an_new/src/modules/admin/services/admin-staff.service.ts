@@ -23,6 +23,9 @@ import {
   CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
   UpdateCreditScoreWeightConfigInput,
+  LoanEvaluationConfigInput,
+  LoanEvaluationConfigValue,
+  LoanEvaluationConfigHistoryItem,
 } from '../../credit-score/credit-score.service';
 
 @Injectable()
@@ -68,6 +71,25 @@ export class AdminStaffService {
 
   async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
     return this.creditScoreService.applyWeightConfig(id);
+  }
+
+  // ── Loan Evaluation Config ───────────────────────────────────────────────────────
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    return this.creditScoreService.getLoanEvaluationConfig();
+  }
+
+  async upsertLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    return this.creditScoreService.upsertLoanEvaluationConfig(input, adminId);
+  }
+
+  async getLoanEvaluationConfigHistory(
+    page?: number,
+    limit?: number,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    return this.creditScoreService.getLoanEvaluationConfigHistory(page, limit);
   }
 
   // ── Staff CRUD ────────────────────────────────────────────────────────────

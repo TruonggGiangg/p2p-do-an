@@ -4,6 +4,8 @@ import { Model, Types } from 'mongoose';
 import { CreditScore } from './schemas/credit-score.schema';
 import { CreditScoreHistory } from './schemas/credit-score-history.schema';
 import { CreditScoreWeightConfig } from './schemas/credit-score-weight-config.schema';
+import { LoanEvaluationConfig } from './schemas/loan-evaluation-config.schema';
+import { LoanEvaluationConfigHistory } from './schemas/loan-evaluation-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 
 const SCORE_MIN = 150;
@@ -97,6 +99,28 @@ export interface UpdateCreditScoreWeightConfigInput extends CreditScoreWeightCon
   isActive?: boolean;
 }
 
+export interface LoanEvaluationConfigInput {
+  autoApprovalScore: number;
+  lowRiskMaxScore: number;
+  lowRiskMaxAmount: number;
+  mediumRiskMaxScore: number;
+  mediumRiskMaxAmount: number;
+  highRiskMaxScore: number;
+  highRiskMaxAmount: number;
+}
+
+export interface LoanEvaluationConfigValue extends LoanEvaluationConfigInput {
+  updatedBy?: string;
+  updatedAt?: Date;
+}
+
+export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigInput {
+  _id: string;
+  changedBy?: string;
+  changeNote?: string;
+  createdAt?: Date;
+}
+
 @Injectable()
 export class CreditScoreService {
   private readonly logger = new Logger(CreditScoreService.name);
@@ -156,6 +180,10 @@ export class CreditScoreService {
     private readonly creditScoreWeightConfigModel: Model<CreditScoreWeightConfig>,
     @InjectModel(LoanApplication.name)
     private readonly loanApplicationModel: Model<LoanApplication>,
+    @InjectModel(LoanEvaluationConfig.name)
+    private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
+    @InjectModel(LoanEvaluationConfigHistory.name)
+    private readonly loanEvaluationConfigHistoryModel: Model<LoanEvaluationConfigHistory>,
   ) {}
 
   private sanitizeWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
@@ -693,5 +721,161 @@ export class CreditScoreService {
       risk,
       factors,
     };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // LOAN EVALUATION CONFIG — Cấu hình đánh giá khoản vay
+  // ══════════════════════════════════════════════════════════════
+
+  private readonly defaultLoanEvalConfig: LoanEvaluationConfigInput = {
+    autoApprovalScore: 82,
+    lowRiskMaxScore: 100,
+    lowRiskMaxAmount: 50_000_000,
+    mediumRiskMaxScore: 79,
+    mediumRiskMaxAmount: 20_000_000,
+    highRiskMaxScore: 59,
+    highRiskMaxAmount: 8_000_000,
+  };
+
+  private validateLoanEvalConfig(input: LoanEvaluationConfigInput): void {
+    const { autoApprovalScore, lowRiskMaxScore, mediumRiskMaxScore, highRiskMaxScore } = input;
+
+    if (!(lowRiskMaxScore > mediumRiskMaxScore && mediumRiskMaxScore > highRiskMaxScore)) {
+      throw new BadRequestException('Ngưỡng điểm phải theo thứ tự: Rủi ro thấp > Trung bình > Cao');
+    }
+    if (
+      !(input.lowRiskMaxAmount >= input.mediumRiskMaxAmount && input.mediumRiskMaxAmount >= input.highRiskMaxAmount)
+    ) {
+      throw new BadRequestException('Ngưỡng khoản vay phải theo thứ tự: Rủi ro thấp >= Trung bình >= Cao');
+    }
+    for (const score of [autoApprovalScore, lowRiskMaxScore, mediumRiskMaxScore, highRiskMaxScore]) {
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        throw new BadRequestException('Ngưỡng điểm phải từ 0 đến 100');
+      }
+    }
+    for (const amount of [input.lowRiskMaxAmount, input.mediumRiskMaxAmount, input.highRiskMaxAmount]) {
+      if (!Number.isFinite(amount) || amount < 0) {
+        throw new BadRequestException('Khoản vay tối đa phải >= 0');
+      }
+    }
+  }
+
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    const doc = await this.loanEvaluationConfigModel.findOne({ key: 'current' }).lean();
+    if (!doc) {
+      return { ...this.defaultLoanEvalConfig };
+    }
+    return {
+      autoApprovalScore: doc.autoApprovalScore,
+      lowRiskMaxScore: doc.lowRiskMaxScore,
+      lowRiskMaxAmount: doc.lowRiskMaxAmount,
+      mediumRiskMaxScore: doc.mediumRiskMaxScore,
+      mediumRiskMaxAmount: doc.mediumRiskMaxAmount,
+      highRiskMaxScore: doc.highRiskMaxScore,
+      highRiskMaxAmount: doc.highRiskMaxAmount,
+      updatedBy: doc.updatedBy,
+      updatedAt: (doc as any).updatedAt,
+    };
+  }
+
+  async upsertLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    this.validateLoanEvalConfig(input);
+
+    const updated = await this.loanEvaluationConfigModel.findOneAndUpdate(
+      { key: 'current' },
+      {
+        $set: {
+          autoApprovalScore: input.autoApprovalScore,
+          lowRiskMaxScore: input.lowRiskMaxScore,
+          lowRiskMaxAmount: input.lowRiskMaxAmount,
+          mediumRiskMaxScore: input.mediumRiskMaxScore,
+          mediumRiskMaxAmount: input.mediumRiskMaxAmount,
+          highRiskMaxScore: input.highRiskMaxScore,
+          highRiskMaxAmount: input.highRiskMaxAmount,
+          updatedBy: adminId,
+        },
+      },
+      { upsert: true, new: true },
+    );
+
+    // Lưu lịch sử thay đổi
+    await this.loanEvaluationConfigHistoryModel.create({
+      ...input,
+      changedBy: adminId,
+      changeNote: 'Cập nhật cấu hình đánh giá khoản vay',
+    });
+
+    this.logger.log(`[upsertLoanEvaluationConfig] Config updated by admin=${adminId}`);
+
+    return {
+      autoApprovalScore: updated.autoApprovalScore,
+      lowRiskMaxScore: updated.lowRiskMaxScore,
+      lowRiskMaxAmount: updated.lowRiskMaxAmount,
+      mediumRiskMaxScore: updated.mediumRiskMaxScore,
+      mediumRiskMaxAmount: updated.mediumRiskMaxAmount,
+      highRiskMaxScore: updated.highRiskMaxScore,
+      highRiskMaxAmount: updated.highRiskMaxAmount,
+      updatedBy: updated.updatedBy,
+      updatedAt: (updated as any).updatedAt,
+    };
+  }
+
+  async getLoanEvaluationConfigHistory(
+    page = 1,
+    limit = 20,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.loanEvaluationConfigHistoryModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.loanEvaluationConfigHistoryModel.countDocuments(),
+    ]);
+
+    return {
+      items: items.map((doc: any) => ({
+        _id: doc._id.toString(),
+        autoApprovalScore: doc.autoApprovalScore,
+        lowRiskMaxScore: doc.lowRiskMaxScore,
+        lowRiskMaxAmount: doc.lowRiskMaxAmount,
+        mediumRiskMaxScore: doc.mediumRiskMaxScore,
+        mediumRiskMaxAmount: doc.mediumRiskMaxAmount,
+        highRiskMaxScore: doc.highRiskMaxScore,
+        highRiskMaxAmount: doc.highRiskMaxAmount,
+        changedBy: doc.changedBy,
+        changeNote: doc.changeNote,
+        createdAt: doc.createdAt,
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  /**
+   * Đánh giá khoản vay dựa trên điểm tín dụng và cấu hình hiện tại.
+   * Trả về: mức rủi ro, hạn mức tối đa, có đủ điều kiện tự động duyệt hay không.
+   */
+  async evaluateLoanByScore(creditScore: number): Promise<{
+    riskLevel: 'low' | 'medium' | 'high' | 'rejected';
+    maxLoanAmount: number;
+    autoApprovable: boolean;
+    creditScore: number;
+  }> {
+    const config = await this.getLoanEvaluationConfig();
+
+    const autoApprovable = creditScore >= config.autoApprovalScore;
+
+    if (creditScore > config.mediumRiskMaxScore) {
+      return { riskLevel: 'low', maxLoanAmount: config.lowRiskMaxAmount, autoApprovable, creditScore };
+    }
+    if (creditScore > config.highRiskMaxScore) {
+      return { riskLevel: 'medium', maxLoanAmount: config.mediumRiskMaxAmount, autoApprovable, creditScore };
+    }
+    if (creditScore > 0) {
+      return { riskLevel: 'high', maxLoanAmount: config.highRiskMaxAmount, autoApprovable, creditScore };
+    }
+    return { riskLevel: 'rejected', maxLoanAmount: 0, autoApprovable: false, creditScore };
   }
 }

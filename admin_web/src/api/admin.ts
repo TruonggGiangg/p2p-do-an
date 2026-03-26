@@ -349,6 +349,18 @@ export interface CreditScoreWeightConfigDto {
   total: number;
 }
 
+export interface LoanEvaluationConfigDto {
+  autoApprovalScore: number;
+  lowRiskMaxScore: number;
+  lowRiskMaxAmount: number;
+  mediumRiskMaxScore: number;
+  mediumRiskMaxAmount: number;
+  highRiskMaxScore: number;
+  highRiskMaxAmount: number;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     api.post<{
@@ -1289,5 +1301,39 @@ export const adminApi = {
         subject,
         allowed,
       })
+      .then((r) => r.data.data),
+
+  // ── Loan Evaluation Config ──────────────────────────────────────────────
+  getLoanEvaluationConfig: () =>
+    api
+      .get<{
+        data: LoanEvaluationConfigDto;
+      }>("/api/admin/loan-evaluation-config")
+      .then((r) => r.data.data),
+
+  upsertLoanEvaluationConfig: (body: LoanEvaluationConfigDto) =>
+    api
+      .put<{
+        data: LoanEvaluationConfigDto;
+      }>("/api/admin/loan-evaluation-config", body)
+      .then((r) => r.data.data),
+
+  getLoanEvaluationConfigHistory: (page = 1, limit = 20) =>
+    api
+      .get<{
+        data: {
+          items: (LoanEvaluationConfigDto & {
+            _id: string;
+            changedBy?: string;
+            changeNote?: string;
+            createdAt?: string;
+          })[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(
+        `/api/admin/loan-evaluation-config/history?page=${page}&limit=${limit}`,
+      )
       .then((r) => r.data.data),
 };

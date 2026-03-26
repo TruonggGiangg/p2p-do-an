@@ -10,6 +10,7 @@ import { Action } from '../../casl/actions.enum';
 import { CreateDocumentTypeDto } from '../dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from '../dto/update-document-type.dto';
 import { SetProductDocumentTypesDto } from '../dto/set-product-document-types.dto';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -260,5 +261,49 @@ export class AdminProductController {
   async syncCompareFD() {
     const diff = await this.adminService.compareAndSyncFD(true);
     return diff;
+  }
+
+  // ── Loan Evaluation Config ─────────────────────────────────────────────────
+
+  @Get('loan-evaluation-config')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
+  @ApiOperation({ summary: 'Lấy cấu hình đánh giá khoản vay hiện tại' })
+  @ApiResponse({ status: 200 })
+  async getLoanEvaluationConfig() {
+    const data = await this.adminService.getLoanEvaluationConfig();
+    return { statusCode: 200, message: 'OK', data };
+  }
+
+  @Put('loan-evaluation-config')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Cập nhật cấu hình đánh giá khoản vay' })
+  @ApiResponse({ status: 200 })
+  async upsertLoanEvaluationConfig(
+    @CurrentUser('id') adminId: string,
+    @Body()
+    body: {
+      autoApprovalScore: number;
+      lowRiskMaxScore: number;
+      lowRiskMaxAmount: number;
+      mediumRiskMaxScore: number;
+      mediumRiskMaxAmount: number;
+      highRiskMaxScore: number;
+      highRiskMaxAmount: number;
+    },
+  ) {
+    const data = await this.adminService.upsertLoanEvaluationConfig(body, adminId);
+    return { statusCode: 200, message: 'Cập nhật cấu hình thành công', data };
+  }
+
+  @Get('loan-evaluation-config/history')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
+  @ApiOperation({ summary: 'Lịch sử thay đổi cấu hình đánh giá khoản vay' })
+  @ApiResponse({ status: 200 })
+  async getLoanEvaluationConfigHistory(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const data = await this.adminService.getLoanEvaluationConfigHistory(
+      page ? parseInt(page, 10) : undefined,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+    return { statusCode: 200, message: 'OK', data };
   }
 }

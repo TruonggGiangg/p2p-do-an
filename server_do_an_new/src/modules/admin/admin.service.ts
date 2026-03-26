@@ -41,6 +41,9 @@ import {
   CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
   UpdateCreditScoreWeightConfigInput,
+  LoanEvaluationConfigInput,
+  LoanEvaluationConfigValue,
+  LoanEvaluationConfigHistoryItem,
 } from '../credit-score/credit-score.service';
 import { AdminProductService } from './services/admin-product.service';
 import { AdminCustomerService } from './services/admin-customer.service';
@@ -127,6 +130,23 @@ export class AdminService {
   }
   async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
     return this.staffService.applyCreditScoreWeightConfig(id);
+  }
+
+  // FACADE DELEGATES — Loan Evaluation Config
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    return this.staffService.getLoanEvaluationConfig();
+  }
+  async upsertLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    return this.staffService.upsertLoanEvaluationConfig(input, adminId);
+  }
+  async getLoanEvaluationConfigHistory(
+    page?: number,
+    limit?: number,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    return this.staffService.getLoanEvaluationConfigHistory(page, limit);
   }
 
   private parseAnyDate(value: any): Date | null {
@@ -684,10 +704,13 @@ export class AdminService {
     try {
       const borrower = await this.userModel.findById(app.userId);
       if (borrower) {
-        borrowerName = [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
+        borrowerName =
+          [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
         borrowerUsername = borrower.username;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return { fineractLoanId, status: 'rejected', borrowerName, borrowerUsername };
   }

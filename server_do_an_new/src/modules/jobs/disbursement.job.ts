@@ -90,11 +90,34 @@ export class DisbursementJob extends BaseJob {
       const fineractLoanId = loan.fineractLoanId!;
 
       try {
-        // 1. Approve trên Fineract (idempotent - skip nếu đã approved)
-        await this.fineractLoanService.approveLoan(
-          fineractLoanId,
-          loan.disbursementDate, // approvedOnDate phải <= disbursementDate
-        );
+        // 0. Pre-check Fineract loan status to avoid unnecessary API errors
+        let fineractStatus: number | null = null;
+        try {
+          const details = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
+          fineractStatus = details?.status?.id ?? null;
+        } catch {
+          this.logger.warn(`Could not fetch Fineract status for loan #${fineractLoanId}, will attempt anyway`);
+        }
+
+        // Status 300 = Active (already disbursed) → just sync MongoDB
+        if (fineractStatus === 300) {
+          this.logger.log(`Loan #${fineractLoanId} already disbursed on Fineract, syncing MongoDB`);
+          await this.loanModel.updateOne(
+            { _id: (loan as any)._id },
+            { $set: { status: 'disbursed', lastSyncedAt: new Date() } },
+          );
+          report.disbursed++;
+          report.details.push({ loanId, fineractLoanId, status: 'success', note: 'already_disbursed_sync' });
+          this.setProgress(i + 1, total, `${i + 1}/${total} — ${report.disbursed} OK, ${report.failed} lỗi`);
+          continue;
+        }
+
+        // Status 200 = Approved → skip approve, proceed to disburse
+        // Status 100 = Pending Approval → approve then disburse
+        if (fineractStatus !== 200) {
+          // 1. Approve trên Fineract (idempotent - skip nếu đã approved)
+          await this.fineractLoanService.approveLoan(fineractLoanId, loan.disbursementDate);
+        }
 
         // 2. Disburse trên Fineract
         await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
