@@ -18,8 +18,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copy application
 COPY . /app
 
-# Train model during build (produces models/ directory)
-RUN python train_model.py
+# NOTE: train_model.py is designed for Google Colab.
+# Pre-trained model artifacts must exist in models/ directory.
+# If models/ is empty, the service will attempt to import train_model
+# which will fail in Docker (no Google Drive mount).
+# Solution: Train on Colab first, then copy models/ into the build context.
 
 EXPOSE 8001
 

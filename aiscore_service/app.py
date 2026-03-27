@@ -2,6 +2,10 @@
 AIScore Service — FastAPI REST API (VNĐ Context)
 ==================================================
 
+Hybrid Stacking 2 tầng (5 Base Learners OOF + RF Meta-Learner):
+  Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
+  Level 2: Random Forest Meta-Learner (5 OOF + 15 features = 20 dims)
+
 Endpoints:
   POST /api/score         - Score 1 borrower → ai_risk_score + default_probability
   POST /api/score/batch   - Score nhiều borrower
@@ -16,7 +20,6 @@ Input từ NestJS (VNĐ):
     "monthly_income": 15000000,
     "monthly_pay": 2500000,
     "revolving_balance": 10000000,
-    "interest_rate": 18.5,
     "dti": 22.0,
     "revolving_util_percent": 45.0,
     "term_months": 36,
@@ -31,8 +34,8 @@ Input từ NestJS (VNĐ):
 
 Output:
   {
-    "ai_risk_score": 82,
-    "default_probability": 0.18,
+    "ai_risk_score": 21,
+    "default_probability": 0.2098,
     "status": "success"
   }
 """
@@ -57,7 +60,6 @@ class ScoreRequest(BaseModel):
     monthly_income: float = Field(..., ge=0, description="Lương tháng (VNĐ)")
     monthly_pay: float = Field(..., ge=0, description="Trả góp/tháng (VNĐ)")
     revolving_balance: float = Field(default=0, ge=0, description="Dư nợ tín dụng (VNĐ)")
-    interest_rate: float = Field(default=12.0, ge=0, le=100, description="Lãi suất (%)")
     dti: float = Field(default=0, ge=0, le=100, description="Nợ/Thu nhập (%)")
     revolving_util_percent: float = Field(default=50, ge=0, le=150, description="% sử dụng hạn mức")
     term_months: Optional[float] = Field(default=36, alias="periodMonth", description="Kỳ hạn (tháng)")
@@ -150,8 +152,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AIScore Service",
-    description="XGBoost Risk Scoring — VNĐ Context (P2P Lending)",
-    version="2.0.0",
+    description="Hybrid Stacking Risk Scoring (5 Base OOF + RF Meta-Learner) — VNĐ Context (P2P Lending)",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -169,12 +171,16 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     metrics = scorer.metadata.get("metrics", {}) if scorer else {}
+    test_metrics = scorer.metadata.get("test_metrics", metrics) if scorer else metrics
     return {
         "status": "ok",
-        "service": "aiscore-service-v2",
-        "model_loaded": scorer is not None and scorer.model is not None,
-        "model_type": "XGBoost PD — VNĐ Context",
-        "auc_roc": metrics.get("auc_roc", "N/A"),
+        "service": "aiscore-service-v4-hybrid-stacking",
+        "model_loaded": scorer is not None and scorer.xgb_model is not None,
+        "model_type": "Hybrid Stacking 2-Layer (5 Base OOF + RF Meta-Learner)",
+        "architecture": scorer.metadata.get("architecture", "N/A") if scorer else "N/A",
+        "n_features": 15,
+        "n_meta_features": 20,
+        "auc_roc": test_metrics.get("auc_roc", "N/A"),
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }
 
@@ -184,7 +190,7 @@ async def predict_score(req: ScoreRequest):
     """
     Score 1 borrower. Input đã ở VNĐ (từ NestJS gửi sang).
     """
-    if scorer is None or scorer.model is None:
+    if scorer is None or scorer.xgb_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
@@ -203,7 +209,7 @@ async def predict_batch(req: BatchRequest):
     """
     Score nhiều borrower cùng lúc (max 100).
     """
-    if scorer is None or scorer.model is None:
+    if scorer is None or scorer.xgb_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     if len(req.applicants) > 100:

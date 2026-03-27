@@ -1,6 +1,12 @@
 """
-AIScore Service — XGBoost PD Scorer (VNĐ Context)
-===================================================
+AIScore Service — Hybrid Stacking PD Scorer (VNĐ Context)
+===========================================================
+
+Hybrid Stacking 2 tầng (5 Base Learners):
+  Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
+  Level 2: Random Forest Meta-Learner
+    Input = [PD_xgb, PD_lgbm, PD_cat, PD_et, PD_gb] + 15 original features
+    Output = PD_final
 
 Nhận input từ NestJS (đã ở VNĐ), build feature vector, predict PD.
 Output: { ai_risk_score, default_probability, status }
@@ -11,7 +17,6 @@ Input mapping (NestJS → FastAPI):
   monthly_income     → Lương tháng (VNĐ)
   monthly_pay        → Trả góp/tháng (VNĐ)
   revolving_balance  → Dư nợ tín dụng (VNĐ)
-  interest_rate      → Lãi suất (%)
   dti                → Nợ/Thu nhập (%)
   revolving_util_percent → % sử dụng hạn mức
   term_months        → Kỳ hạn vay (tháng)
@@ -27,20 +32,26 @@ Input mapping (NestJS → FastAPI):
 import os
 import numpy as np
 import xgboost as xgb
+import lightgbm as lgb
 import joblib
 import json
 from typing import Optional
 
+try:
+    from catboost import CatBoostClassifier
+except ImportError:
+    CatBoostClassifier = None
+
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
 # Features phải khớp thứ tự với train_model.py
+# LƯU Ý: interest_rate bị loại — lãi suất là động (nhân viên duyệt / bên thứ 3)
 FEATURE_NAMES = [
     "credit_score",
     "capital",
     "monthly_income",
     "monthly_pay",
     "revolving_balance",
-    "interest_rate",
     "dti",
     "revolving_util_percent",
     "term_months",
@@ -66,49 +77,76 @@ PURPOSE_MAP = {
 
 class CreditScorer:
     """
-    XGBoost PD scorer — nhận VNĐ features từ NestJS, trả risk score.
+    Hybrid Stacking PD scorer (5 Base Learners + RF Meta):
+      Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
+      Level 2: RF Meta-Learner(5 PDs + 15 features) → PD_final
     """
 
     def __init__(self, model_dir: str = MODEL_DIR):
-        self.model: Optional[xgb.XGBClassifier] = None
-        self.scaler = None
+        self.xgb_model: Optional[xgb.XGBClassifier] = None
+        self.lgbm_model = None
+        self.cat_model = None
+        self.et_model = None
+        self.gb_model = None
+        self.rf_meta_model = None
+        self.per_feature_scalers: Optional[dict] = None
         self.metadata: dict = {}
         self.model_dir = model_dir
-        self._load_model()
+        self._load_models()
 
-    def _load_model(self):
-        model_path = os.path.join(self.model_dir, "xgb_pd_model.json")
-        scaler_path = os.path.join(self.model_dir, "scaler.joblib")
+    def _load_models(self):
+        xgb_path = os.path.join(self.model_dir, "xgb_pd_model.json")
+        lgbm_path = os.path.join(self.model_dir, "lgbm_pd_model.txt")
+        cat_path = os.path.join(self.model_dir, "cat_pd_model.joblib")
+        et_path = os.path.join(self.model_dir, "et_pd_model.joblib")
+        gb_path = os.path.join(self.model_dir, "gb_pd_model.joblib")
+        rf_meta_path = os.path.join(self.model_dir, "rf_meta_model.joblib")
+        scalers_path = os.path.join(self.model_dir, "per_feature_scalers.joblib")
         metadata_path = os.path.join(self.model_dir, "metadata.json")
 
-        if not os.path.exists(model_path):
+        if not os.path.exists(xgb_path):
             raise FileNotFoundError(
-                f"Model not found at {model_path}.\nRun: python train_model.py"
+                f"XGBoost model not found at {xgb_path}.\nRun train_model.py on Colab first."
             )
 
-        self.model = xgb.XGBClassifier()
-        self.model.load_model(model_path)
+        # Level 1: XGBoost
+        self.xgb_model = xgb.XGBClassifier()
+        self.xgb_model.load_model(xgb_path)
 
-        if os.path.exists(scaler_path):
-            self.scaler = joblib.load(scaler_path)
+        # Level 1: LightGBM
+        if os.path.exists(lgbm_path):
+            self.lgbm_model = lgb.Booster(model_file=lgbm_path)
 
+        # Level 1: CatBoost
+        if os.path.exists(cat_path):
+            self.cat_model = joblib.load(cat_path)
+
+        # Level 1: ExtraTrees
+        if os.path.exists(et_path):
+            self.et_model = joblib.load(et_path)
+
+        # Level 1: GradientBoosting
+        if os.path.exists(gb_path):
+            self.gb_model = joblib.load(gb_path)
+
+        # Level 2: Random Forest Meta-Learner
+        if os.path.exists(rf_meta_path):
+            self.rf_meta_model = joblib.load(rf_meta_path)
+
+        # Per-feature scalers
+        if os.path.exists(scalers_path):
+            self.per_feature_scalers = joblib.load(scalers_path)
+
+        # Metadata
         if os.path.exists(metadata_path):
             with open(metadata_path, "r", encoding="utf-8") as f:
                 self.metadata = json.load(f)
 
     def predict(self, features: dict) -> dict:
         """
-        Predict PD từ VNĐ features.
-
-        Args:
-            features: dict từ NestJS (đã ở VNĐ)
-
-        Returns:
-            {
-                "ai_risk_score": 0-100 (100 = nguy hiểm nhất),
-                "default_probability": 0.0-1.0,
-                "status": "success"
-            }
+        Predict PD bằng Hybrid Stacking (5 Base Learners):
+          Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost
+          Level 2: RF Meta-Learner(5 PDs + 15 features) → PD_final
         """
         processed = self._process_features(features)
 
@@ -116,14 +154,52 @@ class CreditScorer:
         if missing:
             raise ValueError(f"Missing features after processing: {missing}")
 
-        X = np.array([[processed[f] for f in FEATURE_NAMES]])
+        X_raw = np.array([[processed[f] for f in FEATURE_NAMES]])
 
-        if self.scaler is not None:
-            X = self.scaler.transform(X)
+        # Per-feature scaling
+        if self.per_feature_scalers is not None:
+            X = np.zeros_like(X_raw, dtype=np.float64)
+            for i, fname in enumerate(FEATURE_NAMES):
+                if fname in self.per_feature_scalers:
+                    X[0, i] = self.per_feature_scalers[fname].transform(
+                        X_raw[0, i].reshape(1, -1)
+                    ).ravel()[0]
+                else:
+                    X[0, i] = X_raw[0, i]
+        else:
+            X = X_raw
 
-        pd_val = float(self.model.predict_proba(X)[0, 1])
+        # ── Level 1: 5 Base Learners ──
+        level1_pds = []
 
-        # ai_risk_score: 0-100, linear map từ PD. 100 = rủi ro cao nhất.
+        # XGBoost
+        xgb_pd = float(self.xgb_model.predict_proba(X)[0, 1]) if self.xgb_model else 0.0
+        level1_pds.append(xgb_pd)
+
+        # LightGBM
+        lgbm_pd = float(self.lgbm_model.predict(X)[0]) if self.lgbm_model else 0.0
+        level1_pds.append(lgbm_pd)
+
+        # CatBoost
+        cat_pd = float(self.cat_model.predict_proba(X)[0, 1]) if self.cat_model else 0.0
+        level1_pds.append(cat_pd)
+
+        # ExtraTrees
+        et_pd = float(self.et_model.predict_proba(X)[0, 1]) if self.et_model else 0.0
+        level1_pds.append(et_pd)
+
+        # GradientBoosting
+        gb_pd = float(self.gb_model.predict_proba(X)[0, 1]) if self.gb_model else 0.0
+        level1_pds.append(gb_pd)
+
+        # ── Level 2: RF Meta-Learner ──
+        if self.rf_meta_model is not None:
+            X_meta = np.column_stack([level1_pds, X])
+            pd_val = float(self.rf_meta_model.predict_proba(X_meta)[0, 1])
+        else:
+            # Fallback: average of all Level 1
+            pd_val = sum(level1_pds) / max(len(level1_pds), 1)
+
         ai_risk_score = int(round(min(max(pd_val, 0), 1) * 100))
 
         return {
@@ -134,7 +210,7 @@ class CreditScorer:
 
     def _process_features(self, raw: dict) -> dict:
         """
-        Nhận VNĐ features từ NestJS, build 16-feature vector.
+        Nhận VNĐ features từ NestJS, build 15-feature vector.
         Tất cả các trường tiền tệ đã ở VNĐ rồi.
         """
         f = {}
@@ -145,7 +221,7 @@ class CreditScorer:
         f["monthly_income"] = float(raw.get("monthly_income", 0))
         f["monthly_pay"] = float(raw.get("monthly_pay", 0))
         f["revolving_balance"] = float(raw.get("revolving_balance", 0))
-        f["interest_rate"] = float(raw.get("interest_rate", 12.0))
+        # interest_rate loại bỏ — lãi suất là động
         f["dti"] = float(raw.get("dti", 0))
         f["revolving_util_percent"] = float(raw.get("revolving_util_percent", 50))
         f["term_months"] = float(raw.get("term_months", raw.get("periodMonth", 36)))
