@@ -9,8 +9,8 @@ services:
     container_name: aiscore-service
     environment:
       - PORT=8001
-      - FLASK_DEBUG=0
       - PYTHONUNBUFFERED=1
+      - USD_TO_VND=25000
     volumes:
       - ./models:/app/models
     deploy:

@@ -1,2 +1,2 @@
-"""WSGI entry point for Gunicorn."""
-from app import app as application
+"""WSGI/ASGI entry point for Uvicorn."""
+from app import app

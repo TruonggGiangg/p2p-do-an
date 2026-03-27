@@ -23,5 +23,5 @@ RUN python train_model.py
 
 EXPOSE 8001
 
-# Run with Gunicorn in production
-CMD ["gunicorn", "-c", "gunicorn_config.py", "wsgi:application"]
+# Run with Uvicorn in production
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

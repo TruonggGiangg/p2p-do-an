@@ -205,19 +205,13 @@ export default function LoanConfirmScreen() {
             });
         } catch (e: any) {
             const errData = e?.response?.data;
-            // Navigate to LoanBlockedScreen if blocked by delinquency policy
-            if (errData?.code === 'LOAN_BLOCKED_DELINQUENCY') {
-                navigation.navigate('LoanBlocked' as any, {
-                    debtGroup: errData.debtGroup,
-                    overdueDays: errData.overdueDays,
-                    overdueAmount: errData.overdueAmount,
-                    fineractLoanId: errData.fineractLoanId,
-                    policy: errData.policy,
-                    message: errData.message,
-                });
-            } else {
-                Alert.alert('Lỗi', errData?.message ?? 'Không thể tạo đơn vay');
-            }
+            const msg =
+                typeof errData?.message === 'string'
+                    ? errData.message
+                    : 'Không thể tạo đơn vay. Vui lòng thử lại sau.';
+            navigation.navigate('LoanBlocked' as any, {
+                message: msg,
+            });
         } finally {
             setSubmitting(false);
         }

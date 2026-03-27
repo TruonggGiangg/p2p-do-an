@@ -1,34 +1,30 @@
 """
-AIScore Service - XGBoost Probability of Default (PD) Model Training
-====================================================================
+AIScore Service — XGBoost Risk Model Training (VNĐ Context)
+============================================================
 
-Luồng chuẩn fintech:
-  XGBoost Model → Predict PD → Store PD → Convert → Credit Score
-  → Update Membership Tier → Decision Engine → Loan Approval (Fineract)
+Pipeline:
+  1. Load Lending Club CSV (~396K records)
+  2. Clean target (Fully Paid → 0, Charged Off → 1)
+  3. Feature selection — chống data leakage
+  4. Scale USD → VNĐ (tỷ giá env: USD_TO_VND, default 25000)
+  5. Map sub_grade → credit_score (150–750 FICO-style)
+  6. Preprocessing: parse term/emp_length, encode categoricals
+  7. Feature engineering: dti, revolving pressure…
+  8. Train XGBoost (StratifiedKFold CV + early stopping)
+  9. Save model (.json), scaler (.joblib), metadata (.json)
 
-Dùng dữ liệu thực Lending Club (lending_club_loan_two.csv) với ~396K records.
-- Target: loan_status (Fully Paid → 0, Charged Off → 1)
-- Output: PD = Probability of Default (0.0 - 1.0)
+Output khi predict:
+  {
+    "ai_risk_score": 82,          # 0-100 (100 = nguy hiểm nhất)
+    "default_probability": 0.18,  # 0.0 – 1.0
+    "status": "success"
+  }
 
-PD Meaning:
-  - PD = 0.03 → rủi ro vỡ nợ 3%
-  - PD = 0.18 → rủi ro vỡ nợ 18%
-  - PD = 0.45 → rủi ro vỡ nợ 45%
-
-Credit Score (từ PD):
-  credit_score = 300 + (1 - PD) × 550  →  300-850
-
-Membership Tier:
-  >=800 → Platinum | 700-799 → Gold | 600-699 → Silver | <600 → Basic
-
-Grade & Sub-Grade (từ PD):
-  A (A1-A5): PD < 0.10
-  B (B1-B5): PD 0.10-0.20
-  C (C1-C5): PD 0.20-0.30
-  D (D1-D5): PD 0.30-0.40
-  E (E1-E5): PD 0.40-0.55
-  F (F1-F5): PD 0.55-0.70
-  G (G1-G5): PD >= 0.70
+VNĐ scaling cho phép model trực tiếp học trên giá trị tiền Việt:
+  loan_amnt × RATE → capital (VNĐ)
+  annual_inc ÷ 12 × RATE → monthly_income (VNĐ)
+  installment × RATE → monthly_pay (VNĐ)
+  revol_bal × RATE → revolving_balance (VNĐ)
 """
 
 import os
@@ -48,7 +44,7 @@ from sklearn.metrics import (
     brier_score_loss,
     log_loss,
 )
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 import joblib
 import json
 
@@ -59,66 +55,106 @@ RANDOM_STATE = 42
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 DATA_PATH = os.path.join(os.path.dirname(__file__), "lending_club_loan_two.csv")
 
-# Features sử dụng từ Lending Club data (sau khi clean & engineer)
-FEATURE_NAMES = [
-    "loan_amnt",
-    "term_months",
-    "int_rate",
-    "installment",
-    "annual_inc",
-    "dti",
-    "open_acc",
-    "pub_rec",
-    "revol_bal",
-    "revol_util",
-    "total_acc",
-    "mort_acc",
-    "pub_rec_bankruptcies",
-    "emp_length_years",
-    "home_ownership_enc",
-    "verification_status_enc",
-    "purpose_enc",
-    "application_type_enc",
-    "initial_list_status_enc",
-    "log_annual_inc",
-    "log_revol_bal",
-    "installment_to_income",
-    "revol_util_x_bal",
-    "credit_history_years",
-]
+# ── Tỷ giá USD → VNĐ (dynamic) ──
+# Ưu tiên: 1) ENV var → 2) Live API → 3) Fallback 25000
+DEFAULT_RATE = 25_000
 
-# Grade & Sub-Grade PD thresholds
-GRADE_THRESHOLDS = [
-    ("A", 0.00, 0.10),
-    ("B", 0.10, 0.20),
-    ("C", 0.20, 0.30),
-    ("D", 0.30, 0.40),
-    ("E", 0.40, 0.55),
-    ("F", 0.55, 0.70),
-    ("G", 0.70, 1.01),
+def fetch_usd_to_vnd() -> tuple[float, str]:
+    """
+    Lấy tỷ giá USD→VNĐ real-time.
+    1. Env var USD_TO_VND (override cứng nếu cần)
+    2. open.er-api.com (miễn phí, không cần key)
+    3. Fallback 25000
+    """
+    env_val = os.environ.get("USD_TO_VND")
+    if env_val:
+        return float(env_val), "env"
+
+    import urllib.request, json as _json
+    apis = [
+        ("https://open.er-api.com/v6/latest/USD", lambda d: d.get("rates", {}).get("VND")),
+        ("https://api.exchangerate-api.com/v4/latest/USD", lambda d: d.get("rates", {}).get("VND")),
+    ]
+    for url, extractor in apis:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "aiscore-service/2.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = _json.loads(resp.read().decode())
+                rate = extractor(data)
+                if rate and float(rate) > 0:
+                    return float(rate), url.split("/")[2]
+        except Exception:
+            continue
+
+    return float(DEFAULT_RATE), "fallback"
+
+USD_TO_VND, _RATE_SOURCE = fetch_usd_to_vnd()
+print(f"[train] Exchange rate: 1 USD = {USD_TO_VND:,.0f} VNĐ (source: {_RATE_SOURCE})")
+
+# ── sub_grade → credit_score (150–750, tương ứng hệ thống NestJS) ──
+# A1=750 … G5=150, step ≈ 17.14
+_GRADES = []
+for _letter_idx, _letter in enumerate("ABCDEFG"):
+    for _sub in range(1, 6):
+        _GRADES.append(f"{_letter}{_sub}")
+# A1 (idx 0) → 750, G5 (idx 34) → 150
+SUB_GRADE_TO_SCORE = {
+    g: int(round(750 - (750 - 150) * i / (len(_GRADES) - 1)))
+    for i, g in enumerate(_GRADES)
+}
+
+# Features cuối cho XGBoost (sau khi engineer) — 16 features
+FEATURE_NAMES = [
+    "credit_score",              # sub_grade → 150-750
+    "capital",                   # loan_amnt × VND
+    "monthly_income",            # annual_inc / 12 × VND
+    "monthly_pay",               # installment × VND
+    "revolving_balance",         # revol_bal × VND
+    "interest_rate",             # int_rate (%)
+    "dti",                       # debt-to-income (%)
+    "revolving_util_percent",    # revol_util (%)
+    "term_months",               # 36 or 60
+    "emp_length_years",          # 0–10
+    "active_bad_debts",          # pub_rec
+    "bankruptcies",              # pub_rec_bankruptcies
+    "active_loans",              # open_acc
+    "total_loans_history",       # total_acc
+    "home_ownership_enc",        # one-hot → ordinal
+    "purpose_enc",               # one-hot → ordinal
 ]
 
 
 def load_and_clean_data(path: str) -> pd.DataFrame:
     """
-    Load Lending Club CSV, chuẩn hóa dữ liệu, xử lý missing, encode categoricals,
-    tạo derived features. Lọc sạch toàn bộ trước khi train.
+    Load Lending Club CSV, clean, scale USD→VNĐ, engineer features.
     """
-    print("  Loading CSV...")
+    print(f"  Loading CSV from {path}...")
     df = pd.read_csv(path)
     print(f"  Raw shape: {df.shape}")
 
-    # ── 1. Target: loan_status → is_default (1 = Charged Off, 0 = Fully Paid)
+    # ── 1. Target: Fully Paid → 0, Charged Off → 1 ──
     df = df[df["loan_status"].isin(["Fully Paid", "Charged Off"])].copy()
     df["is_default"] = (df["loan_status"] == "Charged Off").astype(int)
     print(f"  After filtering loan_status: {df.shape}")
-    print(f"  Default rate: {df['is_default'].mean()*100:.2f}%")
+    print(f"  Default rate: {df['is_default'].mean() * 100:.2f}%")
 
-    # ── 2. Clean numeric columns
-    # term: " 36 months" → 36
+    # ── 2. Map sub_grade → credit_score (150–750) ──
+    df["credit_score"] = df["sub_grade"].map(SUB_GRADE_TO_SCORE)
+    df = df.dropna(subset=["credit_score"])
+    df["credit_score"] = df["credit_score"].astype(int)
+
+    # ── 3. Scale USD → VNĐ ──
+    rate = USD_TO_VND
+    print(f"  USD→VNĐ rate: {rate:,.0f}")
+    df["capital"] = df["loan_amnt"] * rate
+    df["monthly_income"] = (df["annual_inc"] / 12) * rate
+    df["monthly_pay"] = df["installment"] * rate
+    df["revolving_balance"] = df["revol_bal"] * rate
+
+    # ── 4. Parse term: " 36 months" → 36 ──
     df["term_months"] = df["term"].str.extract(r"(\d+)").astype(float)
 
-    # emp_length: "10+ years" → 10, "< 1 year" → 0.5, "2 years" → 2
+    # ── 5. Parse emp_length → years ──
     def parse_emp_length(val):
         if pd.isna(val):
             return np.nan
@@ -132,106 +168,70 @@ def load_and_clean_data(path: str) -> pd.DataFrame:
 
     df["emp_length_years"] = df["emp_length"].apply(parse_emp_length)
 
-    # earliest_cr_line → credit_history_years
-    df["earliest_cr_line_dt"] = pd.to_datetime(df["earliest_cr_line"], format="%b-%Y", errors="coerce")
-    df["issue_d_dt"] = pd.to_datetime(df["issue_d"], format="%b-%Y", errors="coerce")
-    df["credit_history_years"] = (
-        (df["issue_d_dt"] - df["earliest_cr_line_dt"]).dt.days / 365.25
-    ).clip(0, 60)
+    # ── 6. Rename columns for consistency ──
+    df["interest_rate"] = df["int_rate"]
+    df["revolving_util_percent"] = df["revol_util"]
+    df["active_bad_debts"] = df["pub_rec"]
+    df["bankruptcies"] = df["pub_rec_bankruptcies"]
+    df["active_loans"] = df["open_acc"]
+    df["total_loans_history"] = df["total_acc"]
 
-    # ── 3. Handle missing values (fill trước khi drop)
+    # ── 7. Fill missing ──
     df["emp_length_years"] = df["emp_length_years"].fillna(df["emp_length_years"].median())
-    df["mort_acc"] = df["mort_acc"].fillna(df["mort_acc"].median())
-    df["pub_rec_bankruptcies"] = df["pub_rec_bankruptcies"].fillna(0)
-    df["revol_util"] = df["revol_util"].fillna(df["revol_util"].median())
-    df["credit_history_years"] = df["credit_history_years"].fillna(df["credit_history_years"].median())
+    df["bankruptcies"] = df["bankruptcies"].fillna(0)
+    df["revolving_util_percent"] = df["revolving_util_percent"].fillna(
+        df["revolving_util_percent"].median()
+    )
+    df["active_bad_debts"] = df["active_bad_debts"].fillna(0)
 
-    # ── 4. Encode categorical features
+    # ── 8. Encode categoricals ──
     home_map = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3, "NONE": 3, "ANY": 3}
     df["home_ownership_enc"] = df["home_ownership"].map(home_map).fillna(3).astype(int)
 
-    verif_map = {"Not Verified": 0, "Source Verified": 1, "Verified": 2}
-    df["verification_status_enc"] = df["verification_status"].map(verif_map).fillna(0).astype(int)
+    purpose_map = {
+        "debt_consolidation": 0, "credit_card": 1, "home_improvement": 2,
+        "other": 3, "major_purchase": 4, "medical": 5, "small_business": 6,
+        "car": 7, "vacation": 8, "moving": 9, "house": 10,
+        "wedding": 11, "renewable_energy": 12, "educational": 13,
+    }
+    df["purpose_enc"] = df["purpose"].map(purpose_map).fillna(3).astype(int)
 
-    le_purpose = LabelEncoder()
-    df["purpose_enc"] = le_purpose.fit_transform(df["purpose"].fillna("other"))
-
-    app_map = {"INDIVIDUAL": 0, "JOINT": 1, "Joint App": 1}
-    df["application_type_enc"] = df["application_type"].map(app_map).fillna(0).astype(int)
-
-    list_map = {"w": 0, "f": 1}
-    df["initial_list_status_enc"] = df["initial_list_status"].map(list_map).fillna(0).astype(int)
-
-    # ── 5. Feature engineering (derived features)
-    df["log_annual_inc"] = np.log1p(df["annual_inc"])
-    df["log_revol_bal"] = np.log1p(df["revol_bal"])
-    df["installment_to_income"] = df["installment"] / (df["annual_inc"] / 12 + 1)
-    df["revol_util_x_bal"] = df["revol_util"] * df["revol_bal"] / 1e6
-
-    # ── 6. Remove outliers (clip extreme values)
-    df["annual_inc"] = df["annual_inc"].clip(0, 1_000_000)
+    # ── 9. Clip outliers ──
     df["dti"] = df["dti"].clip(0, 100)
-    df["open_acc"] = df["open_acc"].clip(0, 50)
-    df["revol_util"] = df["revol_util"].clip(0, 150)
+    df["active_loans"] = df["active_loans"].clip(0, 50)
+    df["revolving_util_percent"] = df["revolving_util_percent"].clip(0, 150)
+    df["monthly_income"] = df["monthly_income"].clip(0, df["monthly_income"].quantile(0.99))
 
-    # ── 7. Drop rows with remaining NaN in feature columns
+    # ── 10. Select final features + target, drop NaN ──
     feature_cols = FEATURE_NAMES + ["is_default"]
     df = df[feature_cols].dropna()
     print(f"  After full cleaning: {df.shape}")
-    print(f"  Final default rate: {df['is_default'].mean()*100:.2f}%")
+    print(f"  Final default rate: {df['is_default'].mean() * 100:.2f}%")
 
     return df
 
 
-def pd_to_grade(pd_val: float) -> str:
-    """Convert PD to Grade + Sub-Grade (A1-G5)."""
-    for grade_letter, lo, hi in GRADE_THRESHOLDS:
-        if lo <= pd_val < hi:
-            span = hi - lo
-            offset = pd_val - lo
-            sub = min(int(offset / (span / 5)) + 1, 5)
-            return f"{grade_letter}{sub}"
-    return "G5"
-
-
-def score_to_tier(score: int) -> str:
-    """Convert credit score → membership tier."""
-    if score >= 800:
-        return "Platinum"
-    elif score >= 700:
-        return "Gold"
-    elif score >= 600:
-        return "Silver"
-    else:
-        return "Basic"
-
-
 def train_model():
     """
-    Train XGBoost PD model trên dữ liệu Lending Club thật.
-    Output: PD → Credit Score → Grade/SubGrade → Tier.
+    Train XGBoost classifier trên Lending Club data (VNĐ-scaled).
     """
     print("=" * 65)
-    print("  AIScore - XGBoost PD (Probability of Default) Model Training")
+    print("  AIScore — XGBoost Risk Model Training (VNĐ Context)")
     print("=" * 65)
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 1. Load & clean data
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 1. Load & clean ──
     print("\n[1/6] Loading & cleaning Lending Club data...")
     if not os.path.exists(DATA_PATH):
         raise FileNotFoundError(
-            f"Data file not found: {DATA_PATH}\n"
-            "Hãy đặt lending_club_loan_two.csv vào thư mục aiscore_service."
+            f"Data not found: {DATA_PATH}\n"
+            "Đặt lending_club_loan_two.csv vào thư mục aiscore_service."
         )
     df = load_and_clean_data(DATA_PATH)
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 2. Prepare features & split
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 2. Prepare features ──
     print("\n[2/6] Preparing features & standardizing...")
     X = df[FEATURE_NAMES].values
-    y = df["is_default"].values  # 1 = default (Charged Off), 0 = paid (Fully Paid)
+    y = df["is_default"].values
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -240,15 +240,10 @@ def train_model():
         X_scaled, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
     )
     print(f"  Train: {X_train.shape[0]:,} | Test: {X_test.shape[0]:,}")
-    print(f"  Default rate — Train: {y_train.mean()*100:.2f}% | Test: {y_test.mean()*100:.2f}%")
+    print(f"  Default rate — Train: {y_train.mean() * 100:.2f}% | Test: {y_test.mean() * 100:.2f}%")
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 3. Train XGBoost
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 3. Train XGBoost ──
     print("\n[3/6] Training XGBoost model...")
-    # Không dùng scale_pos_weight để PD output calibrated (mean PD ≈ actual default rate)
-    # Nếu dùng scale_pos_weight thì PD sẽ bị inflate, không reflect đúng xác suất thực
-
     model = xgb.XGBClassifier(
         n_estimators=500,
         max_depth=4,
@@ -264,22 +259,18 @@ def train_model():
         early_stopping_rounds=50,
         tree_method="hist",
     )
-
     model.fit(
-        X_train,
-        y_train,
+        X_train, y_train,
         eval_set=[(X_test, y_test)],
         verbose=False,
     )
     print(f"  Best iteration: {model.best_iteration}")
     print(f"  Best AUC on eval: {model.best_score:.4f}")
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 4. Evaluate
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 4. Evaluate ──
     print("\n[4/6] Evaluating model...")
     y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]  # PD = P(default)
+    y_prob = model.predict_proba(X_test)[:, 1]
 
     accuracy = accuracy_score(y_test, y_pred)
     precision = precision_score(y_test, y_pred, zero_division=0)
@@ -303,17 +294,15 @@ def train_model():
     cm = confusion_matrix(y_test, y_pred)
     print(f"  Confusion Matrix:")
     print(f"    {'':>12} Pred Paid  Pred Default")
-    print(f"    {'Actual Paid':>12}  {cm[0,0]:>8,}  {cm[0,1]:>12,}")
-    print(f"    {'Actual Def':>12}  {cm[1,0]:>8,}  {cm[1,1]:>12,}")
+    print(f"    {'Actual Paid':>12}  {cm[0, 0]:>8,}  {cm[0, 1]:>12,}")
+    print(f"    {'Actual Def':>12}  {cm[1, 0]:>8,}  {cm[1, 1]:>12,}")
 
     print(f"\n  PD Distribution on test set:")
     for q in [0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]:
-        print(f"    P{int(q*100):>2}: {np.percentile(y_prob, q*100):.4f}")
+        print(f"    P{int(q * 100):>2}: {np.percentile(y_prob, q * 100):.4f}")
     print(f"    Mean PD: {y_prob.mean():.4f}")
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 5. Cross-validation
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 5. Cross-validation ──
     print("\n[5/6] 5-Fold Cross-Validation...")
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
     cv_model = xgb.XGBClassifier(
@@ -336,14 +325,12 @@ def train_model():
     # Feature importance
     importance = model.feature_importances_
     feat_imp = sorted(zip(FEATURE_NAMES, importance), key=lambda x: x[1], reverse=True)
-    print("\n  Feature Importance (top 15):")
-    for i, (fname, imp) in enumerate(feat_imp[:15]):
+    print("\n  Feature Importance:")
+    for i, (fname, imp) in enumerate(feat_imp):
         bar = "█" * int(imp * 60)
-        print(f"    {i+1:>2}. {fname:>28s}: {imp:.4f} {bar}")
+        print(f"    {i + 1:>2}. {fname:>28s}: {imp:.4f} {bar}")
 
-    # ──────────────────────────────────────────────────────────────────────
-    # 6. Save model artifacts
-    # ──────────────────────────────────────────────────────────────────────
+    # ── 6. Save artifacts ──
     print("\n[6/6] Saving model artifacts...")
     os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -355,9 +342,18 @@ def train_model():
     joblib.dump(scaler, scaler_path)
     print(f"  → Scaler saved: {scaler_path}")
 
+    # Purpose map (for scorer to reuse)
+    purpose_map = {
+        "debt_consolidation": 0, "credit_card": 1, "home_improvement": 2,
+        "other": 3, "major_purchase": 4, "medical": 5, "small_business": 6,
+        "car": 7, "vacation": 8, "moving": 9, "house": 10,
+        "wedding": 11, "renewable_energy": 12, "educational": 13,
+    }
+
     metadata = {
-        "model_type": "XGBoost PD (Probability of Default)",
-        "data_source": "Lending Club",
+        "model_type": "XGBoost PD — VNĐ Context",
+        "data_source": "Lending Club (USD scaled → VNĐ)",
+        "usd_to_vnd_rate": USD_TO_VND,
         "n_records": int(len(df)),
         "feature_names": FEATURE_NAMES,
         "n_features": len(FEATURE_NAMES),
@@ -376,17 +372,9 @@ def train_model():
             "cv_auc_std": round(float(cv_scores.std()), 4),
         },
         "feature_importance": {name: round(float(imp), 4) for name, imp in feat_imp},
-        "grade_thresholds": {g: {"min_pd": lo, "max_pd": hi} for g, lo, hi in GRADE_THRESHOLDS},
-        "tier_thresholds": {
-            "Platinum": {"min_score": 800, "max_pd": 0.091},
-            "Gold": {"min_score": 700, "max_pd": 0.273},
-            "Silver": {"min_score": 600, "max_pd": 0.455},
-            "Basic": {"min_score": 300, "max_pd": 1.0},
-        },
-        "model_params": {
-            k: v for k, v in model.get_params().items()
-            if k not in ("callbacks", "kwargs")
-        },
+        "purpose_map": purpose_map,
+        "home_ownership_map": {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3},
+        "sub_grade_to_score": SUB_GRADE_TO_SCORE,
     }
 
     def _json_safe(obj):
@@ -406,19 +394,20 @@ def train_model():
     print(f"  → Metadata saved: {metadata_path}")
 
     # Example predictions
-    print("\n  Example PD predictions on test set:")
+    print("\n  Example predictions on test set:")
     rng = np.random.RandomState(42)
     sample_idx = rng.choice(len(y_test), 5, replace=False)
     for idx in sample_idx:
         pd_val = y_prob[idx]
         actual = "Default" if y_test[idx] == 1 else "Paid"
-        score = int(300 + (1 - pd_val) * 550)
-        grade = pd_to_grade(pd_val)
-        tier = score_to_tier(score)
-        print(f"    PD={pd_val:.4f} | Score={score} | Grade={grade} | Tier={tier} | Actual={actual}")
+        risk_score = int(round(pd_val * 100))
+        print(
+            f"    PD={pd_val:.4f} | ai_risk_score={risk_score} | Actual={actual}"
+        )
 
     print("\n" + "=" * 65)
-    print("  Training complete! Luồng: XGBoost → PD → Credit Score → Tier")
+    print("  Training complete!")
+    print(f"  Model: XGBoost | Features: {len(FEATURE_NAMES)} | VNĐ rate: {USD_TO_VND:,.0f}")
     print("=" * 65)
 
     return model, scaler, metadata

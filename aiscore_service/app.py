@@ -1,278 +1,269 @@
 """
-AIScore Service - Flask REST API (PD-based)
-=============================================
-
-Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+AIScore Service — FastAPI REST API (VNĐ Context)
+==================================================
 
 Endpoints:
-  POST /api/score         - Score 1 borrower → PD + all derived metrics
+  POST /api/score         - Score 1 borrower → ai_risk_score + default_probability
   POST /api/score/batch   - Score nhiều borrower
-  GET  /api/model/info    - Model metadata & thresholds
+  GET  /api/model/info    - Model metadata
   GET  /api/health        - Health check
   POST /api/model/retrain - Retrain model
+
+Input từ NestJS (VNĐ):
+  {
+    "credit_score": 580,
+    "capital": 50000000,
+    "monthly_income": 15000000,
+    "monthly_pay": 2500000,
+    "revolving_balance": 10000000,
+    "interest_rate": 18.5,
+    "dti": 22.0,
+    "revolving_util_percent": 45.0,
+    "term_months": 36,
+    "emp_length_years": 3,
+    "active_bad_debts": 0,
+    "bankruptcies": 0,
+    "active_loans": 2,
+    "total_loans_history": 5,
+    "home_ownership": "RENT",
+    "loan_purpose": "debt_consolidation"
+  }
+
+Output:
+  {
+    "ai_risk_score": 82,
+    "default_probability": 0.18,
+    "status": "success"
+  }
 """
 
 import os
 import traceback
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import httpx
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional
 
 from scorer import CreditScorer
 
+# ── Pydantic models ──
 
-def create_app() -> Flask:
-    app = Flask(__name__)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+class ScoreRequest(BaseModel):
+    credit_score: float = Field(..., ge=150, le=750, description="Điểm tín dụng NestJS (150-750)")
+    capital: float = Field(..., gt=0, description="Số tiền vay (VNĐ)")
+    monthly_income: float = Field(..., ge=0, description="Lương tháng (VNĐ)")
+    monthly_pay: float = Field(..., ge=0, description="Trả góp/tháng (VNĐ)")
+    revolving_balance: float = Field(default=0, ge=0, description="Dư nợ tín dụng (VNĐ)")
+    interest_rate: float = Field(default=12.0, ge=0, le=100, description="Lãi suất (%)")
+    dti: float = Field(default=0, ge=0, le=100, description="Nợ/Thu nhập (%)")
+    revolving_util_percent: float = Field(default=50, ge=0, le=150, description="% sử dụng hạn mức")
+    term_months: Optional[float] = Field(default=36, alias="periodMonth", description="Kỳ hạn (tháng)")
+    emp_length_years: float = Field(default=5, ge=0, le=30, description="Số năm đi làm")
+    active_bad_debts: float = Field(default=0, ge=0, description="Nợ xấu đang active")
+    bankruptcies: float = Field(default=0, ge=0, description="Số lần phá sản")
+    active_loans: float = Field(default=0, ge=0, description="Số khoản vay đang mở")
+    total_loans_history: float = Field(default=0, ge=0, description="Tổng khoản vay từng có")
+    home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE")
+    loan_purpose: Optional[str] = Field(default="other", description="Mục đích vay")
 
-    # Initialize scorer (loads model on startup)
+    class Config:
+        populate_by_name = True
+
+class ScoreResponse(BaseModel):
+    ai_risk_score: int
+    default_probability: float
+    status: str
+
+class BatchRequest(BaseModel):
+    applicants: list[dict]
+
+class ExchangeRateResponse(BaseModel):
+    usd_to_vnd: float
+    source: str
+
+
+# ── Exchange rate helper ──
+
+_EXCHANGE_RATE_CACHE: dict = {"rate": None, "source": "default"}
+
+async def fetch_exchange_rate() -> tuple[float, str]:
+    """
+    Lấy tỷ giá USD→VNĐ:
+      1. Env var USD_TO_VND (override cứng nếu cần)
+      2. open.er-api.com (miễn phí, không cần key)
+      3. exchangerate-api.com (backup)
+      4. Fallback 25000
+    """
+    env_rate = os.environ.get("USD_TO_VND")
+    if env_rate:
+        return float(env_rate), "env"
+
+    apis = [
+        "https://open.er-api.com/v6/latest/USD",
+        "https://api.exchangerate-api.com/v4/latest/USD",
+    ]
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        for url in apis:
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    vnd_rate = data.get("rates", {}).get("VND")
+                    if vnd_rate and float(vnd_rate) > 0:
+                        return float(vnd_rate), url.split("/")[2]
+            except Exception:
+                continue
+
+    return 25000.0, "default_fallback"
+
+
+# ── App lifecycle ──
+
+scorer: Optional[CreditScorer] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global scorer, _EXCHANGE_RATE_CACHE
+    # Startup: load model
     try:
         scorer = CreditScorer()
-        print("[AIScore] PD model loaded successfully.")
+        print("[AIScore] Model loaded successfully.")
     except FileNotFoundError:
-        print("[AIScore] WARNING: Model not found. Training now...")
+        print("[AIScore] Model not found. Training now...")
         from train_model import train_model
         train_model()
         scorer = CreditScorer()
-        print("[AIScore] Model trained and loaded successfully.")
+        print("[AIScore] Model trained and loaded.")
 
-    # ── Health check ──────────────────────────────────────────────────────
-    @app.route("/api/health", methods=["GET"])
-    def health():
-        metrics = scorer.metadata.get("metrics", {})
-        return jsonify({
-            "status": "ok",
-            "service": "aiscore-pd-service",
-            "model_loaded": scorer.model is not None,
-            "model_type": scorer.metadata.get("model_type", "XGBoost PD"),
-            "data_source": scorer.metadata.get("data_source", "Lending Club"),
-            "n_records": scorer.metadata.get("n_records", 0),
-            "auc_roc": metrics.get("auc_roc", "N/A"),
-        })
+    # Fetch exchange rate on startup
+    rate, source = await fetch_exchange_rate()
+    _EXCHANGE_RATE_CACHE = {"rate": rate, "source": source}
+    print(f"[AIScore] Exchange rate: 1 USD = {rate:,.0f} VNĐ (source: {source})")
 
-    # ── PD Score Prediction ──────────────────────────────────────────────
-    @app.route("/api/score", methods=["POST"])
-    def predict_score():
-        """
-        Predict PD & derived credit metrics cho một borrower.
+    yield
+    # Shutdown
+    print("[AIScore] Shutting down.")
 
-        Request body (JSON) — Lending Club format:
-        {
-            "loan_amnt": 15000,            // Số tiền vay (USD)
-            "int_rate": 13.56,             // Lãi suất (%)
-            "installment": 512.87,         // Khoản trả hàng tháng
-            "annual_inc": 75000,           // Thu nhập năm
-            "dti": 18.5,                   // Debt-to-Income ratio (%)
-            "open_acc": 8,                 // Số tài khoản tín dụng mở
-            "revol_bal": 12500,            // Số dư tín dụng quay vòng
-            "revol_util": 42.5,            // % sử dụng tín dụng quay vòng
-            "total_acc": 25,               // Tổng số tài khoản
-            "term": "36 months",           // (optional) Kỳ hạn
-            "emp_length": "5 years",       // (optional) Thâm niên
-            "home_ownership": "MORTGAGE",  // (optional) RENT/OWN/MORTGAGE
-            "verification_status": "Verified",     // (optional)
-            "purpose": "debt_consolidation",        // (optional)
-            "pub_rec": 0,                  // (optional) Hồ sơ công
-            "mort_acc": 1,                 // (optional) Tài khoản thế chấp
-            "pub_rec_bankruptcies": 0,     // (optional)
-            "credit_history_years": 15,    // (optional) Số năm tín dụng
-            "application_type": "INDIVIDUAL",       // (optional)
-            "initial_list_status": "w"              // (optional)
+
+app = FastAPI(
+    title="AIScore Service",
+    description="XGBoost Risk Scoring — VNĐ Context (P2P Lending)",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Endpoints ──
+
+@app.get("/api/health")
+async def health():
+    metrics = scorer.metadata.get("metrics", {}) if scorer else {}
+    return {
+        "status": "ok",
+        "service": "aiscore-service-v2",
+        "model_loaded": scorer is not None and scorer.model is not None,
+        "model_type": "XGBoost PD — VNĐ Context",
+        "auc_roc": metrics.get("auc_roc", "N/A"),
+        "exchange_rate": _EXCHANGE_RATE_CACHE,
+    }
+
+
+@app.post("/api/score", response_model=ScoreResponse)
+async def predict_score(req: ScoreRequest):
+    """
+    Score 1 borrower. Input đã ở VNĐ (từ NestJS gửi sang).
+    """
+    if scorer is None or scorer.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    try:
+        features = req.model_dump(by_alias=False)
+        result = scorer.predict(features)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@app.post("/api/score/batch")
+async def predict_batch(req: BatchRequest):
+    """
+    Score nhiều borrower cùng lúc (max 100).
+    """
+    if scorer is None or scorer.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    if len(req.applicants) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 per batch")
+
+    results = []
+    errors = []
+
+    for i, applicant in enumerate(req.applicants):
+        try:
+            result = scorer.predict(applicant)
+            result["index"] = i
+            results.append(result)
+        except Exception as e:
+            errors.append({"index": i, "error": str(e)})
+
+    if results:
+        scores = [r["ai_risk_score"] for r in results]
+        pds = [r["default_probability"] for r in results]
+        summary = {
+            "total": len(req.applicants),
+            "scored": len(results),
+            "errors": len(errors),
+            "avg_risk_score": round(sum(scores) / len(scores), 1),
+            "avg_pd": round(sum(pds) / len(pds), 4),
+            "min_risk_score": min(scores),
+            "max_risk_score": max(scores),
         }
+    else:
+        summary = {"total": len(req.applicants), "scored": 0, "errors": len(errors)}
 
-        Response:
-        {
-            "success": true,
-            "data": {
-                "pd": 0.1234,
-                "credit_score": 782,
-                "grade": "B",
-                "sub_grade": "B2",
-                "tier": "Gold",
-                "tier_color": "#F59E0B",
-                "decision": "APPROVE",
-                "decision_vi": "Chấp thuận",
-                "max_loan_grade_limit": 25000,
-                "risk_level": "MEDIUM",
-                "risk_factors": [...],
-                "details": {...}
-            }
-        }
-        """
-        try:
-            data = request.get_json(force=True)
-            if not data:
-                return jsonify({"success": False, "error": "Empty request body"}), 400
-
-            # Validate required fields (Lending Club core fields)
-            required = ["loan_amnt", "int_rate", "installment", "annual_inc", "dti"]
-            # Also accept alternative names
-            alt_map = {
-                "loan_amnt": ["loan_amount"],
-                "int_rate": ["interest_rate"],
-                "annual_inc": ["annual_income"],
-            }
-            missing = []
-            for f in required:
-                if f not in data:
-                    alts = alt_map.get(f, [])
-                    if not any(a in data for a in alts):
-                        missing.append(f)
-
-            if missing:
-                return jsonify({
-                    "success": False,
-                    "error": f"Missing required fields: {missing}",
-                    "required_fields": required,
-                    "optional_fields": [
-                        "term", "emp_length", "open_acc", "pub_rec",
-                        "revol_bal", "revol_util", "total_acc", "mort_acc",
-                        "pub_rec_bankruptcies", "home_ownership",
-                        "verification_status", "purpose", "application_type",
-                        "initial_list_status", "credit_history_years",
-                    ],
-                    "example": {
-                        "loan_amnt": 15000,
-                        "int_rate": 13.56,
-                        "installment": 512.87,
-                        "annual_inc": 75000,
-                        "dti": 18.5,
-                    },
-                }), 400
-
-            result = scorer.predict(data)
-            return jsonify({"success": True, "data": result})
-
-        except ValueError as e:
-            return jsonify({"success": False, "error": str(e)}), 400
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"success": False, "error": f"Internal error: {str(e)}"}), 500
-
-    # ── Batch Scoring ─────────────────────────────────────────────────────
-    @app.route("/api/score/batch", methods=["POST"])
-    def predict_batch():
-        """
-        Score multiple applicants at once.
-
-        Request: { "applicants": [ {...}, {...}, ... ] }
-        Response: { "success": true, "data": { "results": [...], "summary": {...} } }
-        """
-        try:
-            data = request.get_json(force=True)
-            applicants = data.get("applicants", [])
-
-            if not applicants:
-                return jsonify({"success": False, "error": "No applicants provided"}), 400
-
-            if len(applicants) > 100:
-                return jsonify({"success": False, "error": "Maximum 100 per batch"}), 400
-
-            results = []
-            errors = []
-
-            for i, applicant in enumerate(applicants):
-                try:
-                    result = scorer.predict(applicant)
-                    result["index"] = i
-                    results.append(result)
-                except Exception as e:
-                    errors.append({"index": i, "error": str(e)})
-
-            # Summary
-            if results:
-                scores = [r["credit_score"] for r in results]
-                pds = [r["pd"] for r in results]
-                tiers = {}
-                for r in results:
-                    t = r["tier"]
-                    tiers[t] = tiers.get(t, 0) + 1
-
-                summary = {
-                    "total": len(applicants),
-                    "scored": len(results),
-                    "errors": len(errors),
-                    "approved": sum(1 for r in results if r["decision"] == "APPROVE"),
-                    "review": sum(1 for r in results if r["decision"] == "REVIEW"),
-                    "rejected": sum(1 for r in results if r["decision"] == "REJECT"),
-                    "avg_pd": round(sum(pds) / len(pds), 4),
-                    "avg_score": round(sum(scores) / len(scores), 1),
-                    "min_score": min(scores),
-                    "max_score": max(scores),
-                    "tier_distribution": tiers,
-                }
-            else:
-                summary = {"total": len(applicants), "scored": 0, "errors": len(errors)}
-
-            return jsonify({
-                "success": True,
-                "data": {
-                    "results": results,
-                    "errors": errors if errors else None,
-                    "summary": summary,
-                },
-            })
-
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"success": False, "error": str(e)}), 500
-
-    # ── Model Info ────────────────────────────────────────────────────────
-    @app.route("/api/model/info", methods=["GET"])
-    def model_info():
-        """Return model metadata, thresholds, and feature importance."""
-        return jsonify({
-            "success": True,
-            "data": {
-                "model_type": scorer.metadata.get("model_type", "XGBoost PD"),
-                "data_source": scorer.metadata.get("data_source", "Lending Club"),
-                "n_records": scorer.metadata.get("n_records", 0),
-                "feature_names": scorer.metadata.get("feature_names", []),
-                "n_features": scorer.metadata.get("n_features", 0),
-                "metrics": scorer.metadata.get("metrics", {}),
-                "feature_importance": scorer.metadata.get("feature_importance", {}),
-                "grade_thresholds": scorer.metadata.get("grade_thresholds", {}),
-                "tier_thresholds": scorer.metadata.get("tier_thresholds", {}),
-                "pd_decision_thresholds": {
-                    "approve": "PD < 0.20",
-                    "review": "0.20 <= PD < 0.40",
-                    "reject": "PD >= 0.40",
-                },
-                "score_range": {"min": 300, "max": 850},
-                "score_formula": "credit_score = 300 + (1 - PD) × 550",
-                "tiers": {
-                    "Platinum": "score >= 800",
-                    "Gold": "700 <= score < 800",
-                    "Silver": "600 <= score < 700",
-                    "Basic": "score < 600",
-                },
-            },
-        })
-
-    # ── Retrain ───────────────────────────────────────────────────────────
-    @app.route("/api/model/retrain", methods=["POST"])
-    def retrain():
-        """Retrain the PD model (admin only in production)."""
-        try:
-            from train_model import train_model
-            model, scaler, metadata = train_model()
-            scorer._load_model()
-            return jsonify({
-                "success": True,
-                "message": "PD model retrained successfully",
-                "metrics": metadata.get("metrics", {}),
-            })
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({"success": False, "error": str(e)}), 500
-
-    return app
+    return {"status": "success", "data": {"results": results, "errors": errors, "summary": summary}}
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────
-app = create_app()
+@app.get("/api/model/info")
+async def model_info():
+    """Metadata & metrics của model."""
+    if scorer is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "success", "data": scorer.metadata}
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8001))
-    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
-    print(f"\n[AIScore] PD Service starting on http://0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=debug)
+
+@app.get("/api/exchange-rate", response_model=ExchangeRateResponse)
+async def get_exchange_rate():
+    """Lấy tỷ giá USD→VNĐ hiện tại (cached hoặc live)."""
+    rate, source = await fetch_exchange_rate()
+    _EXCHANGE_RATE_CACHE["rate"] = rate
+    _EXCHANGE_RATE_CACHE["source"] = source
+    return {"usd_to_vnd": rate, "source": source}
+
+
+@app.post("/api/model/retrain")
+async def retrain_model():
+    """Retrain model (call during off-peak)."""
+    global scorer
+    try:
+        from train_model import train_model
+        train_model()
+        scorer = CreditScorer()
+        return {"status": "success", "message": "Model retrained and reloaded"}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)}")
