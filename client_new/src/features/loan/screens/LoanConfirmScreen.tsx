@@ -209,8 +209,14 @@ export default function LoanConfirmScreen() {
                 typeof errData?.message === 'string'
                     ? errData.message
                     : 'Không thể tạo đơn vay. Vui lòng thử lại sau.';
+            const blockData = errData?.data;
             navigation.navigate('LoanBlocked' as any, {
                 message: msg,
+                debtGroup: blockData?.debtGroup,
+                overdueDays: blockData?.overdueDays,
+                overdueAmount: blockData?.overdueAmount,
+                fineractLoanId: blockData?.fineractLoanId,
+                policy: blockData?.policy,
             });
         } finally {
             setSubmitting(false);
