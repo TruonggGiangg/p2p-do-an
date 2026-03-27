@@ -123,6 +123,11 @@ export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigVal
   _id: string;
 }
 
+/**
+ * Service xử lý tính toán và quản lý điểm tín dụng (Credit Score).
+ * Mô tả thuật toán chấm điểm nội bộ CIC (150-750) dựa trên 5 yếu tố cốt lõi:
+ * Lịch sử thanh toán, dư nợ hiện tại, thời gian tín dụng, đa dạng tín dụng và tín dụng mới.
+ */
 @Injectable()
 export class CreditScoreService implements OnModuleInit {
   private readonly logger = new Logger(CreditScoreService.name);

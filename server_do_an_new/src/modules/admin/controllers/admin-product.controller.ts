@@ -79,7 +79,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async removeDocumentType(@Param('id') id: string) {
     await this.adminService.removeDocumentType(id);
-    return { statusCode: 200, message: 'Deleted' };
+    return { success: true };
   }
 
   @Get('loan-products/:fineractProductId/document-types')

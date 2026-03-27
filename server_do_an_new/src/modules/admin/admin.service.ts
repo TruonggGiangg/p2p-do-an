@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   Logger,
   NotFoundException,
@@ -46,6 +46,10 @@ import { AdminProductService } from './services/admin-product.service';
 import { AdminCustomerService } from './services/admin-customer.service';
 import { AdminKycService } from './services/admin-kyc.service';
 import { AdminStaffService } from './services/admin-staff.service';
+import { AdminLoanService } from './services/admin-loan.service';
+
+/** officeId=1 = Head Office in default Fineract setup */
+const HEAD_OFFICE_ID = 1;
 
 /** Parse Fineract date (array [y,m,d] or string) to ISO yyyy-MM-dd */
 function parseFineractDate(val: any): string | null {
@@ -99,6 +103,7 @@ export class AdminService implements OnModuleInit {
     private readonly customerService: AdminCustomerService,
     private readonly kycService: AdminKycService,
     private readonly staffService: AdminStaffService,
+    private readonly loanService: AdminLoanService,
   ) {}
 
   /**
@@ -442,80 +447,20 @@ export class AdminService implements OnModuleInit {
     return this.staffService.approveWaiveInterest(requestId, adminId, adminNote);
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // LOAN + DELINQUENCY METHODS (remain in this file)
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // NOTE: This file previously had the above methods inline (3634 lines).
-  // Products, Customers, KYC, Staff, Support requests are now delegated.
-  // Only Loan + Delinquency methods remain below (~1900 lines).
-
-  /**
-   * Get all pending loans (status 100 in Fineract) for admin approval.
-   * Only P* products.
-   */
-  async getAllPendingLoans() {
-    // 1. Fetch all pending loans from Fineract (Status 100 = Submitted and pending approval)
-    const pendingFineractLoans = await this.fineractLoanService.getLoansByStatus(100);
-
-    // 2. Filter by P* products
-    const products = await this.fineractLoanService.getLoanProducts();
-    const productMap = new Map(products.map((p: any) => [p.id, p]));
-
-    this.logger.log(
-      `[getAllPendingLoans] Found ${pendingFineractLoans.length} total pending loans (status 100) in Fineract`,
-    );
-    pendingFineractLoans.forEach(fl => {
-      const productId = fl.productId || fl.loanProductId;
-      const p: any = productMap.get(productId);
-      this.logger.log(
-        `  - Pending ID ${fl.id} | Client ${fl.clientId} | Product ${productId} (${p?.shortName || 'N/A'})`,
-      );
-    });
-
-    this.logger.log(`[getAllPendingLoans] Returning ${pendingFineractLoans.length} pending loans`);
-
-    if (pendingFineractLoans.length === 0) return [];
-
-    // 3. Map to internal MongoDB users and loan applications
-    const fineractLoanIds = pendingFineractLoans.map(fl => fl.id);
-    const fineractClientIds = pendingFineractLoans.map(fl => String(fl.clientId));
-
-    const [mongoUsers, mongoLoans] = await Promise.all([
-      this.userModel.find({ fineractClientId: { $in: fineractClientIds } }).lean(),
-      this.loanApplicationModel.find({ fineractLoanId: { $in: fineractLoanIds } }).lean(),
-    ]);
-
-    const userMap = new Map(mongoUsers.map(u => [u.fineractClientId, u]));
-    const loanMap = new Map(mongoLoans.map(l => [l.fineractLoanId, l]));
-
-    // 4. Transform
-    return pendingFineractLoans.map(fl => {
-      const productId = fl.productId || fl.loanProductId;
-      const p: any = productMap.get(productId) ?? {};
-      const u = userMap.get(String(fl.clientId));
-      const ll: any = loanMap.get(fl.id);
-      const annualRate = fl.annualInterestRate ?? 0;
-
-      return {
-        _id: ll?._id?.toString() ?? `FL_${fl.id}`,
-        userId: u?._id?.toString() ?? null,
-        productId: fl.productId,
-        productName: p.name ?? String(fl.productId),
-        productShortName: p.shortName ?? '',
-        capital: fl.principal ?? ll?.capital ?? 0,
-        periodMonth: fl.numberOfRepayments ?? ll?.periodMonth ?? 0,
-        monthlyPay: ll?.monthlyPay ?? 0,
-        entirelyPay: ll?.entirelyPay ?? 0,
-        monthlyRatePercent: ll?.monthlyRatePercent ?? annualRate / 12,
-        status: fl.status ?? { value: 'pending', code: 'loanStatusType.pendingApproval' },
-        fineractLoanId: fl.id,
-        disbursementDate: fl.timeline?.actualDisbursementDate ?? ll?.disbursementDate ?? null,
-        createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
-        willing: ll?.willing ?? '',
-        // Client display name for easier approval
-        clientName: fl.clientName ?? u?.username ?? `Client ${fl.clientId}`,
-      };
-    });
+  // ════════════════════════════════════════════════════════════════════════════════
+  // FACADE DELEGATES — Loans & Delinquency
+  // ════════════════════════════════════════════════════════════════════════════════
+  async getLoans(query: any) {
+    return this.loanService.getLoans(query);
+  }
+  async syncDisbursedLoansFromFineract(limit = 300, options?: any) {
+    return this.loanService.syncDisbursedLoansFromFineract(limit, options);
+  }
+  async rejectLoan(fineractLoanId: number, note?: string) {
+    return this.loanService.rejectLoan(fineractLoanId, note);
+  }
+  async undoApproval(fineractLoanId: number, note?: string) {
+    return this.loanService.undoApproval(fineractLoanId, note);
   }
 
   /**
@@ -606,12 +551,29 @@ export class AdminService implements OnModuleInit {
     }
 
     return { fineractLoanId, status: 'approved', borrowerName, borrowerUsername };
+  async getOverdueLoans(query: any) {
+    return this.loanService.getOverdueLoans(query);
   }
-
-  /**
-   * Admin disburse loan: Fineract disburse + update MongoDB status
-   */
+  async getLoanDelinquencyList(query: any) {
+    return this.loanService.getLoanDelinquencyList(query);
+  }
+  async syncLoanDelinquencyBatch(fineractLoanIds: number | number[]) {
+    const ids = Array.isArray(fineractLoanIds) ? fineractLoanIds : [fineractLoanIds];
+    await Promise.allSettled(ids.map(id => this.loanService.syncLoanDelinquencyBatch(id)));
+    return { success: true };
+  }
+  async getDelinquencyPolicies(filters?: any) {
+    return this.loanService.getDelinquencyPolicies(filters);
+  }
+  async getAllPendingLoans() {
+    return this.loanService.getAllPendingLoans();
+  }
+  async approveLoan(fineractLoanId: number) {
+    return this.loanService.approveLoan(fineractLoanId);
+  }
   async disburseLoan(fineractLoanId: number) {
+    return this.loanService.disburseLoan(fineractLoanId);
+  }
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
     if (!loan) throw new BadRequestException(`Khoản vay Fineract #${fineractLoanId} không tồn tại trong hệ thống`);
@@ -830,7 +792,29 @@ export class AdminService implements OnModuleInit {
     return result;
   }
 
+    return this.loanService.getContractStatus(fineractLoanId);
+  }
   async getLoanDetails(fineractLoanId: number, sync = false) {
+    return this.loanService.getLoanDetails(fineractLoanId, sync);
+  }
+  async syncLoanFromFineract(fineractLoanId: number) {
+    return this.loanService.syncLoanFromFineract(fineractLoanId);
+  }
+  async syncClientLoansFromFineract(userId: string) {
+    return this.loanService.syncClientLoansFromFineract(userId);
+  }
+  async getLoanSyncRuns(limit = 30) {
+    return this.loanService.getLoanSyncRuns(limit);
+  }
+  async syncAllActiveLoansFromFineract(limit = 200) {
+    return this.loanService.syncAllActiveLoansFromFineract(limit);
+  }
+  async getDelinquencyRangesForFilter() {
+    return this.loanService.getDelinquencyRangesForFilter();
+  }
+  async syncOneLoanDelinquency(fineractLoanId: number) {
+    return this.loanService.syncOneLoanDelinquency(fineractLoanId);
+  }
     this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId} sync=${sync}`);
     if (sync) {
       await this.syncLoanFromFineract(fineractLoanId);
@@ -1745,6 +1729,8 @@ export class AdminService implements OnModuleInit {
   }
 
   async getDelinquencyPolicyDebtGroups() {
+    return this.loanService.getDelinquencyPolicyDebtGroups();
+  }
     return this.getFineractDebtGroups();
   }
 
@@ -1790,115 +1776,17 @@ export class AdminService implements OnModuleInit {
   }
 
   async createDelinquencyPolicy(dto: CreateDelinquencyPolicyDto) {
-    const existing = await this.delinquencyPolicyModel
-      .findOne({
-        loan_product_id: dto.loan_product_id,
-        debt_group: dto.debt_group,
-      })
-      .lean()
-      .exec();
-    if (existing) {
-      throw new BadRequestException(
-        `ÄÃ£ tá»“n táº¡i policy cho product=${dto.loan_product_id}, debt_group=${dto.debt_group}. DÃ¹ng API cáº­p nháº­t thay vÃ¬ táº¡o má»›i.`,
-      );
-    }
-
-    const metadata = await this.resolveDebtGroupMetadata(dto.debt_group);
-    try {
-      const policy = await this.delinquencyPolicyModel.create({
-        loan_product_id: dto.loan_product_id,
-        loan_product_name: dto.loan_product_name || `Loan Product #${dto.loan_product_id}`,
-        debt_group: dto.debt_group,
-        debt_group_name: dto.debt_group_name || metadata.debt_group_name,
-        send_email: dto.send_email,
-        send_sms: dto.send_sms,
-        send_notification: dto.send_notification,
-        apply_penalty: dto.apply_penalty,
-        block_new_loan: dto.block_new_loan,
-        collection_stage: dto.collection_stage,
-        legal_escalation: dto.legal_escalation ?? false,
-        retention_months: dto.retention_months ?? undefined,
-        freeze_account: dto.freeze_account ?? false,
-        permanent_ban: dto.permanent_ban ?? false,
-        is_active: dto.is_active ?? true,
-        description: dto.description,
-      });
-      return (policy as any).toObject();
-    } catch (error: any) {
-      if (error?.code === 11000) {
-        throw new ConflictException(
-          `product=${dto.loan_product_id}, debt_group=${dto.debt_group} Ä‘Ã£ cÃ³ policy. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
-        );
-      }
-      throw error;
-    }
+    return this.loanService.createDelinquencyPolicy(dto);
   }
-
   async updateDelinquencyPolicy(id: string, dto: UpdateDelinquencyPolicyDto) {
-    const existing = await this.delinquencyPolicyModel.findById(id);
-    if (!existing) {
-      throw new NotFoundException('Delinquency policy khÃ´ng tá»“n táº¡i');
-    }
-
-    const nextProductId = dto.loan_product_id ?? existing.loan_product_id;
-    if (nextProductId == null) {
-      throw new BadRequestException(
-        'Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.',
-      );
-    }
-
-    const nextDebtGroup = dto.debt_group ?? existing.debt_group;
-    const metadata = await this.resolveDebtGroupMetadata(nextDebtGroup);
-
-    const duplicate = await this.delinquencyPolicyModel
-      .findOne({
-        loan_product_id: nextProductId,
-        debt_group: nextDebtGroup,
-        _id: { $ne: existing._id },
-      })
-      .select('_id debt_group')
-      .lean()
-      .exec();
-    if (duplicate) {
-      throw new ConflictException(
-        `product=${nextProductId}, debt_group=${nextDebtGroup} Ä‘Ã£ cÃ³ policy khÃ¡c. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
-      );
-    }
-
-    existing.loan_product_id = nextProductId;
-    existing.loan_product_name =
-      dto.loan_product_name || existing.loan_product_name || `Loan Product #${nextProductId}`;
-    existing.debt_group = nextDebtGroup;
-    existing.debt_group_name = dto.debt_group_name || metadata.debt_group_name;
-    if (dto.send_email != null) existing.send_email = dto.send_email;
-    if (dto.send_sms != null) existing.send_sms = dto.send_sms;
-    if (dto.send_notification != null) existing.send_notification = dto.send_notification;
-    if (dto.apply_penalty != null) existing.apply_penalty = dto.apply_penalty;
-    if (dto.block_new_loan != null) existing.block_new_loan = dto.block_new_loan;
-    if (dto.collection_stage != null) existing.collection_stage = dto.collection_stage;
-    if (dto.legal_escalation != null) existing.legal_escalation = dto.legal_escalation;
-    if (dto.retention_months !== undefined) existing.retention_months = dto.retention_months;
-    if (dto.freeze_account != null) existing.freeze_account = dto.freeze_account;
-    if (dto.permanent_ban != null) existing.permanent_ban = dto.permanent_ban;
-    if (dto.is_active != null) existing.is_active = dto.is_active;
-    if (dto.description !== undefined) existing.description = dto.description;
-    // Legacy cleanup: remove old configurable multiplier from existing documents.
-    existing.set('penalty_rate_multiplier', undefined);
-
-    try {
-      const saved = await existing.save();
-      return saved.toObject();
-    } catch (error: any) {
-      if (error?.code === 11000) {
-        throw new ConflictException(
-          `product=${nextProductId}, debt_group=${nextDebtGroup} Ä‘Ã£ cÃ³ policy. Má»—i nhÃ³m ná»£ chá»‰ Ä‘Æ°á»£c cÃ³ 1 policy trong 1 sáº£n pháº©m.`,
-        );
-      }
-      throw error;
-    }
+    return this.loanService.updateDelinquencyPolicy(id, dto);
   }
-
   async removeDelinquencyPolicy(id: string) {
+    return this.loanService.removeDelinquencyPolicy(id);
+  }
+  async getLoansStats() {
+    return this.loanService.getLoansStats();
+  }
     const doc = await this.delinquencyPolicyModel.findByIdAndDelete(id).lean().exec();
     if (!doc) {
       throw new NotFoundException('Delinquency policy khÃ´ng tá»“n táº¡i');
@@ -2261,45 +2149,11 @@ export class AdminService implements OnModuleInit {
   }
 
   async getLoanDocuments(fineractLoanId: number) {
-    this.logger.log(`[getLoanDocuments] fineractLoanId=${fineractLoanId}`);
-    const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
-
-    // Find matching loan in MongoDB to get our metadata
-    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).lean().exec();
-    if (!app || !app.documents || app.documents.length === 0) {
-      return fineractDocs;
-    }
-
-    // Map documentType names
-    const docTypeIds = app.documents.map(d => d.documentTypeId).filter(id => id && Types.ObjectId.isValid(id));
-
-    const docTypes = await this.documentTypeModel
-      .find({ _id: { $in: docTypeIds } })
-      .lean()
-      .exec();
-    const typeMap = new Map(docTypes.map(t => [t._id.toString(), t.name]));
-
-    // Enrich Fineract docs with Mongo data (including reviewStatus)
-    return fineractDocs.map(fd => {
-      const mongoDoc = app.documents.find(md => md.fineractDocumentId == fd.id);
-      if (mongoDoc) {
-        const typeIdStr = mongoDoc.documentTypeId?.toString();
-        return {
-          ...fd,
-          documentTypeId: mongoDoc.documentTypeId,
-          documentTypeName:
-            typeIdStr && typeIdStr !== 'unknown' ? typeMap.get(typeIdStr) || 'Unknown' : fd.name || 'Fineract Document',
-          originalName: mongoDoc.name,
-          uploadedAt: mongoDoc.uploadedAt,
-          reviewStatus: mongoDoc.reviewStatus ?? 'pending',
-          reviewedAt: mongoDoc.reviewedAt,
-        };
-      }
-      return { ...fd, reviewStatus: 'pending' };
-    });
+    return this.loanService.getLoanDocuments(fineractLoanId);
   }
-
   async approveDocument(fineractLoanId: number, documentId: number) {
+    return this.loanService.approveDocument(fineractLoanId, documentId);
+  }
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
 
@@ -2361,6 +2215,8 @@ export class AdminService implements OnModuleInit {
   }
 
   async rejectDocument(fineractLoanId: number, documentId: number) {
+    return this.loanService.rejectDocument(fineractLoanId, documentId);
+  }
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
 
@@ -2396,6 +2252,11 @@ export class AdminService implements OnModuleInit {
 
   /** Phân loại lại tài liệu (staff gán documentTypeId cho doc unknown) */
   async classifyDocument(fineractLoanId: number, documentId: number, documentTypeId: string) {
+    return this.loanService.classifyDocument(fineractLoanId, documentId, documentTypeId);
+  }
+  async canApproveLoan(fineractLoanId: number) {
+    return this.loanService.canApproveLoan(fineractLoanId);
+  }
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
     if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
 
@@ -2496,7 +2357,6 @@ export class AdminService implements OnModuleInit {
   }
 
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
-    this.logger.log(`[getLoanDocumentStream] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
-    return this.fineractLoanService.downloadDocument(fineractLoanId, documentId);
+    return this.loanService.getLoanDocumentStream(fineractLoanId, documentId);
   }
 }

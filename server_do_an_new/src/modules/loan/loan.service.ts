@@ -577,8 +577,8 @@ export class LoanService {
             loan_amnt: dto.capital,
             int_rate: monthlyRate * 12, // convert monthly → annual for Lending Club format
             installment: schedule.monthlyPay,
-            annual_inc: 0, // TODO: lấy từ user profile hoặc eKYC data
-            dti: 0,        // TODO: tính từ tổng nợ / thu nhập
+            annual_inc: 0, // Tính năng tương lai: lấy tổng thu nhập từ user profile hoặc eKYC data
+            dti: 0,        // Tính năng tương lai: tính hệ số DTI từ tổng dư nợ / thu nhập định kỳ
             term: `${dto.periodMonth} months`,
           },
           { timeout: aiscoreConfig.timeout || 15000 },
