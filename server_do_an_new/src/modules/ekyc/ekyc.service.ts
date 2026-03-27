@@ -257,7 +257,7 @@ export class EkycService {
 
             // 3. Update MongoDB User Document - chỉ lưu dữ liệu cần thiết
             user.kycStatus = 'PENDING';
-            const meta = kycMetadata as Record<string, any>;
+            const meta = kycMetadata;
             const hasClientDocs = meta.fineractClientDocs?.front ?? meta.fineractClientDocs?.back;
             const metadata: Record<string, any> = {
                 kycCompletedAt: meta.kycCompletedAt,

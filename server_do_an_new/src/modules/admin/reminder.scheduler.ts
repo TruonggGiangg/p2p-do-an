@@ -84,7 +84,7 @@ export class ReminderScheduler implements OnApplicationBootstrap {
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
     for (const loan of loans) {
-      const periods = (loan.repaymentSchedule || []) as any[];
+      const periods = (loan.repaymentSchedule || []);
       for (const period of periods) {
         if (period.period === 0 || period.complete) continue;
 

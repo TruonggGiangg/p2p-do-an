@@ -955,7 +955,7 @@ export class LoanService {
     const safeContentType = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg';
 
     // Sử dụng FormData để gửi file lên Fineract
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const FormData = require('form-data');
     const form = new FormData();
     form.append('file', file.buffer, {

@@ -40,7 +40,7 @@ export class ContractService {
   }
 
   private async buildDelinquencyPolicySnapshot(productId: number): Promise<DelinquencyPolicySnapshotItem[]> {
-    let policies = await this.delinquencyPolicyModel
+    const policies = await this.delinquencyPolicyModel
       .find({ is_active: true, loan_product_id: productId })
       .sort({ debt_group: 1 })
       .lean()
@@ -197,7 +197,7 @@ export class ContractService {
     // Tìm theo contractId (mã hợp đồng) hoặc _id (ObjectId)
     const query = Types.ObjectId.isValid(contractId) ? { $or: [{ _id: contractId }, { contractId }] } : { contractId };
 
-    let contract = await this.contractModel
+    const contract = await this.contractModel
       .findOne({
         ...query,
         userId: new Types.ObjectId(userId),
