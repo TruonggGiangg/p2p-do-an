@@ -18,7 +18,6 @@ import LoanApprovalsPage from './pages/LoanApprovalsPage';
 import LoanSupportRequestsPage from './pages/LoanSupportRequestsPage';
 import LoansPage from './pages/LoansPage';
 import DelinquencyPoliciesPage from './pages/DelinquencyPoliciesPage';
-import CreditScoreWeightsPage from './pages/CreditScoreWeightsPage';
 import LoanEvaluationConfigPage from './pages/LoanEvaluationConfigPage';
 import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
@@ -234,7 +233,6 @@ export default function App() {
                   <Route path="fd-products" element={<FDProductsPage />} />
                   <Route path="loans" element={<LoansPage />} />
                   <Route path="delinquency-policies" element={<DelinquencyPoliciesPage />} />
-                  <Route path="credit-score-weights" element={<CreditScoreWeightsPage />} />
                   <Route path="loan-evaluation-config" element={<LoanEvaluationConfigPage />} />
                   <Route path="loan-approvals" element={<LoanApprovalsPage />} />
                   <Route path="overdue-loans" element={<Navigate to="/loans?tab=overdue" replace />} />

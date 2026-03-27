@@ -33,7 +33,7 @@ export class LoanController {
     private readonly loanService: LoanService,
     private readonly repaymentService: RepaymentService,
     private readonly contractService: ContractService,
-  ) { }
+  ) {}
 
   // =============================================
   // LOAN CREATION & INFO
@@ -79,6 +79,18 @@ export class LoanController {
   async getProductCharges(@Param('productId', ParseIntPipe) productId: number) {
     const charges = await this.loanService.getProductCharges(productId);
     return { charges };
+  }
+
+  @Get('delinquency-policies')
+  @ApiOperation({ summary: 'Lấy chính sách xử lý nợ xấu để hiển thị trong xác nhận đơn vay' })
+  @ApiResponse({ status: 200, description: 'Danh sách chính sách nợ xấu' })
+  @ApiQuery({ name: 'loan_product_id', required: false, type: Number })
+  async getDelinquencyPolicySummary(@Query('loan_product_id') loanProductId?: string) {
+    const productId = loanProductId != null ? Number(loanProductId) : undefined;
+    const policies = await this.loanService.getDelinquencyPolicySummary(
+      Number.isFinite(productId) ? productId : undefined,
+    );
+    return { policies };
   }
 
   @Post('rate-preview')
@@ -178,7 +190,10 @@ export class LoanController {
   @Post('repay')
   @ApiOperation({ summary: 'Thanh toán nợ theo kỳ' })
   @ApiResponse({ status: 200, description: 'Thanh toán thành công' })
-  async repay(@CurrentUser('id') userId: string, @Body() body: { loanId: string; amount: number; repaymentDate?: string }) {
+  async repay(
+    @CurrentUser('id') userId: string,
+    @Body() body: { loanId: string; amount: number; repaymentDate?: string },
+  ) {
     const result = await this.repaymentService.makeRepayment(userId, body.loanId, body.amount, body.repaymentDate);
     return result;
   }
@@ -225,12 +240,13 @@ export class LoanController {
   async submitSupportRequest(
     @CurrentUser('id') userId: string,
     @Param('loanId') loanId: string,
-    @Body() body: {
+    @Body()
+    body: {
       requestType: SupportRequestType;
       reason: string;
       proposedRescheduleDate?: string;
       proposedExtraPeriods?: number;
-    }
+    },
   ) {
     const result = await this.loanService.submitSupportRequest(userId, loanId, body);
     return result;
@@ -293,7 +309,11 @@ export class LoanController {
   @ApiResponse({ status: 200 })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  async getNotifications(@CurrentUser('id') userId: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+  async getNotifications(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     return this.contractService.getUserNotifications(
       userId,
       page ? parseInt(page, 10) : 1,

@@ -20,7 +20,6 @@ import {
   SafetyCertificateOutlined,
   DollarOutlined,
   FontSizeOutlined,
-  LineChartOutlined,
   AuditOutlined,
   ThunderboltOutlined,
   DashboardOutlined,
@@ -75,7 +74,6 @@ const menuGroups: MenuGroup[] = [
     groupLabel: 'CẤU HÌNH',
     items: [
       { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
-      { key: '/credit-score-weights', icon: <LineChartOutlined />, label: 'Trọng số điểm tín dụng' },
       { key: '/loan-evaluation-config', icon: <AuditOutlined />, label: 'Đánh giá khoản vay' },
     ],
   },

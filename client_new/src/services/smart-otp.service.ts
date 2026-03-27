@@ -133,6 +133,7 @@ const generateKeyPair = async (): Promise<{
 
 /**
  * Sign payload for device binding verification
+ * Uses same flow as server: SHA256(payload) → elliptic sign → DER → base64
  */
 const signPayload = async (
   otp: string,
@@ -146,6 +147,22 @@ const signPayload = async (
     throw new Error("Private key not found. Please register device first.");
   }
 
+  // Verify key integrity: derive public key and compare with stored
+  const storedPublicKey = await SecureStore.getItemAsync(
+    STORAGE_KEYS.PUBLIC_KEY,
+  );
+  const key = ec.keyFromPrivate(privateKeyHex, "hex");
+  const derivedPublicKey = String(key.getPublic("hex"));
+  if (storedPublicKey && derivedPublicKey !== storedPublicKey) {
+    console.warn(
+      "[SmartOTPService] Key integrity mismatch! Stored public key differs from derived. Clearing binding.",
+    );
+    await clearDeviceBinding();
+    throw new Error(
+      "Khóa bảo mật không hợp lệ. Vui lòng đăng ký lại Smart OTP.",
+    );
+  }
+
   const payload = `${otp}:${timestamp}:${actionType}`;
 
   const hash = await Crypto.digestStringAsync(
@@ -154,7 +171,10 @@ const signPayload = async (
     { encoding: Crypto.CryptoEncoding.HEX },
   );
 
-  const key = ec.keyFromPrivate(privateKeyHex, "hex");
+  console.log(
+    `[SmartOTPService] signPayload | payload=${payload} | hashPrefix=${hash.substring(0, 16)}...`,
+  );
+
   const signature = key.sign(hash);
   const derSign = signature.toDER();
 
@@ -248,7 +268,10 @@ const registerDevice = async (
   );
 
   const rawData = response.data as any;
-  console.log('[SmartOTPService] Register response rawData keys:', Object.keys(rawData || {}));
+  console.log(
+    "[SmartOTPService] Register response rawData keys:",
+    Object.keys(rawData || {}),
+  );
 
   // Unwrap: response.data can be { success, data: {...} } or { success, deviceId, totpSecret }
   const payload = rawData?.data ?? rawData;
@@ -280,7 +303,10 @@ const registerDevice = async (
     return { success: true, deviceId, totpSecret } as any;
   }
 
-  console.error('[SmartOTPService] Register failed - payload:', JSON.stringify(payload));
+  console.error(
+    "[SmartOTPService] Register failed - payload:",
+    JSON.stringify(payload),
+  );
   throw new Error("Failed to register device");
 };
 

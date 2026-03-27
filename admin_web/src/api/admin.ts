@@ -331,22 +331,34 @@ export interface PermissionDto {
   allowed: boolean;
 }
 
-export interface CreditScoreWeightConfigDto {
-  _id?: string;
-  name?: string;
-  description?: string;
-  key?: string;
-  isDefault?: boolean;
-  isActive?: boolean;
-  appliedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
+export interface CreditGradeDto {
+  grade: string;
+  label: string;
+  minScore: number;
+  maxScore: number;
+  maxLoanAmount: number;
+  baseInterestRate: number;
+}
+
+export interface ScoreWeightsDto {
   paymentHistory: number;
   debtLevel: number;
   creditAge: number;
   creditMix: number;
   newCredit: number;
-  total: number;
+}
+
+export interface LoanEvaluationConfigDto {
+  version?: number;
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeDto[];
+  scoreWeights: ScoreWeightsDto;
+  configHash?: string;
+  blockchainTxHash?: string;
+  changedBy?: string;
+  changeNote?: string;
+  createdAt?: string;
 }
 
 export const adminApi = {
@@ -412,74 +424,6 @@ export const adminApi = {
       .patch<{
         data: { fontSize: "compact" | "default" | "large" };
       }>("/api/admin/me/preferences", prefs)
-      .then((r) => r.data.data),
-
-  getCreditScoreWeightConfig: () =>
-    api
-      .get<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weights")
-      .then((r) => r.data.data),
-
-  updateCreditScoreWeightConfig: (body: {
-    paymentHistory: number;
-    debtLevel: number;
-    creditAge: number;
-    creditMix: number;
-    newCredit: number;
-  }) =>
-    api
-      .put<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weights", body)
-      .then((r) => r.data.data),
-
-  listCreditScoreWeightConfigs: () =>
-    api
-      .get<{
-        data: CreditScoreWeightConfigDto[];
-      }>("/api/admin/credit-score/weight-configs")
-      .then((r) => r.data.data),
-
-  createCreditScoreWeightConfig: (body: {
-    name: string;
-    description?: string;
-    paymentHistory: number;
-    debtLevel: number;
-    creditAge: number;
-    creditMix: number;
-    newCredit: number;
-  }) =>
-    api
-      .post<{
-        data: CreditScoreWeightConfigDto;
-      }>("/api/admin/credit-score/weight-configs", body)
-      .then((r) => r.data.data),
-
-  updateCreditScoreWeightConfigById: (
-    id: string,
-    body: {
-      name?: string;
-      description?: string;
-      isActive?: boolean;
-      paymentHistory: number;
-      debtLevel: number;
-      creditAge: number;
-      creditMix: number;
-      newCredit: number;
-    },
-  ) =>
-    api
-      .put<{
-        data: CreditScoreWeightConfigDto;
-      }>(`/api/admin/credit-score/weight-configs/${id}`, body)
-      .then((r) => r.data.data),
-
-  applyCreditScoreWeightConfig: (id: string) =>
-    api
-      .post<{
-        data: CreditScoreWeightConfigDto;
-      }>(`/api/admin/credit-score/weight-configs/${id}/apply`)
       .then((r) => r.data.data),
 
   getLoanProducts: () =>
@@ -1289,5 +1233,39 @@ export const adminApi = {
         subject,
         allowed,
       })
+      .then((r) => r.data.data),
+
+  // ── Loan Evaluation Config (Rule Engine) ─────────────────────────────────
+  getLoanEvaluationConfig: () =>
+    api
+      .get<{
+        data: LoanEvaluationConfigDto;
+      }>("/api/admin/loan-evaluation-config")
+      .then((r) => r.data.data),
+
+  createLoanEvaluationConfig: (
+    body: Omit<
+      LoanEvaluationConfigDto,
+      "version" | "configHash" | "blockchainTxHash" | "changedBy" | "createdAt"
+    >,
+  ) =>
+    api
+      .post<{
+        data: LoanEvaluationConfigDto;
+      }>("/api/admin/loan-evaluation-config", body)
+      .then((r) => r.data.data),
+
+  getLoanEvaluationConfigHistory: (page = 1, limit = 20) =>
+    api
+      .get<{
+        data: {
+          items: (LoanEvaluationConfigDto & { _id: string })[];
+          total: number;
+          page: number;
+          limit: number;
+        };
+      }>(
+        `/api/admin/loan-evaluation-config/history?page=${page}&limit=${limit}`,
+      )
       .then((r) => r.data.data),
 };

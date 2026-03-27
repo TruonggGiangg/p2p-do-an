@@ -220,7 +220,7 @@ export function PinVerifyModal({
     }, [onCancel]);
 
     return (
-        <Modal visible={visible} animationType="slide" statusBarTranslucent transparent={false}>
+        <Modal visible={visible} animationType="slide" transparent={false}>
             <View style={[styles.container, { backgroundColor: c.background }]}>
                 <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
 

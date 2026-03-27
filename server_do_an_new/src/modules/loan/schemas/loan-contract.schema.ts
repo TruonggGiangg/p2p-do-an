@@ -15,6 +15,9 @@ export interface BorrowerInfo {
   fullName: string;
   idNumber: string; // CCCD / CMND
   dateOfBirth?: string;
+  gender?: string;
+  nationality?: string;
+  issueDate?: string;
   address?: string;
   phone?: string;
   email?: string;

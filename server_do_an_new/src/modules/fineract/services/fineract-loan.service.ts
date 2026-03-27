@@ -152,8 +152,17 @@ export class FineractLoanService extends FineractBaseService {
       });
       this.logger.log(`[approveLoan] SUCCESS | loanId=${loanId}`);
     } catch (error: any) {
-      if (error.response?.data?.errors?.[0]?.userMessageGlobalisationCode === 'error.msg.loan.already.approved') {
+      const errCode = error.response?.data?.errors?.[0]?.userMessageGlobalisationCode;
+      // Loan already approved → idempotent, no error
+      if (errCode === 'error.msg.loan.already.approved') {
         this.logger.log(`[approveLoan] Loan ${loanId} already approved, continuing`);
+        return;
+      }
+      // Loan not in "submitted and pending approval" state → already approved/disbursed/closed
+      if (errCode === 'error.msg.loan.approve.account.is.not.submitted.and.pending.state') {
+        this.logger.warn(
+          `[approveLoan] Loan ${loanId} not in pending approval state (may be already disbursed/closed), skipping`,
+        );
         return;
       }
       this.logger.error(`[approveLoan] FAILED loanId=${loanId}: ${error.message}`);

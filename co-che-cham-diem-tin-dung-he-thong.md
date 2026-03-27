@@ -1,6 +1,6 @@
 # Cơ Chế Chấm Điểm Tín Dụng Hiện Tại Của Hệ Thống
 
-Ngày cập nhật: 2026-03-15
+Ngày cập nhật: 2026-03-26
 
 ## 1. Mục tiêu
 
@@ -40,23 +40,69 @@ Khi user mới đăng ký hoặc user cũ login mà chưa có hồ sơ điểm t
 - Với chấm điểm tín dụng thực tế, điểm được hình thành từ lịch sử tín dụng và dữ liệu hành vi tín dụng của từng người.
 - Vì vậy, giá trị 570 trong hệ thống này là điểm khởi tạo nội bộ (internal bootstrap score) do hệ thống quy ước để bắt đầu chấm điểm cho user chưa có dữ liệu, không phải điểm CIC mặc định chính thức.
 
-## 4. Sự kiện làm thay đổi điểm
+## 4. Kiến trúc Hướng Sự Kiện (Event-Driven Architecture)
 
-Điểm tín dụng hiện được cập nhật tự động khi có giao dịch trả nợ tại Loan Service:
+Điểm tín dụng tĩnh (Credit Score) của user **không thay đổi nếu họ không có hành động gì mới**. Hệ thống **KHÔNG dùng cronjob quét định kỳ (polling)** mà chỉ kích hoạt tính toán lại điểm khi bắt được **4 Sự kiện cốt lõi (Core Events)**:
 
-- Trả nợ kỳ hạn (repay)
-- Tất toán sớm (prepay)
+### Sự kiện 0: Đăng nhập (User Login)
 
-Luồng xử lý kỹ thuật:
+Khi user đăng nhập thành công, hệ thống tự động tính lại điểm tín dụng ở background (non-blocking).
 
-1. Loan Service xử lý repayment/prepayment thành công với Fineract.
-2. Loan Service ước lượng số ngày trễ (overdueDays) từ lịch trả nợ.
-3. Gọi CreditScoreService.applyRepaymentEvent(...).
-4. CreditScoreService cập nhật điểm và ghi lịch sử credit_score_history.
+Luồng xử lý:
+
+1. `AuthController.login()` xác thực qua Keycloak, sync user.
+2. Sau khi generate JWT token, gọi `CreditScoreService.recalculateScore(userId)` (fire-and-forget).
+3. Điểm được cập nhật mà không ảnh hưởng tốc độ đăng nhập.
+
+Trigger: `recalculate_api` (login context)
+
+### Sự kiện 1: Thanh toán thành công (Repayment Made)
+
+Khi user thanh toán một kỳ hạn (EMI) hoặc tất toán sớm, Fineract ghi nhận và báo về NestJS.
+
+Luồng xử lý:
+
+1. `RepaymentService.makeRepayment()` / `prepayLoan()` xử lý thành công với Fineract.
+2. Ước lượng `overdueDays` từ lịch trả nợ.
+3. Gọi `CreditScoreService.applyRepaymentEvent(...)`.
+4. CreditScoreService cập nhật điểm và ghi lịch sử.
+
+Trigger: `loan_repayment` hoặc `loan_prepayment`
+
+### Sự kiện 2: Trễ hạn / Nợ xấu (Delinquency / Default) — Batch Job hàng đêm
+
+Đây là ngoại lệ duy nhất dùng Batch Job, chạy mỗi đêm lúc **00:00** (sau khi Fineract sync delinquency data).
+
+Luồng xử lý:
+
+1. `@Cron('0 0 * * *') handleDelinquencyBatchJob()` khởi chạy.
+2. Quét toàn bộ `loan_applications` có `status: 'disbursed'` và `delinquentDays > 0`.
+3. Với mỗi khoản quá hạn, kiểm tra đã trừ điểm trong 24h chưa (tránh trùng lặp).
+4. Nếu chưa → gọi `applyRepaymentEvent(isLatePayment: true, overdueDays)` để trừ điểm.
+
+Trigger: `delinquency_batch`
+
+### Sự kiện 3: Khoản vay mới được giải ngân (Loan Disbursed)
+
+Khi Admin giải ngân khoản vay, tổng dư nợ (Debt) tăng và "Tín dụng mới" (New Credit) phát sinh.
+
+Luồng xử lý:
+
+1. `AdminLoanService.disburseLoan()` thực hiện giải ngân trên Fineract.
+2. Update MongoDB `status = 'disbursed'`.
+3. Gọi `CreditScoreService.applyDisbursementEvent(userId)`.
+4. CreditScoreService tính lại toàn bộ 5 yếu tố dựa trên data hiện tại.
+
+Trigger: `loan_disbursed`
+
+### Lưu ý quan trọng
+
+- Khi user chỉ mới **"Tạo hồ sơ xin vay"** (status: pending), điểm tín dụng tĩnh **KHÔNG thay đổi**.
+- Lúc đó hệ thống chỉ mang điểm tĩnh đi hỏi server AI để lấy "Điểm rủi ro AI" (`aiScore`) cho riêng hồ sơ đó.
 
 ## 5. Công thức chấm điểm hiện tại (đã áp dụng)
 
-Hệ thống hiện tính điểm theo mô hình 5 yếu tố có trọng số, thay vì cộng/trừ điểm cố định:
+Hệ thống hiện tính điểm theo mô hình 5 yếu tố có trọng số:
 
 - Payment history: 35%
 - Debt level: 30%
@@ -79,11 +125,29 @@ creditScore = clamp(150 + weighted100/100 * 600, 150, 750)
 
 ### 5.1. Cách chấm từng yếu tố
 
-1. Payment history (35%)
+1. Payment history (35%) — Có Volume Penalty Factor
 
 - Dựa trên tỷ lệ trả trễ lịch sử, số khoản trễ nặng (>=30 ngày) và sự kiện trả nợ mới nhất.
-- Nếu giao dịch mới là đúng hạn: cộng nhẹ vào thành phần payment history.
-- Nếu giao dịch mới là trễ hạn: trừ theo số ngày trễ (mức phạt tăng theo overdueDays).
+
+**Volume Penalty Factor (Thin Credit File Protection):**
+
+Người dùng có ít giao dịch không thể đạt 100/100 ngay. Áp dụng hệ số chiết khấu theo khối lượng:
+
+```
+Score_payment = Score_ratio × W_volume
+```
+
+| Level                     | Số giao dịch | W_volume | Điểm tối đa |
+| ------------------------- | ------------ | -------- | ----------- |
+| Level 1 (Hồ sơ siêu mỏng) | 1 - 4        | 0.60     | 60/100      |
+| Level 2 (Hồ sơ cơ bản)    | 5 - 10       | 0.80     | 80/100      |
+| Level 3 (Hồ sơ chín muồi) | > 10         | 1.00     | 100/100     |
+
+Ví dụ: User mới có 4 khoản vay trả đúng hạn → 100 × 0.6 = 60/100 (không phải 100/100).
+
+- Nếu giao dịch mới là đúng hạn: cộng nhẹ (+3, prepay +5).
+- Nếu giao dịch mới là trễ hạn: trừ theo số ngày trễ (overdueDays × 1.2, tối đa -25).
+- Số khoản trễ nặng (>=30 ngày): trừ thêm 4 điểm/khoản.
 
 2. Debt level (30%)
 
@@ -136,21 +200,122 @@ Bảng credit_score_history:
 ## 7. Pseudo-flow
 
 ```text
-Loan Repayment / Prepayment success
-    -> estimate overdueDays
-    -> applyRepaymentEvent
-  -> compute 5 factor scores (35/30/15/10/10)
-  -> weighted score 0..100
-        -> clamp 150..750
-        -> update credit_score
-        -> insert credit_score_history
+── Event 0: Đăng nhập ──
+AuthController.login() success
+  → CreditScoreService.recalculateScore(userId)  [fire-and-forget]
+    → compute 5 factor scores (with Volume Penalty)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history (trigger: recalculate_api)
+
+── Event 1: Thanh toán ──
+Loan Repayment / Prepayment success (Fineract)
+  → RepaymentService estimate overdueDays
+  → CreditScoreService.applyRepaymentEvent(...)
+    → compute 5 factor scores (with Volume Penalty)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history
+
+── Event 2: Nợ xấu (Batch Job 0h hàng đêm) ──
+@Cron('0 0 * * *') handleDelinquencyBatchJob()
+  → query loan_applications where status='disbursed' AND delinquentDays > 0
+  → for each overdue loan:
+    → classifyDebtGroup(overdueDays) → nhóm 1-5
+    → upsert LoanDelinquency record
+    → applyRepaymentEvent(isLatePayment=true, overdueDays) (nếu chưa trừ trong 24h)
+    → Nhóm 4+: set user.metadata.accountFrozen = true
+    → Nhóm 5: set user.metadata.permanentBan = true
+
+── Event 3: Giải ngân ──
+AdminLoanService.disburseLoan()
+  → Fineract disburse
+  → update MongoDB status='disbursed'
+  → CreditScoreService.applyDisbursementEvent(userId)
+    → compute 5 factor scores (Debt Level & New Credit thay đổi)
+    → weighted score 0..100 → clamp 150..750
+    → update credit_score
+    → insert credit_score_history
 ```
 
 ## 8. Mapping tham chiếu thị trường
 
 Thiết kế phân hạng rủi ro (150-750) được tham chiếu theo bài viết tổng quan điểm tín dụng từ Techcombank và thông lệ CIC phổ biến trên thị trường Việt Nam.
 
-## 9. Hướng mở rộng (đề xuất)
+## 9. Phân loại Nhóm Nợ (Debt Group Classification)
 
-- Tạo job định kỳ recalculation toàn bộ users để score phản ánh toàn cảnh, không chỉ tại thời điểm repay/prepay.
+Hệ thống phân loại nợ xấu theo 5 nhóm tham chiếu chuẩn CIC Việt Nam. Batch Job hàng đêm (Event 2) tự động phân loại và áp dụng chế tài tương ứng.
+
+### 9.1. Bảng phân nhóm nợ
+
+| Nhóm | Tên nhóm               | Số ngày quá hạn | Thời gian lưu vết | Chế tài hệ thống (NestJS)                                                         |
+| ---- | ---------------------- | --------------- | ----------------- | --------------------------------------------------------------------------------- |
+| 1    | Nợ đủ tiêu chuẩn       | 1 – 9 ngày      | 6 tháng           | Trừ nhẹ điểm uy tín. Vẫn cho vay mới nhưng báo cáo AI tần suất trễ                |
+| 2    | Nợ cần chú ý           | 10 – 29 ngày    | 12 tháng          | Giảm mạnh điểm uy tín. Ép lãi suất phạt, giảm hạn mức, cảnh báo nhà đầu tư        |
+| 3    | Nợ dưới tiêu chuẩn     | 30 – 89 ngày    | 60 tháng (5 năm)  | Auto-Reject: Tự động từ chối mọi hồ sơ xin vay mới trong suốt 5 năm               |
+| 4    | Nợ nghi ngờ            | 90 – 179 ngày   | 60 tháng (5 năm)  | Blacklist: Đóng băng tài khoản, đẩy hồ sơ sang bộ phận thu hồi nợ                 |
+| 5    | Nợ có khả năng mất vốn | ≥ 180 ngày      | Vĩnh viễn         | Permanent Ban: Khóa vĩnh viễn toàn nền tảng, không bao giờ cấp lại quyền vay mượn |
+
+> **Lưu ý:** "Thời gian lưu vết" tính từ ngày trả xong nợ (`resolvedAt`). Hết hạn → hệ thống soft-delete (`isDeleted = true`) — KHÔNG xóa vật lý, luôn giữ audit trail.
+
+### 9.2. Cơ chế thực thi (Enforcement)
+
+**Batch Job (Event 2) — `handleDelinquencyBatchJob()`:**
+
+1. Quét tất cả khoản vay `status: 'disbursed'` có `delinquentDays > 0`.
+2. Gọi `classifyDebtGroup(overdueDays)` để xác định nhóm nợ (1-5).
+3. Upsert bản ghi `LoanDelinquency` với: `debtGroup`, `overdueAmount`, `delinquentDays`, `collectionStage`, `status` (overdue/defaulted).
+4. Trừ điểm tín dụng qua `applyRepaymentEvent(isLatePayment=true)`.
+5. Nhóm 4+: Ghi `user.metadata.accountFrozen = true` → user không thể tạo khoản vay.
+6. Nhóm 5: Ghi `user.metadata.permanentBan = true` → user bị cấm hoàn toàn.
+7. Auto-resolve: Khoản vay không còn trong danh sách overdue → cập nhật `status: 'resolved'`, `resolvedAt: now`.
+8. Retention cleanup: Quét các bản ghi `resolved` + `isDeleted: false`. Nếu `resolvedAt + retention_months` đã qua → `isDeleted = true`, `deletedAt = now`. Không xóa vật lý.
+
+**Tạo khoản vay — `LoanService.createApplication()`:**
+
+- **Bước 0:** Kiểm tra `permanentBan` và `accountFrozen` trên User metadata → reject ngay.
+- **Bước 2.5:** Query `LoanDelinquency` của borrower (`isDeleted: false`), tìm nhóm nợ cao nhất. Nếu `DelinquencyPolicy` tương ứng có `block_new_loan: true` → reject.
+
+**Nhà đầu tư — `InvestService.getAvailableLoans()`:**
+
+- Với mỗi khoản vay available, kiểm tra borrower có bản ghi `LoanDelinquency` nhóm ≥ 2 (`isDeleted: false`) không.
+- Nếu có → enrich thêm `borrowerDelinquencyWarning` gồm: `debtGroup`, `overdueAmount`, `delinquentDays`, `message`.
+
+### 9.3. Schema liên quan
+
+**DelinquencyPolicy** (cấu hình theo debt_group):
+
+| Field              | Type    | Mô tả                                                |
+| ------------------ | ------- | ---------------------------------------------------- |
+| `debt_group`       | number  | Nhóm nợ (1-5)                                        |
+| `block_new_loan`   | boolean | Chặn tạo khoản vay mới                               |
+| `apply_penalty`    | boolean | Áp dụng phạt lãi trễ hạn                             |
+| `retention_months` | number  | Thời gian lưu hồ sơ nợ xấu (tháng), null = vĩnh viễn |
+| `freeze_account`   | boolean | Đóng băng tài khoản                                  |
+| `permanent_ban`    | boolean | Cấm vĩnh viễn                                        |
+| `legal_escalation` | boolean | Chuyển xử lý pháp lý                                 |
+| `collection_stage` | string  | Giai đoạn thu hồi (none/soft/hard/legal)             |
+
+**LoanDelinquency** (bản ghi per-loan):
+
+| Field              | Type     | Mô tả                                            |
+| ------------------ | -------- | ------------------------------------------------ |
+| `loanId`           | ObjectId | Tham chiếu loan_application                      |
+| `borrowerId`       | ObjectId | Tham chiếu user                                  |
+| `fineractLoanId`   | number   | ID khoản vay trên Fineract (unique)              |
+| `debtGroup`        | number   | Nhóm nợ hiện tại (1-5)                           |
+| `overdueAmount`    | number   | Số tiền quá hạn (VNĐ)                            |
+| `delinquentDays`   | number   | Số ngày quá hạn                                  |
+| `status`           | string   | normal / overdue / defaulted / resolved          |
+| `collectionStage`  | string   | none / reminder / warning / collection / legal   |
+| `firstOverdueDate` | Date     | Ngày phát sinh quá hạn đầu tiên                  |
+| `lastSyncedAt`     | Date     | Lần kiểm tra gần nhất                            |
+| `resolvedAt`       | Date     | Ngày trả xong nợ (mốc tính retention)            |
+| `isDeleted`        | boolean  | Đã soft-delete (hết hạn lưu vết). Default: false |
+| `deletedAt`        | Date     | Thời điểm soft-delete                            |
+
+## 10. Hướng mở rộng (đề xuất)
+
 - Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả để tăng độ chính xác cho yếu tố debt level.
+- Tích hợp Blockchain để ghi lại audit trail cho mỗi lần thay đổi điểm.
+- Mở rộng Volume Penalty Factor cho các yếu tố khác (credit age, credit mix) nếu cần.

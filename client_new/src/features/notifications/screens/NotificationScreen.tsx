@@ -266,9 +266,10 @@ export default function NotificationScreen() {
                             data={notifications}
                             keyExtractor={(item: AppNotification) => item._id}
                             renderItem={renderNotificationItem}
-                            contentContainerStyle={styles.listContent}
+                            contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
                             onEndReached={handleLoadMoreNoti}
                             onEndReachedThreshold={0.3}
+                            nestedScrollEnabled
                             ListFooterComponent={
                                 <Pagination mode="infinite" loading={notiLoadingMore} hasMore={notiHasMore} />
                             }
@@ -294,9 +295,10 @@ export default function NotificationScreen() {
                             data={transactions}
                             keyExtractor={(item: WalletTransaction) => item.id}
                             renderItem={renderTransactionItem}
-                            contentContainerStyle={styles.listContent}
+                            contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
                             onEndReached={handleLoadMoreTx}
                             onEndReachedThreshold={0.2}
+                            nestedScrollEnabled
                             ListFooterComponent={
                                 <Pagination mode="infinite" loading={txLoadingMore} hasMore={txHasMore} />
                             }
@@ -374,7 +376,7 @@ const styles = StyleSheet.create({
     listContent: {
         paddingHorizontal: 16,
         paddingTop: 16,
-        paddingBottom: 20,
+        paddingBottom: 100,
     },
     notificationWrapper: {
         marginBottom: 12,

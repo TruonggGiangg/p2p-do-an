@@ -295,6 +295,12 @@ export default function ImagePickerSheet({
     }, [hasMore, loading, loadPhotos]);
 
     const renderItem = useCallback(({ item }: { item: MediaLibrary.Asset }) => {
+        // Android: asset.uri from MediaLibrary may use 'asset://' scheme which
+        // expo-image can't render. Convert to content:// URI for Android.
+        const imageUri = Platform.OS === 'android'
+            ? `content://media/external/images/media/${item.id}`
+            : item.uri;
+
         return (
             <TouchableOpacity
                 style={imgStyles.item}
@@ -302,9 +308,10 @@ export default function ImagePickerSheet({
                 activeOpacity={0.75}
             >
                 <Image
-                    source={{ uri: item.uri }}
+                    source={{ uri: imageUri }}
                     style={imgStyles.image}
                     contentFit="cover"
+                    recyclingKey={item.id}
                 />
                 {item.duration && item.duration > 0 && (
                     <View style={imgStyles.videoBadge}>
@@ -336,16 +343,16 @@ export default function ImagePickerSheet({
             )}
             {/* Fallback picker - luôn hiện, dùng ImagePicker thay vì MediaLibrary */}
             <TouchableOpacity
-                style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                style={[imgStyles.cameraBtn, { backgroundColor: c.accent + '12', borderColor: c.accent + '30' }]}
                 onPress={handlePickFromLibrary}
                 activeOpacity={0.7}
             >
-                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                    <Ionicons name="images" size={24} color="#6C5CE7" />
+                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.accent + '20' }]}>
+                    <Ionicons name="images" size={24} color={c.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                    <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Chọn từ thư viện</Text>
-                    <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Mở trình chọn ảnh hệ thống</Text>
+                    <Text style={[imgStyles.cameraBtnTitle, { color: c.accent }]}>Tải ảnh từ thư viện</Text>
+                    <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Chọn ảnh có sẵn trên máy</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={c.textDim} />
             </TouchableOpacity>
@@ -467,15 +474,15 @@ export default function ImagePickerSheet({
                                 </TouchableOpacity>
                             )}
                             <TouchableOpacity
-                                style={[imgStyles.cameraBtn, { backgroundColor: '#6C5CE7' + '12', borderColor: '#6C5CE7' + '30' }]}
+                                style={[imgStyles.cameraBtn, { backgroundColor: c.accent + '12', borderColor: c.accent + '30' }]}
                                 onPress={handlePickFromLibrary}
                                 activeOpacity={0.7}
                             >
-                                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: '#6C5CE7' + '20' }]}>
-                                    <Ionicons name="images" size={24} color="#6C5CE7" />
+                                <View style={[imgStyles.cameraBtnIcon, { backgroundColor: c.accent + '20' }]}>
+                                    <Ionicons name="images" size={24} color={c.accent} />
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <Text style={[imgStyles.cameraBtnTitle, { color: '#6C5CE7' }]}>Tải ảnh từ thư viện</Text>
+                                    <Text style={[imgStyles.cameraBtnTitle, { color: c.accent }]}>Tải ảnh từ thư viện</Text>
                                     <Text style={[imgStyles.cameraBtnSub, { color: c.textDim }]}>Chọn ảnh có sẵn trên máy</Text>
                                 </View>
                                 <Ionicons name="chevron-forward" size={20} color={c.textDim} />

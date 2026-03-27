@@ -53,6 +53,7 @@ type Policy = {
     collection_stage: CollectionStage;
     legal_escalation: boolean;
     is_active: boolean;
+    retention_months?: number | null;
     description?: string;
     createdAt: string;
     updatedAt: string;
@@ -408,6 +409,14 @@ export default function DelinquencyPoliciesPage() {
                             ),
                         },
                         {
+                            title: 'Lưu vết (tháng)',
+                            dataIndex: 'retention_months',
+                            width: 150,
+                            render: (value: number | null | undefined) => (
+                                <Text>{value != null ? `${value} tháng` : 'Vĩnh viễn'}</Text>
+                            ),
+                        },
+                        {
                             title: 'Hành động',
                             key: 'actions',
                             width: 170,
@@ -495,6 +504,14 @@ export default function DelinquencyPoliciesPage() {
                         <Form.Item label="Escalation pháp lý" name="legal_escalation" valuePropName="checked"><Switch /></Form.Item>
                         <Form.Item label="Policy active" name="is_active" valuePropName="checked"><Switch /></Form.Item>
                     </Space>
+
+                    <Form.Item
+                        label="Lưu vết quá hạn (tháng)"
+                        name="retention_months"
+                        tooltip="Số tháng lưu vết nợ quá hạn trong database. Sau khi hết hạn, bản ghi loan_delinquency sẽ chuyển isDeleted: true. Để trống = lưu vĩnh viễn (dùng train AI)."
+                    >
+                        <Input type="number" min={0} placeholder="VD: 12, 24, 60... (để trống = vĩnh viễn)" />
+                    </Form.Item>
 
                     <Form.Item label="Mô tả policy" name="description">
                         <Input.TextArea rows={3} placeholder="Mô tả chính sách xử lý theo quy định nội bộ và pháp luật" />

@@ -9,6 +9,9 @@ import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
 import { LoanSupportRequest, SupportRequestType } from './schemas/loan-support-request.schema';
+import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
+import { CreditScoreService } from '../credit-score/credit-score.service';
 import { roundToCurrency } from '../../utils/RoundingUtils';
 
 const DEFAULT_IN_MULTIPLES_OF = 1000;
@@ -59,9 +62,12 @@ export class LoanService {
     private readonly adminService: AdminService,
     private readonly walletsService: WalletsService,
     private readonly smartOtpService: SmartOtpService,
+    private readonly creditScoreService: CreditScoreService,
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
+    @InjectModel(LoanDelinquency.name) private readonly loanDelinquencyModel: Model<LoanDelinquency>,
+    @InjectModel(DelinquencyPolicy.name) private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
   ) {}
 
   async getLoanProducts() {
@@ -167,6 +173,50 @@ export class LoanService {
    */
   async getProductCharges(productId: number) {
     return this.fineractLoanService.getProductCharges(productId);
+  }
+
+  /**
+   * Lấy chính sách xử lý nợ xấu (delinquency policy) để hiển thị trong xác nhận đơn vay.
+   * Chỉ trả về policy active, sắp theo debt_group tăng dần.
+   */
+  async getDelinquencyPolicySummary(loanProductId?: number): Promise<any[]> {
+    const selectFields =
+      'debt_group debt_group_name description send_notification apply_penalty block_new_loan freeze_account permanent_ban collection_stage retention_months loan_product_id';
+
+    let policies: any[];
+    if (loanProductId != null) {
+      // Try product-specific policies first
+      policies = await this.delinquencyPolicyModel
+        .find({ is_active: true, loan_product_id: loanProductId })
+        .select(selectFields)
+        .sort({ debt_group: 1 })
+        .lean();
+
+      // Fallback to global policies (no product_id) if none found for this product
+      if (!policies.length) {
+        policies = await this.delinquencyPolicyModel
+          .find({ is_active: true, $or: [{ loan_product_id: null }, { loan_product_id: { $exists: false } }] })
+          .select(selectFields)
+          .sort({ debt_group: 1 })
+          .lean();
+      }
+    } else {
+      policies = await this.delinquencyPolicyModel
+        .find({ is_active: true })
+        .select(selectFields)
+        .sort({ debt_group: 1 })
+        .lean();
+    }
+
+    // De-duplicate by debt_group (keep the one with most restrictions)
+    const groupMap = new Map<number, any>();
+    for (const p of policies) {
+      const existing = groupMap.get(p.debt_group);
+      if (!existing || p.block_new_loan || p.freeze_account || p.permanent_ban) {
+        groupMap.set(p.debt_group, p);
+      }
+    }
+    return Array.from(groupMap.values()).sort((a, b) => a.debt_group - b.debt_group);
   }
 
   /**
@@ -296,7 +346,20 @@ export class LoanService {
       `[createApplication] START | userId=${userId} capital=${dto.capital} periodMonth=${dto.periodMonth} productId=${dto.productId}`,
     );
 
-    // 0. Smart OTP: bắt buộc đăng ký và xác thực OTP khi tạo khoản vay
+    // 0. Kiểm tra tài khoản bị đóng băng / cấm vĩnh viễn
+    const userMeta = await this.userModel.findById(userId).select('metadata').lean().exec();
+    if ((userMeta as any)?.metadata?.permanentBan) {
+      throw new BadRequestException(
+        'Tài khoản của bạn đã bị cấm vĩnh viễn do nợ xấu nghiêm trọng. Không thể tạo khoản vay.',
+      );
+    }
+    if ((userMeta as any)?.metadata?.accountFrozen) {
+      throw new BadRequestException(
+        'Tài khoản của bạn đã bị đóng băng do nợ quá hạn nghiêm trọng. Vui lòng thanh toán nợ để mở khóa.',
+      );
+    }
+
+    // 0.5 Smart OTP: bắt buộc đăng ký và xác thực OTP khi tạo khoản vay
     const devices = await this.smartOtpService.getRegisteredDevices(userId);
     if (devices.length === 0) {
       throw new BadRequestException('Bạn cần đăng ký Smart OTP trong Profile trước khi tạo khoản vay.');
@@ -326,6 +389,35 @@ export class LoanService {
       throw new BadRequestException('Bạn cần liên kết ví điện tử trước khi tạo khoản vay');
     }
     this.logger.log(`[createApplication] fineractClientId=${fineractClientId}`);
+
+    // 2.5. Kiểm tra nhóm nợ xấu — chặn vay mới nếu borrower thuộc nhóm nợ có block_new_loan
+    const activeDelinquencies = await this.loanDelinquencyModel
+      .find({
+        borrowerId: new Types.ObjectId(userId),
+        status: { $in: ['overdue', 'defaulted'] },
+        isDeleted: { $ne: true },
+      })
+      .select('debtGroup overdueAmount fineractLoanId delinquentDays')
+      .lean();
+
+    if (activeDelinquencies.length > 0) {
+      const highestDebtGroup = Math.max(...activeDelinquencies.map(d => d.debtGroup || 0));
+      const blockingPolicy = await this.delinquencyPolicyModel
+        .findOne({
+          debt_group: highestDebtGroup,
+          block_new_loan: true,
+          is_active: true,
+        })
+        .lean();
+
+      if (blockingPolicy) {
+        const delinquentLoan = activeDelinquencies.find(d => d.debtGroup === highestDebtGroup);
+        throw new BadRequestException(
+          `Bạn đang có khoản vay quá hạn ${delinquentLoan?.delinquentDays ?? 0} ngày (Nhóm nợ ${highestDebtGroup}). ` +
+            `Không thể tạo khoản vay mới cho đến khi thanh toán hết nợ quá hạn.`,
+        );
+      }
+    }
 
     // 3. Get config and validate product constraints (Fineract min/max)
     const config = await this.getProductConfig(dto.productId);
@@ -532,7 +624,31 @@ export class LoanService {
    */
   async getApplicationHistory(userId: string): Promise<LoanHistoryItem[]> {
     const userObjectId = new Types.ObjectId(userId);
+
+    // ── Step 1: Lấy tất cả loan đã có fineractLoanId → sync realtime từ Fineract ──
     const mongoLoans = await this.loanApplicationModel
+      .find({ userId: userObjectId })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const fineractLoanIdsToSync = mongoLoans.filter(doc => doc.fineractLoanId).map(doc => doc.fineractLoanId!);
+
+    // Sync song song tất cả khoản vay (cập nhật MongoDB + loan_delinquency từ Fineract)
+    if (fineractLoanIdsToSync.length > 0) {
+      await Promise.allSettled(
+        fineractLoanIdsToSync.map(fid =>
+          this.adminService
+            .syncLoanFromFineract(fid)
+            .catch(err =>
+              this.logger.warn(`[getApplicationHistory] sync fineract loan #${fid} failed: ${err.message}`),
+            ),
+        ),
+      );
+    }
+
+    // ── Step 2: Reload MongoDB sau khi sync xong ──
+    const refreshedLoans = await this.loanApplicationModel
       .find({ userId: userObjectId })
       .sort({ createdAt: -1 })
       .lean()
@@ -544,10 +660,8 @@ export class LoanService {
     const resultMap = new Map<string, LoanHistoryItem>();
     const fineractLoanIds = new Set<number>();
 
-    // 1. Chỉ thêm loan từ MongoDB nếu đã có fineractLoanId (đã sync sang Fineract)
-    // Bỏ qua đơn "Chờ duyệt" chưa tạo trên Fineract
-    for (const doc of mongoLoans) {
-      if (!doc.fineractLoanId) continue; // Chỉ hiển thị khoản vay đã tồn tại trên Fineract
+    for (const doc of refreshedLoans) {
+      if (!doc.fineractLoanId) continue;
       const item: LoanHistoryItem = {
         id: (doc as any)._id.toString(),
         source: 'mongo',
@@ -567,18 +681,17 @@ export class LoanService {
         investedNotes: (doc as any).investedNotes || 0,
         nodeMatch: (doc as any).nodeMatch || 0,
         isFullMatch: (doc as any).isFullMatch || false,
-        // Delinquency from MongoDB
+        // Delinquency from MongoDB (đã sync từ Fineract ở Step 1)
         delinquentDays: doc.delinquentDays || 0,
       } as LoanHistoryItem;
       resultMap.set(item.id, item);
       fineractLoanIds.add(doc.fineractLoanId);
     }
 
-    // 2. Nếu có fineractClientId, lấy loans từ Fineract và enrich
+    // ── Step 3: Enrich với Fineract chi tiết product name ──
     if (fineractClientId) {
       const fineractLoans = await this.fineractLoanService.getLoansByClientId(fineractClientId);
 
-      // Fetch details for all loans in parallel
       const detailsResults = await Promise.all(
         fineractLoans.map(async fl => {
           const loanId = fl.id ?? fl.loanId ?? fl.resourceId;
@@ -586,9 +699,9 @@ export class LoanService {
           try {
             const details = await this.fineractLoanService.getLoanDetails(String(loanId));
             return { fl, details, loanId: Number(loanId) };
-          } catch (e) {
+          } catch {
             this.logger.error(`[getApplicationHistory] Failed to fetch details for loan ${loanId}`);
-            return { fl, details: fl, loanId: Number(loanId) }; // Fallback to basic info
+            return { fl, details: fl, loanId: Number(loanId) };
           }
         }),
       );
@@ -604,7 +717,6 @@ export class LoanService {
           existing.source = 'merged';
           existing.fineractDetails = details;
           existing.status = this.mapFineractStatus(details.status?.code) ?? existing.status;
-          // DEBUG: check fineract product name fields
           this.logger.log(
             `[mergeProduct] loanId=${loanId} | loanProductName="${details.loanProductName}" | productName="${details.productName}" | product.name="${details.product?.name}" | loanProductDescription="${details.loanProductDescription}"`,
           );
@@ -626,6 +738,16 @@ export class LoanService {
           });
         }
       }
+    }
+
+    // ── Step 4: Nếu có khoản nợ quá hạn → fire-and-forget chấm điểm tín dụng ──
+    const hasDelinquent = refreshedLoans.some(doc => (doc.delinquentDays || 0) > 0 && doc.status === 'disbursed');
+    if (hasDelinquent) {
+      this.creditScoreService
+        .recalculateScore(userObjectId)
+        .catch(err =>
+          this.logger.warn(`[getApplicationHistory] credit score recalc failed for ${userId}: ${err.message}`),
+        );
     }
 
     const list = Array.from(resultMap.values());
@@ -672,7 +794,8 @@ export class LoanService {
         // Special case: overdue = active loans with delinquentDays > 0
         filtered = filtered.filter(l => {
           const fd = (l as any).fineractDetails;
-          const dDays = fd?.delinquency?.delinquentDays || fd?.delinquent?.delinquentDays || (l as any).delinquentDays || 0;
+          const dDays =
+            fd?.delinquency?.delinquentDays || fd?.delinquent?.delinquentDays || (l as any).delinquentDays || 0;
           return dDays > 0;
         });
       } else {
@@ -748,9 +871,16 @@ export class LoanService {
           details?.delinquency?.delinquentDays ||
           details?.delinquent?.delinquentDays ||
           (details?.summary?.totalOverdue > 0
-            ? (schedule?.periods?.filter((p: any) => p.period > 0 && !p.complete && p.dueDate && new Date(p.dueDate[0], p.dueDate[1] - 1, p.dueDate[2]) < new Date())?.length || 1)
+            ? schedule?.periods?.filter(
+                (p: any) =>
+                  p.period > 0 &&
+                  !p.complete &&
+                  p.dueDate &&
+                  new Date(p.dueDate[0], p.dueDate[1] - 1, p.dueDate[2]) < new Date(),
+              )?.length || 1
             : 0) ||
-          (loan as any).delinquentDays || 0,
+          (loan as any).delinquentDays ||
+          0,
       };
 
       // DEBUG: log key fields
@@ -952,11 +1082,7 @@ export class LoanService {
     }
 
     // 1. Withdraw on Fineract
-    await this.fineractLoanService.withdrawnByApplicant(
-      loan.fineractLoanId,
-      undefined,
-      reason || 'Người vay hủy đơn',
-    );
+    await this.fineractLoanService.withdrawnByApplicant(loan.fineractLoanId, undefined, reason || 'Người vay hủy đơn');
 
     // 2. Update MongoDB
     loan.status = 'cancelled' as any;

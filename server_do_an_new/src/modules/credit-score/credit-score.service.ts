@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { createHash } from 'crypto';
+import { Cron } from '@nestjs/schedule';
 import { CreditScore } from './schemas/credit-score.schema';
 import { CreditScoreHistory } from './schemas/credit-score-history.schema';
-import { CreditScoreWeightConfig } from './schemas/credit-score-weight-config.schema';
+import { LoanEvaluationConfig } from './schemas/loan-evaluation-config.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
+import { User } from '../users/schemas/user.schema';
+import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
+import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
@@ -54,7 +59,7 @@ export interface CreditScoreHistoryPaginationResult {
   hasNextPage: boolean;
 }
 
-interface CreditFactorScores {
+export interface CreditFactorScores {
   paymentHistory: number;
   debtLevel: number;
   creditAge: number;
@@ -74,27 +79,46 @@ export interface CreditScoreWeightConfigValue extends CreditScoreWeightConfigInp
   total: number;
 }
 
-export interface CreditScoreWeightConfigItem extends CreditScoreWeightConfigValue {
-  _id: string;
-  name: string;
-  description?: string;
-  key: string;
-  isDefault: boolean;
-  isActive: boolean;
-  appliedAt?: Date | null;
+export interface CreditGradeInput {
+  grade: string;
+  label: string;
+  minScore: number;
+  maxScore: number;
+  maxLoanAmount: number;
+  baseInterestRate: number;
+}
+
+export interface ScoreWeightsInput {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
+export interface LoanEvaluationConfigInput {
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeInput[];
+  scoreWeights: ScoreWeightsInput;
+  changeNote?: string;
+}
+
+export interface LoanEvaluationConfigValue {
+  version: number;
+  autoRejectScore: number;
+  autoApproveScore: number;
+  creditGrades: CreditGradeInput[];
+  scoreWeights: ScoreWeightsInput;
+  configHash: string;
+  blockchainTxHash: string;
+  changedBy?: string;
+  changeNote?: string;
   createdAt?: Date;
-  updatedAt?: Date;
 }
 
-export interface CreateCreditScoreWeightConfigInput extends CreditScoreWeightConfigInput {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateCreditScoreWeightConfigInput extends CreditScoreWeightConfigInput {
-  name?: string;
-  description?: string;
-  isActive?: boolean;
+export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigValue {
+  _id: string;
 }
 
 /**
@@ -103,9 +127,8 @@ export interface UpdateCreditScoreWeightConfigInput extends CreditScoreWeightCon
  * Lịch sử thanh toán, dư nợ hiện tại, thời gian tín dụng, đa dạng tín dụng và tín dụng mới.
  */
 @Injectable()
-export class CreditScoreService {
+export class CreditScoreService implements OnModuleInit {
   private readonly logger = new Logger(CreditScoreService.name);
-  private readonly legacyConfigKey = 'default';
   private readonly defaultWeights: CreditScoreWeightConfigInput = {
     paymentHistory: 35,
     debtLevel: 30,
@@ -157,272 +180,347 @@ export class CreditScoreService {
     private readonly creditScoreModel: Model<CreditScore>,
     @InjectModel(CreditScoreHistory.name)
     private readonly creditScoreHistoryModel: Model<CreditScoreHistory>,
-    @InjectModel(CreditScoreWeightConfig.name)
-    private readonly creditScoreWeightConfigModel: Model<CreditScoreWeightConfig>,
     @InjectModel(LoanApplication.name)
     private readonly loanApplicationModel: Model<LoanApplication>,
+    @InjectModel(LoanEvaluationConfig.name)
+    private readonly loanEvaluationConfigModel: Model<LoanEvaluationConfig>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<User>,
+    @InjectModel(LoanDelinquency.name)
+    private readonly loanDelinquencyModel: Model<LoanDelinquency>,
+    @InjectModel(DelinquencyPolicy.name)
+    private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
   ) {}
 
-  private sanitizeWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
-    return {
-      paymentHistory: Number(Number(weights.paymentHistory || 0).toFixed(2)),
-      debtLevel: Number(Number(weights.debtLevel || 0).toFixed(2)),
-      creditAge: Number(Number(weights.creditAge || 0).toFixed(2)),
-      creditMix: Number(Number(weights.creditMix || 0).toFixed(2)),
-      newCredit: Number(Number(weights.newCredit || 0).toFixed(2)),
-    };
+  async onModuleInit() {
+    // Drop legacy key_1 unique index that causes E11000 duplicate key errors
+    try {
+      await this.loanEvaluationConfigModel.collection.dropIndex('key_1');
+      this.logger.log('Dropped legacy key_1 index from loan_evaluation_configs');
+    } catch {
+      // Index doesn't exist — ignore
+    }
   }
 
-  private validateWeights(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigInput {
-    const sanitized = this.sanitizeWeights(weights);
-
-    const values = Object.entries(sanitized) as Array<[keyof CreditScoreWeightConfigInput, number]>;
-    for (const [key, value] of values) {
-      if (!Number.isFinite(value)) {
-        throw new BadRequestException(`Trọng số ${key} không hợp lệ`);
+  /** Resolve admin MongoDB _id → display name */
+  private async resolveAdminName(adminId?: string): Promise<string> {
+    if (!adminId) return '';
+    try {
+      const admin = await this.userModel.findById(adminId).select('profile username').lean();
+      if (!admin) return adminId;
+      const p = (admin as any).profile;
+      if (p?.firstName || p?.lastName) {
+        return [p.firstName, p.lastName].filter(Boolean).join(' ');
       }
-      if (value < 0 || value > 100) {
-        throw new BadRequestException(`Trọng số ${key} phải nằm trong khoảng 0-100`);
-      }
+      return (admin as any).username || adminId;
+    } catch {
+      return adminId;
     }
-
-    const total =
-      sanitized.paymentHistory + sanitized.debtLevel + sanitized.creditAge + sanitized.creditMix + sanitized.newCredit;
-
-    if (Math.abs(total - 100) > 0.01) {
-      throw new BadRequestException(`Tổng trọng số phải bằng 100%, hiện tại là ${total.toFixed(2)}%`);
-    }
-
-    return sanitized;
   }
 
-  private toWeightValue(weights: CreditScoreWeightConfigInput): CreditScoreWeightConfigValue {
-    const validated = this.validateWeights(weights);
-    const total =
-      validated.paymentHistory + validated.debtLevel + validated.creditAge + validated.creditMix + validated.newCredit;
+  /**
+   * Event 2 — Batch Job: Rà quét nợ quá hạn mỗi đêm 0h.
+   * Phân loại theo 5 Nhóm Nợ chuẩn CIC:
+   *   Nhóm 1 (1-9 ngày):   Trừ nhẹ điểm, vẫn cho vay.
+   *   Nhóm 2 (10-29 ngày): Trừ mạnh điểm, ép lãi phạt, giảm hạn mức.
+   *   Nhóm 3 (30-89 ngày): Auto-Reject mọi hồ sơ vay mới (5 năm).
+   *   Nhóm 4 (90-179 ngày): Blacklist, đóng băng tài khoản.
+   *   Nhóm 5 (>=180 ngày): Permanent Ban.
+   * Chỉ trừ 1 lần/ngày cho mỗi khoản quá hạn.
+   */
+  @Cron('0 0 * * *')
+  async handleDelinquencyBatchJob() {
+    this.logger.log('[delinquency-batch] Starting midnight delinquency scan...');
 
-    return {
-      ...validated,
-      total: Number(total.toFixed(4)),
-    };
-  }
-
-  private toConfigItem(doc: any): CreditScoreWeightConfigItem {
-    const value = this.toWeightValue({
-      paymentHistory: Number(doc.paymentHistory || 0),
-      debtLevel: Number(doc.debtLevel || 0),
-      creditAge: Number(doc.creditAge || 0),
-      creditMix: Number(doc.creditMix || 0),
-      newCredit: Number(doc.newCredit || 0),
-    });
-
-    return {
-      _id: String(doc._id),
-      name: String(doc.name || 'Unnamed'),
-      description: doc.description || '',
-      key: String(doc.key || ''),
-      isDefault: Boolean(doc.isDefault),
-      isActive: doc.isActive !== false,
-      appliedAt: doc.appliedAt || null,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-      ...value,
-    };
-  }
-
-  private buildKey(name: string): string {
-    const base = name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48);
-    const suffix = Date.now().toString(36);
-    return `${base || 'weight-config'}-${suffix}`;
-  }
-
-  async getWeightConfig(): Promise<CreditScoreWeightConfigValue> {
-    const current = await this.getDefaultWeightConfigItem();
-    if (!current) {
-      return this.toWeightValue(this.defaultWeights);
-    }
-
-    return {
-      paymentHistory: current.paymentHistory,
-      debtLevel: current.debtLevel,
-      creditAge: current.creditAge,
-      creditMix: current.creditMix,
-      newCredit: current.newCredit,
-      total: current.total,
-    };
-  }
-
-  async upsertWeightConfig(input: CreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigValue> {
-    const validated = this.validateWeights(input);
-
-    const currentDefault = await this.creditScoreWeightConfigModel
-      .findOne({ isDefault: true })
-      .sort({ updatedAt: -1 })
-      .exec();
-
-    if (currentDefault) {
-      currentDefault.paymentHistory = validated.paymentHistory;
-      currentDefault.debtLevel = validated.debtLevel;
-      currentDefault.creditAge = validated.creditAge;
-      currentDefault.creditMix = validated.creditMix;
-      currentDefault.newCredit = validated.newCredit;
-      currentDefault.isActive = true;
-      currentDefault.appliedAt = new Date();
-      await currentDefault.save();
-      return this.toWeightValue(validated);
-    }
-
-    await this.creditScoreWeightConfigModel.findOneAndUpdate(
-      { key: this.legacyConfigKey },
-      {
-        $set: {
-          ...validated,
-          key: this.legacyConfigKey,
-          name: 'Cấu hình mặc định',
-          description: 'Auto-created default config',
-          isDefault: true,
-          isActive: true,
-          appliedAt: new Date(),
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-
-    return this.toWeightValue(validated);
-  }
-
-  async listWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    const items = await this.creditScoreWeightConfigModel.find({}).sort({ isDefault: -1, updatedAt: -1 }).lean();
-
-    return items.map((item: any) => this.toConfigItem(item));
-  }
-
-  async createWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    const name = String(input.name || '').trim();
-    if (!name) {
-      throw new BadRequestException('Tên cấu hình là bắt buộc');
-    }
-
-    const exists = await this.creditScoreWeightConfigModel
-      .findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } })
+    const overdueLoans = await this.loanApplicationModel
+      .find({
+        status: 'disbursed',
+        delinquentDays: { $gt: 0 },
+      })
+      .select('_id userId fineractLoanId delinquentDays totalOverdue')
       .lean();
-    if (exists) {
-      throw new BadRequestException('Tên cấu hình đã tồn tại');
+
+    if (!overdueLoans.length) {
+      this.logger.log('[delinquency-batch] No overdue loans found.');
+      // Still run retention cleanup even when no new overdue
+      await this.handleRetentionCleanup();
+      return;
     }
 
-    const validated = this.validateWeights(input);
-    const created = await this.creditScoreWeightConfigModel.create({
-      ...validated,
-      name,
-      description: String(input.description || '').trim(),
-      key: this.buildKey(name),
-      isDefault: false,
-      isActive: true,
-    });
+    const oneDayAgo = new Date();
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-    return this.toConfigItem(created.toObject());
-  }
+    let penalized = 0;
+    for (const loan of overdueLoans) {
+      try {
+        const uid = loan.userId;
+        const alreadyPenalized = await this.creditScoreHistoryModel.findOne({
+          userId: uid,
+          reason: 'late_payment',
+          trigger: 'delinquency_batch',
+          note: { $regex: `#${loan.fineractLoanId}` },
+          createdAt: { $gte: oneDayAgo },
+        });
+        if (alreadyPenalized) continue;
 
-  async updateWeightConfig(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    const doc = await this.creditScoreWeightConfigModel.findById(id);
-    if (!doc) {
-      throw new NotFoundException('Không tìm thấy cấu hình trọng số');
-    }
+        const overdueDays = Math.max(1, Number(loan.delinquentDays || 0));
+        const debtGroup = this.classifyDebtGroup(overdueDays);
+        const groupLabel = this.getDebtGroupLabel(debtGroup);
 
-    if (input.name != null) {
-      const nextName = String(input.name).trim();
-      if (!nextName) {
-        throw new BadRequestException('Tên cấu hình không hợp lệ');
+        // ── Fetch existing delinquency record to check if status changed ──
+        const existingDelinquency = await this.loanDelinquencyModel
+          .findOne({
+            fineractLoanId: loan.fineractLoanId,
+          })
+          .lean();
+        const previousDebtGroup = existingDelinquency?.debtGroup ?? 0;
+        const previousStatus = existingDelinquency?.status ?? 'normal';
+
+        // ── Upsert LoanDelinquency record ──
+        const delinquencyStatus = debtGroup >= 3 ? 'defaulted' : 'overdue';
+        const collectionStage =
+          debtGroup >= 5
+            ? 'legal'
+            : debtGroup >= 4
+              ? 'collection'
+              : debtGroup >= 3
+                ? 'warning'
+                : debtGroup >= 2
+                  ? 'reminder'
+                  : 'none';
+        await this.loanDelinquencyModel.findOneAndUpdate(
+          { fineractLoanId: loan.fineractLoanId },
+          {
+            $set: {
+              loanId: loan._id,
+              borrowerId: uid,
+              delinquentDays: overdueDays,
+              debtGroup,
+              overdueAmount: loan.totalOverdue || 0,
+              status: delinquencyStatus,
+              collectionStage,
+              lastSyncedAt: new Date(),
+              isDeleted: false,
+              resolvedAt: null,
+              deletedAt: null,
+            },
+            $setOnInsert: {
+              firstOverdueDate: new Date(),
+            },
+          },
+          { upsert: true, new: true },
+        );
+
+        // ── Only recalculate credit score if debtGroup or status changed ──
+        const statusChanged = previousStatus !== delinquencyStatus;
+        const debtGroupChanged = previousDebtGroup !== debtGroup;
+        if (statusChanged || debtGroupChanged) {
+          this.logger.log(
+            `[delinquency-batch] Loan #${loan.fineractLoanId}: status ${previousStatus}→${delinquencyStatus}, group ${previousDebtGroup}→${debtGroup}. Recalculating credit score.`,
+          );
+          await this.applyRepaymentEvent({
+            userId: uid,
+            isLatePayment: true,
+            overdueDays,
+            isPrepayment: false,
+            trigger: 'delinquency_batch',
+            note: `Khoản vay #${loan.fineractLoanId} quá hạn ${overdueDays} ngày — ${groupLabel} (nhóm ${previousDebtGroup}→${debtGroup})`,
+          });
+        } else {
+          this.logger.debug(
+            `[delinquency-batch] Loan #${loan.fineractLoanId}: no change (group=${debtGroup}, status=${delinquencyStatus}). Skipping credit score recalc.`,
+          );
+        }
+
+        // Nhóm 4-5: Đóng băng tài khoản
+        if (debtGroup >= 4) {
+          await this.userModel.updateOne(
+            { _id: uid },
+            {
+              $set: { 'metadata.accountFrozen': true, 'metadata.frozenReason': `Nợ nhóm ${debtGroup}: ${groupLabel}` },
+            },
+          );
+          this.logger.warn(`[delinquency-batch] FROZEN account for user ${uid} — debt group ${debtGroup}`);
+        }
+
+        // Nhóm 5: Permanent Ban
+        if (debtGroup >= 5) {
+          await this.userModel.updateOne(
+            { _id: uid },
+            {
+              $set: {
+                'metadata.permanentBan': true,
+                'metadata.banReason': `Nợ có khả năng mất vốn (>=${overdueDays} ngày)`,
+              },
+            },
+          );
+          this.logger.warn(`[delinquency-batch] PERMANENT BAN for user ${uid} — debt group 5`);
+        }
+
+        penalized++;
+      } catch (err) {
+        this.logger.warn(`[delinquency-batch] Failed for loan #${loan.fineractLoanId}: ${(err as Error).message}`);
       }
-
-      const exists = await this.creditScoreWeightConfigModel
-        .findOne({
-          _id: { $ne: doc._id },
-          name: { $regex: `^${nextName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        })
-        .lean();
-      if (exists) {
-        throw new BadRequestException('Tên cấu hình đã tồn tại');
-      }
-      doc.name = nextName;
     }
 
-    if (input.description != null) {
-      doc.description = String(input.description).trim();
-    }
+    this.logger.log(`[delinquency-batch] Penalized ${penalized}/${overdueLoans.length} overdue loans.`);
 
-    if (input.isActive != null) {
-      doc.isActive = Boolean(input.isActive);
-    }
-
-    const validated = this.validateWeights(input);
-    doc.paymentHistory = validated.paymentHistory;
-    doc.debtLevel = validated.debtLevel;
-    doc.creditAge = validated.creditAge;
-    doc.creditMix = validated.creditMix;
-    doc.newCredit = validated.newCredit;
-
-    await doc.save();
-    return this.toConfigItem(doc.toObject());
-  }
-
-  async applyWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    const target = await this.creditScoreWeightConfigModel.findById(id);
-    if (!target) {
-      throw new NotFoundException('Không tìm thấy cấu hình trọng số để áp dụng');
-    }
-    if (!target.isActive) {
-      throw new BadRequestException('Không thể áp dụng cấu hình đang bị vô hiệu hóa');
-    }
-
-    await this.creditScoreWeightConfigModel.updateMany(
-      { _id: { $ne: target._id }, isDefault: true },
-      { $set: { isDefault: false } },
+    // ── Resolve: khoản vay đã trả hết nợ → resolved ──
+    const overdueFineractIds = overdueLoans.map(l => l.fineractLoanId).filter((id): id is number => id != null);
+    await this.loanDelinquencyModel.updateMany(
+      {
+        status: { $in: ['overdue', 'defaulted'] } as any,
+        isDeleted: false,
+        fineractLoanId: { $nin: overdueFineractIds },
+      },
+      {
+        $set: { status: 'resolved', resolvedAt: new Date() },
+      },
     );
 
-    target.isDefault = true;
-    target.appliedAt = new Date();
-    await target.save();
-
-    return this.toConfigItem(target.toObject());
+    // ── Retention cleanup: soft-delete resolved records past retention period ──
+    await this.handleRetentionCleanup();
   }
 
-  async getDefaultWeightConfigItem(): Promise<CreditScoreWeightConfigItem | null> {
-    let current = await this.creditScoreWeightConfigModel.findOne({ isDefault: true }).sort({ updatedAt: -1 }).lean();
+  /**
+   * Soft-delete hồ sơ nợ xấu đã resolved khi hết thời gian lưu vết (retention_months).
+   * isDeleted = true, deletedAt = now. KHÔNG xóa vật lý — luôn giữ audit trail.
+   */
+  private async handleRetentionCleanup() {
+    const resolvedRecords = await this.loanDelinquencyModel
+      .find({ status: 'resolved', isDeleted: false, resolvedAt: { $ne: null } })
+      .select('debtGroup resolvedAt fineractLoanId')
+      .lean();
 
-    if (!current) {
-      current = await this.creditScoreWeightConfigModel.findOne({ key: this.legacyConfigKey }).lean();
-      if (current) {
-        await this.creditScoreWeightConfigModel.updateOne(
-          { _id: current._id },
-          { $set: { isDefault: true, isActive: true, appliedAt: current.appliedAt || new Date() } },
+    if (!resolvedRecords.length) return;
+
+    // Load retention policies by debt_group
+    const policies = await this.delinquencyPolicyModel
+      .find({ is_active: true })
+      .select('debt_group retention_months')
+      .lean();
+    const retentionMap = new Map<number, number | null>();
+    for (const p of policies) {
+      retentionMap.set(p.debt_group, p.retention_months ?? null);
+    }
+
+    const now = new Date();
+    let cleaned = 0;
+    for (const rec of resolvedRecords) {
+      const retentionMonths = retentionMap.get(rec.debtGroup);
+      // null or undefined = vĩnh viễn (permanent) → never soft-delete
+      if (retentionMonths == null) continue;
+
+      const expiresAt = new Date(rec.resolvedAt!);
+      expiresAt.setMonth(expiresAt.getMonth() + retentionMonths);
+      if (now >= expiresAt) {
+        await this.loanDelinquencyModel.updateOne({ _id: rec._id }, { $set: { isDeleted: true, deletedAt: now } });
+        cleaned++;
+        this.logger.log(
+          `[retention-cleanup] Soft-deleted delinquency record for loan #${rec.fineractLoanId} (group ${rec.debtGroup}, resolved ${retentionMonths}m ago)`,
         );
-        current.isDefault = true;
-        current.isActive = true;
       }
     }
 
-    if (!current) {
-      current = await this.creditScoreWeightConfigModel.findOne({}).sort({ updatedAt: -1 }).lean();
-      if (current) {
-        await this.creditScoreWeightConfigModel.updateOne(
-          { _id: current._id },
-          { $set: { isDefault: true, isActive: true, appliedAt: current.appliedAt || new Date() } },
-        );
-        current.isDefault = true;
-        current.isActive = true;
-      }
+    if (cleaned > 0) {
+      this.logger.log(`[retention-cleanup] Soft-deleted ${cleaned} expired delinquency records.`);
     }
+  }
 
-    return current ? this.toConfigItem(current) : null;
+  /** Phân loại nhóm nợ theo số ngày trễ — chuẩn CIC */
+  private classifyDebtGroup(overdueDays: number): number {
+    if (overdueDays >= 180) return 5;
+    if (overdueDays >= 90) return 4;
+    if (overdueDays >= 30) return 3;
+    if (overdueDays >= 10) return 2;
+    return 1;
+  }
+
+  private getDebtGroupLabel(group: number): string {
+    switch (group) {
+      case 1:
+        return 'Nhóm 1 — Nợ đủ tiêu chuẩn (1-9 ngày)';
+      case 2:
+        return 'Nhóm 2 — Nợ cần chú ý (10-29 ngày)';
+      case 3:
+        return 'Nhóm 3 — Nợ dưới tiêu chuẩn (30-89 ngày)';
+      case 4:
+        return 'Nhóm 4 — Nợ nghi ngờ (90-179 ngày)';
+      case 5:
+        return 'Nhóm 5 — Nợ có khả năng mất vốn (≥180 ngày)';
+      default:
+        return `Nhóm ${group}`;
+    }
+  }
+
+  /**
+   * Event 3 — Khoản vay giải ngân: Debt Level và New Credit thay đổi.
+   * Tính lại điểm dựa trên toàn bộ dữ liệu hiện tại (neutral event).
+   */
+  async applyDisbursementEvent(userId: string | Types.ObjectId): Promise<{
+    beforeScore: number;
+    afterScore: number;
+    changeAmount: number;
+  }> {
+    const uid = this.toObjectId(userId);
+    const scoreDoc = await this.ensureCreditScoreForUser(uid);
+    const beforeScore = scoreDoc.score;
+
+    const factors = await this.buildWeightedFactors(uid, {
+      userId: uid,
+      isLatePayment: false,
+      isPrepayment: false,
+      overdueDays: 0,
+    });
+    const weights = await this.getWeightConfig();
+    const afterScore = this.calculateCompositeScore(factors, weights);
+
+    scoreDoc.score = afterScore;
+    scoreDoc.factors = { ...factors };
+    scoreDoc.totalLoans = await this.loanApplicationModel.countDocuments({ userId: uid });
+    scoreDoc.lastUpdated = new Date();
+    await scoreDoc.save();
+
+    await this.creditScoreHistoryModel.create({
+      userId: uid,
+      creditScoreId: scoreDoc._id,
+      beforeScore,
+      afterScore,
+      changeAmount: afterScore - beforeScore,
+      reason: 'system_recalculation',
+      trigger: 'loan_disbursed',
+      factors: { ...factors },
+      note: `Khoản vay mới giải ngân — cập nhật Dư nợ & Tín dụng mới | ${this.buildFactorNote(factors)}`,
+    });
+
+    this.logger.log(
+      `[applyDisbursementEvent] user=${uid.toString()} score ${beforeScore} -> ${afterScore} (${afterScore - beforeScore})`,
+    );
+
+    return { beforeScore, afterScore, changeAmount: afterScore - beforeScore };
+  }
+
+  /**
+   * Lấy trọng số tính điểm từ LoanEvaluationConfig (version cao nhất).
+   * Nếu chưa có config → dùng default weights.
+   */
+  async getWeightConfig(): Promise<CreditScoreWeightConfigValue> {
+    const doc = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+    if (doc?.scoreWeights) {
+      const w = doc.scoreWeights;
+      const total =
+        (w.paymentHistory || 0) + (w.debtLevel || 0) + (w.creditAge || 0) + (w.creditMix || 0) + (w.newCredit || 0);
+      return {
+        paymentHistory: w.paymentHistory || 0,
+        debtLevel: w.debtLevel || 0,
+        creditAge: w.creditAge || 0,
+        creditMix: w.creditMix || 0,
+        newCredit: w.newCredit || 0,
+        total,
+      };
+    }
+    const dw = this.defaultWeights;
+    return { ...dw, total: dw.paymentHistory + dw.debtLevel + dw.creditAge + dw.creditMix + dw.newCredit };
   }
 
   private toObjectId(userId: string | Types.ObjectId): Types.ObjectId {
@@ -532,6 +630,20 @@ export class CreditScoreService {
     } else {
       paymentScore += input.isPrepayment ? 5 : 3;
     }
+
+    // ── Volume Penalty Factor (Thin Credit File Protection) ──
+    // Người dùng có ít giao dịch không thể được 100/100 ngay.
+    // Level 1: 1-4 giao dịch  → W = 0.60 (tối đa 60/100)
+    // Level 2: 5-10 giao dịch → W = 0.80 (tối đa 80/100)
+    // Level 3: >10 giao dịch  → W = 1.00 (toàn bộ 100/100)
+    const totalTransactions = loanDocs.length;
+    let volumePenalty = 1.0;
+    if (totalTransactions <= 4) {
+      volumePenalty = 0.6;
+    } else if (totalTransactions <= 10) {
+      volumePenalty = 0.8;
+    }
+    paymentScore *= volumePenalty;
 
     return {
       paymentHistory: this.clampPercent(paymentScore),
@@ -659,6 +771,7 @@ export class CreditScoreService {
         : 'loan_repayment';
 
     scoreDoc.score = afterScore;
+    scoreDoc.factors = { ...factors };
     if (isLatePayment) {
       scoreDoc.latePayments = (scoreDoc.latePayments || 0) + 1;
     }
@@ -674,6 +787,7 @@ export class CreditScoreService {
       changeAmount: afterScore - beforeScore,
       reason,
       trigger: input.trigger || 'loan_service',
+      factors: { ...factors },
       note: `${
         input.note ||
         (isLatePayment
@@ -697,6 +811,337 @@ export class CreditScoreService {
       reason,
       risk,
       factors,
+    };
+  }
+
+  /**
+   * Tính lại điểm tín dụng cho user dựa trên toàn bộ dữ liệu hiện tại.
+   * Gọi từ mobile app hoặc hệ thống để refresh score.
+   */
+  async recalculateScore(userId: string | Types.ObjectId): Promise<{
+    score: number;
+    factors: CreditFactorScores;
+    risk: CreditRiskClassification;
+  }> {
+    const uid = this.toObjectId(userId);
+    const scoreDoc = await this.ensureCreditScoreForUser(uid);
+    const beforeScore = scoreDoc.score;
+
+    // Build factors from current loan data (neutral event — not late, not prepay)
+    const factors = await this.buildWeightedFactors(uid, {
+      userId: uid,
+      isLatePayment: false,
+      isPrepayment: false,
+      overdueDays: 0,
+    });
+    const weights = await this.getWeightConfig();
+    const afterScore = this.calculateCompositeScore(factors, weights);
+
+    scoreDoc.score = afterScore;
+    scoreDoc.factors = { ...factors };
+    scoreDoc.totalLoans = await this.loanApplicationModel.countDocuments({ userId: uid });
+    scoreDoc.lastUpdated = new Date();
+    await scoreDoc.save();
+
+    if (afterScore !== beforeScore) {
+      await this.creditScoreHistoryModel.create({
+        userId: uid,
+        creditScoreId: scoreDoc._id,
+        beforeScore,
+        afterScore,
+        changeAmount: afterScore - beforeScore,
+        reason: 'system_recalculation',
+        trigger: 'recalculate_api',
+        factors: { ...factors },
+        note: `Tính lại điểm tín dụng | ${this.buildFactorNote(factors)}`,
+      });
+    }
+
+    return { score: afterScore, factors, risk: this.classifyRisk(afterScore) };
+  }
+
+  /**
+   * Chuẩn hóa điểm từ thang 150-750 về thang 0-100 để so sánh với Rule Engine.
+   */
+  private normalizeScore(rawScore: number): number {
+    return Math.round(((rawScore - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // LOAN EVALUATION CONFIG — Rule Engine cấu hình đánh giá khoản vay
+  // ══════════════════════════════════════════════════════════════
+
+  private readonly defaultLoanEvalConfig: LoanEvaluationConfigInput = {
+    autoRejectScore: 40,
+    autoApproveScore: 80,
+    creditGrades: [
+      {
+        grade: 'A',
+        label: 'Rủi ro cực thấp',
+        minScore: 80,
+        maxScore: 100,
+        maxLoanAmount: 100_000_000,
+        baseInterestRate: 12,
+      },
+      {
+        grade: 'B',
+        label: 'Rủi ro trung bình',
+        minScore: 60,
+        maxScore: 79,
+        maxLoanAmount: 50_000_000,
+        baseInterestRate: 15,
+      },
+      { grade: 'C', label: 'Rủi ro cao', minScore: 40, maxScore: 59, maxLoanAmount: 20_000_000, baseInterestRate: 18 },
+    ],
+    scoreWeights: { paymentHistory: 35, debtLevel: 30, creditAge: 15, creditMix: 10, newCredit: 10 },
+  };
+
+  /** Tính SHA-256 hash cho toàn bộ payload config (dùng để verify trên blockchain). */
+  private computeConfigHash(input: LoanEvaluationConfigInput): string {
+    const payload = JSON.stringify({
+      autoRejectScore: input.autoRejectScore,
+      autoApproveScore: input.autoApproveScore,
+      creditGrades: input.creditGrades,
+      scoreWeights: input.scoreWeights,
+    });
+    return createHash('sha256').update(payload).digest('hex');
+  }
+
+  private validateLoanEvalConfig(input: LoanEvaluationConfigInput): void {
+    const { autoRejectScore, autoApproveScore, creditGrades, scoreWeights } = input;
+
+    // Validate thresholds
+    if (!Number.isFinite(autoRejectScore) || autoRejectScore < 0 || autoRejectScore > 100) {
+      throw new BadRequestException('Ngưỡng từ chối tự động phải từ 0 đến 100');
+    }
+    if (!Number.isFinite(autoApproveScore) || autoApproveScore < 0 || autoApproveScore > 100) {
+      throw new BadRequestException('Ngưỡng duyệt tự động phải từ 0 đến 100');
+    }
+    if (autoRejectScore >= autoApproveScore) {
+      throw new BadRequestException('Ngưỡng từ chối phải nhỏ hơn ngưỡng duyệt tự động');
+    }
+
+    // Validate credit grades
+    if (!Array.isArray(creditGrades) || creditGrades.length === 0) {
+      throw new BadRequestException('Phải có ít nhất 1 hạng tín dụng');
+    }
+    const sorted = [...creditGrades].sort((a, b) => b.maxScore - a.maxScore);
+    for (let i = 0; i < sorted.length; i++) {
+      const g = sorted[i];
+      if (g.minScore > g.maxScore) {
+        throw new BadRequestException(`Hạng ${g.grade}: Điểm tối thiểu phải <= tối đa`);
+      }
+      if (g.maxLoanAmount < 0) {
+        throw new BadRequestException(`Hạng ${g.grade}: Hạn mức phải >= 0`);
+      }
+      if (g.baseInterestRate < 0 || g.baseInterestRate > 100) {
+        throw new BadRequestException(`Hạng ${g.grade}: Lãi suất phải từ 0-100%`);
+      }
+      // Check no gaps / overlaps between adjacent grades
+      if (i > 0) {
+        const prev = sorted[i - 1];
+        if (g.maxScore !== prev.minScore - 1) {
+          throw new BadRequestException(
+            `Dải điểm bị hổng hoặc chồng lấn giữa hạng ${prev.grade} (${prev.minScore}-${prev.maxScore}) và ${g.grade} (${g.minScore}-${g.maxScore})`,
+          );
+        }
+      }
+    }
+    // Top grade must reach autoApproveScore, bottom grade must reach autoRejectScore
+    if (sorted[0].maxScore !== 100) {
+      throw new BadRequestException('Hạng cao nhất phải có điểm tối đa = 100');
+    }
+    if (sorted[sorted.length - 1].minScore !== autoRejectScore) {
+      throw new BadRequestException(`Hạng thấp nhất phải bắt đầu từ ngưỡng từ chối (${autoRejectScore})`);
+    }
+
+    // Validate score weights sum = 100
+    if (!scoreWeights) {
+      throw new BadRequestException('Thiếu cấu hình trọng số');
+    }
+    const wSum =
+      (scoreWeights.paymentHistory || 0) +
+      (scoreWeights.debtLevel || 0) +
+      (scoreWeights.creditAge || 0) +
+      (scoreWeights.creditMix || 0) +
+      (scoreWeights.newCredit || 0);
+    if (wSum !== 100) {
+      throw new BadRequestException(`Tổng trọng số phải = 100% (hiện tại: ${wSum}%)`);
+    }
+    for (const [key, val] of Object.entries(scoreWeights)) {
+      if (!Number.isFinite(val) || val < 0 || val > 100) {
+        throw new BadRequestException(`Trọng số ${key} phải từ 0 đến 100`);
+      }
+    }
+  }
+
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    const doc = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+    if (!doc) {
+      return {
+        version: 0,
+        ...this.defaultLoanEvalConfig,
+        configHash: this.computeConfigHash(this.defaultLoanEvalConfig),
+        blockchainTxHash: '',
+      };
+    }
+    return {
+      version: doc.version,
+      autoRejectScore: doc.autoRejectScore,
+      autoApproveScore: doc.autoApproveScore,
+      creditGrades: doc.creditGrades,
+      scoreWeights: doc.scoreWeights,
+      configHash: doc.configHash,
+      blockchainTxHash: doc.blockchainTxHash || '',
+      changedBy: doc.changedBy,
+      changeNote: doc.changeNote,
+      createdAt: (doc as any).createdAt,
+    };
+  }
+
+  async createLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    this.validateLoanEvalConfig(input);
+
+    // Tìm version cao nhất hiện tại
+    const latest = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+    const nextVersion = (latest?.version ?? 0) + 1;
+
+    const configHash = this.computeConfigHash(input);
+    const adminName = await this.resolveAdminName(adminId);
+
+    // INSERT-only: tạo document mới, không bao giờ update document cũ
+    const created = await this.loanEvaluationConfigModel.create({
+      version: nextVersion,
+      autoRejectScore: input.autoRejectScore,
+      autoApproveScore: input.autoApproveScore,
+      creditGrades: input.creditGrades,
+      scoreWeights: input.scoreWeights,
+      configHash,
+      blockchainTxHash: '',
+      changedBy: adminName || adminId,
+      changeNote: input.changeNote || `Cấu hình phiên bản ${nextVersion}`,
+    });
+
+    this.logger.log(
+      `[createLoanEvaluationConfig] v${nextVersion} by admin=${adminId} hash=${configHash.slice(0, 16)}…`,
+    );
+
+    return {
+      version: created.version,
+      autoRejectScore: created.autoRejectScore,
+      autoApproveScore: created.autoApproveScore,
+      creditGrades: created.creditGrades,
+      scoreWeights: created.scoreWeights,
+      configHash: created.configHash,
+      blockchainTxHash: created.blockchainTxHash || '',
+      changedBy: created.changedBy,
+      changeNote: created.changeNote,
+      createdAt: (created as any).createdAt,
+    };
+  }
+
+  async getLoanEvaluationConfigHistory(
+    page = 1,
+    limit = 20,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.loanEvaluationConfigModel.find().sort({ version: -1 }).skip(skip).limit(limit).lean(),
+      this.loanEvaluationConfigModel.countDocuments(),
+    ]);
+
+    // Resolve admin names for records that still store raw ObjectId
+    const resolvedItems = await Promise.all(
+      items.map(async (doc: any) => {
+        let displayName = doc.changedBy ?? '';
+        // If changedBy looks like a MongoDB ObjectId (24 hex chars), resolve to name
+        if (displayName && /^[a-f0-9]{24}$/i.test(displayName)) {
+          displayName = await this.resolveAdminName(displayName);
+        }
+        return {
+          _id: doc._id.toString(),
+          version: doc.version ?? 0,
+          autoRejectScore: doc.autoRejectScore ?? doc.autoRejectThreshold ?? null,
+          autoApproveScore: doc.autoApproveScore ?? doc.autoApprovalScore ?? doc.autoApproveThreshold ?? null,
+          creditGrades: doc.creditGrades ?? [],
+          scoreWeights: doc.scoreWeights ?? null,
+          configHash: doc.configHash ?? '',
+          blockchainTxHash: doc.blockchainTxHash || '',
+          changedBy: displayName,
+          changeNote: doc.changeNote ?? (doc.key ? `Legacy config (key=${doc.key})` : ''),
+          createdAt: doc.createdAt,
+        };
+      }),
+    );
+
+    return {
+      items: resolvedItems,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  /**
+   * Đánh giá khoản vay dựa trên điểm tín dụng và cấu hình Rule Engine hiện tại.
+   * Trả về: hạng tín dụng, hạn mức, lãi suất, trạng thái tự động, version cấu hình.
+   */
+  async evaluateLoanByScore(creditScore: number): Promise<{
+    decision: 'auto_approved' | 'pending_review' | 'auto_rejected';
+    grade?: string;
+    gradeLabel?: string;
+    maxLoanAmount: number;
+    baseInterestRate: number;
+    creditScore: number;
+    normalizedScore: number;
+    configVersion: number;
+  }> {
+    const config = await this.getLoanEvaluationConfig();
+    // Rule Engine operates on 0-100 scale; credit scores are 150-750
+    const norm = this.normalizeScore(creditScore);
+
+    // Auto-reject
+    if (norm < config.autoRejectScore) {
+      return {
+        decision: 'auto_rejected',
+        maxLoanAmount: 0,
+        baseInterestRate: 0,
+        creditScore,
+        normalizedScore: norm,
+        configVersion: config.version,
+      };
+    }
+
+    // Tìm grade phù hợp
+    const sorted = [...config.creditGrades].sort((a, b) => b.maxScore - a.maxScore);
+    const matched = sorted.find(g => norm >= g.minScore && norm <= g.maxScore);
+
+    const decision = norm >= config.autoApproveScore ? 'auto_approved' : 'pending_review';
+
+    if (matched) {
+      return {
+        decision,
+        grade: matched.grade,
+        gradeLabel: matched.label,
+        maxLoanAmount: matched.maxLoanAmount,
+        baseInterestRate: matched.baseInterestRate,
+        creditScore,
+        normalizedScore: norm,
+        configVersion: config.version,
+      };
+    }
+
+    // Fallback — score nằm ngoài tất cả grades (shouldn't happen with valid config)
+    return {
+      decision: 'pending_review',
+      maxLoanAmount: 0,
+      baseInterestRate: 0,
+      creditScore,
+      normalizedScore: norm,
+      configVersion: config.version,
     };
   }
 }

@@ -293,6 +293,19 @@ export const useSmartOTP = () => {
       } catch (err: any) {
         console.error("[useSmartOTP] Verify error:", err);
         const message = err.response?.data?.message || err.message;
+
+        // Auto-recovery: if signature/key error, clear binding for fresh start
+        if (
+          message?.includes("Khóa bảo mật không hợp lệ") ||
+          message?.includes("Private key not found")
+        ) {
+          console.warn(
+            "[useSmartOTP] Key integrity issue detected, clearing binding",
+          );
+          setIsRegistered(false);
+          setOtp("");
+        }
+
         setError(message);
         return { valid: false, message };
       } finally {

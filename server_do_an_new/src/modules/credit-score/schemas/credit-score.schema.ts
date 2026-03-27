@@ -17,6 +17,25 @@ export class CreditScore extends Document {
 
   @Prop({ type: Date, required: true, default: Date.now, index: true })
   lastUpdated: Date;
+
+  /** 5 factor scores (0-100 each), populated on every recalculation */
+  @Prop({
+    type: {
+      paymentHistory: { type: Number, default: 0 },
+      debtLevel: { type: Number, default: 0 },
+      creditAge: { type: Number, default: 0 },
+      creditMix: { type: Number, default: 0 },
+      newCredit: { type: Number, default: 0 },
+    },
+    default: { paymentHistory: 0, debtLevel: 0, creditAge: 0, creditMix: 0, newCredit: 0 },
+  })
+  factors: {
+    paymentHistory: number;
+    debtLevel: number;
+    creditAge: number;
+    creditMix: number;
+    newCredit: number;
+  };
 }
 
 export const CreditScoreSchema = SchemaFactory.createForClass(CreditScore);

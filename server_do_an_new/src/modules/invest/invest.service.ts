@@ -11,6 +11,7 @@ import { MatchingService } from './matching.service';
 import { FineractFDService } from '../fineract/services/fineract-fd.service';
 import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
+import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
 
 export interface ProgressCallback {
   (message: string, step: number): void;
@@ -34,6 +35,7 @@ export class InvestService {
   constructor(
     @InjectModel(InvestmentOrder.name) private readonly investmentOrderModel: Model<InvestmentOrder>,
     @InjectModel(LoanApplication.name) private readonly loanModel: Model<LoanApplication>,
+    @InjectModel(LoanDelinquency.name) private readonly loanDelinquencyModel: Model<LoanDelinquency>,
     @InjectConnection() private readonly connection: Connection,
     private readonly matchingService: MatchingService,
     private readonly configService: ConfigService,
@@ -198,20 +200,22 @@ export class InvestService {
   //  AVAILABLE LOANS (cho lender duyệt)
   // ═══════════════════════════════════════════════════════
 
-  async getAvailableLoans(query: {
-    page?: number;
-    pageSize?: number;
-    sortBy?: string;
-    sortOrder?: string;
-    minRate?: number;
-    maxRate?: number;
-    minPeriod?: number;
-    maxPeriod?: number;
-    minCapital?: number;
-    maxCapital?: number;
-    search?: string;
-    riskLevel?: string; // LOW | MEDIUM | HIGH | VERY_HIGH
-  } = {}) {
+  async getAvailableLoans(
+    query: {
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      sortOrder?: string;
+      minRate?: number;
+      maxRate?: number;
+      minPeriod?: number;
+      maxPeriod?: number;
+      minCapital?: number;
+      maxCapital?: number;
+      search?: string;
+      riskLevel?: string; // LOW | MEDIUM | HIGH | VERY_HIGH
+    } = {},
+  ) {
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
@@ -260,7 +264,9 @@ export class InvestService {
       this.loanModel.countDocuments(filters),
       this.loanModel
         .find(filters)
-        .select('-documents -repaymentHistory -transactions -repaymentSchedule -charges -collateral -guarantors -delinquencyActions -delinquencyTags -installmentLevelDelinquency -delinquencyTag')
+        .select(
+          '-documents -repaymentHistory -transactions -repaymentSchedule -charges -collateral -guarantors -delinquencyActions -delinquencyTags -installmentLevelDelinquency -delinquencyTag',
+        )
         .sort(sort)
         .skip(skip)
         .limit(pageSize)
@@ -269,6 +275,32 @@ export class InvestService {
 
     const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
 
+    // ── Enrich: cảnh báo nợ xấu cho nhà đầu tư (Nhóm 2+) ──
+    const borrowerIds = [...new Set(loans.map(l => l.userId?.toString()).filter(Boolean))];
+    const delinquencyDocs = borrowerIds.length
+      ? await this.loanDelinquencyModel
+          .find({
+            borrowerId: { $in: borrowerIds.map(id => new Types.ObjectId(id)) },
+            status: { $in: ['overdue', 'defaulted'] },
+            debtGroup: { $gte: 2 },
+            isDeleted: { $ne: true },
+          })
+          .select('borrowerId debtGroup overdueAmount delinquentDays')
+          .lean()
+      : [];
+    const delinquencyMap = new Map<string, { debtGroup: number; overdueAmount: number; delinquentDays: number }>();
+    for (const d of delinquencyDocs) {
+      const key = d.borrowerId.toString();
+      const existing = delinquencyMap.get(key);
+      if (!existing || d.debtGroup > existing.debtGroup) {
+        delinquencyMap.set(key, {
+          debtGroup: d.debtGroup,
+          overdueAmount: d.overdueAmount,
+          delinquentDays: d.delinquentDays,
+        });
+      }
+    }
+
     // ── Resolve FD product interest rates ──
     // Build map: loanProductId → FD annual interest rate
     const fdRateMap = await this.buildFDRateMap(loans);
@@ -276,6 +308,19 @@ export class InvestService {
     // Enrich with investment progress (like HD-AMC)
     const safeLoans = loans.map(loan => {
       const obj = loan.toObject();
+
+      // ── Cảnh báo nợ xấu cho nhà đầu tư ──
+      const borrowerId = (obj as any).userId?.toString();
+      const delinquency = borrowerId ? delinquencyMap.get(borrowerId) : null;
+      if (delinquency) {
+        (obj as any).borrowerDelinquencyWarning = {
+          debtGroup: delinquency.debtGroup,
+          overdueAmount: delinquency.overdueAmount,
+          delinquentDays: delinquency.delinquentDays,
+          message: `Cảnh báo: Người vay đang có khoản nợ quá hạn ${delinquency.delinquentDays} ngày (Nhóm nợ ${delinquency.debtGroup}). Dư nợ quá hạn: ${delinquency.overdueAmount?.toLocaleString('vi-VN')} đ.`,
+        };
+      }
+
       delete (obj as any).userId;
       delete (obj as any).disbursementWalletId;
       delete (obj as any).fineractLoanId;
@@ -285,8 +330,8 @@ export class InvestService {
       const loanProductId = (obj as any).productId;
       const fdRate = fdRateMap.get(loanProductId);
       if (fdRate !== undefined) {
-        (obj as any).fdInterestRate = fdRate;                    // % năm (e.g. 18)
-        (obj as any).fdMonthlyRate = +(fdRate / 12).toFixed(2);  // % tháng (e.g. 1.5)
+        (obj as any).fdInterestRate = fdRate; // % năm (e.g. 18)
+        (obj as any).fdMonthlyRate = +(fdRate / 12).toFixed(2); // % tháng (e.g. 1.5)
       }
 
       // Compute entirelyPay nếu chưa có (backward compat cho loans synced từ Fineract)
@@ -313,9 +358,8 @@ export class InvestService {
       }
 
       // Compute totalNotes nếu chưa có (backward compat)
-      const computedTotalNotes = (obj as any).totalNotes > 0
-        ? (obj as any).totalNotes
-        : Math.ceil((obj as any).capital / baseUnitPrice);
+      const computedTotalNotes =
+        (obj as any).totalNotes > 0 ? (obj as any).totalNotes : Math.ceil((obj as any).capital / baseUnitPrice);
       (obj as any).totalNotes = computedTotalNotes;
 
       // Ensure nodeMatch + investedNotes fields
@@ -327,9 +371,7 @@ export class InvestService {
       (obj as any).nodeMatch = nodeMatch;
       (obj as any).investedNotes = investedNotes;
       (obj as any).availableNotes = availableNotes;
-      (obj as any).investedPercent = computedTotalNotes > 0
-        ? Math.round((totalClaimed / computedTotalNotes) * 100)
-        : 0;
+      (obj as any).investedPercent = computedTotalNotes > 0 ? Math.round((totalClaimed / computedTotalNotes) * 100) : 0;
 
       return obj;
     });
@@ -383,7 +425,7 @@ export class InvestService {
       }
 
       // 3. Get unique loan product IDs
-      const uniqueProductIds = [...new Set(loans.map(l => (l as any).productId as number).filter(Boolean))];
+      const uniqueProductIds = [...new Set(loans.map(l => l.productId as number).filter(Boolean))];
 
       // 4. For each loan product, get shortName from Fineract and match
       for (const pid of uniqueProductIds) {
@@ -409,13 +451,16 @@ export class InvestService {
   //  INVESTMENT ORDER LIST / DETAIL
   // ═══════════════════════════════════════════════════════
 
-  async getOrdersByLender(lenderId: string, query: {
-    page?: number;
-    pageSize?: number;
-    sortBy?: string;
-    sortOrder?: string;
-    status?: string;
-  } = {}) {
+  async getOrdersByLender(
+    lenderId: string,
+    query: {
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      sortOrder?: string;
+      status?: string;
+    } = {},
+  ) {
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(100, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;

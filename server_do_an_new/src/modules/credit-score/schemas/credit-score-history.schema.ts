@@ -51,6 +51,24 @@ export class CreditScoreHistory extends Document {
   @Prop({ type: String })
   note?: string;
 
+  /** 5 factor scores at the time of this event */
+  @Prop({
+    type: {
+      paymentHistory: { type: Number, default: 0 },
+      debtLevel: { type: Number, default: 0 },
+      creditAge: { type: Number, default: 0 },
+      creditMix: { type: Number, default: 0 },
+      newCredit: { type: Number, default: 0 },
+    },
+  })
+  factors?: {
+    paymentHistory: number;
+    debtLevel: number;
+    creditAge: number;
+    creditMix: number;
+    newCredit: number;
+  };
+
   createdAt: Date;
 }
 

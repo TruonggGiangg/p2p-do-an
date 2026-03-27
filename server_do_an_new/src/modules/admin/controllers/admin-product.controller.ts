@@ -10,6 +10,7 @@ import { Action } from '../../casl/actions.enum';
 import { CreateDocumentTypeDto } from '../dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from '../dto/update-document-type.dto';
 import { SetProductDocumentTypesDto } from '../dto/set-product-document-types.dto';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -17,93 +18,6 @@ import { SetProductDocumentTypesDto } from '../dto/set-product-document-types.dt
 @UseGuards(JwtAuthGuard, AdminGuard, PoliciesGuard)
 export class AdminProductController {
   constructor(private readonly adminService: AdminService) {}
-
-  @Get('credit-score/weights')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Lấy cấu hình trọng số chấm điểm tín dụng' })
-  @ApiResponse({ status: 200 })
-  async getCreditScoreWeights() {
-    const data = await this.adminService.getCreditScoreWeightConfig();
-    return data;
-  }
-
-  @Put('credit-score/weights')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Cập nhật cấu hình trọng số chấm điểm tín dụng' })
-  @ApiResponse({ status: 200 })
-  async updateCreditScoreWeights(
-    @Body()
-    body: {
-      paymentHistory: number;
-      debtLevel: number;
-      creditAge: number;
-      creditMix: number;
-      newCredit: number;
-    },
-  ) {
-    const data = await this.adminService.updateCreditScoreWeightConfig(body);
-    return data;
-  }
-
-  @Get('credit-score/weight-configs')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Lấy danh sách cấu hình trọng số điểm tín dụng' })
-  @ApiResponse({ status: 200 })
-  async listCreditScoreWeightConfigs() {
-    const data = await this.adminService.listCreditScoreWeightConfigs();
-    return data;
-  }
-
-  @Post('credit-score/weight-configs')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Tạo cấu hình trọng số điểm tín dụng' })
-  @ApiResponse({ status: 201 })
-  async createCreditScoreWeightConfig(
-    @Body()
-    body: {
-      name: string;
-      description?: string;
-      paymentHistory: number;
-      debtLevel: number;
-      creditAge: number;
-      creditMix: number;
-      newCredit: number;
-    },
-  ) {
-    const data = await this.adminService.createCreditScoreWeightConfig(body);
-    return data;
-  }
-
-  @Put('credit-score/weight-configs/:id')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Cập nhật cấu hình trọng số điểm tín dụng theo id' })
-  @ApiResponse({ status: 200 })
-  async updateCreditScoreWeightConfigById(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string;
-      description?: string;
-      isActive?: boolean;
-      paymentHistory: number;
-      debtLevel: number;
-      creditAge: number;
-      creditMix: number;
-      newCredit: number;
-    },
-  ) {
-    const data = await this.adminService.updateCreditScoreWeightConfigById(id, body);
-    return data;
-  }
-
-  @Post('credit-score/weight-configs/:id/apply')
-  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
-  @ApiOperation({ summary: 'Áp dụng cấu hình trọng số điểm tín dụng làm mặc định' })
-  @ApiResponse({ status: 200 })
-  async applyCreditScoreWeightConfig(@Param('id') id: string) {
-    const data = await this.adminService.applyCreditScoreWeightConfig(id);
-    return data;
-  }
 
   @Get('loan-products')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
@@ -260,5 +174,60 @@ export class AdminProductController {
   async syncCompareFD() {
     const diff = await this.adminService.compareAndSyncFD(true);
     return diff;
+  }
+
+  // ── Loan Evaluation Config (Rule Engine) ────────────────────────────────────
+
+  @Get('loan-evaluation-config')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
+  @ApiOperation({ summary: 'Lấy cấu hình đánh giá khoản vay hiện tại (version cao nhất)' })
+  @ApiResponse({ status: 200 })
+  async getLoanEvaluationConfig() {
+    const data = await this.adminService.getLoanEvaluationConfig();
+    return { statusCode: 200, message: 'OK', data };
+  }
+
+  @Post('loan-evaluation-config')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Tạo phiên bản mới cấu hình đánh giá khoản vay (INSERT-only, không UPDATE)' })
+  @ApiResponse({ status: 201 })
+  async createLoanEvaluationConfig(
+    @CurrentUser('id') adminId: string,
+    @Body()
+    body: {
+      autoRejectScore: number;
+      autoApproveScore: number;
+      creditGrades: {
+        grade: string;
+        label: string;
+        minScore: number;
+        maxScore: number;
+        maxLoanAmount: number;
+        baseInterestRate: number;
+      }[];
+      scoreWeights: {
+        paymentHistory: number;
+        debtLevel: number;
+        creditAge: number;
+        creditMix: number;
+        newCredit: number;
+      };
+      changeNote?: string;
+    },
+  ) {
+    const data = await this.adminService.createLoanEvaluationConfig(body, adminId);
+    return { statusCode: 201, message: 'Tạo phiên bản cấu hình thành công', data };
+  }
+
+  @Get('loan-evaluation-config/history')
+  @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
+  @ApiOperation({ summary: 'Lịch sử phiên bản cấu hình đánh giá khoản vay' })
+  @ApiResponse({ status: 200 })
+  async getLoanEvaluationConfigHistory(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const data = await this.adminService.getLoanEvaluationConfigHistory(
+      page ? parseInt(page, 10) : undefined,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+    return { statusCode: 200, message: 'OK', data };
   }
 }

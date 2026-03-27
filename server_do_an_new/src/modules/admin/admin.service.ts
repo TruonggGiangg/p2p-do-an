@@ -6,6 +6,7 @@ import {
   ConflictException,
   Inject,
   forwardRef,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -36,11 +37,10 @@ import { ProductDocumentTypeItemDto } from './dto/set-product-document-types.dto
 import { RegisterDto } from 'src/modules/auth/dto/register.dto';
 import { UpdateStaffDto } from 'src/modules/admin/dto/update-staff.dto';
 import {
-  CreateCreditScoreWeightConfigInput,
-  CreditScoreWeightConfigItem,
-  CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
-  UpdateCreditScoreWeightConfigInput,
+  LoanEvaluationConfigInput,
+  LoanEvaluationConfigValue,
+  LoanEvaluationConfigHistoryItem,
 } from '../credit-score/credit-score.service';
 import { AdminProductService } from './services/admin-product.service';
 import { AdminCustomerService } from './services/admin-customer.service';
@@ -80,7 +80,7 @@ function parsePeriodDueDate(due: any): string | null {
 const SNAPSHOT_SCOPE = 'default';
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnModuleInit {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(
@@ -108,27 +108,56 @@ export class AdminService {
     private readonly loanService: AdminLoanService,
   ) {}
 
+  /**
+   * One-time migration: Fix delinquency_policy debt_group numbers to match CIC standard.
+   * The admin may have created policies with old mapDebtGroup() numbers (off by 1).
+   * This migration extracts the correct group number from debt_group_name and updates debt_group.
+   */
+  async onModuleInit() {
+    try {
+      const policies = await this.delinquencyPolicyModel.find({}).lean().exec();
+      let fixedCount = 0;
+      for (const p of policies) {
+        const nameMatch = p.debt_group_name?.match(/Nhóm\s+(\d+)/i);
+        if (nameMatch) {
+          const correctGroup = parseInt(nameMatch[1], 10);
+          if (p.debt_group !== correctGroup) {
+            await this.delinquencyPolicyModel.updateOne({ _id: p._id }, { $set: { debt_group: correctGroup } });
+            fixedCount++;
+            this.logger.warn(
+              `[PolicyMigration] Fixed "${p.debt_group_name}": debt_group ${p.debt_group} -> ${correctGroup}`,
+            );
+          }
+        }
+      }
+      if (fixedCount > 0) {
+        this.logger.log(`[PolicyMigration] Fixed ${fixedCount}/${policies.length} delinquency policies`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[PolicyMigration] Non-critical migration error: ${err.message}`);
+    }
+  }
+
   // FACADE DELEGATES â€” Products
   async getCreditScoreWeightConfig(): Promise<CreditScoreWeightConfigValue> {
     return this.staffService.getCreditScoreWeightConfig();
   }
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
-    return this.staffService.updateCreditScoreWeightConfig(input);
+
+  // FACADE DELEGATES — Loan Evaluation Config
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    return this.staffService.getLoanEvaluationConfig();
   }
-  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    return this.staffService.listCreditScoreWeightConfigs();
+  async createLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    return this.staffService.createLoanEvaluationConfig(input, adminId);
   }
-  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.createCreditScoreWeightConfig(input);
-  }
-  async updateCreditScoreWeightConfigById(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.updateCreditScoreWeightConfigById(id, input);
-  }
-  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    return this.staffService.applyCreditScoreWeightConfig(id);
+  async getLoanEvaluationConfigHistory(
+    page?: number,
+    limit?: number,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    return this.staffService.getLoanEvaluationConfigHistory(page, limit);
   }
 
   private parseAnyDate(value: any): Date | null {
@@ -144,10 +173,11 @@ export class AdminService {
   }
 
   private mapDebtGroup(delinquentDays: number, overdueAmount: number): number {
-    if (overdueAmount <= 0 || delinquentDays <= 0) return 1;
-    if (delinquentDays <= 10) return 2;
-    if (delinquentDays <= 90) return 3;
-    if (delinquentDays <= 180) return 4;
+    if (overdueAmount <= 0 || delinquentDays <= 0) return 0;
+    if (delinquentDays < 10) return 1;
+    if (delinquentDays < 30) return 2;
+    if (delinquentDays < 90) return 3;
+    if (delinquentDays < 180) return 4;
     return 5;
   }
 
@@ -168,10 +198,10 @@ export class AdminService {
 
   private mapCollectionStage(delinquentDays: number, overdueAmount: number): LoanCollectionStage {
     if (overdueAmount <= 0 || delinquentDays <= 0) return 'none';
-    if (delinquentDays <= 7) return 'reminder';
-    if (delinquentDays <= 30) return 'warning';
-    if (delinquentDays <= 90) return 'collection';
-    return 'legal';
+    if (delinquentDays < 10) return 'reminder'; // Nhóm 1
+    if (delinquentDays < 30) return 'warning'; // Nhóm 2
+    if (delinquentDays < 90) return 'collection'; // Nhóm 3
+    return 'legal'; // Nhóm 4-5
   }
 
   private async syncLoanDelinquencySnapshot(app: LoanApplication, fl: any, dData: any): Promise<void> {
@@ -211,6 +241,12 @@ export class AdminService {
             status,
             collectionStage: this.mapCollectionStage(delinquentDays, overdueAmount),
             lastSyncedAt: app.lastSyncedAt ?? now,
+            // Nếu đang overdue/defaulted → reactivate (xóa soft-delete nếu có)
+            ...(status === 'overdue' || status === 'defaulted'
+              ? { isDeleted: false, deletedAt: null, resolvedAt: null }
+              : {}),
+            // Nếu resolved → ghi resolvedAt (chỉ lần đầu)
+            ...(status === 'resolved' && !existing?.resolvedAt ? { resolvedAt: now } : {}),
           },
         },
         { upsert: true, new: true },
@@ -413,7 +449,6 @@ export class AdminService {
     return this.staffService.approveWaiveInterest(requestId, adminId, adminNote);
   }
 
-
   // ════════════════════════════════════════════════════════════════════════════════
   // FACADE DELEGATES — Loans & Delinquency
   // ════════════════════════════════════════════════════════════════════════════════
@@ -443,7 +478,6 @@ export class AdminService {
   async getDelinquencyPolicies(filters?: any) {
     return this.loanService.getDelinquencyPolicies(filters);
   }
-
   async getAllPendingLoans() {
     return this.loanService.getAllPendingLoans();
   }
@@ -510,5 +544,4 @@ export class AdminService {
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
     return this.loanService.getLoanDocumentStream(fineractLoanId, documentId);
   }
-
 }

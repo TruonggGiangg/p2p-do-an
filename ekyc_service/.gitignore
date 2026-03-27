@@ -1,1 +1,8 @@
 ekyc/models/weights/vggface2_weights.pt
+
+# python
+__pycache__/
+*.pyc
+
+# AI model
+ekyc_service/ekyc/models/weights/

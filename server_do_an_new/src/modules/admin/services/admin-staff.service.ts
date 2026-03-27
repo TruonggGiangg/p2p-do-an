@@ -17,12 +17,11 @@ import { Role } from '../../rbac/schemas/role.schema';
 import { RegisterDto } from '../../auth/dto/register.dto';
 import { UpdateStaffDto } from '../dto/update-staff.dto';
 import {
-  CreateCreditScoreWeightConfigInput,
   CreditScoreService,
-  CreditScoreWeightConfigItem,
-  CreditScoreWeightConfigInput,
   CreditScoreWeightConfigValue,
-  UpdateCreditScoreWeightConfigInput,
+  LoanEvaluationConfigInput,
+  LoanEvaluationConfigValue,
+  LoanEvaluationConfigHistoryItem,
 } from '../../credit-score/credit-score.service';
 
 @Injectable()
@@ -47,27 +46,23 @@ export class AdminStaffService {
     return this.creditScoreService.getWeightConfig();
   }
 
-  async updateCreditScoreWeightConfig(input: CreditScoreWeightConfigInput) {
-    return this.creditScoreService.upsertWeightConfig(input);
+  // ── Loan Evaluation Config ───────────────────────────────────────────────────────
+  async getLoanEvaluationConfig(): Promise<LoanEvaluationConfigValue> {
+    return this.creditScoreService.getLoanEvaluationConfig();
   }
 
-  async listCreditScoreWeightConfigs(): Promise<CreditScoreWeightConfigItem[]> {
-    return this.creditScoreService.listWeightConfigs();
+  async createLoanEvaluationConfig(
+    input: LoanEvaluationConfigInput,
+    adminId?: string,
+  ): Promise<LoanEvaluationConfigValue> {
+    return this.creditScoreService.createLoanEvaluationConfig(input, adminId);
   }
 
-  async createCreditScoreWeightConfig(input: CreateCreditScoreWeightConfigInput): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.createWeightConfig(input);
-  }
-
-  async updateCreditScoreWeightConfigById(
-    id: string,
-    input: UpdateCreditScoreWeightConfigInput,
-  ): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.updateWeightConfig(id, input);
-  }
-
-  async applyCreditScoreWeightConfig(id: string): Promise<CreditScoreWeightConfigItem> {
-    return this.creditScoreService.applyWeightConfig(id);
+  async getLoanEvaluationConfigHistory(
+    page?: number,
+    limit?: number,
+  ): Promise<{ items: LoanEvaluationConfigHistoryItem[]; total: number; page: number; limit: number }> {
+    return this.creditScoreService.getLoanEvaluationConfigHistory(page, limit);
   }
 
   // ── Staff CRUD ────────────────────────────────────────────────────────────

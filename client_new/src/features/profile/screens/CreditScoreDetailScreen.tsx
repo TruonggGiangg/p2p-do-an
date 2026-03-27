@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -14,11 +14,19 @@ import { BinanceHeader, CommonCard } from '../../../components';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { authAPI } from '../../auth/api/auth.api';
-import type { UserCreditScoreHistoryItem } from '../../../types/auth.types';
+import type { UserCreditScoreHistoryItem, CreditScoreFactors } from '../../../types/auth.types';
 
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
 const PAGE_LIMIT = 15;
+
+const FACTOR_META: { key: keyof CreditScoreFactors; label: string; icon: string; color: string }[] = [
+    { key: 'paymentHistory', label: 'Lịch sử thanh toán', icon: 'calendar-check', color: '#18A058' },
+    { key: 'debtLevel', label: 'Dư nợ tín dụng', icon: 'cash-minus', color: '#2F80ED' },
+    { key: 'creditAge', label: 'Tuổi tín dụng', icon: 'clock-outline', color: '#9B59B6' },
+    { key: 'creditMix', label: 'Đa dạng tín dụng', icon: 'chart-pie', color: '#F2994A' },
+    { key: 'newCredit', label: 'Tín dụng mới', icon: 'plus-circle-outline', color: '#EB5757' },
+];
 
 const creditScoreBand = (score: number) => {
     if (score >= 680) return { label: 'Rủi ro rất thấp', color: '#18A058' };
@@ -34,6 +42,8 @@ const formatHistoryReason = (reason?: string) => {
             return 'Khởi tạo tài khoản';
         case 'loan_repayment':
             return 'Trả nợ đúng hạn';
+        case 'loan_prepayment':
+            return 'Tất toán trước hạn';
         case 'late_payment':
             return 'Chậm thanh toán';
         case 'manual_adjustment':
@@ -56,7 +66,7 @@ const formatDateTime = (value?: string) => {
 };
 
 export default function CreditScoreDetailScreen() {
-    const { user } = useAuth();
+    const { user, refreshUser } = useAuth();
     const { theme } = useTheme();
     const c = theme.colors;
 
@@ -66,6 +76,7 @@ export default function CreditScoreDetailScreen() {
     const [items, setItems] = useState<UserCreditScoreHistoryItem[]>([]);
     const [page, setPage] = useState(1);
     const [hasNextPage, setHasNextPage] = useState(true);
+    const [factors, setFactors] = useState<CreditScoreFactors | null>(null);
 
     const loadingMoreRef = useRef(false);
 
@@ -90,6 +101,8 @@ export default function CreditScoreDetailScreen() {
             let active = true;
             (async () => {
                 setLoading(true);
+                // Refresh user to get latest credit score
+                try { await refreshUser(); } catch { }
                 await fetchHistory(1, false);
                 if (active) setLoading(false);
             })();
@@ -97,14 +110,22 @@ export default function CreditScoreDetailScreen() {
             return () => {
                 active = false;
             };
-        }, [fetchHistory]),
+        }, [fetchHistory, refreshUser]),
     );
+
+    // Keep factors in sync with user credit score
+    useEffect(() => {
+        if (user?.creditScore?.factors) {
+            setFactors(user.creditScore.factors);
+        }
+    }, [user?.creditScore?.factors]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
+        try { await refreshUser(); } catch { }
         await fetchHistory(1, false);
         setRefreshing(false);
-    }, [fetchHistory]);
+    }, [fetchHistory, refreshUser]);
 
     const onLoadMore = useCallback(async () => {
         if (loadingMoreRef.current || !hasNextPage || loading || refreshing) return;
@@ -118,6 +139,27 @@ export default function CreditScoreDetailScreen() {
             loadingMoreRef.current = false;
         }
     }, [fetchHistory, hasNextPage, loading, page, refreshing]);
+
+    const renderFactorBar = (meta: typeof FACTOR_META[0], value: number) => (
+        <View key={meta.key} style={styles.factorRow}>
+            <View style={styles.factorLabelRow}>
+                <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
+                <Text style={[styles.factorLabel, { color: c.textPrimary }]}>{meta.label}</Text>
+                <Text style={[styles.factorValue, { color: meta.color }]}>{Math.round(value)}/100</Text>
+            </View>
+            <View style={[styles.factorTrack, { backgroundColor: c.border + '40' }]}>
+                <View
+                    style={[
+                        styles.factorFill,
+                        {
+                            width: `${Math.max(Math.min(value, 100), 2)}%`,
+                            backgroundColor: meta.color,
+                        },
+                    ]}
+                />
+            </View>
+        </View>
+    );
 
     const renderHistoryItem = ({ item, index }: { item: UserCreditScoreHistoryItem; index: number }) => {
         const change = Number(item?.changeAmount || 0);
@@ -140,9 +182,27 @@ export default function CreditScoreDetailScreen() {
                     <Text style={[styles.historyDate, { color: c.textMuted }]}>
                         {formatDateTime(item.createdAt)}
                     </Text>
+                    {item.factors && (
+                        <View style={styles.historyFactorsRow}>
+                            {FACTOR_META.map(m => (
+                                <View key={m.key} style={[styles.historyFactorPill, { backgroundColor: m.color + '18' }]}>
+                                    <Text style={[styles.historyFactorText, { color: m.color }]}>
+                                        {m.label.substring(0, 2)}: {Math.round((item.factors as any)[m.key])}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+                    {item.note ? (
+                        <Text style={[styles.historyNote, { color: c.textMuted }]} numberOfLines={2}>
+                            {item.note}
+                        </Text>
+                    ) : null}
                 </View>
                 <View style={styles.historyRight}>
-                    <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item.afterScore ?? '--'}</Text>
+                    <Text style={[styles.historyScoreRange, { color: c.textMuted }]}>
+                        {item.beforeScore ?? '--'} → {item.afterScore ?? '--'}
+                    </Text>
                     <Text style={[styles.historyDelta, { color: changeColor }]}>
                         {isUp ? `+${change}` : `${change}`}
                     </Text>
@@ -166,11 +226,13 @@ export default function CreditScoreDetailScreen() {
                 contentContainerStyle={styles.contentContainer}
                 ListHeaderComponent={
                     <>
+                        {/* ── Hero Score Card ── */}
                         <CommonCard
                             style={[
                                 styles.heroCard,
                                 {
-                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : '#FFF8E7',
+                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : c.surface,
+                                    borderColor: c.border + '40',
                                 },
                             ]}
                         >
@@ -193,6 +255,11 @@ export default function CreditScoreDetailScreen() {
                                 />
                             </View>
 
+                            <View style={styles.scaleLabels}>
+                                <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MIN}</Text>
+                                <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MAX}</Text>
+                            </View>
+
                             <View style={styles.metaRow}>
                                 <View style={styles.metaItem}>
                                     <Text style={[styles.metaLabel, { color: c.textMuted }]}>Tổng khoản vay</Text>
@@ -209,6 +276,37 @@ export default function CreditScoreDetailScreen() {
                                     </Text>
                                 </View>
                             </View>
+                        </CommonCard>
+
+                        {/* ── 5-Factor Breakdown Card ── */}
+                        <CommonCard
+                            style={[
+                                styles.factorCard,
+                                {
+                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : c.surface,
+                                    borderColor: c.border + '40',
+                                },
+                            ]}
+                        >
+                            <View style={styles.factorHeader}>
+                                <View>
+                                    <Text style={[styles.factorTitle, { color: c.textPrimary }]}>5 Yếu tố tín dụng</Text>
+                                    <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm · Cập nhật theo sự kiện</Text>
+                                </View>
+                            </View>
+
+                            {factors ? (
+                                <View style={styles.factorsContainer}>
+                                    {FACTOR_META.map(m => renderFactorBar(m, (factors as any)[m.key] ?? 0))}
+                                </View>
+                            ) : (
+                                <View style={styles.noFactors}>
+                                    <MaterialCommunityIcons name="chart-bar" size={24} color={c.textMuted} />
+                                    <Text style={[styles.noFactorsText, { color: c.textMuted }]}>
+                                        Đang tải phân tích 5 yếu tố...
+                                    </Text>
+                                </View>
+                            )}
                         </CommonCard>
 
                         <View style={styles.historyHeader}>
@@ -260,16 +358,16 @@ const styles = StyleSheet.create({
         borderRadius: 18,
         padding: 20,
         borderWidth: 1,
-        borderColor: 'rgba(194,157,70,0.25)',
-        marginBottom: 16,
+        borderColor: 'transparent',
+        marginBottom: 12,
     },
     heroCaption: {
         fontSize: 13,
         fontFamily: 'Poppins_500Medium',
     },
     heroScore: {
-        fontSize: 64,
-        lineHeight: 72,
+        fontSize: 48,
+        lineHeight: 56,
         fontFamily: 'Poppins_700Bold',
         marginTop: 4,
     },
@@ -294,6 +392,15 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: 999,
     },
+    scaleLabels: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 4,
+    },
+    scaleText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_400Regular',
+    },
     metaRow: {
         marginTop: 16,
         flexDirection: 'row',
@@ -310,6 +417,69 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: 'Poppins_600SemiBold',
     },
+    // ── Factor Card ──
+    factorCard: {
+        borderRadius: 18,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: 'transparent',
+        marginBottom: 16,
+    },
+    factorHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    factorTitle: {
+        fontSize: 15,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    factorSubtitle: {
+        fontSize: 11,
+        fontFamily: 'Poppins_400Regular',
+        marginTop: 1,
+    },
+    factorsContainer: {
+        gap: 12,
+    },
+    factorRow: {
+        gap: 6,
+    },
+    factorLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    factorLabel: {
+        flex: 1,
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+    },
+    factorValue: {
+        fontSize: 12,
+        fontFamily: 'Poppins_700Bold',
+    },
+    factorTrack: {
+        height: 8,
+        borderRadius: 999,
+        overflow: 'hidden',
+    },
+    factorFill: {
+        height: '100%',
+        borderRadius: 999,
+    },
+    noFactors: {
+        alignItems: 'center',
+        paddingVertical: 20,
+        gap: 8,
+    },
+    noFactorsText: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+        textAlign: 'center',
+    },
+    // ── History ──
     historyHeader: {
         marginBottom: 8,
     },
@@ -325,7 +495,7 @@ const styles = StyleSheet.create({
     historyItem: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         borderBottomWidth: StyleSheet.hairlineWidth,
         paddingVertical: 12,
     },
@@ -342,12 +512,37 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontFamily: 'Poppins_400Regular',
     },
+    historyFactorsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 4,
+        marginTop: 6,
+    },
+    historyFactorPill: {
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+    },
+    historyFactorText: {
+        fontSize: 9,
+        fontFamily: 'Poppins_600SemiBold',
+    },
     historyRight: {
         alignItems: 'flex-end',
     },
     historyAfter: {
         fontSize: 16,
         fontFamily: 'Poppins_700Bold',
+    },
+    historyScoreRange: {
+        fontSize: 12,
+        fontFamily: 'Poppins_500Medium',
+    },
+    historyNote: {
+        marginTop: 4,
+        fontSize: 11,
+        fontFamily: 'Poppins_400Regular',
+        lineHeight: 15,
     },
     historyDelta: {
         marginTop: 1,

@@ -271,15 +271,15 @@ export default function PinChangeScreen() {
             >
                 <View style={styles.headerRow}>
                     <TouchableOpacity onPress={handleBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                        <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+                        <MaterialCommunityIcons name="arrow-left" size={24} color={c.onPrimary} />
                     </TouchableOpacity>
                     <View style={styles.headerCenter}>
-                        <MaterialCommunityIcons name="shield-lock" size={32} color="#000" />
+                        <MaterialCommunityIcons name="shield-lock" size={32} color={c.onPrimary} />
                     </View>
                     <View style={styles.backBtn} />
                 </View>
-                <Text style={styles.headerTitle}>{titleByStep[step]}</Text>
-                <Text style={styles.headerSub}>{subtitleByStep[step]}</Text>
+                <Text style={[styles.headerTitle, { color: c.onPrimary }]}>{titleByStep[step]}</Text>
+                <Text style={[styles.headerSub, { color: c.onPrimary + 'B0' }]}>{subtitleByStep[step]}</Text>
             </LinearGradient>
 
             {/* PIN dots */}
@@ -384,13 +384,11 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: '700',
-        color: '#000',
         marginTop: 4,
         letterSpacing: 0.3,
     },
     headerSub: {
         fontSize: 13,
-        color: 'rgba(0,0,0,0.65)',
         marginTop: 6,
         textAlign: 'center',
         paddingHorizontal: 16,

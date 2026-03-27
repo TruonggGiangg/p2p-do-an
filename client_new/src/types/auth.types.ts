@@ -23,11 +23,20 @@ export interface UserMetadata {
   phone?: string;
 }
 
+export interface CreditScoreFactors {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
 export interface UserCreditScore {
   score: number;
   totalLoans: number;
   latePayments: number;
   lastUpdated?: string;
+  factors?: CreditScoreFactors | null;
 }
 
 export interface UserCreditScoreHistoryItem {
@@ -38,11 +47,13 @@ export interface UserCreditScoreHistoryItem {
   reason:
     | "initial_account_creation"
     | "loan_repayment"
+    | "loan_prepayment"
     | "late_payment"
     | "manual_adjustment"
     | "system_recalculation";
   trigger?: string;
   note?: string;
+  factors?: CreditScoreFactors | null;
   createdAt?: string;
 }
 

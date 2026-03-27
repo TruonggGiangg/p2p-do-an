@@ -53,6 +53,15 @@ export class DelinquencyPolicy extends Document {
   @Prop({ required: true, default: false })
   legal_escalation: boolean;
 
+  @Prop({ type: Number, required: false, default: null })
+  retention_months: number;
+
+  @Prop({ required: true, default: false })
+  freeze_account: boolean;
+
+  @Prop({ required: true, default: false })
+  permanent_ban: boolean;
+
   @Prop({ required: true, default: true })
   is_active: boolean;
 

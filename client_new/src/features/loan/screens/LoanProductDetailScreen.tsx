@@ -103,10 +103,10 @@ export default function LoanProductDetailScreen() {
     return (
         <View style={[styles.container, { backgroundColor: EMERALD_THEME.background }]}>
             <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
-            
-            <BinanceHeader 
-                title={product.name} 
-                mode="standard" 
+
+            <BinanceHeader
+                title={product.name}
+                mode="standard"
                 rightComponents={
                     <TouchableOpacity style={styles.moreButton}>
                         <MaterialCommunityIcons name="dots-horizontal" size={24} color={EMERALD_THEME.textPrimary} />
@@ -284,7 +284,7 @@ const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
         alignItems: 'center',
         marginBottom: 24,
     },
-    heroRateMain: { fontSize: 40, fontWeight: '800', color: EMERALD_THEME.primary, letterSpacing: -1 },
+    heroRateMain: { fontSize: 32, fontWeight: '700', color: EMERALD_THEME.primary, letterSpacing: -0.5 },
     heroRateUnit: { fontSize: 16, fontWeight: '600', color: EMERALD_THEME.textSecondary },
     heroRateSub: { fontSize: 13, color: EMERALD_THEME.textDim, marginTop: 4 },
     heroDivider: { height: 1, backgroundColor: EMERALD_THEME.border, marginBottom: 20 },
