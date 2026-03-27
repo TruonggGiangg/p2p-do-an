@@ -11,7 +11,6 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
     ActivityIndicator,
@@ -20,7 +19,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, Pagination } from '../../../components';
+import { BinanceHeader, Pagination, CommonInput } from '../../../components';
 import { loanService, LoanHistoryItem, LoanListResponse } from '../services/loan.service';
 
 const { width } = Dimensions.get('window');
@@ -140,7 +139,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                 <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: statusInfo.color + '15', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                     <MaterialCommunityIcons name={getPurposeIcon(loan.productName || loan.willing)} size={24} color={statusInfo.color} />
                 </View>
-                
+
                 {/* Info */}
                 <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }} numberOfLines={1}>
@@ -150,7 +149,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                         {formatDate(loan.createdAt)}
                     </Text>
                 </View>
-                
+
                 {/* Right */}
                 <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 6 }}>
@@ -235,7 +234,29 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
 
             {/* Gray Box Footer */}
             <View style={{ backgroundColor: isDark ? colors.background : '#F9FAFB', borderRadius: 16, padding: 16 }}>
-                
+
+                {/* Overdue & Penalty Alert */}
+                {(loan.delinquentDays ?? 0) > 0 && (
+                    <View style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#E5E7EB' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <Ionicons name="warning" size={14} color="#EF4444" />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#EF4444' }}>
+                                Quá hạn {loan.delinquentDays} ngày
+                            </Text>
+                        </View>
+                        {(loan.totalOverdue ?? 0) > 0 && (
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: '#DC2626', marginLeft: 20 }}>
+                                Nợ quá hạn: {formatMoney(loan.totalOverdue)} đ
+                            </Text>
+                        )}
+                        {(loan.penaltyOutstanding ?? 0) > 0 && (
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: '#D97706', marginLeft: 20, marginTop: 2 }}>
+                                Phí phạt: {formatMoney(loan.penaltyOutstanding)} đ
+                            </Text>
+                        )}
+                    </View>
+                )}
+
                 {/* Progress (if active) */}
                 {isActive && (
                     <View style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? colors.border : '#E5E7EB' }}>
@@ -244,7 +265,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                         </Text>
                     </View>
                 )}
-                
+
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', paddingRight: isActive ? 6 : 16 }}>
                         <View style={{ flexShrink: 1 }}>
@@ -260,11 +281,11 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                             <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }} numberOfLines={1}>{annualRate.toFixed(1)}%/năm</Text>
                         </View>
                     </View>
-                    
+
                     {/* Actions */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {isActive && (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={{ backgroundColor: '#111827', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
                                 onPress={onRepayPress}
                             >
@@ -407,14 +428,13 @@ const LoanHistoryScreen = () => {
 
             {/* ── Search ── */}
             <View style={styles.searchBar}>
-                <View style={[styles.searchInputWrapper, { backgroundColor: isDark ? colors.surfaceLight || colors.backgroundSecondary : '#F5F5F5' }]}>
-                    <Ionicons name="search" size={18} color={colors.textMuted} />
-                    <TextInput
-                        style={[styles.searchInput, { color: colors.text }]}
-                        placeholder="Tìm theo mục đích, sản phẩm..."
-                        placeholderTextColor={colors.textMuted}
+                <View style={{ flex: 1 }}>
+                    <CommonInput
                         value={searchText}
                         onChangeText={setSearchText}
+                        placeholder="Tìm theo mục đích, sản phẩm..."
+                        icon="magnify"
+                        variant="standard"
                         returnKeyType="search"
                     />
                 </View>

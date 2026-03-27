@@ -13,7 +13,7 @@ import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
 import { roundToCurrency } from '../../utils/RoundingUtils';
-
+import FormData from 'form-data';
 const DEFAULT_IN_MULTIPLES_OF = 1000;
 
 export interface LoanHistoryItem {
@@ -176,12 +176,24 @@ export class LoanService {
   }
 
   /**
+   * CIC standard day ranges per debt group (NHNN TT39/TT11).
+   */
+  private static readonly CIC_DAY_RANGES: Record<number, { min_days: number; max_days: number | null }> = {
+    1: { min_days: 1, max_days: 9 },
+    2: { min_days: 10, max_days: 29 },
+    3: { min_days: 30, max_days: 89 },
+    4: { min_days: 90, max_days: 179 },
+    5: { min_days: 180, max_days: null },
+  };
+
+  /**
    * Lấy chính sách xử lý nợ xấu (delinquency policy) để hiển thị trong xác nhận đơn vay.
    * Chỉ trả về policy active, sắp theo debt_group tăng dần.
+   * min_days/max_days lấy từ CIC standard, KHÔNG lấy từ Fineract.
    */
   async getDelinquencyPolicySummary(loanProductId?: number): Promise<any[]> {
     const selectFields =
-      'debt_group debt_group_name description send_notification apply_penalty block_new_loan freeze_account permanent_ban collection_stage retention_months loan_product_id';
+      'debt_group debt_group_name description send_notification apply_penalty block_new_loan freeze_account permanent_ban collection_stage retention_months loan_product_id send_email send_sms legal_escalation';
 
     let policies: any[];
     if (loanProductId != null) {
@@ -216,7 +228,13 @@ export class LoanService {
         groupMap.set(p.debt_group, p);
       }
     }
-    return Array.from(groupMap.values()).sort((a, b) => a.debt_group - b.debt_group);
+
+    return Array.from(groupMap.values())
+      .sort((a, b) => a.debt_group - b.debt_group)
+      .map(p => {
+        const dayRange = LoanService.CIC_DAY_RANGES[p.debt_group] ?? { min_days: null, max_days: null };
+        return { ...p, min_days: dayRange.min_days, max_days: dayRange.max_days };
+      });
   }
 
   /**
@@ -272,7 +290,6 @@ export class LoanService {
           : capital / periodMonth;
       const monthlyPay = round(rawEmi);
       let outstanding = capital;
-      let totalPaid = 0;
 
       for (let i = 1; i <= periodMonth; i++) {
         const interest = round(outstanding * r);
@@ -291,7 +308,6 @@ export class LoanService {
           dueDate: dueDate.toISOString().split('T')[0],
         });
         outstanding -= roundedPrincipal;
-        totalPaid += payment;
       }
     }
 
@@ -391,7 +407,13 @@ export class LoanService {
     this.logger.log(`[createApplication] fineractClientId=${fineractClientId}`);
 
     // 2.5. Kiểm tra nhóm nợ xấu — chặn vay mới nếu borrower thuộc nhóm nợ có block_new_loan
-    const activeDelinquencies = await this.loanDelinquencyModel
+    // Ưu tiên LoanDelinquency records (đã sync từ batch job hoặc loan history)
+    let activeDelinquencies: Array<{
+      debtGroup: number;
+      overdueAmount: number;
+      fineractLoanId?: number;
+      delinquentDays: number;
+    }> = await this.loanDelinquencyModel
       .find({
         borrowerId: new Types.ObjectId(userId),
         status: { $in: ['overdue', 'defaulted'] },
@@ -399,6 +421,65 @@ export class LoanService {
       })
       .select('debtGroup overdueAmount fineractLoanId delinquentDays')
       .lean();
+
+    // Fallback: Nếu không có LoanDelinquency records → kiểm tra trực tiếp từ loan_applications
+    if (activeDelinquencies.length === 0) {
+      const overdueLoans = await this.loanApplicationModel
+        .find({
+          userId: new Types.ObjectId(userId),
+          status: 'disbursed',
+          $or: [{ delinquentDays: { $gt: 0 } }, { totalOverdue: { $gt: 0 } }],
+        })
+        .select('fineractLoanId delinquentDays totalOverdue repaymentSchedule')
+        .lean()
+        .exec();
+
+      if (overdueLoans.length > 0) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        activeDelinquencies = overdueLoans
+          .map(loan => {
+            let overdueDays = Math.max(0, Number(loan.delinquentDays || 0));
+            // Fallback: tính từ schedule nếu delinquentDays = 0 nhưng có totalOverdue
+            if (overdueDays === 0 && (loan.totalOverdue || 0) > 0) {
+              const periods = Array.isArray(loan.repaymentSchedule)
+                ? loan.repaymentSchedule
+                : (loan.repaymentSchedule as any)?.periods || [];
+              for (const p of periods) {
+                if (!p.period || Number(p.period) <= 0) continue;
+                if (p.complete || p.obligationsMetOnDate) continue;
+                const due = p.dueDate;
+                let dueDate: Date | null = null;
+                if (Array.isArray(due) && due.length >= 3) dueDate = new Date(due[0], due[1] - 1, due[2]);
+                else if (typeof due === 'string') dueDate = new Date(due);
+                if (dueDate && !isNaN(dueDate.getTime()) && dueDate < today) {
+                  const diff = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+                  if (diff > overdueDays) overdueDays = diff;
+                }
+              }
+            }
+            const debtGroup =
+              overdueDays >= 180
+                ? 5
+                : overdueDays >= 90
+                  ? 4
+                  : overdueDays >= 30
+                    ? 3
+                    : overdueDays >= 10
+                      ? 2
+                      : overdueDays >= 1
+                        ? 1
+                        : 0;
+            return {
+              debtGroup,
+              overdueAmount: loan.totalOverdue || 0,
+              fineractLoanId: loan.fineractLoanId,
+              delinquentDays: overdueDays,
+            };
+          })
+          .filter(d => d.debtGroup > 0);
+      }
+    }
 
     if (activeDelinquencies.length > 0) {
       const highestDebtGroup = Math.max(...activeDelinquencies.map(d => d.debtGroup || 0));
@@ -870,17 +951,34 @@ export class LoanService {
         delinquentDays:
           details?.delinquency?.delinquentDays ||
           details?.delinquent?.delinquentDays ||
+          details?.delinquent?.pastDueDays ||
           (details?.summary?.totalOverdue > 0
-            ? schedule?.periods?.filter(
-                (p: any) =>
-                  p.period > 0 &&
-                  !p.complete &&
-                  p.dueDate &&
-                  new Date(p.dueDate[0], p.dueDate[1] - 1, p.dueDate[2]) < new Date(),
-              )?.length || 1
+            ? (() => {
+                // Calculate max overdue days from schedule periods
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let maxDays = 0;
+                const periods = schedule?.periods || [];
+                for (const p of periods) {
+                  if (!p.period || p.period <= 0 || p.complete) continue;
+                  const due = p.dueDate;
+                  if (!due || !Array.isArray(due) || due.length < 3) continue;
+                  const dueDate = new Date(due[0], due[1] - 1, due[2]);
+                  if (dueDate < today) {
+                    const diff = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+                    if (diff > maxDays) maxDays = diff;
+                  }
+                }
+                return maxDays || 1;
+              })()
             : 0) ||
           (loan as any).delinquentDays ||
           0,
+        // Overdue & penalty fields for UI
+        totalOverdue: details?.summary?.totalOverdue || (loan as any).totalOverdue || 0,
+        totalOutstanding: details?.summary?.totalOutstanding || (loan as any).totalOutstanding || 0,
+        penaltyOutstanding: details?.summary?.penaltyChargesOutstanding || (loan as any).penaltyOutstanding || 0,
+        penaltyPaid: details?.summary?.penaltyChargesPaid || (loan as any).penaltyPaid || 0,
       };
 
       // DEBUG: log key fields
@@ -955,8 +1053,7 @@ export class LoanService {
     const safeContentType = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg';
 
     // Sử dụng FormData để gửi file lên Fineract
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const FormData = require('form-data');
+    // const FormData = require('form-data');
     const form = new FormData();
     form.append('file', file.buffer, {
       filename: safeFilename,

@@ -240,17 +240,29 @@ export default function AvailableLoansScreen() {
                 </Text>
               </LinearGradient>
             ) : null}
-            {item.aiScore.creditScore > 0 ? (
-              <LinearGradient
-                colors={[theme.colors.success + '20', theme.colors.success + '08']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.badge}
-              >
-                <MaterialCommunityIcons name="brain" size={11} color={theme.colors.success} />
-                <Text style={[styles.badgeText, { color: theme.colors.success }]}>CS: {item.aiScore.creditScore}</Text>
-              </LinearGradient>
-            ) : null}
+          </View>
+        )}
+
+        {/* ── Delinquency / Risk Warning — Red alert for investors ── */}
+        {item.borrowerDelinquencyWarning && item.borrowerDelinquencyWarning.debtGroup >= 2 && (
+          <View style={[styles.warningBanner, { backgroundColor: theme.colors.error + '18', borderColor: theme.colors.error + '40' }]}>
+            <Ionicons name="alert-circle" size={16} color={theme.colors.error} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.warningTitle, { color: theme.colors.error }]}>
+                Cảnh báo nợ xấu — Nhóm {item.borrowerDelinquencyWarning.debtGroup}
+              </Text>
+              <Text style={[styles.warningDesc, { color: theme.colors.error + 'CC' }]}>
+                Quá hạn {item.borrowerDelinquencyWarning.delinquentDays} ngày • Dư nợ: {fmt(item.borrowerDelinquencyWarning.overdueAmount)}
+              </Text>
+            </View>
+          </View>
+        )}
+        {!item.borrowerDelinquencyWarning && item.aiScore && (item.aiScore.creditScore > 0 && item.aiScore.creditScore < 431) && (
+          <View style={[styles.warningBanner, { backgroundColor: theme.colors.warning + '15', borderColor: theme.colors.warning + '35' }]}>
+            <Ionicons name="warning" size={14} color={theme.colors.warning} />
+            <Text style={[styles.warningDesc, { color: theme.colors.warning }]}>
+              Điểm tín dụng thấp — Rủi ro đầu tư cao hơn bình thường
+            </Text>
           </View>
         )}
 
@@ -547,6 +559,15 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+
+  // Delinquency / Risk Warning Banner
+  warningBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1, marginBottom: 12,
+  },
+  warningTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
+  warningDesc: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
 
   // AI Insight Cards — Stitch "Bioluminescent" tonal
   insightRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },

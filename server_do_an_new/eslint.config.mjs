@@ -14,6 +14,8 @@ export default tseslint.config(
   {
     rules: {
       'prettier/prettier': 'off', // Tắt Prettier rules để tránh lỗi formatting
+      "@typescript-eslint/no-require-imports": "error"
+
     },
   },
   {

@@ -47,9 +47,6 @@ import { AdminCustomerService } from './services/admin-customer.service';
 import { AdminKycService } from './services/admin-kyc.service';
 import { AdminStaffService } from './services/admin-staff.service';
 
-/** officeId=1 = Head Office in default Fineract setup */
-const HEAD_OFFICE_ID = 1;
-
 /** Parse Fineract date (array [y,m,d] or string) to ISO yyyy-MM-dd */
 function parseFineractDate(val: any): string | null {
   if (!val) return null;
@@ -76,14 +73,12 @@ function parsePeriodDueDate(due: any): string | null {
   return null;
 }
 
-const SNAPSHOT_SCOPE = 'default';
-
 @Injectable()
 export class AdminService implements OnModuleInit {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(
-    // â”€â”€ Mongoose models (kept for loan/delinquency methods) â”€â”€
+    // ── Mongoose models (kept for loan/delinquency methods) ──
     @InjectModel(LoanProductDocumentType.name) private loanProductDocModel: Model<LoanProductDocumentType>,
     @InjectModel(LoanSyncRun.name) private loanSyncRunModel: Model<LoanSyncRun>,
     @InjectModel(LoanDelinquency.name) private loanDelinquencyModel: Model<LoanDelinquency>,
@@ -94,12 +89,12 @@ export class AdminService implements OnModuleInit {
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
     @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
-    // â”€â”€ External services â”€â”€
+    // ── External services ──
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
     private readonly fineractSavingsService: FineractSavingsService,
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
-    // â”€â”€ Sub-services â”€â”€
+    // ── Sub-services ──
     private readonly productService: AdminProductService,
     private readonly customerService: AdminCustomerService,
     private readonly kycService: AdminKycService,
@@ -525,14 +520,14 @@ export class AdminService implements OnModuleInit {
 
   /**
    * Admin approve loan: Fineract approve + update MongoDB status.
-   * YÃªu cáº§u: Ä‘Ã£ duyá»‡t Ä‘á»§ táº¥t cáº£ tÃ i liá»‡u báº¯t buá»™c.
+   * Yêu cầu: đã duyệt đủ tất cả tài liệu bắt buộc.
    */
   async approveLoan(fineractLoanId: number) {
     this.logger.log(`[approveLoan] fineractLoanId=${fineractLoanId}`);
 
     // Auto-approve all pending documents that have been uploaded
     const app = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!app) throw new BadRequestException('Khoáº£n vay khÃ´ng tá»“n táº¡i');
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
 
     let docAutoApproved = 0;
     if (app.documents?.length) {
@@ -552,7 +547,7 @@ export class AdminService implements OnModuleInit {
     // Now check if all required doc types are satisfied
     const { canApprove, missingRequired } = await this.canApproveLoan(fineractLoanId);
     if (!canApprove) {
-      throw new BadRequestException(`ChÆ°a upload Ä‘á»§ tÃ i liá»‡u báº¯t buá»™c: ${missingRequired.join(', ')}`);
+      throw new BadRequestException(`Chưa upload đủ tài liệu bắt buộc: ${missingRequired.join(', ')}`);
     }
 
     // Fineract requires: approvedOnDate >= submittedOnDate AND approvedOnDate <= expectedDisbursementDate
@@ -619,19 +614,16 @@ export class AdminService implements OnModuleInit {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan)
-      throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
+    if (!loan) throw new BadRequestException(`Khoản vay Fineract #${fineractLoanId} không tồn tại trong hệ thống`);
 
     // 0. Check contract is signed before allowing disbursement
     const contract = await this.loanContractModel.findOne({ loanId: loan._id });
     if (!contract) {
-      throw new BadRequestException(
-        `Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`,
-      );
+      throw new BadRequestException(`Khoản vay #${fineractLoanId} chưa có hợp đồng. Không thể giải ngân.`);
     }
     if (contract.status !== 'signed') {
       throw new BadRequestException(
-        `Há»£p Ä‘á»“ng khoáº£n vay #${fineractLoanId} chÆ°a Ä‘Æ°á»£c kÃ½ (tráº¡ng thÃ¡i: ${contract.status}). NgÆ°á»i vay cáº§n kÃ½ há»£p Ä‘á»“ng trÆ°á»›c khi giáº£i ngÃ¢n.`,
+        `Hợp đồng khoản vay #${fineractLoanId} chưa được ký (trạng thái: ${contract.status}). Người vay cần ký hợp đồng trước khi giải ngân.`,
       );
     }
 
@@ -654,8 +646,8 @@ export class AdminService implements OnModuleInit {
     try {
       await this.notificationModel.create({
         userId: loan.userId,
-        title: 'Gi\u1ea3i ng\u00e2n th\u00e0nh c\u00f4ng',
-        message: `Kho\u1ea3n vay ${loan.capital?.toLocaleString('vi-VN')} \u0111 \u0111\u00e3 \u0111\u01b0\u1ee3c gi\u1ea3i ng\u00e2n v\u00e0o t\u00e0i kho\u1ea3n c\u1ee7a b\u1ea1n. Vui l\u00f2ng ki\u1ec3m tra s\u1ed1 d\u01b0.`,
+        title: 'Giải ngân thành công',
+        message: `Khoản vay ${loan.capital?.toLocaleString('vi-VN')} đ đã được giải ngân vào tài khoản của bạn. Vui lòng kiểm tra số dư.`,
         type: 'loan_disbursed',
         data: {
           loanId: loan._id?.toString(),
@@ -667,7 +659,7 @@ export class AdminService implements OnModuleInit {
       this.logger.warn(`[disburseLoan] Failed to create notification: ${err?.message}`);
     }
 
-    // Láº¥y thÃ´ng tin ngÆ°á»i vay
+    // Lấy thông tin người vay
     let borrowerName = '';
     let borrowerUsername = '';
     try {
@@ -714,7 +706,7 @@ export class AdminService implements OnModuleInit {
       this.logger.warn(`[rejectLoan] Failed to create notification: ${err?.message}`);
     }
 
-    // 4. Get borrower info
+    // 4. Lấy thông tin người vay
     let borrowerName = '';
     let borrowerUsername = '';
     try {
@@ -775,8 +767,8 @@ export class AdminService implements OnModuleInit {
   }
 
   /**
-   * TÃ­nh tá»«ng ká»³ tráº£ ná»£ (cÃ³ tiá»n quÃ¡ háº¡n/cÃ²n ná»£) rÆ¡i vÃ o nhÃ³m/tháº» quÃ¡ háº¡n nÃ o.
-   * Dá»±a trÃªn ngÃ y Ä‘áº¿n háº¡n ká»³ vs ngÃ y tham chiáº¿u (lastSyncedAt hoáº·c hÃ´m nay) â†’ sá»‘ ngÃ y quÃ¡ háº¡n â†’ map vÃ o delinquency ranges.
+   * Tính từng kỳ trả nợ (có tiền quá hạn/còn nợ) rơi vào nhóm/thẻ quá hạn nào.
+   * Dựa trên ngày đến hạn kỳ vs ngày tham chiếu (lastSyncedAt hoặc hôm nay) → số ngày quá hạn → map vào delinquency ranges.
    */
   private async computePeriodDelinquency(
     periods: any[],
@@ -824,13 +816,13 @@ export class AdminService implements OnModuleInit {
       const daysOverdue = dueDate
         ? Math.max(0, Math.floor((referenceDate.getTime() - dueDate.getTime()) / 86400000))
         : 0;
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : 'â€“';
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : Array.isArray(due) ? due.join('-') : '–';
       const range = sorted.find((r: any) => daysOverdue >= r.min && (r.max == null || daysOverdue <= r.max));
       result.push({
         period: periodNum,
         dueDate: dueDateStr,
         daysOverdue,
-        classification: range?.classification ?? (daysOverdue > 0 ? `QuÃ¡ háº¡n ${daysOverdue} ngÃ y` : 'â€“'),
+        classification: range?.classification ?? (daysOverdue > 0 ? `Quá hạn ${daysOverdue} ngày` : '–'),
         totalOverdue,
         totalOutstandingForPeriod: totalOutstanding,
       });
@@ -976,6 +968,38 @@ export class AdminService implements OnModuleInit {
       rangeInfo?.minimumAgeDays ||
       rangeInfo?.pastDueDays ||
       0;
+
+    // Fallback: Nếu Fineract trả delinquentDays = 0 nhưng totalOverdue > 0 → tính từ schedule periods
+    if (app.delinquentDays === 0 && summary.totalOverdue > 0) {
+      const rawSchedulePeriods = fl.repaymentSchedule?.periods || [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let maxOverdueDays = 0;
+      for (const p of rawSchedulePeriods) {
+        if (p.period == null || Number(p.period) <= 0) continue;
+        const complete = p.complete === true || p.obligationsMetOnDate != null;
+        if (complete) continue;
+        const due = p.dueDate;
+        if (!due) continue;
+        let dueDate: Date | null = null;
+        if (Array.isArray(due) && due.length >= 3) {
+          dueDate = new Date(due[0], due[1] - 1, due[2]);
+        } else if (typeof due === 'string') {
+          dueDate = new Date(due);
+        }
+        if (dueDate && !isNaN(dueDate.getTime()) && dueDate < today) {
+          const diffDays = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+          if (diffDays > maxOverdueDays) maxOverdueDays = diffDays;
+        }
+      }
+      if (maxOverdueDays > 0) {
+        app.delinquentDays = maxOverdueDays;
+        this.logger.warn(
+          `[syncLoanFromFineract] Fineract returned delinquentDays=0 but schedule shows ${maxOverdueDays} days overdue for loan ${fineractLoanId}. Using schedule fallback.`,
+        );
+      }
+    }
+
     app.delinquencyClassification = rangeInfo?.classification ?? delinquentInfo?.classification ?? null;
 
     // Persist full schedule from Fineract (includes principalPaid/interestPaid per period after allocation)
@@ -1067,7 +1091,7 @@ export class AdminService implements OnModuleInit {
     app.lastPaymentDate = summary.lastPaymentDate;
     app.lastPaymentAmount = summary.lastPaymentAmount;
 
-    // TÃªn khÃ¡ch hÃ ng tá»« Fineract (Ä‘á»ƒ hiá»ƒn thá»‹ Ä‘Ãºng trong danh sÃ¡ch ná»£ quÃ¡ háº¡n)
+    // Tên khách hàng từ Fineract (để hiển thị đúng trong danh sách nợ quá hạn)
     const clientId = fl.clientId ?? fl.client?.id;
     if (clientId) {
       try {
@@ -1183,16 +1207,16 @@ export class AdminService implements OnModuleInit {
   }
 
   /**
-   * Láº¥y táº¥t cáº£ khoáº£n vay Ä‘Ã£ giáº£i ngÃ¢n tá»« Fineract (status 300 = Active) vÃ  sync vÃ o Mongo.
-   * Ghi tá»«ng thay Ä‘á»•i (field-level) vÃ o loan_sync_runs.details Ä‘á»ƒ truy váº¿t.
-   * @param limit sá»‘ khoáº£n tá»‘i Ä‘a má»—i láº§n cháº¡y
+   * Lấy tất cả khoản vay đã giải ngân từ Fineract (status 300 = Active) và sync vào Mongo.
+   * Ghi từng thay đổi (field-level) vào loan_sync_runs.details để truy vết.
+   * @param limit số khoản tối đa mỗi lần chạy
    * @param options.trigger 'cron' | 'manual'
    */
   async syncDisbursedLoansFromFineract(
     limit = 300,
     options?: { trigger?: 'cron' | 'manual' },
   ): Promise<{ synced: number; errors: number; skipped: number; orphansRemoved: number; runId?: string }> {
-    // Láº¥y táº¥t cáº£ khoáº£n vay (má»i tráº¡ng thÃ¡i), khÃ´ng chá»‰ Active
+    // Lấy tất cả khoản vay (mọi trạng thái), không chỉ Active
     const loans = await this.fineractLoanService.getAllLoans(limit);
     const toSync = (loans || []).map((l: any) => l.id ?? l.loanId).filter((id: any) => id != null);
     let synced = 0;
@@ -1230,11 +1254,11 @@ export class AdminService implements OnModuleInit {
       `[syncDisbursedLoansFromFineract] Done. synced=${synced} errors=${errors} skipped=${skipped} (total from Fineract=${toSync.length})`,
     );
 
-    // â”€â”€ Orphan cleanup: xÃ³a khoáº£n vay trong Mongo mÃ  Fineract khÃ´ng cÃ²n â”€â”€
+    // ―― Orphan cleanup: xóa khoản vay trong Mongo mà Fineract không còn ――
     let orphansRemoved = 0;
     try {
       const fineractIdSet = new Set(toSync.map((id: any) => Number(id)));
-      // TÃ¬m táº¥t cáº£ khoáº£n vay trong Mongo cÃ³ fineractLoanId mÃ  Fineract khÃ´ng cÃ²n
+      // Tìm tất cả khoản vay trong Mongo có fineractLoanId mà Fineract không còn
       const allLocalLoans = await this.loanApplicationModel
         .find({ fineractLoanId: { $exists: true, $ne: null } })
         .select('fineractLoanId status')
@@ -1290,7 +1314,7 @@ export class AdminService implements OnModuleInit {
   }
 
   /**
-   * Láº¥y danh sÃ¡ch láº§n cháº¡y Ä‘á»“ng bá»™ khoáº£n vay (loan_sync_runs) Ä‘á»ƒ hiá»ƒn thá»‹ vÃ  truy váº¿t.
+   * Lấy danh sách lần chạy đồng bộ khoản vay (loan_sync_runs) để hiển thị và truy vết.
    */
   async getLoanSyncRuns(limit = 30): Promise<any[]> {
     const runs = await this.loanSyncRunModel.find().sort({ ranAt: -1 }).limit(limit).lean().exec();
@@ -1299,7 +1323,7 @@ export class AdminService implements OnModuleInit {
 
   /**
    * Batch sync: sync all active (disbursed) loans from Fineract to MongoDB.
-   * Chá»‰ sync cÃ¡c khoáº£n Ä‘Ã£ cÃ³ trong Mongo. Äá»ƒ gá»“m cáº£ khoáº£n táº¡o trÃªn Fineract, dÃ¹ng syncDisbursedLoansFromFineract.
+   * Chỉ sync các khoản đã có trong Mongo. Để gồm cả khoản tạo trên Fineract, dùng syncDisbursedLoansFromFineract.
    * @param limit max loans per run (default 200)
    */
   async syncAllActiveLoansFromFineract(limit = 200): Promise<{ synced: number; errors: number; details: any[] }> {
@@ -1350,12 +1374,12 @@ export class AdminService implements OnModuleInit {
         delinquencyClassification: { $exists: true, $nin: [null, ''] },
       })
       .exec();
-    return (distinct as string[]).filter(Boolean).map((classification, i) => ({ id: i + 1, classification }));
+    return distinct.filter(Boolean).map((classification, i) => ({ id: i + 1, classification }));
   }
 
   /**
-   * Lá»c khoáº£n vay quÃ¡ háº¡n chi tiáº¿t: nhÃ³m quÃ¡ háº¡n, khoáº£n quÃ¡ háº¡n (tá»«â€“Ä‘áº¿n), sá»‘ ngÃ y quÃ¡ háº¡n (tá»«â€“Ä‘áº¿n).
-   * Data tá»« Mongo (Ä‘Ã£ sync tá»« Fineract háº±ng ngÃ y).
+   * Lọc khoản vay quá hạn chi tiết: nhóm quá hạn, khoản quá hạn (từ–đến), số ngày quá hạn (từ–đến).
+   * Data từ Mongo (đã sync từ Fineract hàng ngày).
    */
   async getOverdueLoans(filters?: {
     classification?: string;
@@ -1481,7 +1505,7 @@ export class AdminService implements OnModuleInit {
       lastSyncedAt: Date | null;
     }>;
 
-    // Khi clientDisplayName trá»‘ng (sync cÅ© hoáº·c lá»—i), láº¥y tÃªn tá»« Fineract Ä‘á»ƒ luÃ´n hiá»‡n Ä‘Ãºng tÃªn khoáº£n vay
+    // Khi clientDisplayName trống (sync cũ hoặc lỗi), lấy tên từ Fineract để luôn hiển thị đúng tên khoản vay
     const needFineractName = items
       .map((item, idx) => ({ item, idx }))
       .filter(({ item }) => !item.customerName || item.customerName === 'â€“');
@@ -1504,7 +1528,7 @@ export class AdminService implements OnModuleInit {
       results.forEach(({ idx, name, loanId }) => {
         if (name) {
           items[idx].customerName = name;
-          // LÆ°u vÃ o Mongo Ä‘á»ƒ láº§n sau khÃ´ng cáº§n gá»i Fineract
+          // Lưu vào Mongo để lần sau không cần gọi Fineract
           this.loanApplicationModel
             .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
             .exec()
@@ -1736,24 +1760,30 @@ export class AdminService implements OnModuleInit {
     if (filters?.loan_product_id != null) query.loan_product_id = filters.loan_product_id;
     if (filters?.collection_stage) query.collection_stage = filters.collection_stage;
 
-    const [list, groups] = await Promise.all([
-      this.delinquencyPolicyModel.find(query).sort({ loan_product_id: 1, debt_group: 1 }).lean().exec(),
-      this.getFineractDebtGroups().catch(() => []),
-    ] as const);
-    const groupMap = new Map<number, { min_days: number; max_days: number | null }>();
-    for (const group of groups as Array<{ debt_group: number; min_days: number; max_days: number | null }>) {
-      groupMap.set(group.debt_group, { min_days: group.min_days, max_days: group.max_days });
-    }
+    const list = await this.delinquencyPolicyModel
+      .find(query)
+      .sort({ loan_product_id: 1, debt_group: 1 })
+      .lean()
+      .exec();
+
+    // CIC standard day ranges (NHNN TT39) — không lấy từ Fineract nữa
+    const CIC_DAY_RANGES: Record<number, { min_days: number; max_days: number | null }> = {
+      1: { min_days: 1, max_days: 9 },
+      2: { min_days: 10, max_days: 29 },
+      3: { min_days: 30, max_days: 89 },
+      4: { min_days: 90, max_days: 179 },
+      5: { min_days: 180, max_days: null },
+    };
 
     return list.map((item: any) => {
       const { penalty_rate_multiplier: _penalty_rate_multiplier, ...rest } = item;
-      const metadata = groupMap.get(Number(item.debt_group));
+      const dayRange = CIC_DAY_RANGES[Number(item.debt_group)] ?? { min_days: null, max_days: null };
       return {
         ...rest,
         loan_product_id: item.loan_product_id ?? null,
         loan_product_name: item.loan_product_name ?? null,
-        min_days: metadata?.min_days ?? null,
-        max_days: metadata?.max_days ?? null,
+        min_days: dayRange.min_days,
+        max_days: dayRange.max_days,
         _id: item._id.toString(),
       };
     });
@@ -1926,7 +1956,7 @@ export class AdminService implements OnModuleInit {
     };
 
     const mapAppToItem = (app: any): any => {
-      const user = app.userId as any;
+      const user = app.userId;
       const profile = user?.profile ?? {};
       const fallbackName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user?.username || 'â€“';
       const totalOverdue = Number(app.totalOverdue ?? 0);
@@ -2107,13 +2137,13 @@ export class AdminService implements OnModuleInit {
     if (filters.minOverdueAmount != null && filters.minOverdueAmount > 0) {
       query.totalOverdue = query.totalOverdue ?? { $gt: 0 };
       if (typeof query.totalOverdue === 'object') {
-        (query.totalOverdue as any).$gte = filters.minOverdueAmount;
+        query.totalOverdue.$gte = filters.minOverdueAmount;
       }
     }
     if (filters.maxOverdueAmount != null && filters.maxOverdueAmount >= 0) {
       query.totalOverdue = query.totalOverdue ?? { $gt: 0 };
       if (typeof query.totalOverdue === 'object') {
-        (query.totalOverdue as any).$lte = filters.maxOverdueAmount;
+        query.totalOverdue.$lte = filters.maxOverdueAmount;
       }
     }
     if (filters.delinquentDaysMin != null && filters.delinquentDaysMin >= 0) {
@@ -2301,7 +2331,7 @@ export class AdminService implements OnModuleInit {
         const fd = fineractDocs.find(d => d.id == documentId);
         if (!fd) {
           throw new BadRequestException(
-            `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
+            `Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`,
           );
         }
 
@@ -2332,7 +2362,7 @@ export class AdminService implements OnModuleInit {
 
   async rejectDocument(fineractLoanId: number, documentId: number) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
+    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
 
     let doc = app.documents?.find(d => d.fineractDocumentId === documentId);
 
@@ -2340,9 +2370,7 @@ export class AdminService implements OnModuleInit {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find(d => d.id === documentId);
       if (!fd) {
-        throw new BadRequestException(
-          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
-        );
+        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
       }
 
       const newDoc = {
@@ -2366,24 +2394,22 @@ export class AdminService implements OnModuleInit {
     return { documentId, reviewStatus: 'rejected' };
   }
 
-  /** PhÃ¢n loáº¡i láº¡i tÃ i liá»‡u (staff gÃ¡n documentTypeId cho doc unknown) */
+  /** Phân loại lại tài liệu (staff gán documentTypeId cho doc unknown) */
   async classifyDocument(fineractLoanId: number, documentId: number, documentTypeId: string) {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} khÃ´ng tá»“n táº¡i`);
+    if (!app) throw new BadRequestException(`Khoản vay #${fineractLoanId} không tồn tại`);
 
     let doc = app.documents?.find(d => String(d.fineractDocumentId) === String(documentId));
 
     if (!doc) {
-      // Document exists in Fineract but not in MongoDB â€” create it
+      // Document exists in Fineract but not in MongoDB — create it
       this.logger.warn(
         `[classifyDocument] Document #${documentId} not found in MongoDB for loan #${fineractLoanId}. Fetching from Fineract...`,
       );
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find((d: any) => d.id == documentId);
       if (!fd) {
-        throw new BadRequestException(
-          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
-        );
+        throw new BadRequestException(`Tài liệu #${documentId} không thuộc khoản vay #${fineractLoanId} trên Fineract`);
       }
 
       const newDoc = {
@@ -2412,15 +2438,15 @@ export class AdminService implements OnModuleInit {
     return { documentId, documentTypeId };
   }
 
-  /** Kiá»ƒm tra khoáº£n vay Ä‘Ã£ duyá»‡t Ä‘á»§ tÃ i liá»‡u báº¯t buá»™c chÆ°a */
+  /** Kiểm tra khoản vay đã duyệt đủ tài liệu bắt buộc chưa */
   async canApproveLoan(fineractLoanId: number): Promise<{ canApprove: boolean; missingRequired: string[] }> {
     const app = await this.loanApplicationModel.findOne({ fineractLoanId }).exec();
-    if (!app) return { canApprove: false, missingRequired: ['Khoáº£n vay khÃ´ng tá»“n táº¡i'] };
+    if (!app) return { canApprove: false, missingRequired: ['Khoản vay không tồn tại'] };
 
     // HEAL ON THE FLY: If we have an 'unknown' approved doc and a pending typed doc, merge them.
     // Or if we have an 'unknown' approved doc and it's the ONLY one, and we're missing exactly one requirement.
     const documents = app.documents || [];
-    let unknownApproved = documents.find(d => d.documentTypeId === 'unknown' && d.reviewStatus === 'approved');
+    const unknownApproved = documents.find(d => d.documentTypeId === 'unknown' && d.reviewStatus === 'approved');
     const pendingWithTypeId = documents.find(d => d.documentTypeId !== 'unknown' && d.reviewStatus === 'pending');
 
     this.logger.log(

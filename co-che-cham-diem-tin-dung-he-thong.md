@@ -314,6 +314,8 @@ Hệ thống phân loại nợ xấu theo 5 nhóm tham chiếu chuẩn CIC Việ
 | `isDeleted`        | boolean  | Đã soft-delete (hết hạn lưu vết). Default: false |
 | `deletedAt`        | Date     | Thời điểm soft-delete                            |
 
+**loan_evaluation_configs** (bản ghi cấu hình tham chiếu cho diem tin dung va cau hinh creditGrades danh cho mo hinh cham diem AI sau nay (risk-core)):
+
 ## 10. Hướng mở rộng (đề xuất)
 
 - Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả để tăng độ chính xác cho yếu tố debt level.

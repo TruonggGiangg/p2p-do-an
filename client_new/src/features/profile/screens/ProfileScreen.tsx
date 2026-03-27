@@ -85,6 +85,7 @@ export default function ProfileScreen() {
         }
     }, [refreshUser]);
 
+
     const displayName = getUserDisplayName(user);
     const initials = getUserInitials(user);
     const email = getUserEmail(user);
@@ -184,135 +185,137 @@ export default function ProfileScreen() {
                             </LinearGradient>
                         </View>
 
-                        {/* ═══ CREDIT SCORE ═══ */}
-                        <View style={styles.creditSection}>
-                            <View style={styles.creditHeader}>
-                                <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ĐIỂM TÍN DỤNG</Text>
-                                <TouchableOpacity style={styles.creditLink} onPress={() => navigation.navigate('CreditScoreDetail')}>
-                                    <Text style={[styles.creditLinkText, { color: c.textPrimary }]}>Chi tiết</Text>
-                                    <MaterialCommunityIcons name="chevron-right" size={16} color={c.textMuted} />
-                                </TouchableOpacity>
-                            </View>
-
-                            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('CreditScoreDetail')}>
-                                <View style={[styles.creditCard, {
-                                    backgroundColor: isDark ? c.surface : '#FFFFFF',
-                                    borderColor: c.border,
-                                    borderWidth: 1,
-                                    shadowColor: isDark ? '#000' : '#14342B',
-                                    shadowOffset: { width: 0, height: 8 },
-                                    shadowOpacity: isDark ? 0.3 : 0.04,
-                                    shadowRadius: 20,
-                                    elevation: isDark ? 6 : 3,
-                                }]}>
-                                    {/* Score + Badge */}
-                                    <View style={styles.creditTopRow}>
-                                        <View style={styles.creditScoreWrap}>
-                                            <View style={[styles.creditIconCircle, { backgroundColor: band.color + '15' }]}>
-                                                <MaterialCommunityIcons name={band.icon} size={24} color={band.color} />
-                                            </View>
-                                            <View>
-                                                <Text style={[styles.creditScoreLabel, { color: c.textMuted }]}>Điểm hiện tại</Text>
-                                                <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
-                                            </View>
-                                        </View>
-                                        <View style={[styles.creditBadge, { backgroundColor: band.color + '15' }]}>
-                                            <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
-                                        </View>
-                                    </View>
-
-                                    {/* Progress bar */}
-                                    <View style={[styles.progressTrack, { backgroundColor: isDark ? '#2A2E33' : '#F3F4F6' }]}>
-                                        <LinearGradient
-                                            colors={[band.color + '99', band.color]}
-                                            style={[styles.progressFill, { width: `${Math.max(scoreRatio * 100, 5)}%` }]}
-                                            start={{ x: 0, y: 0 }}
-                                            end={{ x: 1, y: 0 }}
-                                        />
-                                    </View>
-
-                                    {/* Stats row (Pill style) */}
-                                    <View style={styles.creditStats}>
-                                        <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
-                                                {creditScore?.totalLoans ?? 0}
-                                            </Text>
-                                            <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Khoản vay</Text>
-                                        </View>
-                                        <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
-                                                {creditScore?.latePayments ?? 0}
-                                            </Text>
-                                            <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Trả trễ</Text>
-                                        </View>
-                                        <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                            <Text style={[styles.creditStatValue, { color: c.textPrimary }]} numberOfLines={1}>
-                                                {formatDateTime(creditScore?.lastUpdated).split(' ')[0]}
-                                            </Text>
-                                            <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Cập nhật</Text>
-                                        </View>
-                                    </View>
+                        {/* ═══ CREDIT SCORE — Chỉ hiển thị cho người vay (borrower) ═══ */}
+                        {user?.roles?.includes("borrower") && (
+                            <View style={styles.creditSection}>
+                                <View style={styles.creditHeader}>
+                                    <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ĐIỂM TÍN DỤNG</Text>
+                                    <TouchableOpacity style={styles.creditLink} onPress={() => navigation.navigate('CreditScoreDetail')}>
+                                        <Text style={[styles.creditLinkText, { color: c.textPrimary }]}>Chi tiết</Text>
+                                        <MaterialCommunityIcons name="chevron-right" size={16} color={c.textMuted} />
+                                    </TouchableOpacity>
                                 </View>
-                            </TouchableOpacity>
 
-                            {/* Credit History */}
-                            {creditHistory.length > 0 && (
-                                <View style={[styles.historyCard, {
-                                    backgroundColor: isDark ? c.surface : '#FFFFFF',
-                                    borderColor: c.border,
-                                    borderWidth: 1,
-                                    shadowColor: isDark ? '#000' : '#14342B',
-                                    shadowOffset: { width: 0, height: 6 },
-                                    shadowOpacity: isDark ? 0.2 : 0.03,
-                                    shadowRadius: 15,
-                                    elevation: isDark ? 4 : 2,
-                                }]}>
-                                    <View style={styles.historyHeaderRow}>
-                                        <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử điểm gần đây</Text>
-                                        <View style={[styles.historyCountBadge, { backgroundColor: c.border + '30' }]}>
-                                            <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} thay đổi</Text>
-                                        </View>
-                                    </View>
-                                    
-                                    <View style={styles.historyList}>
-                                        {creditHistory.slice(0, 5).map((item: any, index: number) => {
-                                            const change = Number(item?.changeAmount || 0);
-                                            const isUp = change > 0;
-                                            const isDown = change < 0;
-                                            const changeColor = isUp ? '#0ECB81' : isDown ? '#F6465D' : c.textMuted;
-                                            return (
-                                                <View key={item?._id || `${index}`}
-                                                    style={[styles.historyItem, { borderBottomColor: c.border + '40' },
-                                                    index === Math.min(creditHistory.length, 5) - 1 && { borderBottomWidth: 0 },
-                                                    ]}>
-                                                    <View style={[styles.historyIconWrap, { backgroundColor: changeColor + '15' }]}>
-                                                        <MaterialCommunityIcons 
-                                                            name={isUp ? 'trending-up' : isDown ? 'trending-down' : 'circle-small'} 
-                                                            size={18} 
-                                                            color={changeColor} 
-                                                        />
-                                                    </View>
-                                                    <View style={styles.historyLeft}>
-                                                        <Text style={[styles.historyReason, { color: c.textPrimary }]} numberOfLines={1}>
-                                                            {formatHistoryReason(item?.reason)}
-                                                        </Text>
-                                                        <Text style={[styles.historyDate, { color: c.textMuted }]}>
-                                                            {formatDateTime(item?.createdAt)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={styles.historyRight}>
-                                                        <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item?.afterScore ?? '--'}</Text>
-                                                        <Text style={[styles.historyDelta, { color: changeColor }]}>
-                                                            {isUp ? `+${change}` : `${change}`}
-                                                        </Text>
-                                                    </View>
+                                <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('CreditScoreDetail')}>
+                                    <View style={[styles.creditCard, {
+                                        backgroundColor: isDark ? c.surface : '#FFFFFF',
+                                        borderColor: c.border,
+                                        borderWidth: 1,
+                                        shadowColor: isDark ? '#000' : '#14342B',
+                                        shadowOffset: { width: 0, height: 8 },
+                                        shadowOpacity: isDark ? 0.3 : 0.04,
+                                        shadowRadius: 20,
+                                        elevation: isDark ? 6 : 3,
+                                    }]}>
+                                        {/* Score + Badge */}
+                                        <View style={styles.creditTopRow}>
+                                            <View style={styles.creditScoreWrap}>
+                                                <View style={[styles.creditIconCircle, { backgroundColor: band.color + '15' }]}>
+                                                    <MaterialCommunityIcons name={band.icon} size={24} color={band.color} />
                                                 </View>
-                                            );
-                                        })}
+                                                <View>
+                                                    <Text style={[styles.creditScoreLabel, { color: c.textMuted }]}>Điểm hiện tại</Text>
+                                                    <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                                </View>
+                                            </View>
+                                            <View style={[styles.creditBadge, { backgroundColor: band.color + '15' }]}>
+                                                <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Progress bar */}
+                                        <View style={[styles.progressTrack, { backgroundColor: isDark ? '#2A2E33' : '#F3F4F6' }]}>
+                                            <LinearGradient
+                                                colors={[band.color + '99', band.color]}
+                                                style={[styles.progressFill, { width: `${Math.max(scoreRatio * 100, 5)}%` }]}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 0 }}
+                                            />
+                                        </View>
+
+                                        {/* Stats row (Pill style) */}
+                                        <View style={styles.creditStats}>
+                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
+                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
+                                                    {creditScore?.totalLoans ?? 0}
+                                                </Text>
+                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Khoản vay</Text>
+                                            </View>
+                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
+                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
+                                                    {creditScore?.latePayments ?? 0}
+                                                </Text>
+                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Trả trễ</Text>
+                                            </View>
+                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
+                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]} numberOfLines={1}>
+                                                    {formatDateTime(creditScore?.lastUpdated).split(' ')[0]}
+                                                </Text>
+                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Cập nhật</Text>
+                                            </View>
+                                        </View>
                                     </View>
-                                </View>
-                            )}
-                        </View>
+                                </TouchableOpacity>
+
+                                {/* Credit History */}
+                                {creditHistory.length > 0 && (
+                                    <View style={[styles.historyCard, {
+                                        backgroundColor: isDark ? c.surface : '#FFFFFF',
+                                        borderColor: c.border,
+                                        borderWidth: 1,
+                                        shadowColor: isDark ? '#000' : '#14342B',
+                                        shadowOffset: { width: 0, height: 6 },
+                                        shadowOpacity: isDark ? 0.2 : 0.03,
+                                        shadowRadius: 15,
+                                        elevation: isDark ? 4 : 2,
+                                    }]}>
+                                        <View style={styles.historyHeaderRow}>
+                                            <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử điểm gần đây</Text>
+                                            <View style={[styles.historyCountBadge, { backgroundColor: c.border + '30' }]}>
+                                                <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} thay đổi</Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={styles.historyList}>
+                                            {creditHistory.slice(0, 5).map((item: any, index: number) => {
+                                                const change = Number(item?.changeAmount || 0);
+                                                const isUp = change > 0;
+                                                const isDown = change < 0;
+                                                const changeColor = isUp ? '#0ECB81' : isDown ? '#F6465D' : c.textMuted;
+                                                return (
+                                                    <View key={item?._id || `${index}`}
+                                                        style={[styles.historyItem, { borderBottomColor: c.border + '40' },
+                                                        index === Math.min(creditHistory.length, 5) - 1 && { borderBottomWidth: 0 },
+                                                        ]}>
+                                                        <View style={[styles.historyIconWrap, { backgroundColor: changeColor + '15' }]}>
+                                                            <MaterialCommunityIcons
+                                                                name={isUp ? 'trending-up' : isDown ? 'trending-down' : 'circle-small'}
+                                                                size={18}
+                                                                color={changeColor}
+                                                            />
+                                                        </View>
+                                                        <View style={styles.historyLeft}>
+                                                            <Text style={[styles.historyReason, { color: c.textPrimary }]} numberOfLines={1}>
+                                                                {formatHistoryReason(item?.reason)}
+                                                            </Text>
+                                                            <Text style={[styles.historyDate, { color: c.textMuted }]}>
+                                                                {formatDateTime(item?.createdAt)}
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.historyRight}>
+                                                            <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item?.afterScore ?? '--'}</Text>
+                                                            <Text style={[styles.historyDelta, { color: changeColor }]}>
+                                                                {isUp ? `+${change}` : `${change}`}
+                                                            </Text>
+                                                        </View>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+                        )}
 
                         {/* ═══ SECURITY SETTINGS ═══ */}
                         <View style={styles.menuSection}>
@@ -445,7 +448,7 @@ const styles = StyleSheet.create({
     creditStats: {
         flexDirection: 'row', marginTop: 20, alignItems: 'center', gap: 8,
     },
-    creditStatPill: { 
+    creditStatPill: {
         flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 16,
     },
     creditStatValue: { fontSize: 16, fontFamily: 'Poppins_700Bold', marginBottom: 2 },

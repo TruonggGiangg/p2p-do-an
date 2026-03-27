@@ -174,7 +174,9 @@ export class RepaymentService {
         newStatus = 'closed' as any;
         this.logger.log(`[makeRepayment] Loan fully paid, marking as closed`);
       }
-    } catch {}
+    } catch (error) {
+      console.log(error);
+    }
 
     // 6. Lưu lịch sử thanh toán vào MongoDB
     const repaymentRecord = {
@@ -270,7 +272,9 @@ export class RepaymentService {
     let charges: any[] = [];
     try {
       charges = await this.fineractLoanService.getProductCharges(loan.productId);
-    } catch {}
+    } catch (error) {
+      this.logger.warn(`[getPrepayAmount] Failed to fetch product charges: ${error?.message}`);
+    }
 
     return {
       ...prepayInfo,
@@ -343,7 +347,7 @@ export class RepaymentService {
     try {
       await this.deductFromBorrowerWallet(userId, prepayInfo.amount, `Tất toán sớm khoản vay (MongoDB: ${loanId})`, {
         loanId,
-        fineractLoanId: loan.fineractLoanId!,
+        fineractLoanId: loan.fineractLoanId,
         type: 'prepayment',
       });
     } catch (walletErr: any) {
@@ -390,7 +394,7 @@ export class RepaymentService {
     this.logger.log(`[prepayLoan] Waiting ${syncDelayMs}ms before sync for loan ${loan.fineractLoanId}`);
     await new Promise(r => setTimeout(r, syncDelayMs));
     try {
-      await this.adminService.syncLoanFromFineract(loan.fineractLoanId!);
+      await this.adminService.syncLoanFromFineract(loan.fineractLoanId);
       this.logger.log(`[prepayLoan] Post-prepayment sync succeeded for loan ${loan.fineractLoanId}`);
     } catch (err: any) {
       this.logger.warn(`[prepayLoan] Post-prepayment sync failed for loan ${loan.fineractLoanId}: ${err?.message}`);

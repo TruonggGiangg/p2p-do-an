@@ -111,6 +111,11 @@ export interface LoanHistoryItem {
   nodeMatch?: number;
   isFullMatch?: boolean;
   delinquentDays?: number;
+  // Overdue / penalty fields
+  totalOverdue?: number;
+  penaltyOutstanding?: number;
+  penaltyPaid?: number;
+  totalOutstanding?: number;
 }
 
 export interface LoanListResponse {

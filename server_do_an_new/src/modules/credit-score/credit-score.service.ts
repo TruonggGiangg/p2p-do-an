@@ -10,6 +10,8 @@ import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { User } from '../users/schemas/user.schema';
 import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
+import { FineractLoanService } from '../fineract/services/fineract-loan.service';
+import { OVERDUE_PENALTY_CHARGE_ID, DEFAULT_OVERDUE_PENALTY_RATE_PER_DAY } from '../fineract/fineract.constants';
 
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
@@ -185,6 +187,7 @@ export class CreditScoreService implements OnModuleInit {
     private readonly loanDelinquencyModel: Model<LoanDelinquency>,
     @InjectModel(DelinquencyPolicy.name)
     private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
+    private readonly fineractLoanService: FineractLoanService,
   ) {}
 
   async onModuleInit() {
@@ -227,28 +230,47 @@ export class CreditScoreService implements OnModuleInit {
   async handleDelinquencyBatchJob() {
     this.logger.log('[delinquency-batch] Starting midnight delinquency scan...');
 
+    // Query cả loans có delinquentDays > 0 VÀ loans có totalOverdue > 0 (fallback khi Fineract trả delinquentDays = 0)
     const overdueLoans = await this.loanApplicationModel
       .find({
         status: 'disbursed',
-        delinquentDays: { $gt: 0 },
+        $or: [{ delinquentDays: { $gt: 0 } }, { totalOverdue: { $gt: 0 } }],
       })
-      .select('_id userId fineractLoanId delinquentDays totalOverdue')
+      .select('_id userId fineractLoanId delinquentDays totalOverdue repaymentSchedule')
       .lean();
 
     if (!overdueLoans.length) {
       this.logger.log('[delinquency-batch] No overdue loans found.');
-      // Still run retention cleanup even when no new overdue
       await this.handleRetentionCleanup();
       return;
+    }
+
+    // Load delinquency policies (active) để kiểm tra apply_penalty, block_new_loan, etc.
+    const policies = await this.delinquencyPolicyModel.find({ is_active: true }).lean();
+    const policyByGroup = new Map<number, any>();
+    for (const p of policies) {
+      const existing = policyByGroup.get(p.debt_group);
+      if (!existing || p.apply_penalty || p.block_new_loan || p.freeze_account || p.permanent_ban) {
+        policyByGroup.set(p.debt_group, p);
+      }
     }
 
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
     let penalized = 0;
+    let penaltyChargesApplied = 0;
     for (const loan of overdueLoans) {
       try {
         const uid = loan.userId;
+
+        // Compute overdueDays with fallback from schedule periods
+        let overdueDays = Math.max(0, Number(loan.delinquentDays || 0));
+        if (overdueDays === 0 && (loan.totalOverdue || 0) > 0) {
+          overdueDays = this.computeOverdueDaysFromSchedule(loan.repaymentSchedule);
+        }
+        if (overdueDays <= 0) continue;
+
         const alreadyPenalized = await this.creditScoreHistoryModel.findOne({
           userId: uid,
           reason: 'late_payment',
@@ -258,9 +280,9 @@ export class CreditScoreService implements OnModuleInit {
         });
         if (alreadyPenalized) continue;
 
-        const overdueDays = Math.max(1, Number(loan.delinquentDays || 0));
         const debtGroup = this.classifyDebtGroup(overdueDays);
         const groupLabel = this.getDebtGroupLabel(debtGroup);
+        const policy = policyByGroup.get(debtGroup);
 
         // ── Fetch existing delinquency record to check if status changed ──
         const existingDelinquency = await this.loanDelinquencyModel
@@ -306,6 +328,11 @@ export class CreditScoreService implements OnModuleInit {
           { upsert: true, new: true },
         );
 
+        // Cập nhật delinquentDays trên loan_applications nếu Fineract trả 0
+        if ((loan.delinquentDays || 0) !== overdueDays) {
+          await this.loanApplicationModel.updateOne({ _id: loan._id }, { $set: { delinquentDays: overdueDays } });
+        }
+
         // ── Only recalculate credit score if debtGroup or status changed ──
         const statusChanged = previousStatus !== delinquencyStatus;
         const debtGroupChanged = previousDebtGroup !== debtGroup;
@@ -325,6 +352,18 @@ export class CreditScoreService implements OnModuleInit {
           this.logger.debug(
             `[delinquency-batch] Loan #${loan.fineractLoanId}: no change (group=${debtGroup}, status=${delinquencyStatus}). Skipping credit score recalc.`,
           );
+        }
+
+        // ── Apply penalty charge on Fineract if policy says apply_penalty ──
+        if (policy?.apply_penalty && loan.fineractLoanId) {
+          try {
+            await this.applyOverduePenaltyCharge(loan.fineractLoanId, loan.totalOverdue || 0, overdueDays);
+            penaltyChargesApplied++;
+          } catch (penaltyErr) {
+            this.logger.warn(
+              `[delinquency-batch] Failed to apply penalty charge for loan #${loan.fineractLoanId}: ${(penaltyErr as Error).message}`,
+            );
+          }
         }
 
         // Nhóm 4-5: Đóng băng tài khoản
@@ -358,7 +397,9 @@ export class CreditScoreService implements OnModuleInit {
       }
     }
 
-    this.logger.log(`[delinquency-batch] Penalized ${penalized}/${overdueLoans.length} overdue loans.`);
+    this.logger.log(
+      `[delinquency-batch] Penalized ${penalized}/${overdueLoans.length} overdue loans. Penalty charges applied: ${penaltyChargesApplied}.`,
+    );
 
     // ── Resolve: khoản vay đã trả hết nợ → resolved ──
     const overdueFineractIds = overdueLoans.map(l => l.fineractLoanId).filter((id): id is number => id != null);
@@ -375,6 +416,102 @@ export class CreditScoreService implements OnModuleInit {
 
     // ── Retention cleanup: soft-delete resolved records past retention period ──
     await this.handleRetentionCleanup();
+  }
+
+  /**
+   * Tính số ngày quá hạn từ lịch trả nợ (repaymentSchedule) khi Fineract trả delinquentDays = 0.
+   * Lấy kỳ hạn chưa trả có dueDate lâu nhất so với hôm nay.
+   */
+  private computeOverdueDaysFromSchedule(repaymentSchedule?: any[] | any): number {
+    const periods = Array.isArray(repaymentSchedule) ? repaymentSchedule : repaymentSchedule?.periods || [];
+    if (!periods.length) return 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let maxOverdueDays = 0;
+
+    for (const p of periods) {
+      if (p.period == null || Number(p.period) <= 0) continue;
+      const complete = p.complete === true || p.obligationsMetOnDate != null;
+      if (complete) continue;
+      const due = p.dueDate;
+      if (!due) continue;
+      let dueDate: Date | null = null;
+      if (Array.isArray(due) && due.length >= 3) {
+        dueDate = new Date(due[0], due[1] - 1, due[2]);
+      } else if (typeof due === 'string') {
+        dueDate = new Date(due);
+      }
+      if (dueDate && !isNaN(dueDate.getTime()) && dueDate < today) {
+        const diffDays = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+        if (diffDays > maxOverdueDays) maxOverdueDays = diffDays;
+      }
+    }
+    return maxOverdueDays;
+  }
+
+  /**
+   * Áp dụng phí phạt trễ hạn lên Fineract cho khoản vay quá hạn.
+   * Theo quy định NHNN (Thông tư 39/2016/TT-NHNN):
+   *   Lãi suất phạt quá hạn = 150% lãi suất trong hạn (tối đa).
+   * Công thức: penaltyAmount = overdueAmount × dailyPenaltyRate × overdueDays
+   * Chỉ apply 1 lần/ngày (kiểm tra qua existing charges trên Fineract).
+   */
+  private async applyOverduePenaltyCharge(
+    fineractLoanId: number,
+    overdueAmount: number,
+    overdueDays: number,
+  ): Promise<void> {
+    if (overdueAmount <= 0 || overdueDays <= 0) return;
+
+    // Kiểm tra xem đã apply penalty charge hôm nay chưa (qua Fineract loan charges)
+    const existingCharges = await this.fineractLoanService.getLoanCharges(fineractLoanId);
+    const today = new Date().toISOString().split('T')[0];
+    const alreadyAppliedToday = existingCharges.some((c: any) => {
+      if (!c.penalty) return false;
+      const chargeDue = c.dueDate;
+      if (!chargeDue) return false;
+      const dueStr = Array.isArray(chargeDue)
+        ? `${chargeDue[0]}-${String(chargeDue[1]).padStart(2, '0')}-${String(chargeDue[2]).padStart(2, '0')}`
+        : String(chargeDue);
+      return dueStr === today;
+    });
+
+    if (alreadyAppliedToday) {
+      this.logger.debug(
+        `[applyOverduePenaltyCharge] Loan #${fineractLoanId}: penalty already applied today. Skipping.`,
+      );
+      return;
+    }
+
+    // Tính tiền phạt: overdueAmount × rate/ngày × số ngày quá hạn (tính theo ngày cuối cùng — incremental)
+    // Chỉ tính phạt cho 1 ngày (batch chạy daily), không tính cộng dồn toàn bộ
+    let dailyRate = DEFAULT_OVERDUE_PENALTY_RATE_PER_DAY / 100; // 0.05% → 0.0005
+    try {
+      const chargeConfig = await this.fineractLoanService.getChargeDetails(OVERDUE_PENALTY_CHARGE_ID);
+      if (chargeConfig?.amount && chargeConfig.amount > 0) {
+        const calcType = chargeConfig.chargeCalculationType?.value?.toLowerCase() || '';
+        if (calcType.includes('percent') || calcType.includes('%')) {
+          dailyRate = chargeConfig.amount / 100 / 365; // annual rate → daily rate
+        }
+      }
+    } catch {
+      this.logger.debug(`[applyOverduePenaltyCharge] Could not fetch charge config, using default rate.`);
+    }
+
+    const penaltyAmount = Math.round(overdueAmount * dailyRate);
+    if (penaltyAmount <= 0) return;
+
+    const dueDate = today;
+    await this.fineractLoanService.addLoanCharge(fineractLoanId, {
+      chargeId: OVERDUE_PENALTY_CHARGE_ID,
+      amount: penaltyAmount,
+      dueDate,
+    });
+
+    this.logger.log(
+      `[applyOverduePenaltyCharge] Loan #${fineractLoanId}: Applied penalty ${penaltyAmount} VNĐ (overdue=${overdueAmount}, rate=${(dailyRate * 100).toFixed(4)}%/day)`,
+    );
   }
 
   /**

@@ -21,7 +21,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, CommonInput, CommonButton } from '../../../components';
 import { loanService, LoanHistoryItem } from '../services/loan.service';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
@@ -676,6 +676,25 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
                     </View>
                 )}
+                {/* Overdue alert in hero */}
+                {outstanding && isActive && (outstanding.delinquentDays ?? 0) > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.15)', marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, gap: 8 }}>
+                        <Ionicons name="warning" size={16} color="#F87171" />
+                        <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '700', flex: 1 }}>
+                            Quá hạn {outstanding.delinquentDays} ngày
+                            {(outstanding.totalOverdue ?? 0) > 0 ? ` · Nợ quá hạn: ${formatMoney(outstanding.totalOverdue)} đ` : ''}
+                        </Text>
+                    </View>
+                )}
+                {/* Penalty info in hero */}
+                {outstanding && isActive && (outstanding.penaltyOutstanding ?? 0) > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251,191,36,0.15)', marginTop: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, gap: 8 }}>
+                        <Ionicons name="cash-outline" size={16} color="#FBBF24" />
+                        <Text style={{ color: '#FBBF24', fontSize: 13, fontWeight: '700', flex: 1 }}>
+                            Phí phạt trễ hạn: {formatMoney(outstanding.penaltyOutstanding)} đ
+                        </Text>
+                    </View>
+                )}
                 {(!outstanding || !isActive) && (
                     <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
                 )}
@@ -854,18 +873,15 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             )}
 
                             <Text style={[styles.modalSubLabel, { color: colors.textSecondary }]}>Số tiền thanh toán</Text>
-                            <View style={[styles.inputContainer, { borderColor: '#14342B', backgroundColor: colors.background }]}>
-                                <TextInput
-                                    style={[styles.moneyInput, { color: colors.text }]}
-                                    value={repaymentAmount}
-                                    onChangeText={(t) => setRepaymentAmount(formatInputVND(t))}
-                                    keyboardType="numeric"
-                                    placeholder="0"
-                                    placeholderTextColor={colors.textMuted}
-                                    autoFocus
-                                />
-                                <Text style={[styles.currencySuffix, { color: colors.textSecondary }]}>VNĐ</Text>
-                            </View>
+                            <CommonInput
+                                value={repaymentAmount}
+                                onChangeText={(t) => setRepaymentAmount(formatInputVND(t))}
+                                placeholder="0"
+                                suffix="VNĐ"
+                                keyboardType="numeric"
+                                variant="standard"
+                                autoFocus
+                            />
 
                             <View style={styles.quickOptions}>
                                 <TouchableOpacity
@@ -897,12 +913,22 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             </View>
 
                             <View style={styles.modalActions}>
-                                <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1.5 }]} onPress={() => setShowRepayModal(false)}>
-                                    <Text style={[styles.btnCancelText, { color: colors.textSecondary }]}>Hủy</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#14342B' }]} onPress={processRepayment}>
-                                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Thanh toán</Text>
-                                </TouchableOpacity>
+                                <CommonButton
+                                    title="Hủy"
+                                    variant="outline"
+                                    size="md"
+                                    onPress={() => setShowRepayModal(false)}
+                                    style={{ flex: 1 }}
+                                    fullWidth={false}
+                                />
+                                <CommonButton
+                                    title="Thanh toán"
+                                    variant="primary"
+                                    size="md"
+                                    onPress={processRepayment}
+                                    style={{ flex: 1, backgroundColor: '#14342B' }}
+                                    fullWidth={false}
+                                />
                             </View>
                         </View>
                     </KeyboardAvoidingView>
@@ -926,39 +952,46 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                             </Text>
 
                             {supportType === 'RESCHEDULE' && (
-                                <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, paddingHorizontal: 12 }]}>
-                                    <TextInput
-                                        style={[styles.moneyInput, { color: colors.text, fontSize: 15, fontWeight: '500' }]}
-                                        value={rescheduleDate}
-                                        onChangeText={setRescheduleDate}
-                                        placeholder="Ngày (VD: 2024-12-30)"
-                                        placeholderTextColor={colors.textMuted}
-                                    />
-                                </View>
+                                <CommonInput
+                                    value={rescheduleDate}
+                                    onChangeText={setRescheduleDate}
+                                    placeholder="Ngày (VD: 2024-12-30)"
+                                    icon="calendar"
+                                    variant="standard"
+                                />
                             )}
 
-                            <View style={[styles.inputContainer, { borderColor: colors.border, backgroundColor: colors.background, height: 90, padding: 12, alignItems: 'flex-start' }]}>
-                                <TextInput
-                                    style={{ color: colors.text, flex: 1, fontSize: 14, width: '100%' }}
-                                    value={supportReason}
-                                    onChangeText={setSupportReason}
-                                    placeholder="Lý do chi tiết..."
-                                    placeholderTextColor={colors.textMuted}
-                                    multiline
-                                    textAlignVertical="top"
-                                />
-                            </View>
+                            <CommonInput
+                                value={supportReason}
+                                onChangeText={setSupportReason}
+                                placeholder="Lý do chi tiết..."
+                                variant="standard"
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
+                                containerStyle={{ marginTop: 8 }}
+                            />
 
                             <View style={styles.modalActions}>
-                                <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1.5 }]} onPress={() => setShowSupportModal(false)} disabled={submittingSupport}>
-                                    <Text style={[styles.btnCancelText, { color: colors.textSecondary }]}>Hủy</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#14342B' }]} onPress={handleSupportSubmit} disabled={submittingSupport}>
-                                    {submittingSupport
-                                        ? <ActivityIndicator size="small" color="#FFF" />
-                                        : <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Gửi Yêu Cầu</Text>
-                                    }
-                                </TouchableOpacity>
+                                <CommonButton
+                                    title="Hủy"
+                                    variant="outline"
+                                    size="md"
+                                    onPress={() => setShowSupportModal(false)}
+                                    disabled={submittingSupport}
+                                    style={{ flex: 1 }}
+                                    fullWidth={false}
+                                />
+                                <CommonButton
+                                    title="Gửi Yêu Cầu"
+                                    variant="primary"
+                                    size="md"
+                                    onPress={handleSupportSubmit}
+                                    loading={submittingSupport}
+                                    disabled={submittingSupport}
+                                    style={{ flex: 1, backgroundColor: '#14342B' }}
+                                    fullWidth={false}
+                                />
                             </View>
                         </View>
                     </KeyboardAvoidingView>

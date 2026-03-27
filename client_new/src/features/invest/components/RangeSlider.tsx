@@ -4,6 +4,7 @@
  */
 import React, { useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Text, GestureResponderEvent, LayoutChangeEvent } from 'react-native';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface RangeSliderProps {
   readonly min: number;
@@ -24,9 +25,13 @@ const TRACK_H = 4;
 
 export default function RangeSlider({
   min, max, step, low, high, onValueChange,
-  trackColor = '#E0E0E0', activeColor = '#4CAF50',
-  thumbColor = '#4CAF50', labelColor = '#999', formatLabel,
+  trackColor, activeColor, thumbColor, labelColor, formatLabel,
 }: RangeSliderProps) {
+  const { theme } = useTheme();
+  const resolvedTrackColor = trackColor ?? theme.colors.border;
+  const resolvedActiveColor = activeColor ?? theme.colors.primary;
+  const resolvedThumbColor = thumbColor ?? theme.colors.primary;
+  const resolvedLabelColor = labelColor ?? theme.colors.textMuted;
   const trackRef = useRef<View>(null);
   const trackX = useRef(0);
   const trackW = useRef(1);
@@ -103,36 +108,36 @@ export default function RangeSlider({
         onResponderRelease={onTouchEnd}
       >
         {/* Track bg */}
-        <View style={[s.track, { backgroundColor: trackColor }]} />
+        <View style={[s.track, { backgroundColor: resolvedTrackColor }]} />
 
         {/* Active range */}
         <View style={[s.active, {
           left: `${lowPct}%` as any,
           width: `${highPct - lowPct}%` as any,
-          backgroundColor: activeColor,
+          backgroundColor: resolvedActiveColor,
         }]} />
 
         {/* Low thumb */}
         <View style={[s.thumb, {
           left: `${lowPct}%` as any,
-          backgroundColor: thumbColor,
+          backgroundColor: resolvedThumbColor,
           transform: [{ translateX: -THUMB / 2 }],
         }]} />
 
         {/* High thumb */}
         <View style={[s.thumb, {
           left: `${highPct}%` as any,
-          backgroundColor: thumbColor,
+          backgroundColor: resolvedThumbColor,
           transform: [{ translateX: -THUMB / 2 }],
         }]} />
       </View>
 
       {/* Labels */}
       <View style={s.labels}>
-        <Text style={[s.labelTxt, { color: labelColor }]}>
+        <Text style={[s.labelTxt, { color: resolvedLabelColor }]}>
           {formatLabel ? formatLabel(min) : min}
         </Text>
-        <Text style={[s.labelTxt, { color: labelColor }]}>
+        <Text style={[s.labelTxt, { color: resolvedLabelColor }]}>
           {formatLabel ? formatLabel(max) : max}
         </Text>
       </View>

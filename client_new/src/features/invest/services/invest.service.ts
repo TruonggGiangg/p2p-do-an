@@ -2,7 +2,7 @@
  * InvestService — Client-side API service for InvestmentOrder (lệnh đầu tư)
  * Pattern: giống loan.service.ts, dùng centralized api client (axios)
  */
-import api from '../../../core/api/api.client';
+import api from "../../../core/api/api.client";
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ export interface InvestmentOrderItem {
     matchedAt: string;
   }>;
   matchedCapital: number;
-  status: 'open' | 'closed';
+  status: "open" | "closed";
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +85,12 @@ export interface AvailableLoanItem {
     tier: string;
     riskLevel: string;
   };
+  borrowerDelinquencyWarning?: {
+    debtGroup: number;
+    overdueAmount: number;
+    delinquentDays: number;
+    message: string;
+  };
   createdAt: string;
 }
 
@@ -104,7 +110,7 @@ export interface LenderScheduleItem {
   principal: number;
   interest: number;
   total: number;
-  status: 'pending' | 'paid' | 'partial' | 'overdue';
+  status: "pending" | "paid" | "partial" | "overdue";
   paidDate?: string;
   paidAmount?: number;
 }
@@ -124,7 +130,7 @@ export interface InvestmentContractItem {
   entirelyProfit: number;
   entirelyPay: number;
   serviceFee: number;
-  status: 'pending' | 'active' | 'matured' | 'closed';
+  status: "pending" | "active" | "matured" | "closed";
   fineractFDAccountId?: number;
   fdInterestRate?: number;
   fdMaturityDate?: string;
@@ -155,11 +161,13 @@ class InvestService {
   /**
    * Tạo lệnh đầu tư + auto-match
    */
-  async createInvestmentOrder(payload: CreateInvestmentOrderPayload): Promise<CreateOrderResult> {
+  async createInvestmentOrder(
+    payload: CreateInvestmentOrderPayload,
+  ): Promise<CreateOrderResult> {
     const response = await api.post<{
       statusCode: number;
       data: CreateOrderResult;
-    }>('/api/invest/investment-order/with-progress', payload);
+    }>("/api/invest/investment-order/with-progress", payload);
     return response.data.data;
   }
 
@@ -170,16 +178,16 @@ class InvestService {
     page?: number;
     pageSize?: number;
     sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-    status?: 'open' | 'closed';
+    sortOrder?: "asc" | "desc";
+    status?: "open" | "closed";
   }): Promise<InvestmentOrderListResponse> {
     const query = new URLSearchParams();
-    if (params?.page) query.append('page', String(params.page));
-    if (params?.pageSize) query.append('pageSize', String(params.pageSize));
-    if (params?.sortBy) query.append('sortBy', params.sortBy);
-    if (params?.sortOrder) query.append('sortOrder', params.sortOrder);
-    if (params?.status) query.append('status', params.status);
-    const qs = query.toString() ? `?${query.toString()}` : '';
+    if (params?.page) query.append("page", String(params.page));
+    if (params?.pageSize) query.append("pageSize", String(params.pageSize));
+    if (params?.sortBy) query.append("sortBy", params.sortBy);
+    if (params?.sortOrder) query.append("sortOrder", params.sortOrder);
+    if (params?.status) query.append("status", params.status);
+    const qs = query.toString() ? `?${query.toString()}` : "";
 
     const response = await api.get<{
       statusCode: number;
@@ -202,7 +210,10 @@ class InvestService {
   /**
    * Cập nhật lệnh đầu tư
    */
-  async updateInvestmentOrder(id: string, data: Partial<CreateInvestmentOrderPayload>): Promise<InvestmentOrderItem> {
+  async updateInvestmentOrder(
+    id: string,
+    data: Partial<CreateInvestmentOrderPayload>,
+  ): Promise<InvestmentOrderItem> {
     const response = await api.put<{
       statusCode: number;
       data: InvestmentOrderItem;
@@ -235,7 +246,7 @@ class InvestService {
     page?: number;
     pageSize?: number;
     sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
+    sortOrder?: "asc" | "desc";
     minRate?: number;
     maxRate?: number;
     minPeriod?: number;
@@ -246,19 +257,25 @@ class InvestService {
     riskLevel?: string;
   }): Promise<AvailableLoansResponse> {
     const query = new URLSearchParams();
-    if (params?.page) query.append('page', String(params.page));
-    if (params?.pageSize) query.append('pageSize', String(params.pageSize));
-    if (params?.sortBy) query.append('sortBy', params.sortBy);
-    if (params?.sortOrder) query.append('sortOrder', params.sortOrder);
-    if (params?.minRate !== undefined) query.append('minRate', String(params.minRate));
-    if (params?.maxRate !== undefined) query.append('maxRate', String(params.maxRate));
-    if (params?.minPeriod !== undefined) query.append('minPeriod', String(params.minPeriod));
-    if (params?.maxPeriod !== undefined) query.append('maxPeriod', String(params.maxPeriod));
-    if (params?.minCapital !== undefined) query.append('minCapital', String(params.minCapital));
-    if (params?.maxCapital !== undefined) query.append('maxCapital', String(params.maxCapital));
-    if (params?.search) query.append('search', params.search);
-    if (params?.riskLevel) query.append('riskLevel', params.riskLevel);
-    const qs = query.toString() ? `?${query.toString()}` : '';
+    if (params?.page) query.append("page", String(params.page));
+    if (params?.pageSize) query.append("pageSize", String(params.pageSize));
+    if (params?.sortBy) query.append("sortBy", params.sortBy);
+    if (params?.sortOrder) query.append("sortOrder", params.sortOrder);
+    if (params?.minRate !== undefined)
+      query.append("minRate", String(params.minRate));
+    if (params?.maxRate !== undefined)
+      query.append("maxRate", String(params.maxRate));
+    if (params?.minPeriod !== undefined)
+      query.append("minPeriod", String(params.minPeriod));
+    if (params?.maxPeriod !== undefined)
+      query.append("maxPeriod", String(params.maxPeriod));
+    if (params?.minCapital !== undefined)
+      query.append("minCapital", String(params.minCapital));
+    if (params?.maxCapital !== undefined)
+      query.append("maxCapital", String(params.maxCapital));
+    if (params?.search) query.append("search", params.search);
+    if (params?.riskLevel) query.append("riskLevel", params.riskLevel);
+    const qs = query.toString() ? `?${query.toString()}` : "";
 
     const response = await api.get<{
       statusCode: number;
@@ -282,7 +299,7 @@ class InvestService {
     const response = await api.post<{
       statusCode: number;
       data: InvestmentContractItem;
-    }>('/api/invest/contract', payload);
+    }>("/api/invest/contract", payload);
     return response.data.data;
   }
 
@@ -295,10 +312,10 @@ class InvestService {
     status?: string;
   }): Promise<InvestmentContractListResponse> {
     const query = new URLSearchParams();
-    if (params?.page) query.append('page', String(params.page));
-    if (params?.pageSize) query.append('pageSize', String(params.pageSize));
-    if (params?.status) query.append('status', params.status);
-    const qs = query.toString() ? `?${query.toString()}` : '';
+    if (params?.page) query.append("page", String(params.page));
+    if (params?.pageSize) query.append("pageSize", String(params.pageSize));
+    if (params?.status) query.append("status", params.status);
+    const qs = query.toString() ? `?${query.toString()}` : "";
 
     const response = await api.get<{
       statusCode: number;
@@ -321,7 +338,9 @@ class InvestService {
   /**
    * Lấy hợp đồng ký quỹ theo khoản vay (dành cho khoản vay đã ghép)
    */
-  async getContractByLoanId(loanId: string): Promise<InvestmentContractItem | null> {
+  async getContractByLoanId(
+    loanId: string,
+  ): Promise<InvestmentContractItem | null> {
     try {
       const response = await api.get<{
         statusCode: number;
@@ -344,7 +363,7 @@ class InvestService {
     const response = await api.get<{
       statusCode: number;
       data: any;
-    }>('/api/invest/stats');
+    }>("/api/invest/stats");
     return response.data.data;
   }
 
@@ -358,23 +377,29 @@ class InvestService {
   }> {
     const response = await api.get<{
       statusCode: number;
-      data: { walletBalance: number; totalInvested: number; availableBalance: number };
-    }>('/api/invest/my-balance');
+      data: {
+        walletBalance: number;
+        totalInvested: number;
+        availableBalance: number;
+      };
+    }>("/api/invest/my-balance");
     return response.data.data;
   }
 
   /**
    * Preview lịch nhận tiền trước khi đầu tư
    */
-  async getSchedulePreview(loanApplicationId: string, numNotes: number): Promise<any> {
+  async getSchedulePreview(
+    loanApplicationId: string,
+    numNotes: number,
+  ): Promise<any> {
     const response = await api.post<{
       statusCode: number;
       data: any;
-    }>('/api/invest/schedule-preview', { loanApplicationId, numNotes });
+    }>("/api/invest/schedule-preview", { loanApplicationId, numNotes });
     return response.data.data;
   }
 }
 
 export const investService = new InvestService();
 export default investService;
-
