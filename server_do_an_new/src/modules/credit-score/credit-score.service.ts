@@ -263,6 +263,42 @@ export class CreditScoreService implements OnModuleInit {
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
+    // ── Batch pre-fetch: avoid N+1 queries in the loop ──
+    const overdueUserIds = [...new Set(overdueLoans.map(l => l.userId))];
+    const overdueFineractIds = overdueLoans.map(l => l.fineractLoanId).filter((id): id is number => id != null);
+
+    const [recentHistory, existingDelinquencies] = await Promise.all([
+      this.creditScoreHistoryModel
+        .find({
+          userId: { $in: overdueUserIds },
+          reason: 'late_payment',
+          trigger: 'delinquency_batch',
+          createdAt: { $gte: oneDayAgo },
+        })
+        .select('userId note')
+        .lean(),
+      this.loanDelinquencyModel
+        .find({ fineractLoanId: { $in: overdueFineractIds } })
+        .select('fineractLoanId debtGroup status')
+        .lean(),
+    ]);
+
+    // Build lookup: "userId:fineractLoanId" → already penalized today
+    const penalizedSet = new Set<string>();
+    for (const h of recentHistory) {
+      const match = (h.note || '').match(/#(\d+)/);
+      if (match) penalizedSet.add(`${h.userId}:${match[1]}`);
+    }
+    // Build lookup: fineractLoanId → existing delinquency record
+    const delinquencyByLoanId = new Map<number, { debtGroup: number; status: string }>();
+    for (const d of existingDelinquencies) {
+      delinquencyByLoanId.set(d.fineractLoanId, d);
+    }
+
+    this.logger.log(
+      `[delinquency-batch] Pre-fetched ${recentHistory.length} history records, ${existingDelinquencies.length} delinquency records.`,
+    );
+
     let penalized = 0;
     let penaltyChargesApplied = 0;
     for (const loan of overdueLoans) {
@@ -276,25 +312,16 @@ export class CreditScoreService implements OnModuleInit {
         }
         if (overdueDays <= 0) continue;
 
-        const alreadyPenalized = await this.creditScoreHistoryModel.findOne({
-          userId: uid,
-          reason: 'late_payment',
-          trigger: 'delinquency_batch',
-          note: { $regex: `#${loan.fineractLoanId}` },
-          createdAt: { $gte: oneDayAgo },
-        });
-        if (alreadyPenalized) continue;
+        // Check already penalized today (batch lookup instead of per-loan query)
+        if (penalizedSet.has(`${uid}:${loan.fineractLoanId}`)) continue;
 
         const debtGroup = this.classifyDebtGroup(overdueDays);
         const groupLabel = this.getDebtGroupLabel(debtGroup);
         const policy = policyByGroup.get(debtGroup);
 
-        // ── Fetch existing delinquency record to check if status changed ──
-        const existingDelinquency = await this.loanDelinquencyModel
-          .findOne({
-            fineractLoanId: loan.fineractLoanId,
-          })
-          .lean();
+        // ── Lookup existing delinquency from batch (instead of per-loan query) ──
+        const existingDelinquency =
+          loan.fineractLoanId != null ? delinquencyByLoanId.get(loan.fineractLoanId) : undefined;
         const previousDebtGroup = existingDelinquency?.debtGroup ?? 0;
         const previousStatus = existingDelinquency?.status ?? 'normal';
 
@@ -371,29 +398,50 @@ export class CreditScoreService implements OnModuleInit {
           }
         }
 
-        // Nhóm 4-5: Đóng băng tài khoản
-        if (debtGroup >= 4) {
+        // ── Dynamic policy enforcement: freeze_account, permanent_ban, legal_escalation ──
+        if (policy?.freeze_account) {
           await this.userModel.updateOne(
             { _id: uid },
             {
-              $set: { 'metadata.accountFrozen': true, 'metadata.frozenReason': `Nợ nhóm ${debtGroup}: ${groupLabel}` },
+              $set: {
+                'metadata.accountFrozen': true,
+                'metadata.frozenReason': `Nợ nhóm ${debtGroup}: ${groupLabel}`,
+                'metadata.frozenDebtGroup': debtGroup,
+              },
             },
           );
-          this.logger.warn(`[delinquency-batch] FROZEN account for user ${uid} — debt group ${debtGroup}`);
+          this.logger.warn(
+            `[delinquency-batch] FROZEN account for user ${uid} — debt group ${debtGroup} (policy.freeze_account=true)`,
+          );
         }
 
-        // Nhóm 5: Permanent Ban
-        if (debtGroup >= 5) {
+        if (policy?.permanent_ban) {
           await this.userModel.updateOne(
             { _id: uid },
             {
               $set: {
                 'metadata.permanentBan': true,
                 'metadata.banReason': `Nợ có khả năng mất vốn (>=${overdueDays} ngày)`,
+                'metadata.banDebtGroup': debtGroup,
               },
             },
           );
-          this.logger.warn(`[delinquency-batch] PERMANENT BAN for user ${uid} — debt group 5`);
+          this.logger.warn(
+            `[delinquency-batch] PERMANENT BAN for user ${uid} — debt group ${debtGroup} (policy.permanent_ban=true)`,
+          );
+        }
+
+        if (policy.legal_escalation) {
+          await this.userModel.updateOne(
+            { _id: uid },
+            {
+              $set: {
+                'metadata.legalEscalation': true,
+                'metadata.legalEscalationReason': `Nợ nhóm ${debtGroup}: ${groupLabel} — Chuyển xử lý pháp lý`,
+              },
+            },
+          );
+          this.logger.warn(`[delinquency-batch] LEGAL ESCALATION for user ${uid} — debt group ${debtGroup}`);
         }
 
         penalized++;
@@ -407,7 +455,6 @@ export class CreditScoreService implements OnModuleInit {
     );
 
     // ── Resolve: khoản vay đã trả hết nợ → resolved ──
-    const overdueFineractIds = overdueLoans.map(l => l.fineractLoanId).filter((id): id is number => id != null);
     await this.loanDelinquencyModel.updateMany(
       {
         status: { $in: ['overdue', 'defaulted'] } as any,

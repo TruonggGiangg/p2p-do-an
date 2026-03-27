@@ -4,9 +4,7 @@
  * Handles: Validation → Balance check → Create contract → Transfer funds → Create FD → Update contract
  * Payment method: Fineract e-wallet only (no USDT, no internal wallet, no blockchain).
  */
-import {
-  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -54,25 +52,31 @@ export class InvestPaymentService {
     const investAmount = numNotes * this.baseUnitPrice;
 
     // ── 1. Validate lender ──
-    const lender = await this.userModel.findById(lenderId);
+    const lender = await this.userModel.findById(lenderId).select('fineractClientId fullName email phone').lean();
     if (!lender) throw new NotFoundException('Không tìm thấy người dùng');
     if (!lender.fineractClientId) {
       throw new BadRequestException('Lender chưa liên kết Fineract. Vui lòng đồng bộ ví trước.');
     }
 
     // ── 2. Validate loan ──
-    const loan = await this.loanModel.findById(loanApplicationId);
+    const loan = await this.loanModel
+      .findById(loanApplicationId)
+      .select('_id capital status willing periodMonth monthlyRatePercent productId nodeMatch investedNotes')
+      .lean();
     if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
     if (!['approved', 'disbursed'].includes(loan.status)) {
       throw new BadRequestException('Khoản vay không ở trạng thái cho phép đầu tư');
     }
 
     // ── 3. Check duplicate investment ──
-    const existingContract = await this.contractModel.findOne({
-      lenderId: new Types.ObjectId(lenderId),
-      loanApplicationId: loan._id,
-      status: { $in: ['pending', 'active'] },
-    });
+    const existingContract = await this.contractModel
+      .findOne({
+        lenderId: new Types.ObjectId(lenderId),
+        loanApplicationId: loan._id,
+        status: { $in: ['pending', 'active'] },
+      })
+      .select('contractId')
+      .lean();
     if (existingContract) {
       throw new BadRequestException(
         `Bạn đã đầu tư vào khoản vay này (HĐ: ${existingContract.contractId}). Không thể đầu tư trùng.`,
@@ -116,7 +120,10 @@ export class InvestPaymentService {
 
     // ── 6. Create InvestmentContract (MongoDB) ──
     const contract = await this.contractService.createContract(
-      lenderId, loanApplicationId, numNotes, investmentOrderId,
+      lenderId,
+      loanApplicationId,
+      numNotes,
+      investmentOrderId,
     );
 
     this.logger.log(`Contract created: ${contract.contractId}, capital: ${investAmount.toLocaleString()}`);
@@ -180,7 +187,8 @@ export class InvestPaymentService {
     }
 
     // ── 9. Return updated contract ──
-    const updatedContract = await this.contractModel.findById(contract._id)
+    const updatedContract = await this.contractModel
+      .findById(contract._id)
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status');
     return updatedContract || contract;
   }

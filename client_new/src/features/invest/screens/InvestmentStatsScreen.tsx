@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, padding: 20, marginBottom: 24,
   },
   summaryLabel: { fontSize: 13, fontWeight: '500' },
-  summaryValue: { fontSize: 22, fontWeight: '800', marginTop: 4, letterSpacing: -0.5 },
+  summaryValue: { fontSize: 22, fontWeight: '700', marginTop: 4, letterSpacing: -0.5 },
   summaryRow: { flexDirection: 'row', marginTop: 20, gap: 16 },
   summaryItem: { flex: 1 },
   summaryItemLabel: { fontSize: 12 },
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   },
   healthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   healthIconCircle: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  healthCount: { fontSize: 20, fontWeight: '800' },
+  healthCount: { fontSize: 20, fontWeight: '700' },
   healthLabel: { fontSize: 12, marginTop: 8 },
   healthAmount: { fontSize: 13, fontWeight: '600', marginTop: 4 },
 

@@ -204,7 +204,20 @@ export default function LoanConfirmScreen() {
                 entirelyPay: result.entirelyPay,
             });
         } catch (e: any) {
-            Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể tạo đơn vay');
+            const errData = e?.response?.data;
+            // Navigate to LoanBlockedScreen if blocked by delinquency policy
+            if (errData?.code === 'LOAN_BLOCKED_DELINQUENCY') {
+                navigation.navigate('LoanBlocked' as any, {
+                    debtGroup: errData.debtGroup,
+                    overdueDays: errData.overdueDays,
+                    overdueAmount: errData.overdueAmount,
+                    fineractLoanId: errData.fineractLoanId,
+                    policy: errData.policy,
+                    message: errData.message,
+                });
+            } else {
+                Alert.alert('Lỗi', errData?.message ?? 'Không thể tạo đơn vay');
+            }
         } finally {
             setSubmitting(false);
         }

@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   },
   summaryPurpose: { fontSize: 13, fontWeight: '500', marginBottom: 4 },
   summaryMainLabel: { fontSize: 12 },
-  summaryMainValue: { fontSize: 22, fontWeight: '800', marginTop: 2, letterSpacing: -0.5 },
+  summaryMainValue: { fontSize: 22, fontWeight: '700', marginTop: 2, letterSpacing: -0.5 },
   summaryMeta: { marginTop: 8 },
   summaryMetaText: { fontSize: 13 },
   summaryRow: { flexDirection: 'row', marginTop: 20, gap: 16 },

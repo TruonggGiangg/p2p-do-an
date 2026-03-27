@@ -50,7 +50,7 @@ function generateDelinquencyPolicySection(contract: LoanContract): string {
   const policies = (contract as any).delinquencyPolicySnapshot || [];
   if (!Array.isArray(policies) || policies.length === 0) {
     return `
-      <div class="highlight" style="border-color:#d35400;background:#fff7ed;">
+      <div class="highlight" style="border-color:#EF4444;background:#FEF2F2;">
         <strong>Chưa có snapshot chính sách nợ quá hạn</strong><br/>
         Hợp đồng chưa ghi nhận cấu hình delinquencyPolicySnapshot tại thời điểm phát hành.
         Vui lòng liên hệ quản trị để rà soát trước khi ký.
@@ -341,14 +341,14 @@ export function generateLoanContractHTML(data: ContractTemplateData): string {
       word-break: break-word;
     }
     .highlight {
-      background-color: #fef9e7;
-      border: 1px solid #f9e79f;
+      background-color: #f0faf6;
+      border: 1px solid #b2dfdb;
       border-radius: 4px;
       padding: 12px 16px;
       margin: 12px 0;
     }
     .highlight strong {
-      color: #d4ac0d;
+      color: #14342B;
     }
     .article { margin: 10px 0; }
     .article-title { font-weight: bold; }

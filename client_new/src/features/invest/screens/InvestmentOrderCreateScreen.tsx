@@ -337,14 +337,14 @@ const s = StyleSheet.create({
 
   // Hero
   heroSub: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 16, marginBottom: 4 },
-  heroTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
+  heroTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16 },
 
   // Section
   section: { borderRadius: 16, padding: 18, marginBottom: 12 },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   stepBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  stepBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', flex: 1 },
+  stepBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   presetChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18 },
@@ -388,7 +388,7 @@ const s = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
   },
   ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18, borderRadius: 28 },
-  ctaText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  ctaText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
 
   // Result
   resultWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },

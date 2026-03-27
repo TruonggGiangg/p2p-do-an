@@ -18,6 +18,7 @@ import RepaymentSuccessScreen from '../features/loan/screens/RepaymentSuccessScr
 import PrepaymentSuccessScreen from '../features/loan/screens/PrepaymentSuccessScreen';
 import RepaymentConfirmScreen from '../features/loan/screens/RepaymentConfirmScreen';
 import PrepaymentConfirmScreen from '../features/loan/screens/PrepaymentConfirmScreen';
+import LoanBlockedScreen from '../features/loan/screens/LoanBlockedScreen';
 import BNPLLoanListScreen from '../features/bnpl/screens/BNPLLoanListScreen';
 import BNPLLoanDetailScreen from '../features/bnpl/screens/BNPLLoanDetailScreen';
 import BNPLEarlyRepayScreen from '../features/bnpl/screens/BNPLEarlyRepayScreen';
@@ -119,6 +120,14 @@ export type RootStackParamList = {
     InvestmentStats: undefined;
     SchedulePreview: { loanApplicationId: string; numNotes: number; loanTitle?: string };
     InvestmentFlow: { loan: any };
+    LoanBlocked: {
+        debtGroup?: number;
+        overdueDays?: number;
+        overdueAmount?: number;
+        fineractLoanId?: number;
+        policy?: { blockNewLoan?: boolean; freezeAccount?: boolean; permanentBan?: boolean; applyPenalty?: boolean; legalEscalation?: boolean; collectionStage?: string };
+        message?: string;
+    };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -153,6 +162,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="LoanContractDetail" component={LoanContractDetailScreen} />
                     <Stack.Screen name="SigningSuccess" component={SigningSuccessScreen} />
                     <Stack.Screen name="RepaymentConfirm" component={RepaymentConfirmScreen} />
+                    <Stack.Screen name="LoanBlocked" component={LoanBlockedScreen} />
                     <Stack.Screen name="PrepaymentConfirm" component={PrepaymentConfirmScreen} />
                     <Stack.Screen name="RepaymentSuccess" component={RepaymentSuccessScreen} />
                     <Stack.Screen name="PrepaymentSuccess" component={PrepaymentSuccessScreen} />

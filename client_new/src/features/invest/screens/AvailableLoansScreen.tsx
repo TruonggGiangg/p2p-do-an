@@ -341,7 +341,7 @@ export default function AvailableLoansScreen() {
                     )}
                   </Svg>
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.text }}>{pctNum}%</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>{pctNum}%</Text>
                   </View>
                 </View>
                 {/* Legend */}
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
   countChip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, minWidth: 28, alignItems: 'center' },
   countText: { fontSize: 13, fontWeight: '700' },
   filterBadge: { position: 'absolute', top: -4, right: -6, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  filterBadgeText: { fontSize: 9, fontWeight: '800' },
+  filterBadgeText: { fontSize: 9, fontWeight: '700' },
 
   // Card — Stitch "Bioluminescent Vault" tonal layering
   card: {
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
   cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   metricItem: { width: '50%', paddingVertical: 14, paddingHorizontal: 16 },
   metricItemRight: {},
   metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
-  metricValue: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  metricValue: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
   metricSubValue: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   metricUnit: { fontSize: 12, fontWeight: '500' },
 
@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 10,
     borderRadius: 12, borderWidth: 1, marginBottom: 12,
   },
-  warningTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
+  warningTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
   warningDesc: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
 
   // AI Insight Cards — Stitch "Bioluminescent" tonal
@@ -575,14 +575,14 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
     borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
   },
-  insightTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  insightTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
   insightDesc: { fontSize: 10, fontWeight: '500', marginTop: 1 },
 
   // Progress — Stitch segmented progress bar
   progressSection: { borderRadius: 16, padding: 14, marginBottom: 16 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   progressLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  progressValue: { fontSize: 13, fontWeight: '800' },
+  progressValue: { fontSize: 13, fontWeight: '700' },
   // Donut legend (right side)
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  filledBtnText: { color: '#0B1F1A', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+  filledBtnText: { color: '#0B1F1A', fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
   // Empty
   emptyContainer: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 22, fontWeight: '800' },
+  counterValue: { fontSize: 22, fontWeight: '700' },
   counterLabel: { fontSize: 12, marginTop: 2 },
 
   // Quick select

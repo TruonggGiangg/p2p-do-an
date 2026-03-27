@@ -201,7 +201,7 @@ export default function InvestmentOrderListScreen() {
                     )}
                   </Svg>
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>{matchPct}%</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{matchPct}%</Text>
                   </View>
                 </View>
 
@@ -366,7 +366,7 @@ const st = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statCard: { flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 12, alignItems: 'center' },
   statLbl: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 6 },
-  statVal: { fontSize: 15, fontWeight: '800' },
+  statVal: { fontSize: 15, fontWeight: '700' },
 
   // Filter + Sort row
   filterSortRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -390,7 +390,7 @@ const st = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
   cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
@@ -401,14 +401,14 @@ const st = StyleSheet.create({
   metricItem: { width: '50%', paddingVertical: 16, paddingHorizontal: 20 },
   metricItemRight: { alignItems: 'flex-end' },
   metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
-  metricValue: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  metricValue: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
   metricUnit: { fontSize: 12, fontWeight: '500' },
 
   // Progress (Donut)
   progressSection: { borderRadius: 16, padding: 14, marginBottom: 16 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   progressLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  progressValue: { fontSize: 13, fontWeight: '800' },
+  progressValue: { fontSize: 13, fontWeight: '700' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
   legendText: { fontSize: 12, fontWeight: '500', flex: 1 },
@@ -420,7 +420,7 @@ const st = StyleSheet.create({
     paddingVertical: 14, borderRadius: 14,
     shadowColor: '#CDEA2D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 6,
   },
-  filledBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+  filledBtnText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
   // Empty
   emptyWrap: { alignItems: 'center', paddingHorizontal: 32, marginTop: -40 },

@@ -85,7 +85,11 @@ export class InvestService {
         periodMonth: { $gte: periodRange.min, $lte: periodRange.max },
         capital: { $lte: maxCapital },
       })
+      .select(
+        '_id capital willing periodMonth monthlyRatePercent productId status nodeMatch investedNotes aiScore creditScore',
+      )
       .sort({ createdAt: 1 })
+      .lean()
       .exec();
 
     sendProgress(`Tìm thấy ${availableLoans.length} khoản vay có thể ghép. Đang kiểm tra...`, 20);
@@ -270,6 +274,7 @@ export class InvestService {
         .sort(sort)
         .skip(skip)
         .limit(pageSize)
+        .lean()
         .exec(),
     ]);
 
@@ -307,7 +312,7 @@ export class InvestService {
 
     // Enrich with investment progress (like HD-AMC)
     const safeLoans = loans.map(loan => {
-      const obj = loan.toObject();
+      const obj = { ...loan } as any;
 
       // ── Cảnh báo nợ xấu cho nhà đầu tư ──
       const borrowerId = (obj as any).userId?.toString();
@@ -427,16 +432,16 @@ export class InvestService {
       // 3. Get unique loan product IDs
       const uniqueProductIds = [...new Set(loans.map(l => l.productId as number).filter(Boolean))];
 
-      // 4. For each loan product, get shortName from Fineract and match
-      for (const pid of uniqueProductIds) {
-        try {
-          const loanProd = await fdClient.get(`/loanproducts/${pid}`);
-          const sn = (loanProd.data?.shortName || '').toUpperCase().trim();
-          if (sn && shortNameToFDRate.has(sn)) {
-            map.set(pid, shortNameToFDRate.get(sn)!);
-          }
-        } catch {
-          // Ignore — loan product may not exist in Fineract
+      // 4. For each loan product, get shortName from Fineract and match (parallel)
+      const loanProdResults = await Promise.all(
+        uniqueProductIds.map(pid => fdClient.get(`/loanproducts/${pid}`).catch(() => null)),
+      );
+      for (let i = 0; i < uniqueProductIds.length; i++) {
+        const loanProd = loanProdResults[i];
+        if (!loanProd) continue;
+        const sn = (loanProd.data?.shortName || '').toUpperCase().trim();
+        if (sn && shortNameToFDRate.has(sn)) {
+          map.set(uniqueProductIds[i], shortNameToFDRate.get(sn)!);
         }
       }
 
@@ -477,7 +482,7 @@ export class InvestService {
 
     const [totalCount, orders] = await Promise.all([
       this.investmentOrderModel.countDocuments(filters),
-      this.investmentOrderModel.find(filters).sort(sort).skip(skip).limit(pageSize).exec(),
+      this.investmentOrderModel.find(filters).sort(sort).skip(skip).limit(pageSize).lean().exec(),
     ]);
 
     return {

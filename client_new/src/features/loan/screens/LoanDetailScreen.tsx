@@ -1115,7 +1115,7 @@ const styles = StyleSheet.create({
     // Repay Modal
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalDismiss: { flex: 1 },
-    modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: Platform.OS === 'ios' ? 32 : 18 },
+    modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
     modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
     modalHeader: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
     modalSubLabel: { fontSize: 12, marginBottom: 6 },
@@ -1134,7 +1134,7 @@ const styles = StyleSheet.create({
     inputContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, height: 52, marginBottom: 12 },
     moneyInput: { flex: 1, fontSize: 20, fontWeight: '700' },
     currencySuffix: { fontSize: 14, fontWeight: '600' },
-    quickOptions: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+    quickOptions: { flexDirection: 'row', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
     chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1.5 },
     chipText: { fontSize: 12, fontWeight: '600' },
     modalActions: { flexDirection: 'row', gap: 10 },

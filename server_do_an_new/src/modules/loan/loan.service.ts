@@ -493,10 +493,32 @@ export class LoanService {
 
       if (blockingPolicy) {
         const delinquentLoan = activeDelinquencies.find(d => d.debtGroup === highestDebtGroup);
-        throw new BadRequestException(
-          `Bạn đang có khoản vay quá hạn ${delinquentLoan?.delinquentDays ?? 0} ngày (Nhóm nợ ${highestDebtGroup}). ` +
+        const overdueDays = delinquentLoan?.delinquentDays ?? 0;
+        const overdueAmount = delinquentLoan?.overdueAmount ?? 0;
+
+        // Build structured violation payload for client
+        const violationPayload = {
+          code: 'LOAN_BLOCKED_DELINQUENCY',
+          debtGroup: highestDebtGroup,
+          overdueDays,
+          overdueAmount,
+          fineractLoanId: delinquentLoan?.fineractLoanId,
+          policy: {
+            blockNewLoan: !!blockingPolicy.block_new_loan,
+            freezeAccount: !!blockingPolicy.freeze_account,
+            permanentBan: !!blockingPolicy.permanent_ban,
+            applyPenalty: !!blockingPolicy.apply_penalty,
+            legalEscalation: !!(blockingPolicy as any).legal_escalation,
+            collectionStage: (blockingPolicy as any).collection_stage || 'NONE',
+          },
+        };
+        const err = new BadRequestException({
+          message:
+            `Bạn đang có khoản vay quá hạn ${overdueDays} ngày (Nhóm nợ ${highestDebtGroup}). ` +
             `Không thể tạo khoản vay mới cho đến khi thanh toán hết nợ quá hạn.`,
-        );
+          ...violationPayload,
+        });
+        throw err;
       }
     }
 

@@ -647,7 +647,7 @@ function ReviewRow({ label, value, theme, accent }: { label: string; value: stri
   return (
     <View style={styles.reviewRow}>
       <Text style={[styles.reviewLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.reviewValue, { color: accent ? theme.colors.primary : theme.colors.text }, accent && { fontWeight: '800' }]}>{value}</Text>
+      <Text style={[styles.reviewValue, { color: accent ? theme.colors.primary : theme.colors.text }, accent && { fontWeight: '700' }]}>{value}</Text>
     </View>
   );
 }
@@ -670,7 +670,7 @@ const styles = StyleSheet.create({
   infoCard: { borderRadius: 20, padding: 16, marginBottom: 20 },
   infoHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   infoIcon: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  infoTitle: { fontSize: 15, fontWeight: '800' },
+  infoTitle: { fontSize: 15, fontWeight: '700' },
   infoSub: { fontSize: 11, marginTop: 2 },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
   verifiedText: { fontSize: 10, fontWeight: '700' },
@@ -680,13 +680,13 @@ const styles = StyleSheet.create({
   metricItem: { width: '50%', paddingVertical: 12, paddingHorizontal: 14 },
   metricRight: {},
   metricLabel: { fontSize: 9, letterSpacing: 0.7, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
-  metricValue: { fontSize: 15, fontWeight: '800' },
+  metricValue: { fontSize: 15, fontWeight: '700' },
 
   // Progress
   progressSection: { borderRadius: 14, padding: 12 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   progressLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-  progressValue: { fontSize: 12, fontWeight: '800' },
+  progressValue: { fontSize: 12, fontWeight: '700' },
   progressBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden' },
   progressSeg: { height: '100%' },
 
@@ -695,7 +695,7 @@ const styles = StyleSheet.create({
   counterContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 18, padding: 20, gap: 28, marginBottom: 16 },
   counterBtn: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 22, fontWeight: '800' },
+  counterValue: { fontSize: 22, fontWeight: '700' },
   counterLabel: { fontSize: 12, marginTop: 2 },
 
   // Quick Select
@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
   // Summary
   summaryCard: { borderRadius: 18, padding: 20, alignItems: 'center', marginBottom: 20 },
   summaryBigLabel: { fontSize: 12, fontWeight: '500', marginBottom: 4 },
-  summaryBigValue: { fontSize: 20, fontWeight: '800', letterSpacing: 0.3 },
+  summaryBigValue: { fontSize: 20, fontWeight: '700', letterSpacing: 0.3 },
   summarySmallRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   summarySmallText: { fontSize: 13, fontWeight: '600' },
 
@@ -715,17 +715,17 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, marginTop: 12 },
   heroCard: { borderRadius: 20, padding: 20, marginBottom: 16 },
   heroLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  heroValue: { fontSize: 20, fontWeight: '800', marginTop: 4 },
+  heroValue: { fontSize: 20, fontWeight: '700', marginTop: 4 },
   heroMeta: { fontSize: 12, marginTop: 6 },
   heroColumns: { flexDirection: 'row', marginTop: 16, gap: 16 },
   heroColLabel: { fontSize: 11, fontWeight: '500' },
-  heroColValue: { fontSize: 15, fontWeight: '800', marginTop: 2 },
+  heroColValue: { fontSize: 15, fontWeight: '700', marginTop: 2 },
   tableCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 20 },
   tableHeader: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   tableHeaderText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   tableRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10 },
   tableCell: { fontSize: 12, fontWeight: '500' },
-  tableCellBold: { fontSize: 12, fontWeight: '800' },
+  tableCellBold: { fontSize: 12, fontWeight: '700' },
 
   // Wallet
   miniSummary: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, marginBottom: 16 },
@@ -735,7 +735,7 @@ const styles = StyleSheet.create({
   walletIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   walletName: { fontSize: 14, fontWeight: '700' },
   walletAcct: { fontSize: 11, marginTop: 2 },
-  walletBalance: { fontSize: 15, fontWeight: '800' },
+  walletBalance: { fontSize: 15, fontWeight: '700' },
   walletStatus: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 4 },
   emptyWallet: { alignItems: 'center', padding: 32, borderRadius: 16, gap: 8 },
   emptyWalletText: { fontSize: 14, fontWeight: '600' },
@@ -759,7 +759,7 @@ const styles = StyleSheet.create({
   resultContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, overflow: 'hidden' },
   resultIcon: { width: 88, height: 88, borderRadius: 44, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   resultIconInner: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
-  resultTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
+  resultTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   resultSub: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
   resultActions: { gap: 10, marginTop: 24, width: '100%' },
   resultBgCircle1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, top: -80, right: -80 },

@@ -7,15 +7,15 @@ import {
     ActivityIndicator,
     Platform,
     FlatList,
+    RefreshControl,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI, WalletTransaction } from '../../wallet/api/wallet.api';
 import { loanService, AppNotification } from '../../loan/services/loan.service';
 import { formatCurrency } from '../../../shared/utils';
-import { BinanceHeader, CommonCard, FintechPullToRefresh, Pagination } from '../../../components';
+import { BinanceHeader, CommonCard, Pagination } from '../../../components';
 
 // Icon & color map for notification types
 const NOTIF_CONFIG: Record<string, { icon: string; color: string; bg: string }> = {
@@ -257,62 +257,62 @@ export default function NotificationScreen() {
                     <ActivityIndicator size="large" color={c.primary} />
                 </View>
             ) : activeTab === 'system' ? (
-                <FintechPullToRefresh
-                    onRefresh={onRefreshNoti}
-                    refreshing={notiRefreshing}
-                    renderScrollComponent={(props: any) => (
-                        <Animated.FlatList
-                            {...props}
-                            data={notifications}
-                            keyExtractor={(item: AppNotification) => item._id}
-                            renderItem={renderNotificationItem}
-                            contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
-                            onEndReached={handleLoadMoreNoti}
-                            onEndReachedThreshold={0.3}
-                            nestedScrollEnabled
-                            ListFooterComponent={
-                                <Pagination mode="infinite" loading={notiLoadingMore} hasMore={notiHasMore} />
-                            }
-                            ListEmptyComponent={
-                                <View style={styles.emptyContainer}>
-                                    <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
-                                        <MaterialCommunityIcons name="bell-off-outline" size={48} color={c.textDim} />
-                                    </View>
-                                    <Text style={[styles.emptyText, { color: c.textPrimary }]}>Không có thông báo mới</Text>
-                                    <Text style={[styles.emptySubText, { color: c.textDim }]}>Chúng tôi sẽ thông báo cho bạn khi có tin mới.</Text>
-                                </View>
-                            }
+                <FlatList
+                    data={notifications}
+                    keyExtractor={(item: AppNotification) => item._id}
+                    renderItem={renderNotificationItem}
+                    contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
+                    onEndReached={handleLoadMoreNoti}
+                    onEndReachedThreshold={0.3}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={notiRefreshing}
+                            onRefresh={onRefreshNoti}
+                            tintColor={c.primary}
+                            colors={[c.primary]}
                         />
-                    )}
+                    }
+                    ListFooterComponent={
+                        <Pagination mode="infinite" loading={notiLoadingMore} hasMore={notiHasMore} />
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
+                                <MaterialCommunityIcons name="bell-off-outline" size={48} color={c.textDim} />
+                            </View>
+                            <Text style={[styles.emptyText, { color: c.textPrimary }]}>Không có thông báo mới</Text>
+                            <Text style={[styles.emptySubText, { color: c.textDim }]}>Chúng tôi sẽ thông báo cho bạn khi có tin mới.</Text>
+                        </View>
+                    }
                 />
             ) : (
-                <FintechPullToRefresh
-                    onRefresh={onRefreshTx}
-                    refreshing={txRefreshing}
-                    renderScrollComponent={(props: any) => (
-                        <Animated.FlatList
-                            {...props}
-                            data={transactions}
-                            keyExtractor={(item: WalletTransaction) => item.id}
-                            renderItem={renderTransactionItem}
-                            contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
-                            onEndReached={handleLoadMoreTx}
-                            onEndReachedThreshold={0.2}
-                            nestedScrollEnabled
-                            ListFooterComponent={
-                                <Pagination mode="infinite" loading={txLoadingMore} hasMore={txHasMore} />
-                            }
-                            ListEmptyComponent={
-                                <View style={styles.emptyContainer}>
-                                    <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
-                                        <MaterialCommunityIcons name="swap-horizontal" size={48} color={c.textDim} />
-                                    </View>
-                                    <Text style={[styles.emptyText, { color: c.textPrimary }]}>Chưa có giao dịch nào</Text>
-                                    <Text style={[styles.emptySubText, { color: c.textDim }]}>Thực hiện giao dịch đầu tiên ngay hôm nay.</Text>
-                                </View>
-                            }
+                <FlatList
+                    data={transactions}
+                    keyExtractor={(item: WalletTransaction) => item.id}
+                    renderItem={renderTransactionItem}
+                    contentContainerStyle={[styles.listContent, { flexGrow: 1 }]}
+                    onEndReached={handleLoadMoreTx}
+                    onEndReachedThreshold={0.2}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={txRefreshing}
+                            onRefresh={onRefreshTx}
+                            tintColor={c.primary}
+                            colors={[c.primary]}
                         />
-                    )}
+                    }
+                    ListFooterComponent={
+                        <Pagination mode="infinite" loading={txLoadingMore} hasMore={txHasMore} />
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <View style={[styles.emptyIconWrap, { backgroundColor: c.surfaceLight }]}>
+                                <MaterialCommunityIcons name="swap-horizontal" size={48} color={c.textDim} />
+                            </View>
+                            <Text style={[styles.emptyText, { color: c.textPrimary }]}>Chưa có giao dịch nào</Text>
+                            <Text style={[styles.emptySubText, { color: c.textDim }]}>Thực hiện giao dịch đầu tiên ngay hôm nay.</Text>
+                        </View>
+                    }
                 />
             )}
         </View>
