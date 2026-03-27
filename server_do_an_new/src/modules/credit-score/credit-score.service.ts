@@ -672,38 +672,51 @@ export class CreditScoreService implements OnModuleInit {
     return Math.max(0, Math.min(100, value));
   }
 
+  /**
+   * Dư nợ tín dụng — Credit Utilization Ratio.
+   * U = totalOutstanding / totalCreditLimit
+   * U ≤ 0.1 → 100 | ≤ 0.3 → 80 | ≤ 0.5 → 60 | ≤ 0.8 → 30 | > 0.8 → 10
+   */
   private scoreFromDebtRatio(debtRatio: number): number {
-    if (debtRatio <= 0.3) return 95;
-    if (debtRatio <= 0.5) return 80;
-    if (debtRatio <= 0.7) return 65;
-    if (debtRatio <= 1.0) return 45;
-    return 25;
+    if (debtRatio <= 0.1) return 100;
+    if (debtRatio <= 0.3) return 80;
+    if (debtRatio <= 0.5) return 60;
+    if (debtRatio <= 0.8) return 30;
+    return 10;
   }
 
+  /**
+   * Tuổi tín dụng — Tiered scoring theo thời gian gắn bó.
+   * < 3 tháng → 10 | 3-6 → 30 | 6-12 → 60 | 12-36 → 85 | ≥ 36 → 100
+   */
   private scoreFromCreditAgeMonths(ageMonths: number): number {
-    if (ageMonths >= 36) return 95;
-    if (ageMonths >= 24) return 85;
-    if (ageMonths >= 12) return 70;
-    if (ageMonths >= 6) return 55;
-    return 40;
+    if (ageMonths >= 36) return 100;
+    if (ageMonths >= 12) return 85;
+    if (ageMonths >= 6) return 60;
+    if (ageMonths >= 3) return 30;
+    return 10;
   }
 
+  /**
+   * Tín dụng mới — Phạt cho sự "khát tiền".
+   * 0 khoản mới → 100 | 1 → 80 | 2 → 40 | ≥ 3 → 10
+   */
   private scoreFromRecentLoanCount(recentLoanCount: number): number {
-    if (recentLoanCount <= 0) return 95;
+    if (recentLoanCount <= 0) return 100;
     if (recentLoanCount === 1) return 80;
-    if (recentLoanCount === 2) return 65;
-    if (recentLoanCount === 3) return 45;
-    return 25;
+    if (recentLoanCount === 2) return 40;
+    return 10;
   }
 
-  private scoreFromCreditMix(uniqueProductCount: number, hasClosedLoan: boolean): number {
-    let score = 50;
-    if (uniqueProductCount >= 3) score += 30;
-    else if (uniqueProductCount === 2) score += 20;
-    else if (uniqueProductCount === 1) score += 10;
-
-    if (hasClosedLoan) score += 15;
-    return this.clampPercent(score);
+  /**
+   * Đa dạng tín dụng — Đếm số lượng ProductID duy nhất đã giải ngân.
+   * D = 1 → 40 | D = 2 → 75 | D ≥ 3 → 100
+   */
+  private scoreFromCreditMix(uniqueProductCount: number, _hasClosedLoan: boolean): number {
+    if (uniqueProductCount >= 3) return 100;
+    if (uniqueProductCount === 2) return 75;
+    if (uniqueProductCount >= 1) return 40;
+    return 20;
   }
 
   private calculateCompositeScore(factors: CreditFactorScores, weights: CreditScoreWeightConfigValue): number {
@@ -721,70 +734,114 @@ export class CreditScoreService implements OnModuleInit {
     return `F(payment=${factors.paymentHistory.toFixed(1)}, debt=${factors.debtLevel.toFixed(1)}, age=${factors.creditAge.toFixed(1)}, mix=${factors.creditMix.toFixed(1)}, new=${factors.newCredit.toFixed(1)})`;
   }
 
+  /**
+   * ═══════════════════════════════════════════════════════════
+   *  CORE 5-FACTOR SCORING — Reward/Penalty System (FICO-style)
+   * ═══════════════════════════════════════════════════════════
+   *
+   * 1. Payment History (35%): Penalty deduction — start at 100, subtract per debt group
+   * 2. Debt Level (30%): Credit Utilization Ratio — outstanding / credit limit
+   * 3. Credit Age (15%): Tiered by months since oldest loan
+   * 4. Credit Mix (10%): Distinct product count
+   * 5. New Credit (10%): Recent loan count in 90 days
+   *
+   * Final: Score_CIC = 150 + (Score_total_100 × 6)
+   */
   private async buildWeightedFactors(
     userId: Types.ObjectId,
-    input: CreditScoreRepaymentEventInput,
+    _input: CreditScoreRepaymentEventInput,
   ): Promise<CreditFactorScores> {
-    const [loanDocs, repaymentEventCount] = await Promise.all([
+    // ── 1. Fetch all loan data + delinquency records ──
+    const [loanDocs, delinquencyDocs] = await Promise.all([
       this.loanApplicationModel
         .find({ userId })
-        .select('capital totalOutstanding productId status createdAt delinquentDays')
+        .select('capital totalOutstanding principalOutstanding productId status createdAt delinquentDays')
         .lean(),
-      this.creditScoreHistoryModel.countDocuments({
-        userId,
-        reason: { $in: ['loan_repayment', 'loan_prepayment', 'late_payment'] },
-      }),
+      this.loanDelinquencyModel
+        .find({ borrowerId: userId, isDeleted: { $ne: true } })
+        .select('debtGroup status')
+        .lean(),
     ]);
 
-    const totalCapital = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
-    const totalOutstanding = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.totalOutstanding || 0), 0);
-    const debtRatio = totalCapital > 0 ? totalOutstanding / totalCapital : 0;
-
     const now = Date.now();
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    const recentLoanCount = loanDocs.filter((loan: any) => {
-      const createdAt = new Date(loan?.createdAt || 0).getTime();
-      return createdAt > 0 && now - createdAt <= ninetyDaysMs;
-    }).length;
 
+    // ════════════════════════════════════════════════════
+    //  S_payment — Lịch sử thanh toán (Penalty Deduction)
+    // ════════════════════════════════════════════════════
+    // Count historical debt group incidents from delinquency records
+    const nGroup1 = delinquencyDocs.filter((d: any) => d.debtGroup === 1).length;
+    const nGroup2 = delinquencyDocs.filter((d: any) => d.debtGroup >= 2).length;
+
+    // Base score: 100 - (N_g1 × 10) - (N_g2 × 30)
+    const basePayment = Math.max(0, 100 - nGroup1 * 10 - nGroup2 * 30);
+
+    // Volume Penalty Factor (Thin Credit File Protection)
+    // Level 1: 1-4 txns → W=0.60 | Level 2: 5-10 → W=0.80 | Level 3: >10 → W=1.00
+    const totalLoans = loanDocs.length;
+    let volumeFactor = 1.0;
+    if (totalLoans <= 4) volumeFactor = 0.6;
+    else if (totalLoans <= 10) volumeFactor = 0.8;
+
+    const paymentScore = basePayment * volumeFactor;
+
+    // ════════════════════════════════════════════════════
+    //  S_debt — Dư nợ tín dụng (Credit Utilization Ratio)
+    // ════════════════════════════════════════════════════
+    // U = totalOutstanding / totalCreditLimit
+    // Credit limit comes from the Rule Engine grade-based maxLoanAmount
+    const totalOutstanding = loanDocs.reduce(
+      (acc, loan: any) => acc + Number(loan?.principalOutstanding || loan?.totalOutstanding || 0),
+      0,
+    );
+
+    // Get credit limit from evaluation config (grade-based)
+    let totalCreditLimit = 0;
+    try {
+      const evalResult = await this.evaluateLoanByScore(
+        await this.getByUserId(userId).then(s => s?.score || DEFAULT_CREDIT_SCORE),
+      );
+      totalCreditLimit = evalResult.maxLoanAmount || 0;
+    } catch {
+      // Fallback: use sum of all loan capitals as proxy
+      totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
+    }
+    // If no credit limit established, use total capital as denominator
+    if (totalCreditLimit <= 0) {
+      totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
+    }
+    const utilizationRatio = totalCreditLimit > 0 ? totalOutstanding / totalCreditLimit : 0;
+
+    // ════════════════════════════════════════════════════
+    //  S_age — Tuổi tín dụng
+    // ════════════════════════════════════════════════════
     const oldestLoanTime = loanDocs
       .map((loan: any) => new Date(loan?.createdAt || 0).getTime())
       .filter((t: number) => t > 0)
       .sort((a: number, b: number) => a - b)[0];
     const ageMonths = oldestLoanTime ? Math.max(0, (now - oldestLoanTime) / (30 * 24 * 60 * 60 * 1000)) : 0;
 
-    const uniqueProductCount = new Set(loanDocs.map((loan: any) => String(loan?.productId || ''))).size;
+    // ════════════════════════════════════════════════════
+    //  S_mix — Đa dạng tín dụng
+    // ════════════════════════════════════════════════════
+    // Count distinct productIds from disbursed/closed loans
+    const disbursedOrClosed = loanDocs.filter((loan: any) =>
+      ['disbursed', 'closed'].includes(String(loan?.status || '').toLowerCase()),
+    );
+    const uniqueProductCount = new Set(disbursedOrClosed.map((loan: any) => String(loan?.productId || ''))).size;
     const hasClosedLoan = loanDocs.some((loan: any) => String(loan?.status || '').toLowerCase() === 'closed');
 
-    const severeLateCount = loanDocs.filter((loan: any) => Number(loan?.delinquentDays || 0) >= 30).length;
-    const historicalLateCount = Math.max(0, Number(repaymentEventCount || 0));
-    const denominator = Math.max(1, historicalLateCount + (input.isLatePayment ? 1 : 0) + 2);
-    const lateRatio = (historicalLateCount + (input.isLatePayment ? 1 : 0)) / denominator;
-
-    let paymentScore = 100 - lateRatio * 80 - severeLateCount * 4;
-    if (input.isLatePayment) {
-      paymentScore -= Math.min(25, Math.max(6, Number(input.overdueDays || 0) * 1.2));
-    } else {
-      paymentScore += input.isPrepayment ? 5 : 3;
-    }
-
-    // ── Volume Penalty Factor (Thin Credit File Protection) ──
-    // Người dùng có ít giao dịch không thể được 100/100 ngay.
-    // Level 1: 1-4 giao dịch  → W = 0.60 (tối đa 60/100)
-    // Level 2: 5-10 giao dịch → W = 0.80 (tối đa 80/100)
-    // Level 3: >10 giao dịch  → W = 1.00 (toàn bộ 100/100)
-    const totalTransactions = loanDocs.length;
-    let volumePenalty = 1.0;
-    if (totalTransactions <= 4) {
-      volumePenalty = 0.6;
-    } else if (totalTransactions <= 10) {
-      volumePenalty = 0.8;
-    }
-    paymentScore *= volumePenalty;
+    // ════════════════════════════════════════════════════
+    //  S_new — Tín dụng mới (90 ngày)
+    // ════════════════════════════════════════════════════
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const recentLoanCount = loanDocs.filter((loan: any) => {
+      const createdAt = new Date(loan?.createdAt || 0).getTime();
+      return createdAt > 0 && now - createdAt <= ninetyDaysMs;
+    }).length;
 
     return {
       paymentHistory: this.clampPercent(paymentScore),
-      debtLevel: this.scoreFromDebtRatio(debtRatio),
+      debtLevel: this.scoreFromDebtRatio(utilizationRatio),
       creditAge: this.scoreFromCreditAgeMonths(ageMonths),
       creditMix: this.scoreFromCreditMix(uniqueProductCount, hasClosedLoan),
       newCredit: this.scoreFromRecentLoanCount(recentLoanCount),

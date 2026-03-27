@@ -266,7 +266,7 @@ const s = StyleSheet.create({
   heroInfo: { flex: 1 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 8 },
   statusText: { fontSize: 12, fontWeight: '700' },
-  heroAmount: { fontSize: 20, fontWeight: '800' },
+  heroAmount: { fontSize: 18, fontWeight: '800' },
   heroSub: { fontSize: 13, marginTop: 2 },
 
   // Info grid
@@ -284,7 +284,7 @@ const s = StyleSheet.create({
   closeBtnText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
 
   // Section
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
 
   // Loan cards
   loanCard: { borderRadius: 14, padding: 16, marginBottom: 8 },

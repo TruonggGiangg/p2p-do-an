@@ -1,6 +1,6 @@
 # Cơ Chế Chấm Điểm Tín Dụng Hiện Tại Của Hệ Thống
 
-Ngày cập nhật: 2026-03-26
+Ngày cập nhật: 2026-03-27
 
 ## 1. Mục tiêu
 
@@ -100,76 +100,117 @@ Trigger: `loan_disbursed`
 - Khi user chỉ mới **"Tạo hồ sơ xin vay"** (status: pending), điểm tín dụng tĩnh **KHÔNG thay đổi**.
 - Lúc đó hệ thống chỉ mang điểm tĩnh đi hỏi server AI để lấy "Điểm rủi ro AI" (`aiScore`) cho riêng hồ sơ đó.
 
-## 5. Công thức chấm điểm hiện tại (đã áp dụng)
+## 5. Công thức chấm điểm hiện tại (Reward/Penalty System — FICO-style)
 
-Hệ thống hiện tính điểm theo mô hình 5 yếu tố có trọng số:
+Hệ thống tính điểm theo mô hình **5 yếu tố có trọng số**, sử dụng tư duy **Hệ thống Điểm thưởng/Điểm phạt (Reward/Penalty System)** thay vì trung bình cộng đơn thuần:
 
-- Payment history: 35%
-- Debt level: 30%
-- Credit age: 15%
-- Credit mix: 10%
-- New credit: 10%
+- $S_{payment}$ — Lịch sử thanh toán: **35%**
+- $S_{debt}$ — Dư nợ tín dụng: **30%**
+- $S_{age}$ — Tuổi tín dụng: **15%**
+- $S_{mix}$ — Đa dạng tín dụng: **10%**
+- $S_{new}$ — Tín dụng mới: **10%**
 
-Mỗi yếu tố được chấm trên thang 0-100, sau đó tính điểm tổng hợp:
+Mỗi yếu tố được chấm trên thang **0-100**, sau đó tổng hợp và scale ra thang CIC 150-750.
 
-```text
-weighted100 =
-  paymentHistory * 0.35 +
-  debtLevel * 0.30 +
-  creditAge * 0.15 +
-  creditMix * 0.10 +
-  newCredit * 0.10
+### 5.1. Lịch sử thanh toán ($S_{payment}$) — Trọng số 35%
 
-creditScore = clamp(150 + weighted100/100 * 600, 150, 750)
-```
+Yếu tố này dùng cơ chế **Điểm trừ tích lũy** theo mức độ nghiêm trọng (Nhóm nợ CIC).
 
-### 5.1. Cách chấm từng yếu tố
+**Bước 1: Tính điểm cơ sở (Penalty Deduction)**
 
-1. Payment history (35%) — Có Volume Penalty Factor
+$$S_{base\_payment} = \max(0,\ 100 - (N_{g1} \times 10) - (N_{g2} \times 30))$$
 
-- Dựa trên tỷ lệ trả trễ lịch sử, số khoản trễ nặng (>=30 ngày) và sự kiện trả nợ mới nhất.
+Trong đó:
 
-**Volume Penalty Factor (Thin Credit File Protection):**
+- $N_{g1}$: Số lần từng rớt vào **Nhóm 1** (trễ 1-9 ngày) → trừ **10 điểm/lần**
+- $N_{g2}$: Số lần từng rớt vào **Nhóm 2+** (trễ 10+ ngày) → trừ **30 điểm/lần**
 
-Người dùng có ít giao dịch không thể đạt 100/100 ngay. Áp dụng hệ số chiết khấu theo khối lượng:
+> Nhóm 3+ đã bị Auto-Reject/Block từ vòng ngoài nên hiếm khi tính vào đây.
 
-```
-Score_payment = Score_ratio × W_volume
-```
+**Bước 2: Phạt hồ sơ mỏng (Volume Penalty Factor)**
 
-| Level                     | Số giao dịch | W_volume | Điểm tối đa |
-| ------------------------- | ------------ | -------- | ----------- |
-| Level 1 (Hồ sơ siêu mỏng) | 1 - 4        | 0.60     | 60/100      |
-| Level 2 (Hồ sơ cơ bản)    | 5 - 10       | 0.80     | 80/100      |
-| Level 3 (Hồ sơ chín muồi) | > 10         | 1.00     | 100/100     |
+Gọi $L_{total}$ là tổng số khoản vay đã từng mở:
 
-Ví dụ: User mới có 4 khoản vay trả đúng hạn → 100 × 0.6 = 60/100 (không phải 100/100).
+| Level                     | Số khoản vay | $V_{factor}$ | Điểm tối đa |
+| ------------------------- | ------------ | ------------ | ----------- |
+| Level 1 (Hồ sơ siêu mỏng) | 1-4          | 0.60         | 60/100      |
+| Level 2 (Hồ sơ cơ bản)    | 5-10         | 0.80         | 80/100      |
+| Level 3 (Hồ sơ chín muồi) | > 10         | 1.00         | 100/100     |
 
-- Nếu giao dịch mới là đúng hạn: cộng nhẹ (+3, prepay +5).
-- Nếu giao dịch mới là trễ hạn: trừ theo số ngày trễ (overdueDays × 1.2, tối đa -25).
-- Số khoản trễ nặng (>=30 ngày): trừ thêm 4 điểm/khoản.
+**Điểm chốt:**
 
-2. Debt level (30%)
+$$S_{payment} = S_{base\_payment} \times V_{factor}$$
 
-- Dựa trên debtRatio = totalOutstanding / totalCapital từ toàn bộ khoản vay user.
-- Debt ratio càng thấp thì điểm thành phần càng cao.
+**Ví dụ:** User mới có 3 khoản vay, 1 lần trễ Nhóm 1 → $(100 - 10) \times 0.6 = 54/100$
 
-3. Credit age (15%)
+### 5.2. Dư nợ tín dụng ($S_{debt}$) — Trọng số 30%
 
-- Dựa trên tuổi khoản vay lâu nhất (tháng).
-- Lịch sử tín dụng càng dài thì điểm càng cao.
+Sử dụng **Tỷ lệ sử dụng tín dụng (Credit Utilization Ratio)** — chỉ số chuẩn quốc tế.
 
-4. Credit mix (10%)
+**Công thức:**
 
-- Dựa trên độ đa dạng sản phẩm vay (số productId khác nhau).
-- Có khoản vay đã đóng thành công giúp tăng điểm thành phần.
+$$U = \frac{\sum \text{Dư nợ gốc hiện tại (principalOutstanding)}}{\text{Hạn mức tín dụng (maxLoanAmount từ Rule Engine)}}$$
 
-5. New credit (10%)
+Hạn mức tín dụng lấy từ `LoanEvaluationConfig.creditGrades` dựa trên grade hiện tại của user. Nếu chưa có → dùng tổng capital các khoản vay làm fallback.
 
-- Dựa trên số khoản vay mở mới trong 90 ngày gần nhất.
-- Mở quá nhiều khoản vay mới trong thời gian ngắn sẽ giảm điểm thành phần.
+**Quy đổi ra điểm:**
 
-### 5.2. Giới hạn điểm
+| Tỷ lệ nợ $U$      | $S_{debt}$ | Mô tả                           |
+| ----------------- | ---------- | ------------------------------- |
+| $U \le 0.1$       | **100**    | Dùng ≤ 10% hạn mức, rất an toàn |
+| $0.1 < U \le 0.3$ | **80**     | Sử dụng hợp lý                  |
+| $0.3 < U \le 0.5$ | **60**     | Mức trung bình                  |
+| $0.5 < U \le 0.8$ | **30**     | Bắt đầu báo động                |
+| $U > 0.8$         | **10**     | Báo động đỏ, xài kiệt hạn mức   |
+
+### 5.3. Tuổi tín dụng ($S_{age}$) — Trọng số 15%
+
+Đo thời gian gắn bó với nền tảng. Lấy mốc ngày tạo khoản vay **đầu tiên** (`createdAt`).
+
+$$M = \text{Tháng hiện tại} - \text{Tháng tạo khoản vay đầu tiên}$$
+
+| Số tháng $M$    | $S_{age}$ | Mô tả              |
+| --------------- | --------- | ------------------ |
+| $M < 3$         | **10**    | Tân binh           |
+| $3 \le M < 6$   | **30**    | Mới                |
+| $6 \le M < 12$  | **60**    | Trung bình         |
+| $12 \le M < 36$ | **85**    | Khách hàng lâu năm |
+| $M \ge 36$      | **100**   | Lão làng           |
+
+### 5.4. Đa dạng tín dụng ($S_{mix}$) — Trọng số 10%
+
+Đếm số lượng **ProductID duy nhất (Distinct)** từ các khoản vay đã giải ngân/đóng thành công.
+
+| Số sản phẩm $D$ | $S_{mix}$ | Mô tả              |
+| --------------- | --------- | ------------------ |
+| $D = 1$         | **40**    | Chỉ vay 1 loại     |
+| $D = 2$         | **75**    | Đa dạng trung bình |
+| $D \ge 3$       | **100**   | Đa dạng cao        |
+
+### 5.5. Tín dụng mới ($S_{new}$) — Trọng số 10%
+
+Đếm số khoản vay **mở mới trong 90 ngày** (3 tháng) gần nhất. Càng vay mới nhiều → càng rủi ro "khát tiền".
+
+| Khoản vay mới $L_{new}$ | $S_{new}$ | Mô tả                   |
+| ----------------------- | --------- | ----------------------- |
+| $L_{new} = 0$           | **100**   | Tài chính ổn định       |
+| $L_{new} = 1$           | **80**    | Bình thường             |
+| $L_{new} = 2$           | **40**    | Cảnh giác               |
+| $L_{new} \ge 3$         | **10**    | Rủi ro vỡ nợ dây chuyền |
+
+### 5.6. Công thức tổng hợp (Chốt hạ)
+
+**Bước 1 — Tính tổng điểm cơ sở (thang 0-100):**
+
+$$Score_{total\_100} = (S_{payment} \times 0.35) + (S_{debt} \times 0.30) + (S_{age} \times 0.15) + (S_{mix} \times 0.10) + (S_{new} \times 0.10)$$
+
+**Bước 2 — Scale ra thang CIC (150-750):**
+
+$$Score_{CIC} = 150 + (Score_{total\_100} \times 6)$$
+
+Kết quả được bọc bằng `Math.round()` và clamp trong `[150, 750]`.
+
+### 5.7. Giới hạn điểm
 
 - Min: 150
 - Max: 750

@@ -670,7 +670,7 @@ const styles = StyleSheet.create({
   infoCard: { borderRadius: 20, padding: 16, marginBottom: 20 },
   infoHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   infoIcon: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  infoTitle: { fontSize: 16, fontWeight: '800' },
+  infoTitle: { fontSize: 15, fontWeight: '800' },
   infoSub: { fontSize: 11, marginTop: 2 },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
   verifiedText: { fontSize: 10, fontWeight: '700' },
@@ -695,7 +695,7 @@ const styles = StyleSheet.create({
   counterContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 18, padding: 20, gap: 28, marginBottom: 16 },
   counterBtn: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 30, fontWeight: '800' },
+  counterValue: { fontSize: 22, fontWeight: '800' },
   counterLabel: { fontSize: 12, marginTop: 2 },
 
   // Quick Select
@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
   // Summary
   summaryCard: { borderRadius: 18, padding: 20, alignItems: 'center', marginBottom: 20 },
   summaryBigLabel: { fontSize: 12, fontWeight: '500', marginBottom: 4 },
-  summaryBigValue: { fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
+  summaryBigValue: { fontSize: 20, fontWeight: '800', letterSpacing: 0.3 },
   summarySmallRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   summarySmallText: { fontSize: 13, fontWeight: '600' },
 
@@ -715,7 +715,7 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, marginTop: 12 },
   heroCard: { borderRadius: 20, padding: 20, marginBottom: 16 },
   heroLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  heroValue: { fontSize: 22, fontWeight: '800', marginTop: 4 },
+  heroValue: { fontSize: 20, fontWeight: '800', marginTop: 4 },
   heroMeta: { fontSize: 12, marginTop: 6 },
   heroColumns: { flexDirection: 'row', marginTop: 16, gap: 16 },
   heroColLabel: { fontSize: 11, fontWeight: '500' },

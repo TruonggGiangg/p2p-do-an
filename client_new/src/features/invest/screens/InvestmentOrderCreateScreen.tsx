@@ -337,14 +337,14 @@ const s = StyleSheet.create({
 
   // Hero
   heroSub: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 16, marginBottom: 4 },
-  heroTitle: { fontSize: 28, fontWeight: '800', marginBottom: 16 },
+  heroTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 },
 
   // Section
   section: { borderRadius: 16, padding: 18, marginBottom: 12 },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   stepBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   stepBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  sectionTitle: { fontSize: 20, fontWeight: '800', flex: 1 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', flex: 1 },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   presetChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18 },
@@ -375,7 +375,7 @@ const s = StyleSheet.create({
     borderWidth: 2, justifyContent: 'center', alignItems: 'center',
     marginRight: 12,
   },
-  checkLabel: { flex: 1, fontSize: 15, fontWeight: '600' },
+  checkLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
 
   // Info
   infoBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 12, padding: 14, marginTop: 4 },
@@ -393,9 +393,9 @@ const s = StyleSheet.create({
   // Result
   resultWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
   resultIcon: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  resultTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
+  resultTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
   resultSub: { fontSize: 14, textAlign: 'center', marginTop: 8 },
   resultCard: { width: '100%', borderRadius: 16, padding: 16, marginTop: 24 },
   doneBtn: { width: '100%', paddingVertical: 16, borderRadius: 28, alignItems: 'center', marginTop: 24 },
-  doneBtnText: { fontSize: 16, fontWeight: '700' },
+  doneBtnText: { fontSize: 14, fontWeight: '700' },
 });

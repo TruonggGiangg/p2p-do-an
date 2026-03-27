@@ -10,7 +10,6 @@ import { Notification, NotificationSchema } from './schemas/notification.schema'
 import { LoanSupportRequest, LoanSupportRequestSchema } from './schemas/loan-support-request.schema';
 import { DelinquencyPolicy, DelinquencyPolicySchema } from '../delinquency/entities/delinquency-policy.schema';
 import { LoanDelinquency, LoanDelinquencySchema } from '../delinquency/entities/loan-delinquency.schema';
-import { WalletTransaction, WalletTransactionSchema } from '../wallets/schemas/wallet-transaction.schema';
 import { FineractModule } from '../fineract/fineract.module';
 import { AdminModule } from '../admin/admin.module';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -28,7 +27,6 @@ import { CreditScoreModule } from '../credit-score/credit-score.module';
       { name: LoanSupportRequest.name, schema: LoanSupportRequestSchema },
       { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
       { name: LoanDelinquency.name, schema: LoanDelinquencySchema },
-      { name: WalletTransaction.name, schema: WalletTransactionSchema },
     ]),
     FineractModule,
     forwardRef(() => AdminModule),

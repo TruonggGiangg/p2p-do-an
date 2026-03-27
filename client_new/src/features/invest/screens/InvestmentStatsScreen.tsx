@@ -259,11 +259,11 @@ const styles = StyleSheet.create({
     borderRadius: 20, padding: 20, marginBottom: 24,
   },
   summaryLabel: { fontSize: 13, fontWeight: '500' },
-  summaryValue: { fontSize: 32, fontWeight: '800', marginTop: 4, letterSpacing: -0.5 },
+  summaryValue: { fontSize: 22, fontWeight: '800', marginTop: 4, letterSpacing: -0.5 },
   summaryRow: { flexDirection: 'row', marginTop: 20, gap: 16 },
   summaryItem: { flex: 1 },
   summaryItemLabel: { fontSize: 12 },
-  summaryItemValue: { fontSize: 18, fontWeight: '700', marginTop: 4 },
+  summaryItemValue: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   expectedRow: {
     marginTop: 16, paddingVertical: 12, paddingHorizontal: 14,
     borderRadius: 12,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   expectedValue: { fontSize: 15, fontWeight: '700' },
 
   // Section
-  sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12, marginTop: 4 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, marginTop: 4 },
 
   // Health Grid — backgroundSecondary for cards
   healthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   },
   healthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   healthIconCircle: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  healthCount: { fontSize: 26, fontWeight: '800' },
+  healthCount: { fontSize: 20, fontWeight: '800' },
   healthLabel: { fontSize: 12, marginTop: 8 },
   healthAmount: { fontSize: 13, fontWeight: '600', marginTop: 4 },
 
@@ -303,5 +303,5 @@ const styles = StyleSheet.create({
   perfRow: { flexDirection: 'row' },
   perfItem: { flex: 1 },
   perfLabel: { fontSize: 12 },
-  perfValue: { fontSize: 18, fontWeight: '700', marginTop: 4 },
+  perfValue: { fontSize: 15, fontWeight: '700', marginTop: 4 },
 });

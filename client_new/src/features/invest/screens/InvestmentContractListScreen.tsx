@@ -196,6 +196,6 @@ const styles = StyleSheet.create({
   progressOuter: { height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   progressInner: { height: '100%', borderRadius: 2 },
   emptyContainer: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', marginTop: 16 },
   emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8, lineHeight: 20 },
 });

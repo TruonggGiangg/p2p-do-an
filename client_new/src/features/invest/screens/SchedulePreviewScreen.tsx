@@ -267,13 +267,13 @@ const styles = StyleSheet.create({
   },
   summaryPurpose: { fontSize: 13, fontWeight: '500', marginBottom: 4 },
   summaryMainLabel: { fontSize: 12 },
-  summaryMainValue: { fontSize: 32, fontWeight: '800', marginTop: 2, letterSpacing: -0.5 },
+  summaryMainValue: { fontSize: 22, fontWeight: '800', marginTop: 2, letterSpacing: -0.5 },
   summaryMeta: { marginTop: 8 },
   summaryMetaText: { fontSize: 13 },
   summaryRow: { flexDirection: 'row', marginTop: 20, gap: 16 },
   summaryItem: { flex: 1 },
   summaryItemLabel: { fontSize: 12 },
-  summaryItemValue: { fontSize: 18, fontWeight: '700', marginTop: 4 },
+  summaryItemValue: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   monthlyRow: {
     marginTop: 16, paddingVertical: 12, paddingHorizontal: 14,
     borderRadius: 12,
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   monthlyText: { fontSize: 13, fontWeight: '600' },
 
   // Table — backgroundSecondary with tonal alternation
-  sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
   tableCard: { borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
   tableRow: {
     flexDirection: 'row', paddingVertical: 11, paddingHorizontal: 14,
@@ -301,5 +301,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 16, borderRadius: 16,
   },
-  ctaText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  ctaText: { color: '#000', fontSize: 14, fontWeight: '700' },
 });

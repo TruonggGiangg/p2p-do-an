@@ -341,7 +341,7 @@ export default function AvailableLoansScreen() {
                     )}
                   </Svg>
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.text }}>{pctNum}%</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.text }}>{pctNum}%</Text>
                   </View>
                 </View>
                 {/* Legend */}
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
+  cardTitle: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
   cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   metricItem: { width: '50%', paddingVertical: 14, paddingHorizontal: 16 },
   metricItemRight: {},
   metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
-  metricValue: { fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  metricValue: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
   metricSubValue: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   metricUnit: { fontSize: 12, fontWeight: '500' },
 
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
 
   // Empty
   emptyContainer: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', marginTop: 16 },
   emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8, lineHeight: 20 },
 
   // ── Bottom Sheet Modal ──
@@ -624,7 +624,7 @@ const styles = StyleSheet.create({
   handleBar: { alignItems: 'center', paddingVertical: 10 },
   handle: { width: 40, height: 4, borderRadius: 2 },
 
-  sheetTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  sheetTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
   sheetSubtitle: { fontSize: 13, marginBottom: 20 },
 
   // Counter
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 32, fontWeight: '800' },
+  counterValue: { fontSize: 22, fontWeight: '800' },
   counterLabel: { fontSize: 12, marginTop: 2 },
 
   // Quick select

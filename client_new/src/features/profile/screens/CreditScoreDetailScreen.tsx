@@ -338,9 +338,9 @@ export default function CreditScoreDetailScreen() {
                         >
                             <Text style={[styles.loadMoreText, { color: c.textSecondary }]}>Tải thêm lịch sử</Text>
                         </TouchableOpacity>
-                    ) : (
+                    ) : items.length > 0 ? (
                         <Text style={[styles.endText, { color: c.textMuted }]}>Đã hiển thị toàn bộ lịch sử</Text>
-                    )
+                    ) : null
                 }
             />
         </View>

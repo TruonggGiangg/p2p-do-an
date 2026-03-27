@@ -11,7 +11,6 @@ import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
-import { WalletTransaction } from '../wallets/schemas/wallet-transaction.schema';
 
 /**
  * RepaymentService - Xử lý thanh toán khoản vay (repayment & prepayment)
@@ -38,7 +37,6 @@ export class RepaymentService {
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
-    @InjectModel(WalletTransaction.name) private readonly walletTransactionModel: Model<WalletTransaction>,
     private readonly creditScoreService: CreditScoreService,
   ) {}
 
@@ -75,23 +73,6 @@ export class RepaymentService {
     // 4. Withdrawal từ savings account
     const result = await this.fineractSavingsService.withdrawFromSavings(eWallet.id, amount, note);
     this.logger.log(`[deductFromBorrowerWallet] Deducted ${amount} from savings ${eWallet.id} for user ${userId}`);
-
-    // 5. Log transaction to MongoDB for audit trail
-    await this.walletTransactionModel
-      .create({
-        userId: new Types.ObjectId(userId),
-        fineractSavingsId: String(eWallet.id),
-        fineractTransactionId: result.transactionId,
-        type: metadata?.type || 'withdrawal',
-        amount,
-        balanceBefore: balance,
-        balanceAfter: balance - amount,
-        note,
-        loanId: metadata?.loanId ? new Types.ObjectId(metadata.loanId) : undefined,
-        fineractLoanId: metadata?.fineractLoanId,
-        status: 'success',
-      })
-      .catch(err => this.logger.warn(`[deductFromBorrowerWallet] Failed to log wallet tx: ${err?.message}`));
 
     return { walletTxId: result.transactionId, savingsId: eWallet.id };
   }

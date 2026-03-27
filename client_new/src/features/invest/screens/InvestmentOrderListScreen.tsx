@@ -103,7 +103,7 @@ export default function InvestmentOrderListScreen() {
     const isClosed = item.status === 'closed';
     const matchPct = item.capital > 0 ? Math.round((item.matchedCapital / item.capital) * 100) : 0;
     const remaining = item.capital - item.matchedCapital;
-    
+
     // Status visual
     const statusBg = isClosed ? c.textMuted + '15' : c.success + '15';
     const statusClr = isClosed ? c.textSecondary : c.success;
@@ -116,10 +116,10 @@ export default function InvestmentOrderListScreen() {
         <View style={st.cardHeader}>
           <View style={st.cardTitleRow}>
             <View style={[st.purposeIcon, { backgroundColor: isClosed ? c.textMuted + '15' : c.primary + '15' }]}>
-              <MaterialCommunityIcons 
-                name={isClosed ? "lock-outline" : "briefcase-check-outline"} 
-                size={22} 
-                color={isClosed ? c.textMuted : c.primary} 
+              <MaterialCommunityIcons
+                name={isClosed ? "lock-outline" : "briefcase-check-outline"}
+                size={22}
+                color={isClosed ? c.textMuted : c.primary}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -201,7 +201,7 @@ export default function InvestmentOrderListScreen() {
                     )}
                   </Svg>
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{matchPct}%</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>{matchPct}%</Text>
                   </View>
                 </View>
 
@@ -366,7 +366,7 @@ const st = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statCard: { flex: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 12, alignItems: 'center' },
   statLbl: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 6 },
-  statVal: { fontSize: 16, fontWeight: '800' },
+  statVal: { fontSize: 15, fontWeight: '800' },
 
   // Filter + Sort row
   filterSortRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -390,7 +390,7 @@ const st = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
+  cardTitle: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
   cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
@@ -401,7 +401,7 @@ const st = StyleSheet.create({
   metricItem: { width: '50%', paddingVertical: 16, paddingHorizontal: 20 },
   metricItemRight: { alignItems: 'flex-end' },
   metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
-  metricValue: { fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  metricValue: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
   metricUnit: { fontSize: 12, fontWeight: '500' },
 
   // Progress (Donut)
@@ -425,10 +425,10 @@ const st = StyleSheet.create({
   // Empty
   emptyWrap: { alignItems: 'center', paddingHorizontal: 32, marginTop: -40 },
   emptyIcon: { width: 96, height: 96, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
-  emptyTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 28 },
-  emptyBtnText: { fontSize: 16, fontWeight: '700' },
+  emptyBtnText: { fontSize: 14, fontWeight: '700' },
 
 
 

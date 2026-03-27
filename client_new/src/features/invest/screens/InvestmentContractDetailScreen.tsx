@@ -183,12 +183,12 @@ function InfoItem({ label, value, color, labelColor }: { label: string; value: s
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  errorText: { fontSize: 16, marginTop: 12 },
+  errorText: { fontSize: 14, marginTop: 12 },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16,
   },
-  headerTitle: { fontSize: 18, fontWeight: '700' },
+  headerTitle: { fontSize: 15, fontWeight: '700' },
   scrollContent: { padding: 16, paddingBottom: 40 },
   section: {
     borderRadius: 16, padding: 16, marginBottom: 12,
@@ -200,11 +200,11 @@ const styles = StyleSheet.create({
   bigStatusText: { fontSize: 14, fontWeight: '600' },
   contractIdLabel: { fontSize: 11, fontWeight: '500' },
   purpose: { fontSize: 14, marginTop: 8, fontWeight: '500' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 0 },
   infoItem: { width: '50%', marginBottom: 10 },
   infoLabel: { fontSize: 12 },
-  infoValue: { fontSize: 15, fontWeight: '600', marginTop: 2 },
+  infoValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
   scheduleSummary: { flexDirection: 'row', borderRadius: 12, padding: 12, marginBottom: 12, gap: 4 },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryLabel: { fontSize: 11 },
