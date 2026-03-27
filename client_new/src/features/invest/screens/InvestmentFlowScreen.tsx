@@ -15,8 +15,12 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
+import { PinVerifyModal } from '../../../components/common/PinVerifyModal';
+import { OTPVerifyModal } from '../../../components/common/OTPVerifyModal';
+import { CommonButton } from '../../../components/common/CommonButton';
 import investService, { AvailableLoanItem, LenderScheduleItem } from '../services/invest.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import type { Wallet } from '../../../types/auth.types';
@@ -35,6 +39,7 @@ export default function InvestmentFlowScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const loan: AvailableLoanItem = route.params?.loan;
+  const insets = useSafeAreaInsets();
 
   // ── State ──
   const [step, setStep] = useState(1);
@@ -48,6 +53,8 @@ export default function InvestmentFlowScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [result, setResult] = useState<{ success: boolean; contractId?: string; _id?: string; error?: string } | null>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showOTPModal, setShowOTPModal] = useState(false);
 
   // ── Derived ──
   const totalNotes = loan?.totalNotes || Math.ceil((loan?.capital || 0) / BASE_UNIT_PRICE);
@@ -100,7 +107,7 @@ export default function InvestmentFlowScreen() {
   // ══════════════════════════════════════════
   //  STEP 4: Submit investment
   // ══════════════════════════════════════════
-  const handleSubmit = async () => {
+  const handleSubmit = async (otpSessionId?: string) => {
     if (!agreed) {
       Alert.alert('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
       return;
@@ -110,6 +117,7 @@ export default function InvestmentFlowScreen() {
       const contract = await investService.createContract({
         loanApplicationId: loan._id,
         numNotes,
+        ...(otpSessionId ? { otpSessionId } : {}),
       });
       setResult({ success: true, contractId: contract.contractId, _id: contract._id });
     } catch (e: any) {
@@ -138,7 +146,11 @@ export default function InvestmentFlowScreen() {
       }
       setStep(4);
     } else if (step === 4) {
-      handleSubmit();
+      if (!agreed) {
+        Alert.alert('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
+        return;
+      }
+      setShowPinModal(true);
     }
   };
 
@@ -437,48 +449,63 @@ export default function InvestmentFlowScreen() {
   const Step4 = () => {
     if (result) {
       return (
-        <View style={styles.resultContainer}>
-          <View style={[styles.resultIcon, { backgroundColor: result.success ? theme.colors.success + '20' : theme.colors.error + '20' }]}>
-            <Ionicons
-              name={result.success ? 'checkmark-circle' : 'close-circle'}
-              size={64}
-              color={result.success ? theme.colors.success : theme.colors.error}
-            />
+        <View style={[styles.resultContainer, { backgroundColor: theme.colors.background }]}>
+          <View style={[styles.resultBgCircle1, { backgroundColor: theme.colors.primary + '18' }]} />
+          <View style={[styles.resultBgCircle2, { backgroundColor: theme.colors.primary + '12' }]} />
+
+          <View style={[styles.resultIcon, { backgroundColor: result.success ? theme.colors.primary + '18' : theme.colors.error + '18' }]}>
+            <View style={[styles.resultIconInner, { backgroundColor: result.success ? theme.colors.primary : theme.colors.error }]}>
+              <Ionicons
+                name={result.success ? 'checkmark' : 'close'}
+                size={36}
+                color={result.success ? theme.colors.onPrimary : '#fff'}
+              />
+            </View>
           </View>
           <Text style={[styles.resultTitle, { color: theme.colors.text }]}>
             {result.success ? 'Đầu tư thành công!' : 'Đầu tư thất bại'}
           </Text>
           <Text style={[styles.resultSub, { color: theme.colors.textSecondary }]}>
             {result.success
-              ? `Hợp đồng ${result.contractId} đã được tạo. Bạn có thể theo dõi lợi nhuận trong danh sách hợp đồng.`
+              ? 'Hợp đồng đầu tư đã được tạo thành công.'
               : result.error || 'Đã xảy ra lỗi'}
           </Text>
+
+          {result.success && (
+            <View style={[styles.resultCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.primary + '30' }]}>
+              <View style={styles.resultCardRow}>
+                <MaterialCommunityIcons name="file-document-check" size={16} color={theme.colors.primary} />
+                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Mã HĐ: {result.contractId}</Text>
+              </View>
+              <View style={[styles.resultCardDivider, { backgroundColor: theme.colors.primary + '20' }]} />
+              <View style={styles.resultCardRow}>
+                <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.colors.primary} />
+                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Vốn đầu tư: {fmt(investCapital)}</Text>
+              </View>
+              <View style={[styles.resultCardDivider, { backgroundColor: theme.colors.primary + '20' }]} />
+              <View style={styles.resultCardRow}>
+                <MaterialCommunityIcons name="chart-line" size={16} color={theme.colors.primary} />
+                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Theo dõi lợi nhuận trong danh sách hợp đồng</Text>
+              </View>
+            </View>
+          )}
+
           <View style={styles.resultActions}>
             {result.success && (
-              <TouchableOpacity
-                style={[
-                  styles.primaryBtn, 
-                  { backgroundColor: theme.colors.primary },
-                  {
-                    shadowColor: theme.colors.primary,
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.4,
-                    shadowRadius: 8,
-                    elevation: 6,
-                  }
-                ]}
+              <CommonButton
+                title="Xem hợp đồng"
+                variant="primary"
+                size="lg"
+                icon="file-document-outline"
                 onPress={() => navigation.navigate('InvestmentContractDetail', { contractId: result._id })}
-              >
-                <MaterialCommunityIcons name="file-document-outline" size={18} color={theme.colors.onPrimary} />
-                <Text style={[styles.primaryBtnText, { color: theme.colors.onPrimary }]}>Xem hợp đồng</Text>
-              </TouchableOpacity>
+              />
             )}
-            <TouchableOpacity
-              style={[styles.secondaryBtn, { backgroundColor: theme.colors.primaryGlass }]}
+            <CommonButton
+              title="Quay lại danh sách"
+              variant={result.success ? 'outline' : 'primary'}
+              size="md"
               onPress={() => navigation.goBack()}
-            >
-              <Text style={[styles.secondaryBtnText, { color: theme.colors.primary }]}>Quay lại danh sách</Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
       );
@@ -558,7 +585,7 @@ export default function InvestmentFlowScreen() {
 
       {/* Bottom CTA */}
       {!result && (
-        <View style={[styles.bottomCta, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.bottomCta, { backgroundColor: theme.colors.background, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           <TouchableOpacity
             style={[
               styles.primaryBtn,
@@ -590,6 +617,27 @@ export default function InvestmentFlowScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* PIN Verification */}
+      <PinVerifyModal
+        visible={showPinModal}
+        onSuccess={() => { setShowPinModal(false); setShowOTPModal(true); }}
+        onCancel={() => setShowPinModal(false)}
+        dismissable
+        title="Xác thực mã PIN"
+        subtitle="Nhập mã PIN để xác nhận đầu tư"
+      />
+
+      {/* OTP Verification */}
+      <OTPVerifyModal
+        visible={showOTPModal}
+        actionType="INVESTMENT"
+        actionData={{ loanId: loan?._id, numNotes, capital: investCapital }}
+        title="Xác thực Smart OTP"
+        description={`Xác nhận đầu tư ${fmt(investCapital)} vào khoản vay`}
+        onSuccess={(data) => { setShowOTPModal(false); handleSubmit(data.sessionId); }}
+        onCancel={() => setShowOTPModal(false)}
+      />
     </View>
   );
 }
@@ -647,7 +695,7 @@ const styles = StyleSheet.create({
   counterContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 18, padding: 20, gap: 28, marginBottom: 16 },
   counterBtn: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 40, fontWeight: '800' },
+  counterValue: { fontSize: 30, fontWeight: '800' },
   counterLabel: { fontSize: 12, marginTop: 2 },
 
   // Quick Select
@@ -658,7 +706,7 @@ const styles = StyleSheet.create({
   // Summary
   summaryCard: { borderRadius: 18, padding: 20, alignItems: 'center', marginBottom: 20 },
   summaryBigLabel: { fontSize: 12, fontWeight: '500', marginBottom: 4 },
-  summaryBigValue: { fontSize: 28, fontWeight: '800', letterSpacing: 0.5 },
+  summaryBigValue: { fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
   summarySmallRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   summarySmallText: { fontSize: 13, fontWeight: '600' },
 
@@ -667,11 +715,11 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, marginTop: 12 },
   heroCard: { borderRadius: 20, padding: 20, marginBottom: 16 },
   heroLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  heroValue: { fontSize: 28, fontWeight: '800', marginTop: 4 },
+  heroValue: { fontSize: 22, fontWeight: '800', marginTop: 4 },
   heroMeta: { fontSize: 12, marginTop: 6 },
   heroColumns: { flexDirection: 'row', marginTop: 16, gap: 16 },
   heroColLabel: { fontSize: 11, fontWeight: '500' },
-  heroColValue: { fontSize: 17, fontWeight: '800', marginTop: 2 },
+  heroColValue: { fontSize: 15, fontWeight: '800', marginTop: 2 },
   tableCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 20 },
   tableHeader: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   tableHeaderText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
@@ -708,16 +756,23 @@ const styles = StyleSheet.create({
   securityText: { fontSize: 11 },
 
   // Result
-  resultContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
-  resultIcon: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  resultTitle: { fontSize: 22, fontWeight: '800', marginBottom: 8 },
+  resultContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, overflow: 'hidden' },
+  resultIcon: { width: 88, height: 88, borderRadius: 44, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  resultIconInner: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
+  resultTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
   resultSub: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  resultActions: { gap: 12, marginTop: 32, width: '100%' },
+  resultActions: { gap: 10, marginTop: 24, width: '100%' },
+  resultBgCircle1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, top: -80, right: -80 },
+  resultBgCircle2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, bottom: -60, left: -60 },
+  resultCard: { width: '100%', borderRadius: 16, padding: 16, borderWidth: 1, gap: 10, marginTop: 12 },
+  resultCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  resultCardText: { fontSize: 13, fontWeight: '500', flex: 1 },
+  resultCardDivider: { height: 1 },
 
   // Buttons
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16 },
-  primaryBtnText: { fontSize: 16, fontWeight: '800' },
+  primaryBtnText: { fontSize: 15, fontWeight: '700' },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 16 },
-  secondaryBtnText: { fontSize: 15, fontWeight: '700' },
-  bottomCta: { paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12 },
+  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
+  bottomCta: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 12 },
 });

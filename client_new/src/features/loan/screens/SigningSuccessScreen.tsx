@@ -69,34 +69,34 @@ export default function SigningSuccessScreen() {
     }, []);
 
     return (
-        <View style={[styles.container, { backgroundColor: '#FAFAFA', paddingTop: insets.top }]}>
-            <View style={styles.bgOrbTop} />
-            <View style={styles.bgOrbBottom} />
+        <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+            <View style={[styles.bgOrbTop, { backgroundColor: colors.primary + '18' }]} />
+            <View style={[styles.bgOrbBottom, { backgroundColor: colors.primary + '12' }]} />
 
             {/* Close button */}
             <TouchableOpacity
-                style={styles.closeBtn}
+                style={[styles.closeBtn, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}
                 onPress={() => navigation.popToTop()}
             >
-                <Ionicons name="close" size={22} color={GOLD_DARK} />
+                <Ionicons name="close" size={22} color={colors.primary} />
             </TouchableOpacity>
 
             {/* Success Icon */}
             <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
-                <View style={styles.iconCircle}>
-                    <View style={styles.iconCircleInner}>
-                        <MaterialCommunityIcons name="check" size={48} color={WHITE} />
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary + '18' }]}>
+                    <View style={[styles.iconCircleInner, { backgroundColor: colors.primary }]}>
+                        <MaterialCommunityIcons name="check" size={48} color={colors.onPrimary} />
                     </View>
                 </View>
             </Animated.View>
 
             {/* Title */}
             <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-                <Text style={styles.title}>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>
                     Ký số thành công!
                 </Text>
-                <Text style={styles.subtitle}>
-                    Hợp đồng {contractId ? <Text style={styles.contractInline}>{contractId}</Text> : ''} đã được ký số hợp lệ.
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                    Hợp đồng {contractId ? <Text style={[styles.contractInline, { color: colors.primary }]}>{contractId}</Text> : ''} đã được ký số hợp lệ.
                 </Text>
             </Animated.View>
 
@@ -104,36 +104,41 @@ export default function SigningSuccessScreen() {
             <Animated.View
                 style={[
                     styles.infoCard,
-                    { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+                    {
+                        opacity: fadeAnim,
+                        transform: [{ translateY: slideAnim }],
+                        backgroundColor: colors.surface,
+                        borderColor: colors.primary + '30',
+                    },
                 ]}
             >
-                <View style={styles.infoIconRow}>
-                    <MaterialCommunityIcons name="shield-check" size={22} color={GOLD_DARK} />
-                    <Text style={styles.infoStatusText}>Chứng thư số VNPT SmartCA</Text>
+                <View style={[styles.infoIconRow, { backgroundColor: colors.primary + '15' }]}>
+                    <MaterialCommunityIcons name="shield-check" size={22} color={colors.primary} />
+                    <Text style={[styles.infoStatusText, { color: colors.textPrimary }]}>Chứng thư số VNPT SmartCA</Text>
                 </View>
 
                 <View style={styles.rowWithIcon}>
-                    <MaterialCommunityIcons name="clock-outline" size={16} color={GOLD_DARK} />
-                    <Text style={styles.infoMessage}>Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}</Text>
+                    <MaterialCommunityIcons name="clock-outline" size={16} color={colors.primary} />
+                    <Text style={[styles.infoMessage, { color: colors.textSecondary }]}>Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}</Text>
                 </View>
                 <View style={styles.rowWithIcon}>
-                    <MaterialCommunityIcons name="bank-transfer" size={16} color={GOLD_DARK} />
-                    <Text style={styles.infoMessage}>Khoản vay sẽ được giải ngân sớm</Text>
+                    <MaterialCommunityIcons name="bank-transfer" size={16} color={colors.primary} />
+                    <Text style={[styles.infoMessage, { color: colors.textSecondary }]}>Khoản vay sẽ được giải ngân sớm</Text>
                 </View>
 
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: colors.primary + '20' }]} />
 
                 {contractId ? (
                     <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Mã hợp đồng</Text>
-                        <Text style={styles.infoValue}>{contractId}</Text>
+                        <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Mã hợp đồng</Text>
+                        <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{contractId}</Text>
                     </View>
                 ) : null}
 
                 {principalAmount > 0 && (
                     <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Số tiền vay</Text>
-                        <Text style={[styles.infoValue, { color: GOLD_DARK }]}>
+                        <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Số tiền vay</Text>
+                        <Text style={[styles.infoValue, { color: colors.primary }]}>
                             {formatMoney(principalAmount)} đ
                         </Text>
                     </View>
@@ -141,8 +146,8 @@ export default function SigningSuccessScreen() {
 
                 {tenure > 0 && (
                     <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Kỳ hạn</Text>
-                        <Text style={styles.infoValue}>{tenure} tháng</Text>
+                        <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Kỳ hạn</Text>
+                        <Text style={[styles.infoValue, { color: colors.textPrimary }]}>{tenure} tháng</Text>
                     </View>
                 )}
             </Animated.View>
@@ -150,14 +155,13 @@ export default function SigningSuccessScreen() {
             {/* Bottom buttons */}
             <View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                 <TouchableOpacity
-                    style={styles.primaryBtn}
+                    style={[styles.primaryBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
                     onPress={() => {
                         navigation.pop();
-                        // Stay on LoanContractDetail
                     }}
                     activeOpacity={0.85}
                 >
-                    <Text style={styles.primaryBtnText}>Xem hợp đồng</Text>
+                    <Text style={[styles.primaryBtnText, { color: colors.onPrimary }]}>Xem hợp đồng</Text>
                 </TouchableOpacity>
             </View>
         </View>

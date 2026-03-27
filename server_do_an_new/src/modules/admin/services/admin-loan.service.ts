@@ -384,6 +384,15 @@ export class AdminLoanService {
       );
     }
 
+    // 0b. Check investment is fully funded
+    const totalNotes = loan.totalNotes || Math.ceil((loan.capital || 0) / 500000);
+    const investedNotes = (loan as any).investedNotes || 0;
+    if (investedNotes < totalNotes) {
+      throw new BadRequestException(
+        `Khoản vay #${fineractLoanId} chưa được đầu tư đủ (${investedNotes}/${totalNotes} phần). Nhà đầu tư cần rót vốn đủ trước khi giải ngân.`,
+      );
+    }
+
     // 1. Disburse on Fineract
     await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
 

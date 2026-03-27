@@ -295,6 +295,7 @@ class InvestService {
     loanApplicationId: string;
     numNotes: number;
     investmentOrderId?: string;
+    otpSessionId?: string;
   }): Promise<InvestmentContractItem> {
     const response = await api.post<{
       statusCode: number;

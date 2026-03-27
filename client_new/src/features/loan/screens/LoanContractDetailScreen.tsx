@@ -427,17 +427,17 @@ export default function LoanContractDetailScreen() {
                     },
                 ]}>
                     <TouchableOpacity
-                        style={[styles.signBtn, signing && styles.signBtnDisabled]}
+                        style={[styles.signBtn, { backgroundColor: colors.primary }, signing && styles.signBtnDisabled]}
                         onPress={() => setShowSignConfirm(true)}
                         disabled={signing}
                         activeOpacity={0.8}
                     >
                         {signing ? (
-                            <ActivityIndicator color="#fff" size="small" />
+                            <ActivityIndicator color={colors.onPrimary} size="small" />
                         ) : (
                             <>
-                                <MaterialCommunityIcons name="draw-pen" size={20} color="#fff" />
-                                <Text style={styles.signBtnText}>Ký xác nhận hợp đồng</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary} />
+                                <Text style={[styles.signBtnText, { color: colors.onPrimary }]}>Ký xác nhận hợp đồng</Text>
                             </>
                         )}
                     </TouchableOpacity>
@@ -455,7 +455,16 @@ export default function LoanContractDetailScreen() {
                         <View style={{ width: 40 }} />
                     </View>
                     <WebView
-                        source={{ html: contractHTML }}
+                        source={{
+                            html: `<style>
+                          body { background: ${colors.background}; color: ${colors.textPrimary}; }
+                          table { border-color: ${colors.border} !important; }
+                          th { background-color: ${colors.primary}15 !important; color: ${colors.textPrimary} !important; }
+                          td { color: ${colors.textPrimary} !important; }
+                          .highlight, .amount { color: ${colors.primary} !important; }
+                          h1, h2, h3, h4 { color: ${colors.textPrimary} !important; }
+                        </style>${contractHTML}`
+                        }}
                         style={styles.webView}
                         originWhitelist={['*']}
                         scalesPageToFit={Platform.OS === 'android'}
@@ -473,13 +482,13 @@ export default function LoanContractDetailScreen() {
                                 </Text>
                             </View>
                             <TouchableOpacity
-                                style={[styles.signBtn, { marginTop: 12 }, signing && styles.signBtnDisabled]}
+                                style={[styles.signBtn, { backgroundColor: colors.primary, marginTop: 12 }, signing && styles.signBtnDisabled]}
                                 onPress={() => { setShowContract(false); setShowSignConfirm(true); }}
                                 disabled={signing}
                                 activeOpacity={0.8}
                             >
-                                <MaterialCommunityIcons name="draw-pen" size={20} color="#fff" />
-                                <Text style={styles.signBtnText}>Ký xác nhận hợp đồng</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary} />
+                                <Text style={[styles.signBtnText, { color: colors.onPrimary }]}>Ký xác nhận hợp đồng</Text>
                             </TouchableOpacity>
                         </View>
                     )}
@@ -490,8 +499,8 @@ export default function LoanContractDetailScreen() {
             <Modal visible={showSignConfirm} transparent animationType="fade">
                 <View style={styles.confirmOverlay}>
                     <View style={[styles.confirmCard, { backgroundColor: colors.surface }]}>
-                        <View style={styles.confirmIconWrap}>
-                            <MaterialCommunityIcons name="shield-check" size={48} color="#CDEA2D" />
+                        <View style={[styles.confirmIconWrap, { backgroundColor: colors.primary + '15' }]}>
+                            <MaterialCommunityIcons name="shield-check" size={48} color={colors.primary} />
                         </View>
                         <Text style={[styles.confirmTitle, { color: colors.textPrimary }]}>
                             Xác nhận ký hợp đồng
@@ -513,11 +522,11 @@ export default function LoanContractDetailScreen() {
                                 <Text style={[styles.confirmCancelText, { color: colors.textSecondary }]}>Hủy</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={styles.confirmSignBtn}
+                                style={[styles.confirmSignBtn, { backgroundColor: colors.primary }]}
                                 onPress={handleSign}
                             >
-                                <MaterialCommunityIcons name="draw-pen" size={18} color="#181A20" />
-                                <Text style={styles.confirmSignText}>Ký xác nhận</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={18} color={colors.onPrimary} />
+                                <Text style={[styles.confirmSignText, { color: colors.onPrimary }]}>Ký xác nhận</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -534,10 +543,10 @@ export default function LoanContractDetailScreen() {
 
             {/* ── Ký số thành công – Full page overlay ── */}
             <Modal visible={showSignSuccess} transparent animationType="none" statusBarTranslucent>
-                <Animated.View style={[styles.successPage, { opacity: successPageAnim }]}>
+                <Animated.View style={[styles.successPage, { opacity: successPageAnim, backgroundColor: colors.background }]}>
                     {/* Background gradient-like circles */}
-                    <View style={styles.successBgCircle1} />
-                    <View style={styles.successBgCircle2} />
+                    <View style={[styles.successBgCircle1, { backgroundColor: colors.primary + '18' }]} />
+                    <View style={[styles.successBgCircle2, { backgroundColor: colors.primary + '12' }]} />
 
                     <Animated.View style={[
                         styles.successBody,
@@ -551,43 +560,43 @@ export default function LoanContractDetailScreen() {
                             styles.successCheckWrap,
                             { transform: [{ scale: successCheckAnim }] },
                         ]}>
-                            <View style={styles.successCheckRing} />
-                            <View style={styles.successCheckCircle}>
-                                <Ionicons name="checkmark" size={52} color="#fff" />
+                            <View style={[styles.successCheckRing, { borderColor: colors.primary + '40' }]} />
+                            <View style={[styles.successCheckCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
+                                <Ionicons name="checkmark" size={52} color={colors.onPrimary} />
                             </View>
                         </Animated.View>
 
-                        <Text style={styles.successTitle}>Ký số thành công!</Text>
-                        <Text style={styles.successSubtitle}>
-                            Hợp đồng <Text style={styles.successHighlight}>{contract.contractId}</Text> đã được ký số
+                        <Text style={[styles.successTitle, { color: colors.textPrimary }]}>Ký số thành công!</Text>
+                        <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
+                            Hợp đồng <Text style={[styles.successHighlight, { color: colors.primary }]}>{contract.contractId}</Text> đã được ký số
                         </Text>
 
                         {/* Info card */}
-                        <View style={styles.successCard}>
+                        <View style={[styles.successCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="shield-check" size={18} color="#B88700" />
-                                <Text style={styles.successCardText}>Chứng thư số VNPT SmartCA</Text>
+                                <MaterialCommunityIcons name="shield-check" size={18} color={colors.primary} />
+                                <Text style={[styles.successCardText, { color: colors.textPrimary }]}>Chứng thư số VNPT SmartCA</Text>
                             </View>
-                            <View style={[styles.successCardDivider]} />
+                            <View style={[styles.successCardDivider, { backgroundColor: colors.primary + '20' }]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="clock-check-outline" size={18} color="#B88700" />
-                                <Text style={styles.successCardTextDim}>
+                                <MaterialCommunityIcons name="clock-check-outline" size={18} color={colors.primary} />
+                                <Text style={[styles.successCardTextDim, { color: colors.textSecondary }]}>
                                     Ký lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ngày {new Date().toLocaleDateString('vi-VN')}
                                 </Text>
                             </View>
-                            <View style={[styles.successCardDivider]} />
+                            <View style={[styles.successCardDivider, { backgroundColor: colors.primary + '20' }]} />
                             <View style={styles.successCardRow}>
-                                <MaterialCommunityIcons name="bank-transfer" size={18} color="#B88700" />
-                                <Text style={styles.successCardText}>Khoản vay sẽ được giải ngân sớm</Text>
+                                <MaterialCommunityIcons name="bank-transfer" size={18} color={colors.primary} />
+                                <Text style={[styles.successCardText, { color: colors.textPrimary }]}>Khoản vay sẽ được giải ngân sớm</Text>
                             </View>
                         </View>
 
                         <TouchableOpacity
-                            style={styles.successBtn}
+                            style={[styles.successBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
                             onPress={() => setShowSignSuccess(false)}
                             activeOpacity={0.85}
                         >
-                            <Text style={styles.successBtnText}>Xem hợp đồng</Text>
+                            <Text style={[styles.successBtnText, { color: colors.onPrimary }]}>Xem hợp đồng</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </Animated.View>
@@ -605,7 +614,7 @@ const InfoRow = ({ label, value, colors }: { label: string; value?: string | nul
 );
 
 const DetailItem = ({ label, value, colors }: { label: string; value: string; colors: any }) => (
-    <View style={styles.detailItem}>
+    <View style={[styles.detailItem, { backgroundColor: colors.surfaceLight || colors.backgroundTertiary }]}>
         <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>{label}</Text>
         <Text style={[styles.detailItemValue, { color: colors.textPrimary }]}>{value}</Text>
     </View>
