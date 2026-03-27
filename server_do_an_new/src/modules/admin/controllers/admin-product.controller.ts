@@ -24,7 +24,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async getCreditScoreWeights() {
     const data = await this.adminService.getCreditScoreWeightConfig();
-    return { statusCode: 200, message: 'OK', data };
+    return data;
   }
 
   @Put('credit-score/weights')
@@ -42,7 +42,7 @@ export class AdminProductController {
     },
   ) {
     const data = await this.adminService.updateCreditScoreWeightConfig(body);
-    return { statusCode: 200, message: 'Cập nhật thành công', data };
+    return data;
   }
 
   @Get('credit-score/weight-configs')
@@ -51,7 +51,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async listCreditScoreWeightConfigs() {
     const data = await this.adminService.listCreditScoreWeightConfigs();
-    return { statusCode: 200, message: 'OK', data };
+    return data;
   }
 
   @Post('credit-score/weight-configs')
@@ -71,7 +71,7 @@ export class AdminProductController {
     },
   ) {
     const data = await this.adminService.createCreditScoreWeightConfig(body);
-    return { statusCode: 201, message: 'Tạo cấu hình thành công', data };
+    return data;
   }
 
   @Put('credit-score/weight-configs/:id')
@@ -93,7 +93,7 @@ export class AdminProductController {
     },
   ) {
     const data = await this.adminService.updateCreditScoreWeightConfigById(id, body);
-    return { statusCode: 200, message: 'Cập nhật cấu hình thành công', data };
+    return data;
   }
 
   @Post('credit-score/weight-configs/:id/apply')
@@ -102,7 +102,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async applyCreditScoreWeightConfig(@Param('id') id: string) {
     const data = await this.adminService.applyCreditScoreWeightConfig(id);
-    return { statusCode: 200, message: 'Đã áp dụng cấu hình', data };
+    return data;
   }
 
   @Get('loan-products')
@@ -165,7 +165,7 @@ export class AdminProductController {
   @ApiResponse({ status: 200 })
   async removeDocumentType(@Param('id') id: string) {
     await this.adminService.removeDocumentType(id);
-    return { statusCode: 200, message: 'Deleted' };
+    return { success: true };
   }
 
   @Get('loan-products/:fineractProductId/document-types')

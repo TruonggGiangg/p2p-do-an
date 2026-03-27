@@ -10,10 +10,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { ApiTags } from '@nestjs/swagger';
 import { EkycService } from './ekyc.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+@ApiTags('ekyc')
 @Controller('ekyc')
 @UseGuards(JwtAuthGuard)
 export class EkycController {

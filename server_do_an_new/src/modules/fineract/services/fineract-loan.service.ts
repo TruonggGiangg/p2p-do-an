@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { FINERACT_AXIOS_CLIENT } from '../fineract.constants';
 import { FineractBaseService, LOAN_TYPE_INDIVIDUAL, STRATEGY_MIFOS_STANDARD } from './fineract-base.service';
 import { roundToCurrency } from '../../../utils/RoundingUtils';
+import { FineractLoanProduct, FineractPageResponse, FineractLoanTransaction } from '../fineract-types';
 
 /**
  * FineractLoanService - Loan and BNPL operations
@@ -310,10 +311,10 @@ export class FineractLoanService extends FineractBaseService {
   /**
    * Get loan transactions from Fineract
    */
-  async getLoanTransactions(loanId: number): Promise<any[]> {
+  async getLoanTransactions(loanId: number): Promise<FineractLoanTransaction[]> {
     try {
       const response = await this.client.get(`/loans/${loanId}?associations=transactions`);
-      const transactions = response.data?.transactions || [];
+      const transactions: FineractLoanTransaction[] = response.data?.transactions || [];
       this.logger.log(`[getLoanTransactions] loanId=${loanId} count=${transactions.length}`);
       return transactions;
     } catch (error: any) {
@@ -473,7 +474,7 @@ export class FineractLoanService extends FineractBaseService {
   /**
    * Get loan product details from Fineract
    */
-  async getLoanProductDetails(productId: number): Promise<any> {
+  async getLoanProductDetails(productId: number): Promise<FineractLoanProduct | undefined> {
     try {
       const response = await this.client.get(`/loanproducts/${productId}`);
       return response.data;

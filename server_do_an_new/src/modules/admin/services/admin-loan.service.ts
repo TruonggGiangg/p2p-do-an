@@ -96,6 +96,7 @@ export class AdminLoanService {
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly customerService: AdminCustomerService,
   ) { }
+
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
     if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -135,11 +136,12 @@ export class AdminLoanService {
     if (overdueAmount <= 0 || delinquentDays <= 0) return 'none';
     if (delinquentDays <= 7) return 'reminder';
     if (delinquentDays <= 30) return 'warning';
+    if (delinquentDays <= 30) return 'warning';
     if (delinquentDays <= 90) return 'collection';
     return 'legal';
   }
 
-  private async syncLoanDelinquencySnapshot(app: LoanApplication, fl: any, dData: any): Promise<void> {
+  private async syncLoanDelinquencySnapshot(app: any, fl: any, dData: any): Promise<void> {
     if (!app.fineractLoanId) return;
 
     const existing = await this.loanDelinquencyModel.findOne({ fineractLoanId: app.fineractLoanId });
@@ -198,6 +200,14 @@ export class AdminLoanService {
     }
   }
 
+  /**
+
+
+
+  /**
+   * Get all pending loans (status 100 in Fineract) for admin approval.
+   * Only P* products.
+   */
   async getAllPendingLoans() {
     // 1. Fetch all pending loans from Fineract (Status 100 = Submitted and pending approval)
     const pendingFineractLoans = await this.fineractLoanService.getLoansByStatus(100);
@@ -359,12 +369,15 @@ export class AdminLoanService {
   async disburseLoan(fineractLoanId: number) {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan) throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
+    if (!loan)
+      throw new BadRequestException(`Khoáº£n vay Fineract #${fineractLoanId} khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng`);
 
     // 0. Check contract is signed before allowing disbursement
     const contract = await this.loanContractModel.findOne({ loanId: loan._id });
     if (!contract) {
-      throw new BadRequestException(`Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`);
+      throw new BadRequestException(
+        `Khoáº£n vay #${fineractLoanId} chÆ°a cÃ³ há»£p Ä‘á»“ng. KhÃ´ng thá»ƒ giáº£i ngÃ¢n.`,
+      );
     }
     if (contract.status !== 'signed') {
       throw new BadRequestException(
@@ -419,6 +432,75 @@ export class AdminLoanService {
     }
 
     return { fineractLoanId, status: 'disbursed', borrowerName, borrowerUsername };
+  }
+
+  /**
+   * Admin reject loan: Fineract reject + update MongoDB status + notify borrower
+   */
+  async rejectLoan(fineractLoanId: number, note?: string) {
+    this.logger.log(`[rejectLoan] fineractLoanId=${fineractLoanId}`);
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+
+    // 1. Reject on Fineract
+    await this.fineractLoanService.rejectLoan(fineractLoanId, undefined, note);
+
+    // 2. Update MongoDB
+    app.status = 'rejected' as any;
+    await app.save();
+
+    // 3. Notify borrower
+    try {
+      await this.notificationModel.create({
+        userId: app.userId,
+        title: 'Đơn vay bị từ chối',
+        message: note
+          ? `Đơn vay ${app.capital?.toLocaleString('vi-VN')} đ đã bị từ chối. Lý do: ${note}`
+          : `Đơn vay ${app.capital?.toLocaleString('vi-VN')} đ đã bị từ chối.`,
+        type: 'loan_rejected',
+        data: { loanId: app._id?.toString(), fineractLoanId, reason: note || '' },
+      });
+    } catch (err) {
+      this.logger.warn(`[rejectLoan] Failed to create notification: ${err?.message}`);
+    }
+
+    // 4. Get borrower info
+    let borrowerName = '';
+    let borrowerUsername = '';
+    try {
+      const borrower = await this.userModel.findById(app.userId);
+      if (borrower) {
+        borrowerName = [borrower.profile?.firstName, borrower.profile?.lastName].filter(Boolean).join(' ') || borrower.username;
+        borrowerUsername = borrower.username;
+      }
+    } catch { /* ignore */ }
+
+    return { fineractLoanId, status: 'rejected', borrowerName, borrowerUsername };
+  }
+
+  /**
+   * Admin undo approval: Fineract undoApproval + revert MongoDB status
+   */
+  async undoApproval(fineractLoanId: number, note?: string) {
+    this.logger.log(`[undoApproval] fineractLoanId=${fineractLoanId}`);
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    if (!app) throw new BadRequestException('Khoản vay không tồn tại');
+
+    // 1. Undo on Fineract
+    await this.fineractLoanService.undoApproval(fineractLoanId, note);
+
+    // 2. Revert MongoDB to pending
+    app.status = 'pending' as any;
+    await app.save();
+
+    // 3. Remove contract if created
+    try {
+      await this.loanContractModel.deleteOne({ loanId: app._id });
+    } catch (err) {
+      this.logger.warn(`[undoApproval] Failed to remove contract: ${err?.message}`);
+    }
+
+    return { fineractLoanId, status: 'pending', message: 'Đã hoàn tác duyệt' };
   }
 
   /**
@@ -502,7 +584,6 @@ export class AdminLoanService {
     }
     return result;
   }
-
   async getLoanDetails(fineractLoanId: number, sync = false) {
     this.logger.log(`[getLoanDetails] fineractLoanId=${fineractLoanId} sync=${sync}`);
     if (sync) {
@@ -676,7 +757,7 @@ export class AdminLoanService {
       if (firstDueStr && firstDueStr < app.disbursementDate) {
         this.logger.error(
           `[syncLoanFromFineract] CRITICAL CONSISTENCY: Loan ${fineractLoanId} has disbursementDate=${app.disbursementDate} but first period dueDate=${firstDueStr}. ` +
-          'First due date is BEFORE disbursement â€” loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
+            'First due date is BEFORE disbursement â€” loan will appear delinquent immediately. Fix in Fineract or correct disbursement/schedule. See: repaymentSchedule vs disbursementDate.',
         );
       }
     }
@@ -921,11 +1002,13 @@ export class AdminLoanService {
         this.logger.warn(
           `[syncDisbursedLoansFromFineract] Removed ${orphansRemoved} orphan loans (fineractLoanIds: ${orphanIds.join(', ')})`,
         );
-        details.push(...orphanIds.map(fid => ({
-          fineractLoanId: fid,
-          status: 'orphan_removed' as const,
-          message: 'Khoáº£n vay khÃ´ng cÃ²n trÃªn Fineract, Ä‘Ã£ Ä‘Ã¡nh dáº¥u removed_from_fineract',
-        })));
+        details.push(
+          ...orphanIds.map(fid => ({
+            fineractLoanId: fid,
+            status: 'orphan_removed' as const,
+            message: 'Khoáº£n vay khÃ´ng cÃ²n trÃªn Fineract, Ä‘Ã£ Ä‘Ã¡nh dáº¥u removed_from_fineract',
+          })),
+        );
       }
     } catch (orphanErr: any) {
       this.logger.warn(`[syncDisbursedLoansFromFineract] Orphan cleanup failed: ${orphanErr?.message}`);
@@ -1123,26 +1206,26 @@ export class AdminLoanService {
         };
       })
       .filter(Boolean) as Array<{
-        _id: string;
-        loanId: string;
-        fineractLoanId: number;
-        borrowerId: string;
-        userId: string;
-        customerName: string;
-        customerUsername: string;
-        fineractClientId?: string;
-        capital: number;
-        overdueAmount: number;
-        debtGroup: number;
-        firstOverdueDate: Date | null;
-        lastOverdueDate: Date | null;
-        status: LoanDelinquencyStatus;
-        collectionStage: LoanCollectionStage;
-        totalOverdue: number;
-        delinquentDays: number;
-        delinquencyClassification: string | null;
-        lastSyncedAt: Date | null;
-      }>;
+      _id: string;
+      loanId: string;
+      fineractLoanId: number;
+      borrowerId: string;
+      userId: string;
+      customerName: string;
+      customerUsername: string;
+      fineractClientId?: string;
+      capital: number;
+      overdueAmount: number;
+      debtGroup: number;
+      firstOverdueDate: Date | null;
+      lastOverdueDate: Date | null;
+      status: LoanDelinquencyStatus;
+      collectionStage: LoanCollectionStage;
+      totalOverdue: number;
+      delinquentDays: number;
+      delinquencyClassification: string | null;
+      lastSyncedAt: Date | null;
+    }>;
 
     // Khi clientDisplayName trá»‘ng (sync cÅ© hoáº·c lá»—i), láº¥y tÃªn tá»« Fineract Ä‘á»ƒ luÃ´n hiá»‡n Ä‘Ãºng tÃªn khoáº£n vay
     const needFineractName = items
@@ -1171,7 +1254,7 @@ export class AdminLoanService {
           this.loanApplicationModel
             .updateOne({ _id: loanId }, { $set: { clientDisplayName: name } })
             .exec()
-            .catch(() => { });
+            .catch(() => {});
         }
       });
     }
@@ -1361,11 +1444,11 @@ export class AdminLoanService {
         };
       })
       .filter(Boolean) as Array<{
-        debt_group: number;
-        debt_group_name: string;
-        min_days: number;
-        max_days: number | null;
-      }>;
+      debt_group: number;
+      debt_group_name: string;
+      min_days: number;
+      max_days: number | null;
+    }>;
   }
 
   private async resolveDebtGroupMetadata(debtGroup: number): Promise<{
@@ -1472,7 +1555,9 @@ export class AdminLoanService {
 
     const nextProductId = dto.loan_product_id ?? existing.loan_product_id;
     if (nextProductId == null) {
-      throw new BadRequestException('Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.');
+      throw new BadRequestException(
+        'Policy cÅ© chÆ°a cÃ³ loan_product_id. Vui lÃ²ng táº¡o láº¡i policy theo tá»«ng sáº£n pháº©m.',
+      );
     }
 
     const nextDebtGroup = dto.debt_group ?? existing.debt_group;
@@ -1995,7 +2080,9 @@ export class AdminLoanService {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find(d => d.id === documentId);
       if (!fd) {
-        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
+        throw new BadRequestException(
+          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
+        );
       }
 
       const newDoc = {
@@ -2034,7 +2121,9 @@ export class AdminLoanService {
       const fineractDocs = await this.fineractLoanService.getLoanDocuments(fineractLoanId);
       const fd = fineractDocs.find((d: any) => d.id == documentId);
       if (!fd) {
-        throw new BadRequestException(`TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`);
+        throw new BadRequestException(
+          `TÃ i liá»‡u #${documentId} khÃ´ng thuá»™c khoáº£n vay #${fineractLoanId} trÃªn Fineract`,
+        );
       }
 
       const newDoc = {

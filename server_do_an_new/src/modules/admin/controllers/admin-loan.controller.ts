@@ -290,6 +290,6 @@ export class AdminLoanController {
       this.reminderScheduler.handleRepaymentDueReminders(),
       this.reminderScheduler.handleOverdueReminders(),
     ]);
-    return { statusCode: 200, message: 'Reminders triggered' };
+    return { message: 'Reminders triggered' };
   }
 }

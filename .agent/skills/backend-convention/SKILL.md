@@ -168,3 +168,42 @@ export class CreateUserDto {
   phoneNumber?: string;
 }
 ```
+
+## 7. Comments & Documentation (BẮT BUỘC)
+
+1. **JSDoc Style Comments (Comment hiển thị dưới dạng documentation)**:
+   - Các Service, method có logic kinh doanh cốt lõi (Business Logic), các helper phức tạp BẮT BUỘC phải dùng JSDoc `/** ... */`.
+   - Một JSDoc tốt cần bao gồm:
+     - Dòng mô tả ngắn gọn chức năng của hàm / class.
+     - Chi tiết từng tham số (`@param`): Đầu vào là gì, có những điều kiện nào?
+     - Kết quả trả về (`@returns`): Dữ liệu gì sẽ được trả ra?
+     - Ngoại lệ (`@throws`): Những errors/exceptions nào sẽ bị bắn ra và trong trường hợp (ngữ cảnh) nào?
+
+2. **Inline Comments (Comment trong dòng code - Chỉ giải thích WHY, không phải WHAT)**:
+   - Dùng `//` để ghi chú ở ngay dòng có nghiệp vụ tối nghĩa. KHÔNG giải thích những thứ tường minh ngay trong code (VD: `// Trả về true` <~ Bad comment). 
+   - Giải thích lý do **TẠI SAO** lại làm như vậy: (VD: `// Phải check state === 2 vì bên hệ thống Fineract quy ước state 2 là PENDING đối với Loan...` <~ Good comment).
+
+3. **Swagger (Bắt buộc với mọi API Public/Protected)**:
+   - Mọi Controller endpoint đều phải được gắn tên (`@ApiOperation({ summary: '...' })`).
+   - Mọi properties trong DTO phải chứa `@ApiProperty()` và kèm ví dụ minh họa (`example: '...'`) hoặc mô tả (`description: '...'`), nhằm tạo doc sống động cho tester/frontend dev.
+
+4. **TODOs / FIXMEs**:
+   - Mọi phần code viết cứng (hardcode tạm thời), hoặc nghiệp vụ chưa xong nhưng phải push code, **phải** được đánh dấu bằng `// TODO: [Mô tả những việc chưa kịp làm] - [Tên người code]` để có keyword search sau này. Mọi lỗi tạm lơ đi phải đánh dấu bằng `// FIXME: ...`.
+
+### Ví dụ về JSDoc chuẩn hóa:
+```typescript
+/**
+ * Duyệt dự án cho vay (Loan Approval) sau khi Nhà đầu tư rót đủ vốn.
+ * Hàm sẽ cập nhật trạng thái Loan, sau đó đồng bộ với Core Banking Fineract,
+ * và sinh ra các lịch trả nợ (Repayment Schedule).
+ * 
+ * @param loanId - Mã ID của phiên gọi vốn (ObjectId trên Mongo)
+ * @param adminUsername - Tên của Staff thực hiện lệnh duyệt
+ * @returns {Promise<LoanDto>} - Thông tin phiên đấu vốn mới nhất
+ * @throws {NotFoundException} Nếu không tìm thấy Loan ID
+ * @throws {BadRequestException} Nếu Loan chưa full tỷ lệ Fund hoặc trạng thái khác WAITING_APPROVAL
+ */
+async approveLoanReady(loanId: string, adminUsername: string): Promise<LoanDto> {
+  // Logic xử lý cực kỳ lắt léo...
+}
+```

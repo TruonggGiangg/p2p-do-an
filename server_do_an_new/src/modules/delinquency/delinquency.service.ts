@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { AdminService } from '../admin/admin.service';
 import { DelinquencyCollectionStage } from './entities/delinquency-policy.schema';
 
+/**
+ * Service quản lý nợ xấu (Delinquency).
+ * Đóng vai trò như một Facade wrapper để gọi các chức năng từ AdminService,
+ * cung cấp các API logic liên quan đến hợp đồng trễ hạn và chính sách thu hồi nợ.
+ */
 @Injectable()
 export class DelinquencyService {
   constructor(private readonly adminService: AdminService) {}
