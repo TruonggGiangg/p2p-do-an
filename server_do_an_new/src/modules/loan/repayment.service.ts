@@ -129,14 +129,12 @@ export class RepaymentService {
     }
 
     // 4. Trừ tiền từ ví borrower
-    let walletDeduction: { walletTxId: number; savingsId: number } | null = null;
     try {
-      walletDeduction = await this.deductFromBorrowerWallet(
-        userId,
-        amount,
-        `Thanh toán kỳ hạn khoản vay (MongoDB: ${loanId})`,
-        { loanId, fineractLoanId, type: 'repayment' },
-      );
+      await this.deductFromBorrowerWallet(userId, amount, `Thanh toán kỳ hạn khoản vay (MongoDB: ${loanId})`, {
+        loanId,
+        fineractLoanId,
+        type: 'repayment',
+      });
     } catch (walletErr: any) {
       this.logger.error(`[makeRepayment] Wallet deduction failed: ${walletErr.message}`);
       throw walletErr; // Don't proceed if wallet deduction fails
