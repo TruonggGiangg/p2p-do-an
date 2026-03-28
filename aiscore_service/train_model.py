@@ -15,7 +15,7 @@
 ║    5. GradientBoosting   "Ky su chinh xac"                             ║
 ║                                                                        ║
 ║  Level 2 — Meta-Learner:                                               ║
-║    Random Forest nhan OOF cua 5 model + 15 original features           ║
+║    LogisticRegression nhan OOF cua 5 model + 15 original features      ║
 ║    => HYBRID FINAL PD (Default Probability)                            ║
 ║                                                                        ║
 ║  CHUAN HOA: Moi feature co 1 StandardScaler rieng (15 scalers)        ║
@@ -59,6 +59,7 @@ from sklearn.ensemble import (
     ExtraTreesClassifier,
     GradientBoostingClassifier,
 )
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import (
     accuracy_score,
@@ -98,6 +99,9 @@ CHART_DIR = "/content/drive/MyDrive/Colab Notebooks/charts"
 
 DEFAULT_RATE = 25_000
 
+print("[config] All models: CPU mode (n_jobs=-1 for parallelism)")
+print("[config] Meta-Learner: LogisticRegression (L2, balanced)")
+
 # Model colors (consistent across all charts)
 COLORS = {
     'xgb':     '#2196F3',  # Blue
@@ -114,7 +118,7 @@ MODEL_LABELS = {
     'cat':     'CatBoost',
     'et':      'ExtraTrees',
     'gb':      'GradientBoosting',
-    'rf_meta': 'RF Meta (L2)',
+    'rf_meta': 'LR Meta (L2)',
     'hybrid':  'HYBRID FINAL',
 }
 
@@ -551,7 +555,7 @@ def plot_all_charts(
 
     # Level 2
     ax.text(0.5, 4.8, 'LEVEL 2 (Meta-Learner)', fontsize=14, fontweight='bold', color='#333')
-    ax.text(6, 4.0, 'Random Forest Meta-Learner\nInput: 5 OOF + 15 features = 20 dims',
+    ax.text(6, 4.0, 'LogisticRegression Meta-Learner\nInput: 5 OOF + 15 features = 20 dims',
             fontsize=12, ha='center',
             bbox=dict(**bd, facecolor=COLORS['rf_meta'], edgecolor=COLORS['rf_meta']))
     ax.annotate('', xy=(6, 3.2), xytext=(6, 5.4),
@@ -736,7 +740,7 @@ def plot_all_charts(
     ax4 = fig.add_subplot(gs[1, :])
     ax4.axis('off')
     metrics_table = [
-        ['Metric', 'XGBoost', 'LightGBM', 'CatBoost', 'ExtraTrees', 'GradBoost', 'RF Meta', 'HYBRID'],
+        ['Metric', 'XGBoost', 'LightGBM', 'CatBoost', 'ExtraTrees', 'GradBoost', 'LR Meta', 'HYBRID'],
     ]
     for met_name in ['AUC', 'Accuracy', 'Precision', 'Recall', 'F1']:
         row = [met_name]
@@ -797,7 +801,7 @@ def train_model():
     print("=" * 70)
     print("  AIScore — HYBRID STACKING (5 Base Learners + Meta-Learner)")
     print("  Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost")
-    print("  Level 2: Random Forest Meta-Learner")
+    print("  Level 2: LogisticRegression Meta-Learner")
     print("=" * 70)
 
     # ── 1. Load ──
@@ -848,11 +852,12 @@ def train_model():
     xgb_imp_list = []
     for fi, (tr_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
         m = xgb.XGBClassifier(
-            n_estimators=500, max_depth=4, learning_rate=0.05,
+            n_estimators=1000, max_depth=6, learning_rate=0.02,
             subsample=0.8, colsample_bytree=0.8, min_child_weight=10,
             gamma=0.3, reg_alpha=1.0, reg_lambda=3.0,
             scale_pos_weight=scale_pos_wt, random_state=RANDOM_STATE,
-            eval_metric="auc", early_stopping_rounds=50, tree_method="hist",
+            eval_metric="auc", early_stopping_rounds=50,
+            tree_method="hist", n_jobs=-1,
         )
         m.fit(X_train[tr_idx], y_train[tr_idx],
               eval_set=[(X_train[val_idx], y_train[val_idx])], verbose=False)
@@ -870,14 +875,16 @@ def train_model():
     lgbm_imp_list = []
     for fi, (tr_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
         m = lgb.LGBMClassifier(
-            n_estimators=500, max_depth=4, learning_rate=0.05,
-            subsample=0.8, colsample_bytree=0.8, min_child_samples=20,
-            reg_alpha=1.0, reg_lambda=3.0, is_unbalance=True,
-            random_state=RANDOM_STATE, verbose=-1,
+            n_estimators=2000, max_depth=-1, num_leaves=31,
+            learning_rate=0.005, subsample=0.7, subsample_freq=1,
+            colsample_bytree=0.8, min_child_samples=50,
+            reg_alpha=1.0, reg_lambda=5.0, is_unbalance=True,
+            max_bin=511, path_smooth=1.0,
+            random_state=RANDOM_STATE, verbose=-1, n_jobs=-1,
         )
         m.fit(X_train[tr_idx], y_train[tr_idx],
               eval_set=[(X_train[val_idx], y_train[val_idx])],
-              callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)])
+              callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)])
         oof_train['lgbm'][val_idx] = m.predict_proba(X_train[val_idx])[:, 1]
         test_preds['lgbm'] += m.predict_proba(X_test)[:, 1] / N_FOLDS
         lgbm_imp_list.append(m.feature_importances_)
@@ -891,7 +898,7 @@ def train_model():
     test_preds['cat'] = np.zeros(len(y_test))
     for fi, (tr_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
         m = CatBoostClassifier(
-            iterations=500, depth=4, learning_rate=0.05,
+            iterations=1000, depth=6, learning_rate=0.02,
             l2_leaf_reg=3.0, random_seed=RANDOM_STATE,
             auto_class_weights='Balanced', eval_metric='AUC',
             early_stopping_rounds=50, verbose=0,
@@ -909,8 +916,8 @@ def train_model():
     test_preds['et'] = np.zeros(len(y_test))
     for fi, (tr_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
         m = ExtraTreesClassifier(
-            n_estimators=500, max_depth=12, min_samples_split=20,
-            min_samples_leaf=10, max_features="sqrt",
+            n_estimators=2000, max_depth=None, min_samples_split=8,
+            min_samples_leaf=4, max_features="sqrt",
             class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=-1,
         )
         m.fit(X_train[tr_idx], y_train[tr_idx])
@@ -925,8 +932,8 @@ def train_model():
     test_preds['gb'] = np.zeros(len(y_test))
     for fi, (tr_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
         m = GradientBoostingClassifier(
-            n_estimators=300, max_depth=4, learning_rate=0.05,
-            subsample=0.8, min_samples_split=20, min_samples_leaf=10,
+            n_estimators=800, max_depth=5, learning_rate=0.01,
+            subsample=0.8, min_samples_split=15, min_samples_leaf=8,
             random_state=RANDOM_STATE,
         )
         m.fit(X_train[tr_idx], y_train[tr_idx])
@@ -939,7 +946,7 @@ def train_model():
     # LEVEL 2: Random Forest Meta-Learner
     # ══════════════════════════════════════════════
     print("\n" + "=" * 70)
-    print("  LEVEL 2: Random Forest Meta-Learner")
+    print("  LEVEL 2: LogisticRegression Meta-Learner")
     print("  Input = 5 OOF predictions + 15 original features = 20 dims")
     print("=" * 70)
 
@@ -952,18 +959,17 @@ def train_model():
     print(f"  Meta features: {len(META_FEATURE_NAMES)} dims")
     print(f"  X_meta_train: {X_meta_train.shape} | X_meta_test: {X_meta_test.shape}")
 
-    print("\n  Training RF Meta-Learner...")
-    rf_meta = RandomForestClassifier(
-        n_estimators=500, max_depth=14, min_samples_split=15,
-        min_samples_leaf=8, max_features="sqrt",
-        class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=-1,
+    print("\n  Training LogisticRegression Meta-Learner...")
+    lr_meta = LogisticRegression(
+        C=1.0, class_weight='balanced', max_iter=1000,
+        solver='lbfgs', random_state=RANDOM_STATE, n_jobs=-1,
     )
-    rf_meta.fit(X_meta_train, y_train)
-    rf_meta_prob_test = rf_meta.predict_proba(X_meta_test)[:, 1]
-    print(f"  >>> RF Meta AUC: {roc_auc_score(y_test, rf_meta_prob_test):.4f}")
+    lr_meta.fit(X_meta_train, y_train)
+    lr_meta_prob_test = lr_meta.predict_proba(X_meta_test)[:, 1]
+    print(f"  >>> LR Meta AUC: {roc_auc_score(y_test, lr_meta_prob_test):.4f}")
 
     # HYBRID FINAL
-    y_prob_hybrid = rf_meta_prob_test
+    y_prob_hybrid = lr_meta_prob_test
 
     # ── 10. Evaluate ──
     print("\n" + "=" * 70)
@@ -1007,7 +1013,7 @@ def train_model():
     print(f"\n  So sanh AUC:")
     for k in oof_keys:
         print(f"    {MODEL_LABELS[k]:20s} OOF: {roc_auc_score(y_train, oof_train[k]):.4f}  |  Test: {roc_auc_score(y_test, test_preds[k]):.4f}")
-    print(f"    {'RF Meta':20s} Test: {roc_auc_score(y_test, rf_meta_prob_test):.4f}")
+    print(f"    {'LR Meta':20s} Test: {roc_auc_score(y_test, lr_meta_prob_test):.4f}")
     print(f"    {'HYBRID FINAL':20s} Test: {auc_hybrid:.4f}")
 
     print(f"\n  Classification Report:")
@@ -1036,23 +1042,28 @@ def train_model():
             yi_tr, yi_val = y_cv_tr[itr], y_cv_tr[ival]
 
             # XGBoost
-            cv_m = xgb.XGBClassifier(n_estimators=200, max_depth=4, learning_rate=0.05,
+            cv_m = xgb.XGBClassifier(n_estimators=300, max_depth=6, learning_rate=0.02,
                                       scale_pos_weight=cv_spw, random_state=RANDOM_STATE,
-                                      eval_metric="auc", early_stopping_rounds=30, tree_method="hist")
+                                      eval_metric="auc", early_stopping_rounds=30,
+                                      tree_method="hist", n_jobs=-1)
             cv_m.fit(Xi_tr, yi_tr, eval_set=[(Xi_val, yi_val)], verbose=False)
             cv_oof['xgb'][ival] = cv_m.predict_proba(Xi_val)[:, 1]
             cv_vpreds['xgb'] += cv_m.predict_proba(X_cv_val)[:, 1] / N_FOLDS
 
             # LightGBM
-            cv_m = lgb.LGBMClassifier(n_estimators=200, max_depth=4, learning_rate=0.05,
-                                       is_unbalance=True, random_state=RANDOM_STATE, verbose=-1)
+            cv_m = lgb.LGBMClassifier(n_estimators=500, max_depth=-1, num_leaves=31,
+                                       learning_rate=0.005, min_child_samples=50,
+                                       subsample=0.7, subsample_freq=1,
+                                       reg_alpha=1.0, reg_lambda=5.0,
+                                       is_unbalance=True, random_state=RANDOM_STATE, verbose=-1,
+                                       n_jobs=-1)
             cv_m.fit(Xi_tr, yi_tr, eval_set=[(Xi_val, yi_val)],
-                     callbacks=[lgb.early_stopping(30, verbose=False), lgb.log_evaluation(0)])
+                     callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)])
             cv_oof['lgbm'][ival] = cv_m.predict_proba(Xi_val)[:, 1]
             cv_vpreds['lgbm'] += cv_m.predict_proba(X_cv_val)[:, 1] / N_FOLDS
 
             # CatBoost
-            cv_m = CatBoostClassifier(iterations=200, depth=4, learning_rate=0.05,
+            cv_m = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.01,
                                        auto_class_weights='Balanced', random_seed=RANDOM_STATE,
                                        eval_metric='AUC', early_stopping_rounds=30, verbose=0)
             cv_m.fit(Xi_tr, yi_tr, eval_set=(Xi_val, yi_val))
@@ -1060,7 +1071,8 @@ def train_model():
             cv_vpreds['cat'] += cv_m.predict_proba(X_cv_val)[:, 1] / N_FOLDS
 
             # ExtraTrees
-            cv_m = ExtraTreesClassifier(n_estimators=300, max_depth=12,
+            cv_m = ExtraTreesClassifier(n_estimators=1000, max_depth=None,
+                                         min_samples_split=8, min_samples_leaf=4,
                                          class_weight="balanced_subsample",
                                          random_state=RANDOM_STATE, n_jobs=-1)
             cv_m.fit(Xi_tr, yi_tr)
@@ -1068,7 +1080,7 @@ def train_model():
             cv_vpreds['et'] += cv_m.predict_proba(X_cv_val)[:, 1] / N_FOLDS
 
             # GradientBoosting
-            cv_m = GradientBoostingClassifier(n_estimators=200, max_depth=4, learning_rate=0.05,
+            cv_m = GradientBoostingClassifier(n_estimators=400, max_depth=5, learning_rate=0.01,
                                                random_state=RANDOM_STATE)
             cv_m.fit(Xi_tr, yi_tr)
             cv_oof['gb'][ival] = cv_m.predict_proba(Xi_val)[:, 1]
@@ -1078,11 +1090,10 @@ def train_model():
         Xm_tr = np.column_stack([cv_oof[k] for k in oof_keys] + [X_cv_tr])
         Xm_val = np.column_stack([cv_vpreds[k] for k in oof_keys] + [X_cv_val])
 
-        cv_rf = RandomForestClassifier(n_estimators=500, max_depth=14,
-                                        class_weight="balanced_subsample",
-                                        random_state=RANDOM_STATE, n_jobs=-1)
-        cv_rf.fit(Xm_tr, y_cv_tr)
-        cv_hp = cv_rf.predict_proba(Xm_val)[:, 1]
+        cv_lr = LogisticRegression(C=1.0, class_weight='balanced', max_iter=1000,
+                                    solver='lbfgs', random_state=RANDOM_STATE, n_jobs=-1)
+        cv_lr.fit(Xm_tr, y_cv_tr)
+        cv_hp = cv_lr.predict_proba(Xm_val)[:, 1]
 
         fold_auc = roc_auc_score(y_cv_val, cv_hp)
         cv_aucs.append(fold_auc)
@@ -1105,30 +1116,33 @@ def train_model():
     print("\n[11/11] Saving artifacts...")
     os.makedirs(MODEL_DIR, exist_ok=True)
 
-    # Train final Level 1 on full train set
+    # Train final Level 1 on full train set (GPU)
     print("  Final XGBoost...")
     xgb_final = xgb.XGBClassifier(
-        n_estimators=500, max_depth=4, learning_rate=0.05,
+        n_estimators=1000, max_depth=6, learning_rate=0.02,
         subsample=0.8, colsample_bytree=0.8, min_child_weight=10,
         gamma=0.3, reg_alpha=1.0, reg_lambda=3.0,
         scale_pos_weight=scale_pos_wt, random_state=RANDOM_STATE,
-        eval_metric="auc", early_stopping_rounds=50, tree_method="hist",
+        eval_metric="auc", early_stopping_rounds=50,
+        tree_method="hist", n_jobs=-1,
     )
     xgb_final.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
 
     print("  Final LightGBM...")
     lgbm_final = lgb.LGBMClassifier(
-        n_estimators=500, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8, min_child_samples=20,
-        reg_alpha=1.0, reg_lambda=3.0, is_unbalance=True,
-        random_state=RANDOM_STATE, verbose=-1,
+        n_estimators=2000, max_depth=-1, num_leaves=31,
+        learning_rate=0.005, subsample=0.7, subsample_freq=1,
+        colsample_bytree=0.8, min_child_samples=50,
+        reg_alpha=1.0, reg_lambda=5.0, is_unbalance=True,
+        max_bin=511, path_smooth=1.0,
+        random_state=RANDOM_STATE, verbose=-1, n_jobs=-1,
     )
     lgbm_final.fit(X_train, y_train, eval_set=[(X_test, y_test)],
-                    callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)])
+                    callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)])
 
     print("  Final CatBoost...")
     cat_final = CatBoostClassifier(
-        iterations=500, depth=4, learning_rate=0.05,
+        iterations=1000, depth=6, learning_rate=0.02,
         l2_leaf_reg=3.0, random_seed=RANDOM_STATE,
         auto_class_weights='Balanced', eval_metric='AUC',
         early_stopping_rounds=50, verbose=0,
@@ -1137,16 +1151,16 @@ def train_model():
 
     print("  Final ExtraTrees...")
     et_final = ExtraTreesClassifier(
-        n_estimators=500, max_depth=12, min_samples_split=20,
-        min_samples_leaf=10, max_features="sqrt",
+        n_estimators=2000, max_depth=None, min_samples_split=8,
+        min_samples_leaf=4, max_features="sqrt",
         class_weight="balanced_subsample", random_state=RANDOM_STATE, n_jobs=-1,
     )
     et_final.fit(X_train, y_train)
 
     print("  Final GradientBoosting...")
     gb_final = GradientBoostingClassifier(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        subsample=0.8, min_samples_split=20, min_samples_leaf=10,
+        n_estimators=800, max_depth=5, learning_rate=0.01,
+        subsample=0.8, min_samples_split=15, min_samples_leaf=8,
         random_state=RANDOM_STATE,
     )
     gb_final.fit(X_train, y_train)
@@ -1157,12 +1171,12 @@ def train_model():
     joblib.dump(cat_final, os.path.join(MODEL_DIR, "cat_pd_model.joblib"))
     joblib.dump(et_final, os.path.join(MODEL_DIR, "et_pd_model.joblib"))
     joblib.dump(gb_final, os.path.join(MODEL_DIR, "gb_pd_model.joblib"))
-    joblib.dump(rf_meta, os.path.join(MODEL_DIR, "rf_meta_model.joblib"))
+    joblib.dump(lr_meta, os.path.join(MODEL_DIR, "lr_meta_model.joblib"))
     joblib.dump(scalers, os.path.join(MODEL_DIR, "per_feature_scalers.joblib"))
 
     metadata = {
         "model_type": "hybrid_stacking_5_base",
-        "architecture": "Level1(XGB+LGBM+CatBoost+ExtraTrees+GradBoost OOF) -> Level2(RF Meta)",
+        "architecture": "Level1(XGB+LGBM+CatBoost+ExtraTrees+GradBoost OOF) -> Level2(LR Meta)",
         "feature_names": FEATURE_NAMES,
         "meta_feature_names": META_FEATURE_NAMES,
         "n_features": len(FEATURE_NAMES),
@@ -1204,7 +1218,7 @@ def train_model():
         y_pred_hybrid=y_pred_hybrid,
         optimal_threshold=optimal_threshold,
         level1_test_probs=test_preds,
-        rf_meta_prob_test=rf_meta_prob_test,
+        rf_meta_prob_test=lr_meta_prob_test,
         oof_probs=oof_train,
         y_train=y_train,
         feature_importances=importances,
@@ -1218,13 +1232,14 @@ def train_model():
 
     elapsed = time.time() - t_start
     print("\n" + "=" * 70)
-    print(f"  >>> TRAINING COMPLETE — {elapsed/60:.1f} min")
+    print(f"  >>> TRAINING COMPLETE — {elapsed/60:.1f} min ({elapsed:.0f}s)")
+    print(f"  Meta-Learner: LogisticRegression (L2, balanced)")
     print(f"  Models: {MODEL_DIR}")
     print(f"  Charts: {CHART_DIR}")
     print("=" * 70)
 
     return {
-        'models': (xgb_final, lgbm_final, cat_final, et_final, gb_final, rf_meta),
+        'models': (xgb_final, lgbm_final, cat_final, et_final, gb_final, lr_meta),
         'scalers': scalers,
         'metadata': metadata,
     }
@@ -1246,7 +1261,7 @@ class CreditScorer:
         self.cat_model = joblib.load(os.path.join(model_dir, "cat_pd_model.joblib"))
         self.et_model = joblib.load(os.path.join(model_dir, "et_pd_model.joblib"))
         self.gb_model = joblib.load(os.path.join(model_dir, "gb_pd_model.joblib"))
-        self.rf_meta = joblib.load(os.path.join(model_dir, "rf_meta_model.joblib"))
+        self.lr_meta = joblib.load(os.path.join(model_dir, "lr_meta_model.joblib"))
         self.scalers = joblib.load(os.path.join(model_dir, "per_feature_scalers.joblib"))
         with open(os.path.join(model_dir, "metadata.json"), "r") as f:
             self.metadata = json.load(f)
@@ -1269,7 +1284,7 @@ class CreditScorer:
 
         # Level 2
         X_meta = np.column_stack([[xgb_pd, lgbm_pd, cat_pd, et_pd, gb_pd], X])
-        pd_val = float(self.rf_meta.predict_proba(X_meta)[0, 1])
+        pd_val = float(self.lr_meta.predict_proba(X_meta)[0, 1])
 
         return {
             "ai_risk_score": int(round(min(max(pd_val, 0), 1) * 100)),

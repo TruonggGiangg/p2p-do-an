@@ -20,13 +20,13 @@
 | Thông tin          | Giá trị                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------- |
 | **Tên service**    | AIScore Service v4.0                                                                          |
-| **Mô hình**        | Hybrid Stacking 2 tầng — 5 Base Learners (OOF) + Random Forest Meta-Learner                   |
+| **Mô hình**        | Hybrid Stacking 2 tầng — 5 Base Learners (OOF) + LogisticRegression Meta-Learner              |
 | **Framework API**  | FastAPI + Uvicorn                                                                             |
 | **Ngôn ngữ**       | Python 3.11+                                                                                  |
 | **Port**           | 8001                                                                                          |
 | **Mục đích**       | Dự đoán xác suất vỡ nợ (PD — Probability of Default) cho người vay trong hệ thống P2P Lending |
 | **Đơn vị tiền tệ** | VNĐ (quy đổi từ USD qua tỷ giá real-time)                                                     |
-| **Phương pháp**    | Hybrid Stacking: Level 1 (5 OOF) → Level 2 (RF Meta-Learner)                                  |
+| **Phương pháp**    | Hybrid Stacking: Level 1 (5 OOF) → Level 2 (LR Meta-Learner)                                  |
 | **Chuẩn hóa**      | Per-Feature Scaling — 15 StandardScaler riêng biệt, mỗi feature 1 scaler                      |
 
 ### Kiến trúc Hybrid Stacking 2 Tầng
@@ -59,7 +59,7 @@
               └───────────────────────┬───────────────────────┘
                                       │
                            ┌──────────▼──────────┐
-                           │  Random Forest       │
+                           │  LogisticRegression  │
                            │  Meta-Learner        │
                            │  Input: 20 dims      │
                            │  (5 OOF + 15 feat)   │
@@ -91,7 +91,7 @@ Lending Club CSV (USD)
 │  4. Feature Engineering                    │  27 cột gốc → 15 features
 │  5. Per-Feature Scaling (15 scalers)       │  Mỗi feature riêng 1 StandardScaler
 │  6. Level 1: OOF 5-Fold — 5 Base Learners │  XGB + LGBM + CatBoost + ET + GB
-│  7. Level 2: RF Meta-Learner              │  Input: 5 OOF + 15 features = 20 dims
+│  7. Level 2: LR Meta-Learner              │  Input: 5 OOF + 15 features = 20 dims
 │  8. Nested CV (5 outer × 5 inner)          │  CV AUC ổn định
 │  9. Save Artifacts                         │  7 model files + 15 scalers + metadata
 │ 10. Xuất 20 biểu đồ đánh giá              │  ROC, PR, CM, Radar, Gain/Lift...
@@ -112,9 +112,9 @@ Lending Club CSV (USD)
 | Tiêu chí               | Soft Voting (v3.0)                     | Hybrid Stacking OOF (v4.0)                      |
 | ---------------------- | -------------------------------------- | ----------------------------------------------- |
 | **Phương pháp**        | Trung bình PD 3 model                  | Meta-Learner HỌC cách kết hợp 5 model           |
-| **Kết hợp**            | `PD = mean(PD_xgb, PD_rf, PD_lgbm)`    | RF Meta(5 OOF + 15 features) → PD_final         |
+| **Kết hợp**            | `PD = mean(PD_xgb, PD_rf, PD_lgbm)`    | LR Meta(5 OOF + 15 features) → PD_final         |
 | **Chống Data Leakage** | ❌ Train trên toàn bộ → bias           | ✅ OOF cross-validation → zero leakage          |
-| **Trọng số model**     | Bằng nhau (1/3, 1/3, 1/3)              | Meta-Learner tự học trọng số tối ưu             |
+| **Trọng số model**     | Bằng nhau (1/3, 1/3, 1/3)              | LR Meta tự học trọng số tối ưu (L2 regularized) |
 | **Số mô hình Level 1** | 3 (XGB, RF, LGBM)                      | 5 (XGB, LGBM, CatBoost, ExtraTrees, GradBoost)  |
 | **Đa dạng thuật toán** | 2 loại (Gradient Boosting, Bagging)    | 3 loại (Gradient Boosting, Bagging, ExtraTrees) |
 | **Chuẩn hóa**          | 1 StandardScaler chung cho 15 features | 15 StandardScaler riêng (mỗi feature 1 scaler)  |
@@ -344,7 +344,7 @@ Scalers được lưu tại `models/per_feature_scalers.joblib` và tái sử d�
 
 ### 5.1. Phương pháp: Hybrid Stacking 2 Tầng với OOF
 
-Kết hợp **5 thuật toán khác nhau** ở Level 1 (Base Learners) và **Random Forest Meta-Learner** ở Level 2 để tối ưu hóa dự đoán:
+Kết hợp **5 thuật toán khác nhau** ở Level 1 (Base Learners) và **LogisticRegression Meta-Learner** ở Level 2 để tối ưu hóa dự đoán:
 
 #### Level 1 — 5 Base Learners (OOF 5-Fold)
 
@@ -358,9 +358,9 @@ Kết hợp **5 thuật toán khác nhau** ở Level 1 (Base Learners) và **Ran
 
 #### Level 2 — Meta-Learner
 
-| Mô hình           | Input                                                  | Output         |
-| ----------------- | ------------------------------------------------------ | -------------- |
-| **Random Forest** | 5 OOF predictions + 15 original features = **20 dims** | PD_final (0–1) |
+| Mô hình                | Input                                                  | Output         |
+| ---------------------- | ------------------------------------------------------ | -------------- |
+| **LogisticRegression** | 5 OOF predictions + 15 original features = **20 dims** | PD_final (0–1) |
 
 #### OOF (Out-Of-Fold) — Chống Data Leakage hoàn toàn
 
@@ -386,79 +386,87 @@ Dữ liệu Train (316,824 mẫu)
 
 #### XGBoost — "Chiến binh toàn diện"
 
-| Parameter               | Giá trị | Lý do                                          |
-| ----------------------- | ------- | ---------------------------------------------- |
-| `n_estimators`          | 500     | Đủ lớn để early stopping hiệu quả              |
-| `max_depth`             | 4       | Tránh overfitting, cây nông hơn generalize tốt |
-| `learning_rate`         | 0.05    | Học chậm, ổn định hơn                          |
-| `subsample`             | 0.8     | Random 80% samples mỗi tree (giảm variance)    |
-| `colsample_bytree`      | 0.8     | Random 80% features mỗi tree                   |
-| `min_child_weight`      | 10      | Tránh split quá nhỏ (chống overfitting)        |
-| `gamma`                 | 0.3     | Penalize thêm độ phức tạp tree                 |
-| `reg_alpha` (L1)        | 1.0     | L1 regularization                              |
-| `reg_lambda` (L2)       | 3.0     | L2 regularization mạnh                         |
-| `scale_pos_weight`      | auto    | Tính từ class ratio (neg/pos)                  |
-| `early_stopping_rounds` | 50      | Dừng nếu 50 rounds không cải thiện             |
-| `tree_method`           | hist    | Histogram-based splitting (nhanh hơn)          |
+| Parameter               | Giá trị | Lý do                                       |
+| ----------------------- | ------- | ------------------------------------------- |
+| `n_estimators`          | 1000    | Đủ lớn để early stopping hiệu quả           |
+| `max_depth`             | 6       | Sâu hơn để bắt pattern phức tạp             |
+| `learning_rate`         | 0.02    | Học chậm hơn, ổn định, generalize tốt       |
+| `subsample`             | 0.8     | Random 80% samples mỗi tree (giảm variance) |
+| `colsample_bytree`      | 0.8     | Random 80% features mỗi tree                |
+| `min_child_weight`      | 10      | Tránh split quá nhỏ (chống overfitting)     |
+| `gamma`                 | 0.3     | Penalize thêm độ phức tạp tree              |
+| `reg_alpha` (L1)        | 1.0     | L1 regularization                           |
+| `reg_lambda` (L2)       | 3.0     | L2 regularization mạnh                      |
+| `scale_pos_weight`      | auto    | Tính từ class ratio (neg/pos)               |
+| `early_stopping_rounds` | 50      | Dừng nếu 50 rounds không cải thiện          |
+| `tree_method`           | hist    | Histogram-based splitting (nhanh hơn)       |
+| `n_jobs`                | -1      | Sử dụng toàn bộ CPU cores                   |
 
 #### LightGBM — "Tiền đạo sát thủ"
 
-| Parameter           | Giá trị | Lý do                               |
-| ------------------- | ------- | ----------------------------------- |
-| `n_estimators`      | 500     | Đủ lớn để early stopping hiệu quả   |
-| `max_depth`         | 4       | Tương tự XGBoost, tránh overfitting |
-| `learning_rate`     | 0.05    | Học chậm, ổn định                   |
-| `subsample`         | 0.8     | Random 80% rows                     |
-| `colsample_bytree`  | 0.8     | Random 80% features                 |
-| `min_child_samples` | 20      | Tránh lá quá nhỏ                    |
-| `reg_alpha` (L1)    | 1.0     | L1 regularization                   |
-| `reg_lambda` (L2)   | 3.0     | L2 regularization                   |
-| `is_unbalance`      | True    | Tự cân bằng class weight            |
+| Parameter           | Giá trị | Lý do                                 |
+| ------------------- | ------- | ------------------------------------- |
+| `n_estimators`      | 1000    | Đủ lớn để early stopping hiệu quả     |
+| `max_depth`         | 6       | Sâu hơn để bắt pattern phức tạp       |
+| `learning_rate`     | 0.02    | Học chậm hơn, ổn định, generalize tốt |
+| `subsample`         | 0.8     | Random 80% rows                       |
+| `colsample_bytree`  | 0.8     | Random 80% features                   |
+| `min_child_samples` | 20      | Tránh lá quá nhỏ                      |
+| `reg_alpha` (L1)    | 1.0     | L1 regularization                     |
+| `reg_lambda` (L2)   | 3.0     | L2 regularization                     |
+| `is_unbalance`      | True    | Tự cân bằng class weight              |
+| `n_jobs`            | -1      | Sử dụng toàn bộ CPU cores             |
 
 #### CatBoost — "Pháo đài bất khả xâm phạm"
 
-| Parameter               | Giá trị  | Lý do                              |
-| ----------------------- | -------- | ---------------------------------- |
-| `iterations`            | 500      | Đủ lớn để early stopping           |
-| `depth`                 | 4        | Tương tự các model khác            |
-| `learning_rate`         | 0.05     | Học chậm, ổn định                  |
-| `l2_leaf_reg`           | 3.0      | L2 regularization                  |
-| `auto_class_weights`    | Balanced | Tự cân bằng class weight           |
-| `eval_metric`           | AUC      | Tối ưu theo AUC-ROC                |
-| `early_stopping_rounds` | 50       | Dừng nếu 50 rounds không cải thiện |
+| Parameter               | Giá trị  | Lý do                                 |
+| ----------------------- | -------- | ------------------------------------- |
+| `iterations`            | 1000     | Đủ lớn để early stopping hiệu quả     |
+| `depth`                 | 6        | Sâu hơn để bắt pattern phức tạp       |
+| `learning_rate`         | 0.02     | Học chậm hơn, ổn định, generalize tốt |
+| `l2_leaf_reg`           | 3.0      | L2 regularization                     |
+| `auto_class_weights`    | Balanced | Tự cân bằng class weight              |
+| `eval_metric`           | AUC      | Tối ưu theo AUC-ROC                   |
+| `early_stopping_rounds` | 50       | Dừng nếu 50 rounds không cải thiện    |
 
 #### ExtraTrees — "Biệt đội ngẫu nhiên"
 
-| Parameter           | Giá trị            | Lý do                                             |
-| ------------------- | ------------------ | ------------------------------------------------- |
-| `n_estimators`      | 500                | Đủ cây để ổn định                                 |
-| `max_depth`         | 12                 | Sâu hơn gradient boosting để bắt pattern phức tạp |
-| `min_samples_split` | 20                 | Tránh split quá nhỏ                               |
-| `min_samples_leaf`  | 10                 | Lá phải có ít nhất 10 mẫu                         |
-| `max_features`      | sqrt               | Random √n features mỗi split (giảm correlation)   |
-| `class_weight`      | balanced_subsample | **Cân bằng class weight → tăng Recall**           |
+| Parameter           | Giá trị            | Lý do                                           |
+| ------------------- | ------------------ | ----------------------------------------------- |
+| `n_estimators`      | 800                | Nhiều cây hơn để ổn định                        |
+| `max_depth`         | None (unlimited)   | Cây phát triển đầy đủ để bắt pattern phức tạp   |
+| `min_samples_split` | 10                 | Cho phép split nhỏ hơn để tăng recall           |
+| `min_samples_leaf`  | 5                  | Lá nhỏ hơn để model linh hoạt hơn               |
+| `max_features`      | sqrt               | Random √n features mỗi split (giảm correlation) |
+| `class_weight`      | balanced_subsample | **Cân bằng class weight → tăng Recall**         |
 
 #### GradientBoosting — "Kỹ sư chính xác"
 
-| Parameter           | Giá trị | Lý do                                |
-| ------------------- | ------- | ------------------------------------ |
-| `n_estimators`      | 300     | Sklearn GB chậm hơn, giảm iterations |
-| `max_depth`         | 4       | Tránh overfitting                    |
-| `learning_rate`     | 0.05    | Học chậm, ổn định                    |
-| `subsample`         | 0.8     | Random 80% samples                   |
-| `min_samples_split` | 20      | Tránh split quá nhỏ                  |
-| `min_samples_leaf`  | 10      | Lá phải có ít nhất 10 mẫu            |
+| Parameter           | Giá trị | Lý do                              |
+| ------------------- | ------- | ---------------------------------- |
+| `n_estimators`      | 500     | Nhiều hơn để bù learning rate thấp |
+| `max_depth`         | 5       | Sâu hơn để bắt pattern phức tạp    |
+| `learning_rate`     | 0.02    | Học chậm hơn, generalize tốt       |
+| `subsample`         | 0.8     | Random 80% samples                 |
+| `min_samples_split` | 15      | Cho phép split nhỏ hơn             |
+| `min_samples_leaf`  | 8       | Lá phải có ít nhất 8 mẫu           |
 
-#### Random Forest Meta-Learner (Level 2)
+#### LogisticRegression Meta-Learner (Level 2)
 
-| Parameter           | Giá trị            | Lý do                                           |
-| ------------------- | ------------------ | ----------------------------------------------- |
-| `n_estimators`      | 500                | Đủ cây để ổn định meta prediction               |
-| `max_depth`         | 14                 | Sâu hơn Level 1 để capture complex interactions |
-| `min_samples_split` | 15                 | Tránh split quá nhỏ                             |
-| `min_samples_leaf`  | 8                  | Lá phải có ít nhất 8 mẫu                        |
-| `max_features`      | sqrt               | Random features mỗi split                       |
-| `class_weight`      | balanced_subsample | Cân bằng class weight                           |
+| Parameter      | Giá trị  | Lý do                                                  |
+| -------------- | -------- | ------------------------------------------------------ |
+| `C`            | 1.0      | Inverse regularization strength (L2)                   |
+| `class_weight` | balanced | Cân bằng class weight cho imbalanced data              |
+| `max_iter`     | 1000     | Đủ iterations để hội tụ                                |
+| `solver`       | lbfgs    | Tối ưu cho L2 regularization, hiệu quả với dataset vừa |
+| `n_jobs`       | -1       | Sử dụng toàn bộ CPU cores                              |
+
+> **Tại sao LogisticRegression thay vì Random Forest?**
+>
+> - RF Meta với `max_depth=14` trên 20 meta features dễ **overfitting** — HYBRID AUC < XGBoost AUC
+> - LR tìm **tổ hợp tuyến tính tối ưu** của 5 base learner outputs + 15 features
+> - Ít overfitting trên meta features, đây là phương pháp **chuẩn trong Kaggle stacking**
+> - LR nhanh hơn RF nhiều lần, inference gần như instant
 
 ### 5.3. Train/Test Split
 
@@ -489,7 +497,7 @@ Dữ liệu Train (316,824 mẫu)
 │ [7/11]  ExtraTrees OOF (5-fold)  — "Biệt đội ngẫu nhiên" │
 │ [8/11]  GradBoost OOF (5-fold)   — "Kỹ sư chính xác"    │
 │ [9/11]  Build Meta Features (5 OOF + 15 feat = 20 dims)  │
-│         Train RF Meta-Learner                             │
+│         Train LR Meta-Learner (LogisticRegression)        │
 │ [10/11] Evaluate (Metrics + Classification Report)        │
 │         Nested CV (5 outer × 5 inner)                     │
 │ [11/11] Save Artifacts + 20 Charts                        │
@@ -498,16 +506,16 @@ Dữ liệu Train (316,824 mẫu)
 
 ### 5.6. Artifacts được lưu
 
-| File                         | Đường dẫn                           | Mô tả                                       |
-| ---------------------------- | ----------------------------------- | ------------------------------------------- |
-| `xgb_pd_model.json`          | `models/xgb_pd_model.json`          | XGBoost model (JSON format)                 |
-| `lgbm_pd_model.txt`          | `models/lgbm_pd_model.txt`          | LightGBM model (text format)                |
-| `cat_pd_model.joblib`        | `models/cat_pd_model.joblib`        | CatBoost model (pickle)                     |
-| `et_pd_model.joblib`         | `models/et_pd_model.joblib`         | ExtraTrees model (pickle)                   |
-| `gb_pd_model.joblib`         | `models/gb_pd_model.joblib`         | GradientBoosting model (pickle)             |
-| `rf_meta_model.joblib`       | `models/rf_meta_model.joblib`       | Random Forest Meta-Learner Level 2 (pickle) |
-| `per_feature_scalers.joblib` | `models/per_feature_scalers.joblib` | 15 Per-Feature StandardScaler (pickle)      |
-| `metadata.json`              | `models/metadata.json`              | Metrics + feature info + mappings           |
+| File                         | Đường dẫn                           | Mô tả                                            |
+| ---------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `xgb_pd_model.json`          | `models/xgb_pd_model.json`          | XGBoost model (JSON format)                      |
+| `lgbm_pd_model.txt`          | `models/lgbm_pd_model.txt`          | LightGBM model (text format)                     |
+| `cat_pd_model.joblib`        | `models/cat_pd_model.joblib`        | CatBoost model (pickle)                          |
+| `et_pd_model.joblib`         | `models/et_pd_model.joblib`         | ExtraTrees model (pickle)                        |
+| `gb_pd_model.joblib`         | `models/gb_pd_model.joblib`         | GradientBoosting model (pickle)                  |
+| `lr_meta_model.joblib`       | `models/lr_meta_model.joblib`       | LogisticRegression Meta-Learner Level 2 (pickle) |
+| `per_feature_scalers.joblib` | `models/per_feature_scalers.joblib` | 15 Per-Feature StandardScaler (pickle)           |
+| `metadata.json`              | `models/metadata.json`              | Metrics + feature info + mappings                |
 
 > **Tổng cộng 8 artifact files** (thay vì 5 files ở v3.0).
 
@@ -572,9 +580,9 @@ PD_cat  = cat_model.predict_proba(X)[0, 1]
 PD_et   = et_model.predict_proba(X)[0, 1]
 PD_gb   = gb_model.predict_proba(X)[0, 1]
 
-# 3. Level 2: RF Meta-Learner
+# 3. Level 2: LR Meta-Learner
 X_meta = [PD_xgb, PD_lgbm, PD_cat, PD_et, PD_gb] + X (15 features)
-PD_final = rf_meta.predict_proba(X_meta)[0, 1]
+PD_final = lr_meta.predict_proba(X_meta)[0, 1]
 
 # 4. Output
 ai_risk_score = round(PD_final × 100)
@@ -679,15 +687,15 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 
 ### 7.4. So sánh hiệu năng: v3.0 (Soft Voting) vs v4.0 (Hybrid Stacking)
 
-| Tiêu chí                | v3.0 Soft Voting (3 models) | v4.0 Hybrid Stacking (5+1 models) |
-| ----------------------- | --------------------------- | --------------------------------- |
-| **Số models Level 1**   | 3                           | 5                                 |
-| **Meta-Learner**        | Simple mean                 | Random Forest (20 dims input)     |
-| **OOF**                 | Không                       | Có (5-Fold StratifiedKFold)       |
-| **Per-Feature Scaling** | 1 scaler chung              | 15 scaler riêng                   |
-| **Nested CV**           | 5-Fold đơn                  | 5 Outer × 5 Inner                 |
-| **Metrics bổ sung**     | AUC, Acc, Prec, Rec, F1     | + MCC, Kappa, KS, Balanced Acc    |
-| **Biểu đồ**             | 8 charts                    | 20 charts                         |
+| Tiêu chí                | v3.0 Soft Voting (3 models) | v4.0 Hybrid Stacking (5+1 models)  |
+| ----------------------- | --------------------------- | ---------------------------------- |
+| **Số models Level 1**   | 3                           | 5                                  |
+| **Meta-Learner**        | Simple mean                 | LogisticRegression (20 dims input) |
+| **OOF**                 | Không                       | Có (5-Fold StratifiedKFold)        |
+| **Per-Feature Scaling** | 1 scaler chung              | 15 scaler riêng                    |
+| **Nested CV**           | 5-Fold đơn                  | 5 Outer × 5 Inner                  |
+| **Metrics bổ sung**     | AUC, Acc, Prec, Rec, F1     | + MCC, Kappa, KS, Balanced Acc     |
+| **Biểu đồ**             | 8 charts                    | 20 charts                          |
 
 ---
 
@@ -701,7 +709,7 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 │  Mobile App  │     │  (server_do_an_  │ POST│  FastAPI Port 8001          │
 │  (Client)    │     │   new)           │ /api│                             │
 │              │←────│                  │←────│  Hybrid Stacking            │
-│  Hiển thị    │     │  Lưu score +     │score│  5 Base (OOF) + RF Meta     │
+│  Hiển thị    │     │  Lưu score +     │score│  5 Base (OOF) + LR Meta    │
 │  Risk Score  │     │  quyết định      │     │  Per-Feature Scaling        │
 └─────────────┘     └──────────────────┘     └─────────────────────────────┘
 ```
@@ -787,7 +795,7 @@ GET /api/health
   "status": "ok",
   "service": "aiscore-service-v4-hybrid-stacking",
   "model_loaded": true,
-  "model_type": "Hybrid Stacking 2-Layer (5 Base OOF + RF Meta-Learner)",
+  "model_type": "Hybrid Stacking 2-Layer (5 Base OOF + LR Meta-Learner)",
   "n_features": 15,
   "n_meta_features": 20,
   "exchange_rate": {
@@ -804,7 +812,7 @@ GET /api/model/info
 
 {
   "model_type": "hybrid_stacking_5_base",
-  "architecture": "Level1(XGB+LGBM+CatBoost+ExtraTrees+GradBoost OOF) -> Level2(RF Meta)",
+  "architecture": "Level1(XGB+LGBM+CatBoost+ExtraTrees+GradBoost OOF) -> Level2(LR Meta)",
   "feature_names": ["credit_score", "capital", "monthly_income", ...],
   "meta_feature_names": ["oof_xgb", "oof_lgbm", "oof_cat", "oof_et", "oof_gb", "credit_score", ...],
   "n_features": 15,
@@ -846,11 +854,11 @@ GET /api/model/info
 
 ### 10.1. Tóm tắt
 
-AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base Learners (OOF) + Random Forest Meta-Learner để dự đoán xác suất vỡ nợ (PD) cho hệ thống P2P Lending Việt Nam.
+AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base Learners (OOF) + LogisticRegression Meta-Learner để dự đoán xác suất vỡ nợ (PD) cho hệ thống P2P Lending Việt Nam.
 
 **Kết quả chính:**
 
-- **Kiến trúc**: Level 1 (5 OOF: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost) → Level 2 (RF Meta)
+- **Kiến trúc**: Level 1 (5 OOF: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost) → Level 2 (LR Meta)
 - **15 features** đầu vào (loại bỏ `interest_rate` vì là thông tin động)
 - **Per-Feature Scaling**: 15 StandardScaler riêng biệt
 - **OOF**: 5-Fold StratifiedKFold — chống data leakage hoàn toàn
@@ -861,15 +869,15 @@ AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base
 
 ### 10.2. Cải thiện so với v3.0
 
-| Tiêu chí           | v3.0 (Soft Voting)  | v4.0 (Hybrid Stacking) |
-| ------------------ | ------------------- | ---------------------- |
-| Số models Level 1  | 3                   | **5**                  |
-| Meta-Learner       | Trung bình đơn giản | **RF Meta (20 dims)**  |
-| Chống Data Leakage | ❌                  | **✅ OOF 5-Fold**      |
-| Scaling            | 1 scaler chung      | **15 scaler riêng**    |
-| Cross-Validation   | 5-Fold đơn          | **Nested 5×5**         |
-| Số biểu đồ         | 8                   | **20**                 |
-| Inference pipeline | mean(3 PD)          | **Level 1 → Level 2**  |
+| Tiêu chí           | v3.0 (Soft Voting)  | v4.0 (Hybrid Stacking)   |
+| ------------------ | ------------------- | ------------------------ |
+| Số models Level 1  | 3                   | **5**                    |
+| Meta-Learner       | Trung bình đơn giản | **LR Meta (20 dims)**    |
+| Chống Data Leakage | ❌                  | **✅ OOF 5-Fold**        |
+| Scaling            | 1 scaler chung      | **15 scaler riêng**      |
+| Cross-Validation   | 5-Fold đơn          | **Nested 5×5**           |
+| Số biểu đồ         | 8                   | **20**                   |
+| Inference pipeline | mean(3 PD)          | **Level 1 → LR Level 2** |
 
 ### 10.3. Hướng phát triển
 
@@ -885,7 +893,7 @@ AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base
 ```
 aiscore_service/
 ├── app.py                    # FastAPI REST API (port 8001)
-├── scorer.py                 # CreditScorer class — inference (5 Base + RF Meta)
+├── scorer.py                 # CreditScorer class — inference (5 Base + LR Meta)
 ├── train_model.py            # MEGA pipeline — train + charts + scorer (Colab)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile                # Docker build (production)
@@ -899,7 +907,7 @@ aiscore_service/
 │   ├── cat_pd_model.joblib
 │   ├── et_pd_model.joblib
 │   ├── gb_pd_model.joblib
-│   ├── rf_meta_model.joblib
+│   ├── lr_meta_model.joblib
 │   ├── per_feature_scalers.joblib
 │   └── metadata.json
 └── docs/                     # Charts output (20 biểu đồ)
@@ -911,5 +919,5 @@ aiscore_service/
 
 ---
 
-_Tài liệu được cập nhật cho AIScore Service v4.0 — Hybrid Stacking 2 Tầng (5 OOF + RF Meta)_
+_Tài liệu được cập nhật cho AIScore Service v4.0 — Hybrid Stacking 2 Tầng (5 OOF + LR Meta)_
 _Ngày cập nhật: 28/03/2026_
