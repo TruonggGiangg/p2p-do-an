@@ -1,156 +1,152 @@
 """
-AIScore Service — XGBoost + Random Forest Scorecard Scorer
-===========================================================
+CreditScorer — XGBoost + LR Scorecard Inference (v8.0)
+========================================================
 
-Architecture:
-  Stage 1: XGBoost → benchmark AUC + Feature Importance
-  Stage 2: Random Forest → PD (14 features: 9 NUMERIC + 5 CATEGORICAL)
-  Stage 3: PD → Scorecard formula → ai_risk_score (0-100)
+Pipeline:  25 features → Smart Scaling → XGBoost(leaf) → OHE → LR → PD
 
-14 Features (from Lending Club data):
-  NUMERIC (9):  credit_score, loan_amnt, int_rate, annual_inc,
-                dti, revol_util, open_acc, pub_rec, loan_to_income
-  CATEGORY (5): term_enc, home_ownership_enc, verification_status_enc,
-                purpose_enc, emp_length_enc
+2 Stages:
+  Stage 1: XGBoost → Leaf Indices → OneHotEncode (sparse)
+  Stage 2: LR on [Leaf OHE + 25 Original Features] → PD (0.0-1.0)
 
-Input tu NestJS (VND context):
-  {
-    "credit_score": 650,
-    "loan_amnt": 250000000,
-    "int_rate": 12.5,
-    "annual_inc": 300000000,
-    "dti": 15.0,
-    "revol_util": 40.0,
-    "open_acc": 5,
-    "pub_rec": 0,
-    "term": 36,
-    "home_ownership": "RENT",
-    "verification_status": "Verified",
-    "purpose": "debt_consolidation",
-    "emp_length": "5 years"
-  }
-  (loan_to_income tu tinh tu loan_amnt / annual_inc)
+25 Features (Lending Club → mapped to P2P system):
+  NUMERIC (21): credit_score, capital, monthly_income, monthly_pay,
+                revolving_balance, total_current_balance, dti,
+                revolving_util_percent, emp_length_years, active_bad_debts,
+                bankruptcies, active_loans, total_loans_history,
+                credit_history_months, recent_inquiries, delinquencies_2yr,
+                accounts_delinquent, severe_delinquencies_24m,
+                pct_never_delinquent, collections_12m, loan_to_income
+  CATEGORY (4): term_enc, home_ownership_enc, verification_status_enc,
+                purpose_enc
 
 Output:
-  { "ai_risk_score": 21, "default_probability": 0.2098, "status": "success" }
+  {
+    "ai_risk_score": 21,
+    "default_probability": 0.2098,
+    "status": "success"
+  }
 """
 
 import os
+import json
 import numpy as np
 import xgboost as xgb
 import joblib
-import json
-from typing import Optional
+from scipy.sparse import hstack, csr_matrix
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+
+# ── Feature Lists ──
 
 NUMERIC_FEATURES = [
-    "credit_score", "loan_amnt", "int_rate", "annual_inc",
-    "dti", "revol_util", "open_acc", "pub_rec", "loan_to_income",
+    "credit_score", "capital", "monthly_income", "monthly_pay",
+    "revolving_balance", "total_current_balance", "dti",
+    "revolving_util_percent", "emp_length_years", "active_bad_debts",
+    "bankruptcies", "active_loans", "total_loans_history",
+    "credit_history_months", "recent_inquiries", "delinquencies_2yr",
+    "accounts_delinquent", "severe_delinquencies_24m",
+    "pct_never_delinquent", "collections_12m", "loan_to_income",
 ]
 
 CATEGORICAL_FEATURES = [
     "term_enc", "home_ownership_enc", "verification_status_enc",
-    "purpose_enc", "emp_length_enc",
+    "purpose_enc",
 ]
 
-FEATURE_NAMES = NUMERIC_FEATURES + CATEGORICAL_FEATURES  # 14 total
+FEATURE_NAMES = NUMERIC_FEATURES + CATEGORICAL_FEATURES  # 25 total
+
+
+# ── Encoding Maps ──
 
 HOME_OWNERSHIP_MAP = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3, "NONE": 3, "ANY": 3}
 
-VERIFICATION_MAP = {
-    "Not Verified": 0, "Source Verified": 1, "Verified": 2,
-    "not_verified": 0, "source_verified": 1, "verified": 2,
-    "NONE": 0, "PENDING": 0, "VERIFIED": 2, "REJECTED": 0,
-    "0": 0, "1": 1, "2": 2,
-}
+VERIFICATION_MAP = {"Not Verified": 0, "Source Verified": 1, "Verified": 2}
 
 PURPOSE_MAP = {
     "debt_consolidation": 0, "credit_card": 1, "home_improvement": 2,
     "other": 3, "major_purchase": 4, "medical": 5, "small_business": 6,
     "car": 7, "vacation": 8, "moving": 9, "house": 10,
     "wedding": 11, "renewable_energy": 12, "educational": 13,
-    # Vietnamese aliases
-    "hop_nhat_no": 0, "the_tin_dung": 1, "sua_nha": 2, "khac": 3,
-    "mua_sam_lon": 4, "y_te": 5, "kinh_doanh_nho": 6, "mua_xe": 7,
 }
 
-EMP_LENGTH_MAP = {
-    "< 1 year": 0, "1 year": 1, "2 years": 2, "3 years": 3,
-    "4 years": 4, "5 years": 5, "6 years": 6, "7 years": 7,
-    "8 years": 8, "9 years": 9, "10+ years": 10,
+EMP_YEARS_MAP = {
+    "< 1 year": 0.5, "1 year": 1.0, "2 years": 2.0, "3 years": 3.0,
+    "4 years": 4.0, "5 years": 5.0, "6 years": 6.0, "7 years": 7.0,
+    "8 years": 8.0, "9 years": 9.0, "10+ years": 10.0,
 }
+
+
+def _transform_one_feature(values_1d, strategy, scaler):
+    """Transform 1 feature using its pre-fit scaler."""
+    col = values_1d.reshape(-1, 1).astype(np.float64)
+    if strategy in ("log_standard", "log_robust"):
+        col_log = np.log1p(np.clip(col, 0, None))
+        return scaler.transform(col_log).ravel()
+    elif strategy in ("robust", "standard", "minmax"):
+        return scaler.transform(col).ravel()
+    elif strategy == "passthrough":
+        return col.ravel()
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}")
 
 
 class CreditScorer:
-    """
-    XGBoost (benchmark) + Random Forest Scorecard scorer.
-    Load models from MODEL_DIR, predict PD + ai_risk_score from features.
+    """XGBoost + LR Scorecard scorer (v8.0).
+
+    Artifacts (from train_model.py):
+      - xgb_pd_model.json          (XGBoost Stage 1 — leaf extractor)
+      - lr_scorecard_model.joblib   (LR Stage 2 — PD predictor)
+      - leaf_encoder.joblib         (OneHotEncoder for leaf indices)
+      - per_feature_scalers.joblib  ({feature: (strategy, scaler)})
+      - metadata.json               (metrics + config)
     """
 
-    def __init__(self, model_dir: str = MODEL_DIR):
-        self.xgb_model: Optional[xgb.XGBClassifier] = None
-        self.rf_model = None
-        self.per_feature_scalers: Optional[dict] = None
-        self.metadata: dict = {}
+    def __init__(self, model_dir="models"):
         self.model_dir = model_dir
-        self._load_models()
 
-    def _load_models(self):
-        xgb_path = os.path.join(self.model_dir, "xgb_benchmark_model.json")
-        rf_path = os.path.join(self.model_dir, "rf_scorecard_model.joblib")
-        scalers_path = os.path.join(self.model_dir, "per_feature_scalers.joblib")
-        metadata_path = os.path.join(self.model_dir, "metadata.json")
+        # Stage 1: XGBoost (leaf extractor)
+        self.xgb_model = xgb.XGBClassifier()
+        self.xgb_model.load_model(os.path.join(model_dir, "xgb_pd_model.json"))
 
-        if not os.path.exists(rf_path):
-            raise FileNotFoundError(
-                f"RF model not found at {rf_path}.\nRun train_model.py on Colab first."
-            )
+        # Leaf OneHotEncoder
+        self.leaf_encoder = joblib.load(os.path.join(model_dir, "leaf_encoder.joblib"))
 
-        # XGBoost (benchmark only)
-        if os.path.exists(xgb_path):
-            self.xgb_model = xgb.XGBClassifier()
-            self.xgb_model.load_model(xgb_path)
+        # Stage 2: Logistic Regression (scorecard)
+        self.lr_model = joblib.load(os.path.join(model_dir, "lr_scorecard_model.joblib"))
 
-        # Random Forest (main model)
-        self.rf_model = joblib.load(rf_path)
-
-        # Per-feature scalers
-        if os.path.exists(scalers_path):
-            self.per_feature_scalers = joblib.load(scalers_path)
+        # Smart per-feature scalers
+        self.scalers = joblib.load(os.path.join(model_dir, "per_feature_scalers.joblib"))
 
         # Metadata
-        if os.path.exists(metadata_path):
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                self.metadata = json.load(f)
+        with open(os.path.join(model_dir, "metadata.json"), "r") as f:
+            self.metadata = json.load(f)
+
+        # Backward-compat alias (app.py checks scorer.rf_model)
+        self.rf_model = self.lr_model
 
     def predict(self, features: dict) -> dict:
-        """
-        Predict PD using Random Forest (14 features: 9 NUM + 5 CAT).
-        """
-        processed = self._process_features(features)
-        X_raw = np.array([[processed[f] for f in FEATURE_NAMES]], dtype=np.float64)
+        """Predict PD using XGBoost + LR pipeline (25 features).
 
-        # Per-feature scaling (numeric scaled, categorical passthrough)
-        if self.per_feature_scalers is not None:
-            X = np.zeros_like(X_raw, dtype=np.float64)
-            for i, fname in enumerate(FEATURE_NAMES):
-                if fname in self.per_feature_scalers:
-                    strategy, scaler = self.per_feature_scalers[fname]
-                    if strategy == "passthrough" or scaler is None:
-                        X[0, i] = X_raw[0, i]
-                    elif strategy in ("log_standard", "log_robust"):
-                        val = np.log1p(max(X_raw[0, i], 0)).reshape(1, -1)
-                        X[0, i] = scaler.transform(val).ravel()[0]
-                    else:
-                        X[0, i] = scaler.transform(X_raw[0, i].reshape(1, -1)).ravel()[0]
-                else:
-                    X[0, i] = X_raw[0, i]
-        else:
-            X = X_raw
+        Returns ai_risk_score (0-100) and default_probability (0.0-1.0).
+        """
+        f = self._process_features(features)
+        X_raw = np.array([[f[n] for n in FEATURE_NAMES]])
 
-        # Random Forest → PD
-        pd_val = float(self.rf_model.predict_proba(X)[0, 1])
+        # Smart per-feature scaling
+        X = np.zeros_like(X_raw, dtype=np.float64)
+        for i, fname in enumerate(FEATURE_NAMES):
+            strategy, sc = self.scalers[fname]
+            X[:, i] = _transform_one_feature(X_raw[:, i], strategy, sc)
+
+        # Stage 1: XGBoost → Leaf Indices → OHE (sparse)
+        leaves = self.xgb_model.apply(X)
+        L = self.leaf_encoder.transform(leaves)
+
+        # Stage 2: [Leaf OHE + 25 Original] → LR → PD
+        X_lr = hstack([L, csr_matrix(X)])
+        pd_val = float(self.lr_model.predict_proba(X_lr)[0, 1])
+        pd_val = min(max(pd_val, 1e-15), 1 - 1e-15)
+
+        # ai_risk_score: 0 = safe, 100 = very risky
         ai_risk_score = int(round(min(max(pd_val, 0), 1) * 100))
 
         return {
@@ -160,54 +156,153 @@ class CreditScorer:
         }
 
     def _process_features(self, raw: dict) -> dict:
-        """Map raw input dict → 14 feature dict.
+        """Map raw input dict → 25 feature dict.
 
-        Accepts multiple aliases for backward compatibility:
-          loan_amnt / capital
-          annual_inc / annual_income / monthly_income (×12)
+        Accepts aliases for NestJS backward compatibility:
+          capital / loan_amnt / loanAmount
+          monthly_income / monthlyIncome / annual_inc ÷ 12
+          monthly_pay / monthlyPay / monthlyPayment
+          revolving_balance / revolvingBalance / totalOutstanding
+          total_current_balance / totalOutstandingAll / tot_cur_bal
+          accounts_delinquent / currentDelinquentAccounts / acc_now_delinq
+          severe_delinquencies_24m / severeDelinquencies
+          pct_never_delinquent / cleanLoanRatio / pct_tl_nvr_dlq
+          collections_12m / collectionsLast12m
+          emp_length_years / employmentYears / emp_length (string)
           term / term_months / periodMonth
+          etc.
         """
         f = {}
 
-        # ── NUMERIC (9) ──
-        f["credit_score"] = min(max(float(raw.get("credit_score", 600)), 300), 850)
+        # ── NUMERIC (21) ──
+        f["credit_score"] = min(max(float(raw.get("credit_score", 450)), 150), 750)
 
-        f["loan_amnt"] = max(float(raw.get("loan_amnt", raw.get("capital", 0))), 0)
+        f["capital"] = max(float(
+            raw.get("capital", raw.get("loan_amnt", raw.get("loanAmount", 0)))
+        ), 0)
 
-        f["int_rate"] = min(max(float(raw.get("int_rate", 12)), 0), 40)
+        f["monthly_income"] = max(float(
+            raw.get("monthly_income", raw.get("monthlyIncome", 0))
+        ), 0)
+        if f["monthly_income"] == 0:
+            annual = float(raw.get("annual_inc", raw.get("annual_income",
+                           raw.get("annualIncome", 0))))
+            if annual > 0:
+                f["monthly_income"] = annual / 12
 
-        f["annual_inc"] = max(float(raw.get("annual_inc", raw.get("annual_income", 0))), 0)
-        if f["annual_inc"] == 0 and "monthly_income" in raw:
-            f["annual_inc"] = float(raw["monthly_income"]) * 12
+        f["monthly_pay"] = max(float(
+            raw.get("monthly_pay", raw.get("monthlyPay",
+                     raw.get("monthlyPayment", 0)))
+        ), 0)
 
-        f["dti"] = min(max(float(raw.get("dti", 0)), 0), 100)
+        f["revolving_balance"] = max(float(
+            raw.get("revolving_balance", raw.get("revolvingBalance",
+                     raw.get("totalOutstanding", raw.get("revol_bal", 0))))
+        ), 0)
 
-        f["revol_util"] = min(max(float(raw.get("revol_util", raw.get("revolving_util_percent", 50))), 0), 150)
+        f["total_current_balance"] = max(float(
+            raw.get("total_current_balance", raw.get("totalOutstandingAll",
+                     raw.get("tot_cur_bal", 0)))
+        ), 0)
 
-        f["open_acc"] = min(max(float(raw.get("open_acc", 5)), 0), 50)
+        f["dti"] = min(max(float(
+            raw.get("dti", raw.get("debtToIncome", 0))
+        ), 0), 100)
 
-        f["pub_rec"] = min(max(float(raw.get("pub_rec", 0)), 0), 20)
+        f["revolving_util_percent"] = min(max(float(
+            raw.get("revolving_util_percent",
+                     raw.get("revolvingUtilization", raw.get("revol_util", 50)))
+        ), 0), 150)
+
+        # emp_length_years: accept number or string like "5 years"
+        emp = raw.get("emp_length_years",
+                       raw.get("employmentYears", raw.get("emp_length", 3)))
+        if isinstance(emp, (int, float)):
+            f["emp_length_years"] = min(max(float(emp), 0.5), 10)
+        else:
+            f["emp_length_years"] = EMP_YEARS_MAP.get(str(emp), 3.0)
+
+        f["active_bad_debts"] = min(max(float(
+            raw.get("active_bad_debts",
+                     raw.get("publicRecords", raw.get("pub_rec", 0)))
+        ), 0), 20)
+
+        f["bankruptcies"] = min(max(float(raw.get("bankruptcies", 0)), 0), 10)
+
+        f["active_loans"] = min(max(float(
+            raw.get("active_loans",
+                     raw.get("openAccounts", raw.get("open_acc", 5)))
+        ), 0), 50)
+
+        f["total_loans_history"] = min(max(float(
+            raw.get("total_loans_history",
+                     raw.get("totalAccounts",
+                              raw.get("total_acc", raw.get("totalLoans", 10))))
+        ), 0), 100)
+
+        f["credit_history_months"] = min(max(float(
+            raw.get("credit_history_months", raw.get("creditAge", 120))
+        ), 0), 600)
+
+        f["recent_inquiries"] = min(max(float(
+            raw.get("recent_inquiries", raw.get("inq_last_6mths", 0))
+        ), 0), 20)
+
+        f["delinquencies_2yr"] = min(max(float(
+            raw.get("delinquencies_2yr",
+                     raw.get("latePayments", raw.get("delinq_2yrs", 0)))
+        ), 0), 20)
+
+        # ── NEW: Delinquency & debt features (mapped to P2P system) ──
+
+        f["accounts_delinquent"] = min(max(float(
+            raw.get("accounts_delinquent",
+                     raw.get("currentDelinquentAccounts",
+                              raw.get("acc_now_delinq", 0)))
+        ), 0), 10)
+
+        f["severe_delinquencies_24m"] = min(max(float(
+            raw.get("severe_delinquencies_24m",
+                     raw.get("severeDelinquencies",
+                              raw.get("num_tl_90g_dpd_24m", 0)))
+        ), 0), 20)
+
+        f["pct_never_delinquent"] = min(max(float(
+            raw.get("pct_never_delinquent",
+                     raw.get("cleanLoanRatio",
+                              raw.get("pct_tl_nvr_dlq", 100)))
+        ), 0), 100)
+
+        f["collections_12m"] = min(max(float(
+            raw.get("collections_12m",
+                     raw.get("collectionsLast12m",
+                              raw.get("collections_12_mths_ex_med", 0)))
+        ), 0), 10)
 
         # Engineered: loan_to_income
-        annual_safe = max(f["annual_inc"], 1)
-        f["loan_to_income"] = f["loan_amnt"] / annual_safe
+        annual_safe = max(f["monthly_income"] * 12, 1)
+        f["loan_to_income"] = f["capital"] / annual_safe
 
-        # ── CATEGORICAL (5) ──
-        f["term_enc"] = float(raw.get("term", raw.get("term_months", raw.get("periodMonth", 36))))
+        # ── CATEGORICAL (4) ──
+        f["term_enc"] = float(
+            raw.get("term", raw.get("term_months", raw.get("periodMonth", 36)))
+        )
 
-        home = str(raw.get("home_ownership", "RENT")).upper()
+        home = str(raw.get("home_ownership",
+                            raw.get("homeOwnership", "RENT"))).upper()
         f["home_ownership_enc"] = HOME_OWNERSHIP_MAP.get(home, 3)
 
-        vs = str(raw.get("verification_status", "Not Verified"))
-        f["verification_status_enc"] = VERIFICATION_MAP.get(vs, 0)
-
-        purpose = str(raw.get("purpose", "other")).lower()
-        f["purpose_enc"] = PURPOSE_MAP.get(purpose, 3)
-
-        emp = raw.get("emp_length", "5 years")
-        if isinstance(emp, (int, float)):
-            f["emp_length_enc"] = min(max(int(emp), 0), 10)
+        vs = str(raw.get("verification_status",
+                          raw.get("kycStatus", "Not Verified")))
+        if vs in ("VERIFIED", "Verified", "verified"):
+            f["verification_status_enc"] = 2
+        elif vs in ("Source Verified", "PENDING", "pending"):
+            f["verification_status_enc"] = 1
         else:
-            f["emp_length_enc"] = EMP_LENGTH_MAP.get(str(emp), 5)
+            f["verification_status_enc"] = 0
+
+        purpose = str(raw.get("purpose",
+                               raw.get("loanPurpose", "other"))).lower()
+        f["purpose_enc"] = PURPOSE_MAP.get(purpose, 3)
 
         return f
