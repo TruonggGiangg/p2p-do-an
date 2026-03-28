@@ -5,8 +5,8 @@
 1. [Tổng quan](#1-tổng-quan)
 2. [Dữ liệu đầu vào (Input Dataset)](#2-dữ-liệu-đầu-vào-input-dataset)
 3. [Tiền xử lý dữ liệu (Preprocessing Pipeline)](#3-tiền-xử-lý-dữ-liệu-preprocessing-pipeline)
-4. [Kỹ thuật Feature Engineering](#4-kỹ-thuật-feature-engineering)
-5. [Huấn luyện mô hình Hybrid Stacking (Model Training)](#5-huấn-luyện-mô-hình-hybrid-stacking-model-training)
+4. [Kỹ thuật Feature Engineering & Smart Scaling](#4-kỹ-thuật-feature-engineering--smart-scaling)
+5. [Huấn luyện mô hình XGBoost + LR Scorecard](#5-huấn-luyện-mô-hình-xgboost--lr-scorecard)
 6. [Output — JSON trả về](#6-output--json-trả-về)
 7. [Đánh giá mô hình (Evaluation)](#7-đánh-giá-mô-hình-evaluation)
 8. [Tích hợp hệ thống P2P Lending](#8-tích-hợp-hệ-thống-p2p-lending)
@@ -17,65 +17,72 @@
 
 ## 1. Tổng quan
 
-| Thông tin          | Giá trị                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| **Tên service**    | AIScore Service v4.0                                                                          |
-| **Mô hình**        | Hybrid Stacking 2 tầng — 5 Base Learners (OOF) + LogisticRegression Meta-Learner              |
-| **Framework API**  | FastAPI + Uvicorn                                                                             |
-| **Ngôn ngữ**       | Python 3.11+                                                                                  |
-| **Port**           | 8001                                                                                          |
-| **Mục đích**       | Dự đoán xác suất vỡ nợ (PD — Probability of Default) cho người vay trong hệ thống P2P Lending |
-| **Đơn vị tiền tệ** | VNĐ (quy đổi từ USD qua tỷ giá real-time)                                                     |
-| **Phương pháp**    | Hybrid Stacking: Level 1 (5 OOF) → Level 2 (LR Meta-Learner)                                  |
-| **Chuẩn hóa**      | Per-Feature Scaling — 15 StandardScaler riêng biệt, mỗi feature 1 scaler                      |
+| Thông tin          | Giá trị                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| **Tên service**    | AIScore Service v5.0                                                                            |
+| **Mô hình**        | XGBoost + Logistic Regression Scorecard — "Tiêu chuẩn vàng" ngành tài chính                    |
+| **Framework API**  | FastAPI + Uvicorn                                                                               |
+| **Ngôn ngữ**       | Python 3.11+                                                                                    |
+| **Port**           | 8001                                                                                            |
+| **Mục đích**       | Dự đoán xác suất vỡ nợ (PD) + Tính Credit Score cho người vay trong hệ thống P2P Lending        |
+| **Đơn vị tiền tệ** | VNĐ (quy đổi từ USD qua tỷ giá real-time)                                                       |
+| **Phương pháp**    | Stage 1: XGBoost → Leaf Indices → Stage 2: LR Scorecard → Stage 3: Credit Score Formula         |
+| **Chuẩn hóa**      | Smart Per-Feature Scaling — 6 chiến lược khác nhau tùy phân phối từng feature                   |
 
-### Kiến trúc Hybrid Stacking 2 Tầng
+### Kiến trúc XGBoost + LR Scorecard 3 Tầng
 
 ```
-                    ┌──────────────────────────┐
-                    │  Input: 15 Features (VNĐ) │
-                    │  Per-Feature Scaling       │
-                    │  (15 StandardScaler riêng) │
-                    └────────────┬───────────────┘
-                                 │
-         ┌───────────┬───────────┼───────────┬───────────┐
-         ▼           ▼           ▼           ▼           ▼
-  ┌────────────┐┌────────────┐┌────────────┐┌────────────┐┌────────────┐
-  │  XGBoost   ││  LightGBM  ││  CatBoost  ││ ExtraTrees ││ GradBoost  │
-  │  "Chiến    ││  "Tiền đạo ││  "Pháo đài ││ "Biệt đội ││ "Kỹ sư    │
-  │   binh     ││   sát thủ" ││  bất khả   ││  ngẫu      ││  chính    │
-  │   toàn     ││            ││  xâm phạm" ││  nhiên"    ││  xác"     │
-  │   diện"    ││            ││            ││            ││            │
-  └─────┬──────┘└─────┬──────┘└─────┬──────┘└─────┬──────┘└─────┬──────┘
-        │              │              │              │              │
-     PD_xgb        PD_lgbm        PD_cat         PD_et          PD_gb
-        │              │              │              │              │
-        └──────────────┴──────────────┼──────────────┴──────────────┘
-                                      │
-              ┌───────────────────────▼───────────────────────┐
-              │  LEVEL 1 OOF (Out-Of-Fold) 5-Fold Predictions │
-              │  = [PD_xgb, PD_lgbm, PD_cat, PD_et, PD_gb]   │
-              │  + 15 Original Features = 20 meta features    │
-              └───────────────────────┬───────────────────────┘
-                                      │
-                           ┌──────────▼──────────┐
-                           │  LogisticRegression  │
-                           │  Meta-Learner        │
-                           │  Input: 20 dims      │
-                           │  (5 OOF + 15 feat)   │
-                           └──────────┬──────────┘
-                                      │
-                           ┌──────────▼──────────┐
-                           │  HYBRID FINAL PD     │
-                           │  Default Probability │
-                           │  (0.0 → 1.0)         │
-                           └──────────┬──────────┘
-                                      │
-                           ┌──────────▼──────────┐
-                           │  ai_risk_score       │
-                           │  = round(PD × 100)   │
-                           │  (0 – 100)            │
-                           └─────────────────────┘
+                    ┌──────────────────────────────────┐
+                    │  Input: 15 Features (VNĐ)         │
+                    │  Smart Per-Feature Scaling         │
+                    │  (6 chiến lược: log_standard,      │
+                    │   log_robust, robust, standard,    │
+                    │   minmax, passthrough)              │
+                    └────────────────┬───────────────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │  STAGE 1: XGBoost   │
+                          │  1500 trees, depth=6 │
+                          │  "Non-linear Feature │
+                          │   Learner"           │
+                          └──────────┬──────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │  model.apply(X)      │
+                          │  → Leaf Indices       │
+                          │  → OneHotEncoder      │
+                          │  (Sparse Matrix)      │
+                          └──────────┬──────────┘
+                                     │
+                    ┌────────────────▼────────────────┐
+                    │  Leaf OHE + 15 Original Features │
+                    │  = Input cho LR                   │
+                    └────────────────┬────────────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │  STAGE 2: Logistic   │
+                          │  Regression          │
+                          │  "Scorecard          │
+                          │   Generator"         │
+                          │  → PD (0.0 – 1.0)    │
+                          └──────────┬──────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │  STAGE 3: Scorecard  │
+                          │  Formula             │
+                          │  Score = Offset -    │
+                          │  Factor × ln(Odds)   │
+                          └──────────┬──────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │  OUTPUT:             │
+                          │  credit_score        │
+                          │  (150 – 950)         │
+                          │  ai_risk_score       │
+                          │  (0 – 100)           │
+                          │  default_probability │
+                          │  (0.0 – 1.0)         │
+                          └─────────────────────┘
 ```
 
 ### Luồng hoạt động tổng quát
@@ -84,40 +91,42 @@
 Lending Club CSV (USD)
     │
     ▼
-┌───────────────────────────────────────────┐
-│  1. Load & Clean Data                      │  396,030 records
-│  2. Filter target                          │  Fully Paid (0) / Charged Off (1)
-│  3. Scale USD → VNĐ                        │  Tỷ giá live: ~26,000 VNĐ/USD
-│  4. Feature Engineering                    │  27 cột gốc → 15 features
-│  5. Per-Feature Scaling (15 scalers)       │  Mỗi feature riêng 1 StandardScaler
-│  6. Level 1: OOF 5-Fold — 5 Base Learners │  XGB + LGBM + CatBoost + ET + GB
-│  7. Level 2: LR Meta-Learner              │  Input: 5 OOF + 15 features = 20 dims
-│  8. Nested CV (5 outer × 5 inner)          │  CV AUC ổn định
-│  9. Save Artifacts                         │  7 model files + 15 scalers + metadata
-│ 10. Xuất 20 biểu đồ đánh giá              │  ROC, PR, CM, Radar, Gain/Lift...
-└───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  1. Load & Clean Data                                │  396,030 records
+│  2. Filter target                                    │  Fully Paid (0) / Charged Off (1)
+│  3. Scale USD → VNĐ                                  │  Tỷ giá live: ~26,000 VNĐ/USD
+│  4. Feature Engineering                              │  27 cột gốc → 15 features
+│  5. Smart Per-Feature Scaling (6 strategies)         │  Mỗi feature pipeline riêng
+│  6. Stage 1: XGBoost → Leaf Extraction               │  1500 trees, max_depth=6
+│  7. OneHotEncode Leaf Indices (sparse)               │  ~N ngàn sparse features
+│  8. Stage 2: LR trên [Leaf OHE + 15 Features] → PD  │  Calibrated probabilities
+│  9. Stage 3: Scorecard Formula → Credit Score         │  Score = Offset - Factor × ln(Odds)
+│ 10. CV 5-Fold + Save Artifacts + 20 Charts           │  ROC, PR, Score Dist, Risk Band...
+└─────────────────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────┐
 │  FastAPI REST Service       │
 │  POST /api/score            │
 │                             │
-│  Input: 15 features (VNĐ)  │──→  Output: { ai_risk_score, default_probability }
+│  Input: 15 features (VNĐ)  │──→  Output: { credit_score, ai_risk_score, default_probability }
 │  từ NestJS Backend          │
 └─────────────────────────────┘
 ```
 
-### Tại sao Hybrid Stacking thay vì Soft Voting?
+### Tại sao XGBoost + LR Scorecard thay vì Hybrid Stacking?
 
-| Tiêu chí               | Soft Voting (v3.0)                     | Hybrid Stacking OOF (v4.0)                      |
-| ---------------------- | -------------------------------------- | ----------------------------------------------- |
-| **Phương pháp**        | Trung bình PD 3 model                  | Meta-Learner HỌC cách kết hợp 5 model           |
-| **Kết hợp**            | `PD = mean(PD_xgb, PD_rf, PD_lgbm)`    | LR Meta(5 OOF + 15 features) → PD_final         |
-| **Chống Data Leakage** | ❌ Train trên toàn bộ → bias           | ✅ OOF cross-validation → zero leakage          |
-| **Trọng số model**     | Bằng nhau (1/3, 1/3, 1/3)              | LR Meta tự học trọng số tối ưu (L2 regularized) |
-| **Số mô hình Level 1** | 3 (XGB, RF, LGBM)                      | 5 (XGB, LGBM, CatBoost, ExtraTrees, GradBoost)  |
-| **Đa dạng thuật toán** | 2 loại (Gradient Boosting, Bagging)    | 3 loại (Gradient Boosting, Bagging, ExtraTrees) |
-| **Chuẩn hóa**          | 1 StandardScaler chung cho 15 features | 15 StandardScaler riêng (mỗi feature 1 scaler)  |
+| Tiêu chí               | Hybrid Stacking (v4.0)                        | XGBoost + LR Scorecard (v5.0)                                |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| **Kiến trúc**          | 5 Base Learners OOF → LR Meta                 | XGBoost → Leaf OHE → LR → Scorecard Formula                 |
+| **Tiêu chuẩn**         | Kaggle stacking                               | **Tiêu chuẩn vàng ngành ngân hàng/tài chính**               |
+| **Số model**           | 6 (5 base + 1 meta)                           | 2 (XGBoost + LR)                                            |
+| **Output**             | Chỉ PD + ai_risk_score                        | **PD + Credit Score (150-950) + ai_risk_score**              |
+| **Interpretability**   | Khó giải thích (black box)                     | **LR coefficients → score contribution per feature**         |
+| **Inference speed**    | Chậm (5 model predict tuần tự)                | **Nhanh (1 XGBoost + 1 LR sparse)**                         |
+| **Memory**             | Nặng (5 model lớn)                            | **Nhẹ (1 XGBoost + 1 LR + leaf encoder)**                   |
+| **Chuẩn hóa**          | 15 StandardScaler giống nhau                  | **Smart Scaling: 6 chiến lược theo phân phối dữ liệu**      |
+| **Regulatory ready**   | Khó giải trình cho ngân hàng nhà nước         | **Dễ giải trình: Scorecard formula chuẩn Basel II/III**      |
 
 ---
 
@@ -261,7 +270,7 @@ monthly_income         → clip tại percentile 99
 
 ---
 
-## 4. Kỹ thuật Feature Engineering
+## 4. Kỹ thuật Feature Engineering & Smart Scaling
 
 ### 4.1. Bảng 15 Features cuối cùng
 
@@ -285,30 +294,187 @@ monthly_income         → clip tại percentile 99
 | 14  | `home_ownership_enc`     | home_ownership → encode    | Hình thức nhà ở        | ordinal |
 | 15  | `purpose_enc`            | purpose → encode           | Mục đích vay           | ordinal |
 
-### 4.2. Per-Feature Scaling
+### 4.2. Smart Per-Feature Scaling — 6 Chiến lược
 
-> **Khác biệt so với v3.0**: Thay vì dùng 1 StandardScaler chung cho 15 features, v4.0 tạo **15 StandardScaler riêng biệt** — mỗi feature có scaler riêng.
+> **Điểm khác biệt lớn nhất so với v4.0**: Thay vì dùng 15 StandardScaler giống nhau cho tất cả features, v5.0 phân tích **phân phối dữ liệu thực tế** của từng feature và chọn **chiến lược chuẩn hóa tối ưu riêng**.
 
-**Lý do**:
+#### Tại sao Smart Scaling?
 
-- Các features có phân phối rất khác nhau (VD: `capital` là VNĐ hàng trăm triệu, `bankruptcies` là 0–5)
-- Per-feature scaling đảm bảo mỗi feature được chuẩn hóa **tối ưu theo phân phối riêng của nó**
-- Meta-learner nhận input đồng nhất hơn
+Các features có phân phối **RẤT khác nhau**:
 
-$$z_i = \frac{x_i - \mu_i}{\sigma_i} \quad \text{(cho mỗi feature } i = 1..15\text{)}$$
+| Vấn đề | Ví dụ | StandardScaler gặp lỗi gì? |
+| --- | --- | --- |
+| **VNĐ lệch phải cực mạnh** | `capital`: 12M → 1B VNĐ, phần lớn < 400M | Mean bị kéo bởi outliers, std quá lớn → Z-score không phản ánh đúng |
+| **Outliers cực đoan** | `monthly_income`: top 1% có thu nhập bất thường | Mean/std bị ảnh hưởng mạnh, Z-score bị nén |
+| **Zero-inflated** | `bankruptcies`: 97% = 0, 3% = 1–5 | Mean ≈ 0, std rất nhỏ → Z-score phóng đại sai lệch |
+| **Discrete ordinal** | `purpose_enc`: 0–13 (nhãn danh mục) | Z-score vô nghĩa — "mục đích vay 0.5" không tồn tại |
 
-```python
-# Tạo 15 scaler riêng biệt
-scalers = {}
-for i, feature_name in enumerate(FEATURE_NAMES):
-    sc = StandardScaler()
-    X_scaled[:, i] = sc.fit_transform(X_raw[:, i].reshape(-1, 1)).ravel()
-    scalers[feature_name] = sc
+#### Bảng chiến lược chuẩn hóa 15 features
+
+| #   | Feature                  | Strategy         | Pipeline                         | Lý do chọn                                              |
+| --- | ------------------------ | ---------------- | -------------------------------- | ------------------------------------------------------- |
+| 1   | `credit_score`           | `standard`       | StandardScaler (μ, σ)            | Phân phối gần uniform 150–750, chuẩn hóa hợp lý        |
+| 2   | `capital`                | `log_standard`   | log1p(x) → StandardScaler       | Tiền VNĐ lệch phải mạnh, log biến đổi thành gần normal |
+| 3   | `monthly_income`         | `log_robust`     | log1p(x) → RobustScaler         | Tiền VNĐ + outliers cực đoan top 1%, median/IQR an toàn |
+| 4   | `monthly_pay`            | `log_standard`   | log1p(x) → StandardScaler       | Trả góp VNĐ lệch phải, log chuẩn hóa                   |
+| 5   | `revolving_balance`      | `log_standard`   | log1p(x) → StandardScaler       | Dư nợ VNĐ có thể = 0, log1p xử lý an toàn              |
+| 6   | `dti`                    | `robust`         | RobustScaler (median, IQR)      | 0–100%, có outliers, median/IQR ổn định                 |
+| 7   | `revolving_util_percent` | `robust`         | RobustScaler (median, IQR)      | 0–150%, lệch, median/IQR kháng outliers                 |
+| 8   | `term_months`            | `standard`       | StandardScaler (μ, σ)            | Chỉ 2 giá trị (36, 60), chuẩn hóa đơn giản             |
+| 9   | `emp_length_years`       | `minmax`         | MinMaxScaler [0, 1]             | Range nhỏ [0.5, 10], bounded rõ ràng                    |
+| 10  | `active_bad_debts`       | `robust`         | RobustScaler (median, IQR)      | Zero-inflated (97% = 0), median = 0 giữ nguyên ý nghĩa |
+| 11  | `bankruptcies`           | `robust`         | RobustScaler (median, IQR)      | Zero-inflated (98% = 0), tương tự active_bad_debts      |
+| 12  | `active_loans`           | `standard`       | StandardScaler (μ, σ)            | Count 0–50, phân phối gần normal                        |
+| 13  | `total_loans_history`    | `standard`       | StandardScaler (μ, σ)            | Count 1–100+, phân phối gần normal                      |
+| 14  | `home_ownership_enc`     | `passthrough`    | **Không transform** (giữ nguyên) | Ordinal label (0/1/2/3), scale vô nghĩa                |
+| 15  | `purpose_enc`            | `passthrough`    | **Không transform** (giữ nguyên) | Ordinal label (0–13), scale vô nghĩa                   |
+
+#### Chi tiết từng chiến lược
+
+##### 1. `log_standard` — log1p → StandardScaler
+
+Dùng cho **tiền VNĐ lệch phải mạnh** (capital, monthly_pay, revolving_balance):
+
+$$x' = \text{StandardScaler}(\log(1 + x))$$
+
+```
+Trước log1p:  capital = [12M, 50M, 100M, 500M, 1B]  ← lệch phải
+Sau log1p:    log1p   = [16.3, 17.7, 18.4, 20.0, 20.7]  ← gần normal
+Sau scale:    z       = [-1.5, -0.3, 0.3, 1.7, 2.3]  ← chuẩn hóa
 ```
 
-Scalers được lưu tại `models/per_feature_scalers.joblib` và tái sử dụng khi predict.
+**Lý do**: `log1p` (= log(1+x)) nén phạm vi lớn thành phạm vi nhỏ hơn, biến phân phối lệch phải thành gần normal. `log1p` thay vì `log` vì an toàn khi x = 0.
 
-### 4.3. Encoding các biến phân loại
+##### 2. `log_robust` — log1p → RobustScaler
+
+Dùng cho **tiền VNĐ có outliers cực đoan** (monthly_income):
+
+$$x' = \frac{\log(1 + x) - \text{median}(\log(1 + X))}{\text{IQR}(\log(1 + X))}$$
+
+**Lý do**: `monthly_income` có top 1% thu nhập bất thường (> 300M VNĐ/tháng). RobustScaler dùng **median và IQR** (Q75 − Q25) thay vì mean/std → không bị outliers kéo lệch.
+
+##### 3. `robust` — RobustScaler
+
+Dùng cho **tỷ lệ % có outliers** (dti, revolving_util_percent) và **count zero-inflated** (active_bad_debts, bankruptcies):
+
+$$x' = \frac{x - \text{median}(X)}{\text{IQR}(X)}$$
+
+| Feature             | median | IQR    | Tại sao robust? |
+| ------------------- | ------ | ------ | --- |
+| `dti`               | 17.0   | 12.3   | DTI có outliers > 50% |
+| `revolving_util_percent` | 54.0 | 39.0 | % sử dụng lệch |
+| `active_bad_debts`  | 0      | 0–1    | 97% bằng 0, StandardScaler phóng đại |
+| `bankruptcies`      | 0      | 0      | 98% bằng 0, StandardScaler phóng đại |
+
+##### 4. `standard` — StandardScaler
+
+Dùng cho features **phân phối gần normal** hoặc đơn giản:
+
+$$z_i = \frac{x_i - \mu_i}{\sigma_i}$$
+
+| Feature | Phân phối | Lý do dùng standard |
+| --- | --- | --- |
+| `credit_score` | Gần uniform 150–750 | Dùng mean/std phù hợp |
+| `term_months` | Binary-like (36, 60) | Chỉ 2 giá trị, đơn giản |
+| `active_loans` | Normal-ish 0–50 | Phân phối đã gần chuẩn |
+| `total_loans_history` | Normal-ish 1–100 | Phân phối đã gần chuẩn |
+
+##### 5. `minmax` — MinMaxScaler [0, 1]
+
+Dùng cho features có **range nhỏ, bounded rõ** (emp_length_years):
+
+$$x' = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
+
+`emp_length_years` chỉ từ 0.5 đến 10 năm → MinMaxScaler ánh xạ trực tiếp về [0, 1], trực quan hơn Z-score.
+
+##### 6. `passthrough` — Không transform
+
+Dùng cho **ordinal categorical** (home_ownership_enc, purpose_enc):
+
+```
+home_ownership_enc: 0 = RENT, 1 = OWN, 2 = MORTGAGE, 3 = OTHER
+purpose_enc:        0 = debt_consolidation, 1 = credit_card, ...
+```
+
+**Lý do**: Đây là nhãn danh mục rời rạc (discrete). Z-score giá trị 0.5 giữa RENT và OWN không có ý nghĩa. XGBoost tự xử lý split boundary tối ưu trên giá trị ordinal.
+
+### 4.3. Implementation chi tiết
+
+```python
+FEATURE_SCALING_CONFIG = {
+    "credit_score":           "standard",       # Uniform 150–750
+    "capital":                "log_standard",    # VNĐ lệch phải
+    "monthly_income":         "log_robust",      # VNĐ + outliers cực
+    "monthly_pay":            "log_standard",    # VNĐ lệch phải
+    "revolving_balance":      "log_standard",    # VNĐ, có thể = 0
+    "dti":                    "robust",          # % có outliers
+    "revolving_util_percent": "robust",          # % lệch
+    "term_months":            "standard",        # Binary-like
+    "emp_length_years":       "minmax",          # Range nhỏ [0.5, 10]
+    "active_bad_debts":       "robust",          # Zero-inflated
+    "bankruptcies":           "robust",          # Zero-inflated
+    "active_loans":           "standard",        # Count gần normal
+    "total_loans_history":    "standard",        # Count gần normal
+    "home_ownership_enc":     "passthrough",     # Ordinal label
+    "purpose_enc":            "passthrough",     # Ordinal label
+}
+
+def _fit_one_feature(values_1d, strategy):
+    """Fit scaler cho 1 feature theo strategy."""
+    col = values_1d.reshape(-1, 1).astype(np.float64)
+
+    if strategy == "log_standard":
+        col_log = np.log1p(np.clip(col, 0, None))
+        sc = StandardScaler()
+        return (strategy, sc, sc.fit_transform(col_log).ravel())
+
+    elif strategy == "log_robust":
+        col_log = np.log1p(np.clip(col, 0, None))
+        sc = RobustScaler()
+        return (strategy, sc, sc.fit_transform(col_log).ravel())
+
+    elif strategy == "robust":
+        sc = RobustScaler()
+        return (strategy, sc, sc.fit_transform(col).ravel())
+
+    elif strategy == "standard":
+        sc = StandardScaler()
+        return (strategy, sc, sc.fit_transform(col).ravel())
+
+    elif strategy == "minmax":
+        sc = MinMaxScaler()
+        return (strategy, sc, sc.fit_transform(col).ravel())
+
+    elif strategy == "passthrough":
+        return (strategy, None, col.ravel())
+
+def _transform_one_feature(values_1d, strategy, scaler):
+    """Transform 1 feature đã fit."""
+    col = values_1d.reshape(-1, 1).astype(np.float64)
+
+    if strategy in ("log_standard", "log_robust"):
+        col_log = np.log1p(np.clip(col, 0, None))
+        return scaler.transform(col_log).ravel()
+
+    elif strategy in ("robust", "standard", "minmax"):
+        return scaler.transform(col).ravel()
+
+    elif strategy == "passthrough":
+        return col.ravel()
+```
+
+Scalers được lưu tại `models/per_feature_scalers.joblib` dưới dạng dict:
+```python
+{
+    "credit_score":           ("standard", StandardScaler(...)),
+    "capital":                ("log_standard", StandardScaler(...)),
+    "monthly_income":         ("log_robust", RobustScaler(...)),
+    ...
+    "purpose_enc":            ("passthrough", None),
+}
+```
+
+### 4.4. Encoding các biến phân loại
 
 **Home Ownership:**
 
@@ -340,133 +506,105 @@ Scalers được lưu tại `models/per_feature_scalers.joblib` và tái sử d�
 
 ---
 
-## 5. Huấn luyện mô hình Hybrid Stacking (Model Training)
+## 5. Huấn luyện mô hình XGBoost + LR Scorecard
 
-### 5.1. Phương pháp: Hybrid Stacking 2 Tầng với OOF
+### 5.1. Phương pháp: XGBoost + Logistic Regression Scorecard 3 Tầng
 
-Kết hợp **5 thuật toán khác nhau** ở Level 1 (Base Learners) và **LogisticRegression Meta-Learner** ở Level 2 để tối ưu hóa dự đoán:
+Đây là phương pháp **tiêu chuẩn vàng (gold standard)** trong ngành ngân hàng và fintech:
 
-#### Level 1 — 5 Base Learners (OOF 5-Fold)
+#### Stage 1 — XGBoost (Non-linear Feature Learner)
 
-| #   | Mô hình              | Biệt danh                   | Loại                           | Ưu điểm                                               |
-| --- | -------------------- | --------------------------- | ------------------------------ | ----------------------------------------------------- |
-| 1   | **XGBoost**          | "Chiến binh toàn diện"      | Gradient Boosting              | Ranking tốt, calibrated probabilities, early stopping |
-| 2   | **LightGBM**         | "Tiền đạo sát thủ"          | Gradient Boosting              | Nhanh, hiệu quả bộ nhớ, histogram-based splitting     |
-| 3   | **CatBoost**         | "Pháo đài bất khả xâm phạm" | Gradient Boosting              | Tự xử lý ordered boosting, robust với noise           |
-| 4   | **ExtraTrees**       | "Biệt đội ngẫu nhiên"       | Bagging (Extremely Randomized) | Random splits tại mỗi feature, giảm variance mạnh     |
-| 5   | **GradientBoosting** | "Kỹ sư chính xác"           | Gradient Boosting              | Sklearn native, ổn định, dễ tune                      |
+XGBoost học các pattern phi tuyến từ 15 features. Sau khi train, ta **không dùng PD của XGBoost trực tiếp**, mà trích xuất **leaf indices** — mỗi sample được ánh xạ tới 1 leaf node trong mỗi tree.
 
-#### Level 2 — Meta-Learner
-
-| Mô hình                | Input                                                  | Output         |
-| ---------------------- | ------------------------------------------------------ | -------------- |
-| **LogisticRegression** | 5 OOF predictions + 15 original features = **20 dims** | PD_final (0–1) |
-
-#### OOF (Out-Of-Fold) — Chống Data Leakage hoàn toàn
-
-```
-Dữ liệu Train (316,824 mẫu)
-    │
-    ├── Fold 1: Train (4/5) → Predict (1/5) → OOF_fold_1
-    ├── Fold 2: Train (4/5) → Predict (1/5) → OOF_fold_2
-    ├── Fold 3: Train (4/5) → Predict (1/5) → OOF_fold_3
-    ├── Fold 4: Train (4/5) → Predict (1/5) → OOF_fold_4
-    └── Fold 5: Train (4/5) → Predict (1/5) → OOF_fold_5
-                                                  │
-                            OOF_train = concat(OOF_fold_1..5)
-                            → Meta-Learner train trên OOF, KHÔNG bị leakage
+```python
+# Sau khi train XGBoost
+leaf_train = xgb_model.apply(X_train)  # shape: (n_samples, n_trees)
+# Ví dụ: sample #0 đi vào leaf 5 ở tree 0, leaf 12 ở tree 1, ...
 ```
 
-**Tại sao cần OOF?**
+| Tham số         | Giá trị     | Ý nghĩa |
+| --------------- | ----------- | --- |
+| n_trees output  | ~1500 cột   | Mỗi tree 1 leaf ID |
+| OneHotEncode    | Sparse      | ~N ngàn binary features |
+| Kết hợp         | Leaf OHE + 15 original | Input cho LR |
 
-- Nếu train Level 1 trên toàn bộ data → Level 1 đã "thấy" data → Meta-Learner nhận predictions bị bias (overfitted)
-- OOF đảm bảo mỗi prediction được sinh bởi model **chưa từng thấy sample đó** → zero data leakage
+#### Stage 2 — Logistic Regression (Scorecard Generator)
+
+LR nhận input là `[Leaf OHE + 15 Original Features]` → tạo xác suất vỡ nợ (PD) đã calibrated.
+
+**Tại sao LR mà không dùng trực tiếp XGBoost PD?**
+
+| Tiêu chí        | XGBoost PD trực tiếp | LR trên Leaf + Features |
+| --------------- | -------------------- | ---------------------- |
+| **Calibration** | Thường uncalibrated  | Tự nhiên calibrated (logistic function) |
+| **Giải thích**  | Black box            | LR coefficients → score contribution |
+| **Scorecard**   | Không thể tạo        | Dễ dàng: coef → score points |
+| **Regulatory**  | Khó giải trình       | Chuẩn Basel II/III |
+
+#### Stage 3 — Scorecard Formula
+
+Chuyển PD thành Credit Score theo công thức chuẩn ngành:
+
+$$\text{Score} = \text{Offset} - \text{Factor} \times \ln\left(\frac{PD}{1 - PD}\right)$$
+
+Trong đó:
+
+$$\text{Factor} = \frac{PDO}{\ln(2)} \approx 28.854$$
+
+$$\text{Offset} = \text{Base Score} - \text{Factor} \times \ln(\text{Base Odds}) \approx 487.12$$
+
+| Tham số    | Giá trị | Ý nghĩa |
+| ---------- | ------- | --- |
+| Base Score | 600     | Điểm tại odds = Base Odds |
+| PDO        | 20      | Points to Double Odds — mỗi 20 điểm odds tăng gấp đôi |
+| Base Odds  | 50:1    | Tại score 600, tỷ lệ good:bad = 50:1 |
+| Factor     | ≈ 28.854 | PDO / ln(2) |
+| Offset     | ≈ 487.12 | Base Score - Factor × ln(Base Odds) |
+
+**Ví dụ tính score:**
+
+| PD    | Odds (PD/(1-PD)) | ln(Odds) | Score = 487.12 - 28.854 × ln(Odds) |
+| ----- | ----------------- | -------- | ----------------------------------- |
+| 0.01  | 0.0101            | -4.595   | 620                                 |
+| 0.05  | 0.0526            | -2.944   | 572                                 |
+| 0.10  | 0.1111            | -2.197   | 550                                 |
+| 0.20  | 0.2500            | -1.386   | 527                                 |
+| 0.50  | 1.0000            | 0.000    | 487                                 |
+| 0.80  | 4.0000            | 1.386    | 447                                 |
+| 0.95  | 19.000            | 2.944    | 402                                 |
+
+> Score range: **150 (rủi ro cao nhất) — 950 (rủi ro thấp nhất)**. Cao hơn = an toàn hơn.
 
 ### 5.2. Hyperparameters
 
-#### XGBoost — "Chiến binh toàn diện"
+#### XGBoost — Stage 1 (Non-linear Feature Learner)
 
-| Parameter               | Giá trị | Lý do                                       |
-| ----------------------- | ------- | ------------------------------------------- |
-| `n_estimators`          | 1000    | Đủ lớn để early stopping hiệu quả           |
-| `max_depth`             | 6       | Sâu hơn để bắt pattern phức tạp             |
-| `learning_rate`         | 0.02    | Học chậm hơn, ổn định, generalize tốt       |
-| `subsample`             | 0.8     | Random 80% samples mỗi tree (giảm variance) |
-| `colsample_bytree`      | 0.8     | Random 80% features mỗi tree                |
-| `min_child_weight`      | 10      | Tránh split quá nhỏ (chống overfitting)     |
-| `gamma`                 | 0.3     | Penalize thêm độ phức tạp tree              |
-| `reg_alpha` (L1)        | 1.0     | L1 regularization                           |
-| `reg_lambda` (L2)       | 3.0     | L2 regularization mạnh                      |
-| `scale_pos_weight`      | auto    | Tính từ class ratio (neg/pos)               |
-| `early_stopping_rounds` | 50      | Dừng nếu 50 rounds không cải thiện          |
-| `tree_method`           | hist    | Histogram-based splitting (nhanh hơn)       |
-| `n_jobs`                | -1      | Sử dụng toàn bộ CPU cores                   |
+| Parameter               | Giá trị | Lý do                                           |
+| ----------------------- | ------- | ----------------------------------------------- |
+| `n_estimators`          | 1500    | Nhiều cây hơn → leaf features đa dạng hơn cho LR |
+| `max_depth`             | 6       | Balanced: đủ phức tạp nhưng không quá fit         |
+| `learning_rate`         | 0.01    | Học chậm → mỗi cây đóng góp nhỏ, ổn định        |
+| `subsample`             | 0.8     | Random 80% samples mỗi tree (giảm variance)     |
+| `colsample_bytree`      | 0.8     | Random 80% features mỗi tree                    |
+| `min_child_weight`      | 10      | Tránh split quá nhỏ                             |
+| `gamma`                 | 0.3     | Penalize thêm độ phức tạp tree                   |
+| `reg_alpha` (L1)        | 1.0     | L1 regularization                               |
+| `reg_lambda` (L2)       | 3.0     | L2 regularization mạnh                          |
+| `max_bin`               | 1024    | Histogram bins, tăng độ chính xác split          |
+| `scale_pos_weight`      | auto    | Tính từ class ratio (neg/pos ≈ 4.1)             |
+| `early_stopping_rounds` | 100     | Dừng nếu 100 rounds không cải thiện              |
+| `tree_method`           | hist    | Histogram-based splitting (nhanh)                |
 
-#### LightGBM — "Tiền đạo sát thủ"
+#### Logistic Regression — Stage 2 (Scorecard Generator)
 
-| Parameter           | Giá trị | Lý do                                 |
-| ------------------- | ------- | ------------------------------------- |
-| `n_estimators`      | 1000    | Đủ lớn để early stopping hiệu quả     |
-| `max_depth`         | 6       | Sâu hơn để bắt pattern phức tạp       |
-| `learning_rate`     | 0.02    | Học chậm hơn, ổn định, generalize tốt |
-| `subsample`         | 0.8     | Random 80% rows                       |
-| `colsample_bytree`  | 0.8     | Random 80% features                   |
-| `min_child_samples` | 20      | Tránh lá quá nhỏ                      |
-| `reg_alpha` (L1)    | 1.0     | L1 regularization                     |
-| `reg_lambda` (L2)   | 3.0     | L2 regularization                     |
-| `is_unbalance`      | True    | Tự cân bằng class weight              |
-| `n_jobs`            | -1      | Sử dụng toàn bộ CPU cores             |
-
-#### CatBoost — "Pháo đài bất khả xâm phạm"
-
-| Parameter               | Giá trị  | Lý do                                 |
-| ----------------------- | -------- | ------------------------------------- |
-| `iterations`            | 1000     | Đủ lớn để early stopping hiệu quả     |
-| `depth`                 | 6        | Sâu hơn để bắt pattern phức tạp       |
-| `learning_rate`         | 0.02     | Học chậm hơn, ổn định, generalize tốt |
-| `l2_leaf_reg`           | 3.0      | L2 regularization                     |
-| `auto_class_weights`    | Balanced | Tự cân bằng class weight              |
-| `eval_metric`           | AUC      | Tối ưu theo AUC-ROC                   |
-| `early_stopping_rounds` | 50       | Dừng nếu 50 rounds không cải thiện    |
-
-#### ExtraTrees — "Biệt đội ngẫu nhiên"
-
-| Parameter           | Giá trị            | Lý do                                           |
-| ------------------- | ------------------ | ----------------------------------------------- |
-| `n_estimators`      | 800                | Nhiều cây hơn để ổn định                        |
-| `max_depth`         | None (unlimited)   | Cây phát triển đầy đủ để bắt pattern phức tạp   |
-| `min_samples_split` | 10                 | Cho phép split nhỏ hơn để tăng recall           |
-| `min_samples_leaf`  | 5                  | Lá nhỏ hơn để model linh hoạt hơn               |
-| `max_features`      | sqrt               | Random √n features mỗi split (giảm correlation) |
-| `class_weight`      | balanced_subsample | **Cân bằng class weight → tăng Recall**         |
-
-#### GradientBoosting — "Kỹ sư chính xác"
-
-| Parameter           | Giá trị | Lý do                              |
-| ------------------- | ------- | ---------------------------------- |
-| `n_estimators`      | 500     | Nhiều hơn để bù learning rate thấp |
-| `max_depth`         | 5       | Sâu hơn để bắt pattern phức tạp    |
-| `learning_rate`     | 0.02    | Học chậm hơn, generalize tốt       |
-| `subsample`         | 0.8     | Random 80% samples                 |
-| `min_samples_split` | 15      | Cho phép split nhỏ hơn             |
-| `min_samples_leaf`  | 8       | Lá phải có ít nhất 8 mẫu           |
-
-#### LogisticRegression Meta-Learner (Level 2)
-
-| Parameter      | Giá trị  | Lý do                                                  |
-| -------------- | -------- | ------------------------------------------------------ |
-| `C`            | 1.0      | Inverse regularization strength (L2)                   |
-| `class_weight` | balanced | Cân bằng class weight cho imbalanced data              |
-| `max_iter`     | 1000     | Đủ iterations để hội tụ                                |
-| `solver`       | lbfgs    | Tối ưu cho L2 regularization, hiệu quả với dataset vừa |
-| `n_jobs`       | -1       | Sử dụng toàn bộ CPU cores                              |
-
-> **Tại sao LogisticRegression thay vì Random Forest?**
->
-> - RF Meta với `max_depth=14` trên 20 meta features dễ **overfitting** — HYBRID AUC < XGBoost AUC
-> - LR tìm **tổ hợp tuyến tính tối ưu** của 5 base learner outputs + 15 features
-> - Ít overfitting trên meta features, đây là phương pháp **chuẩn trong Kaggle stacking**
-> - LR nhanh hơn RF nhiều lần, inference gần như instant
+| Parameter      | Giá trị  | Lý do                                                           |
+| -------------- | -------- | --------------------------------------------------------------- |
+| `C`            | 1.0      | Inverse regularization strength (L2)                            |
+| `penalty`      | l2       | L2 regularization — giữ coefficients nhỏ và ổn định             |
+| `class_weight` | balanced | Cân bằng class weight cho imbalanced data (19.61% default)      |
+| `max_iter`     | 300      | Đủ iterations để hội tụ trên sparse matrix lớn                  |
+| `solver`       | saga     | Tối ưu cho L2 + sparse data + large dataset                    |
+| `tol`          | 1e-4     | Tolerance cho convergence                                       |
 
 ### 5.3. Train/Test Split
 
@@ -477,47 +615,40 @@ Dữ liệu Train (316,824 mẫu)
 
 > Split sử dụng `stratify=y` để đảm bảo tỷ lệ default giống nhau giữa train và test.
 
-### 5.4. Nested Cross-Validation
+### 5.4. Cross-Validation
 
-- **Phương pháp**: 5-Fold Outer × 5-Fold Inner OOF (Nested Hybrid Stacking)
+- **Phương pháp**: 5-Fold StratifiedKFold
 - **Scoring**: AUC-ROC
-- **Outer folds**: Train full hybrid stacking pipeline trên 4/5 data, evaluate trên 1/5
-- **Inner folds**: OOF predictions cho Level 1 models bên trong mỗi outer fold
+- **Pipeline mỗi fold**: Smart Scaling → XGBoost → Leaf Extract → OHE → LR → AUC
 
-### 5.5. Training Pipeline — 11 bước
+### 5.5. Training Pipeline — 9 bước
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ [1/11]  Load & Clean Data                                 │
-│ [2/11]  Train/Test Split (80/20, stratified)              │
-│ [3/11]  Per-Feature Scaling (15 scalers)                  │
-│ [4/11]  XGBoost OOF (5-fold)    — "Chiến binh toàn diện" │
-│ [5/11]  LightGBM OOF (5-fold)   — "Tiền đạo sát thủ"    │
-│ [6/11]  CatBoost OOF (5-fold)   — "Pháo đài bất khả XP" │
-│ [7/11]  ExtraTrees OOF (5-fold)  — "Biệt đội ngẫu nhiên" │
-│ [8/11]  GradBoost OOF (5-fold)   — "Kỹ sư chính xác"    │
-│ [9/11]  Build Meta Features (5 OOF + 15 feat = 20 dims)  │
-│         Train LR Meta-Learner (LogisticRegression)        │
-│ [10/11] Evaluate (Metrics + Classification Report)        │
-│         Nested CV (5 outer × 5 inner)                     │
-│ [11/11] Save Artifacts + 20 Charts                        │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ [1/9]  Load & Clean Data (396,030 records)                    │
+│ [2/9]  Train/Test Split (80/20, stratified)                   │
+│ [3/9]  Smart Per-Feature Scaling (6 strategies, 15 features)  │
+│ [4/9]  Stage 1: Train XGBoost (1500 trees)                    │
+│ [5/9]  Extract Leaf Indices + OneHotEncode (sparse)           │
+│ [6/9]  Stage 2: Train LR on [Leaf OHE + 15 Original]         │
+│ [7/9]  Evaluate (12 metrics + Classification Report)          │
+│        CV 5-Fold XGBoost+LR Pipeline                          │
+│ [8/9]  Save Artifacts (5 files)                               │
+│ [9/9]  Export 20 Charts                                       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### 5.6. Artifacts được lưu
 
-| File                         | Đường dẫn                           | Mô tả                                            |
-| ---------------------------- | ----------------------------------- | ------------------------------------------------ |
-| `xgb_pd_model.json`          | `models/xgb_pd_model.json`          | XGBoost model (JSON format)                      |
-| `lgbm_pd_model.txt`          | `models/lgbm_pd_model.txt`          | LightGBM model (text format)                     |
-| `cat_pd_model.joblib`        | `models/cat_pd_model.joblib`        | CatBoost model (pickle)                          |
-| `et_pd_model.joblib`         | `models/et_pd_model.joblib`         | ExtraTrees model (pickle)                        |
-| `gb_pd_model.joblib`         | `models/gb_pd_model.joblib`         | GradientBoosting model (pickle)                  |
-| `lr_meta_model.joblib`       | `models/lr_meta_model.joblib`       | LogisticRegression Meta-Learner Level 2 (pickle) |
-| `per_feature_scalers.joblib` | `models/per_feature_scalers.joblib` | 15 Per-Feature StandardScaler (pickle)           |
-| `metadata.json`              | `models/metadata.json`              | Metrics + feature info + mappings                |
+| File                         | Đường dẫn                           | Mô tả                                                  |
+| ---------------------------- | ----------------------------------- | ------------------------------------------------------- |
+| `xgb_pd_model.json`          | `models/xgb_pd_model.json`          | XGBoost model (JSON format) — Stage 1                   |
+| `lr_scorecard_model.joblib`  | `models/lr_scorecard_model.joblib`  | Logistic Regression model — Stage 2                     |
+| `leaf_encoder.joblib`        | `models/leaf_encoder.joblib`        | OneHotEncoder cho leaf indices                          |
+| `per_feature_scalers.joblib` | `models/per_feature_scalers.joblib` | 15 (strategy, scaler) tuples — Smart Scaling            |
+| `metadata.json`              | `models/metadata.json`              | Metrics + scorecard params + scaling strategies + mapping |
 
-> **Tổng cộng 8 artifact files** (thay vì 5 files ở v3.0).
+> **Tổng cộng 5 artifact files** (giảm từ 8 files ở v4.0 — nhẹ hơn, nhanh hơn).
 
 ---
 
@@ -554,6 +685,7 @@ Content-Type: application/json
 {
   "ai_risk_score": 21,
   "default_probability": 0.2098,
+  "credit_score": 527,
   "status": "success"
 }
 ```
@@ -562,30 +694,35 @@ Content-Type: application/json
 
 | Trường                | Kiểu   | Phạm vi             | Mô tả                                                                                                      |
 | --------------------- | ------ | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `credit_score`        | int    | **150 – 950**       | Điểm tín dụng Scorecard. Cao hơn = an toàn hơn. Công thức: `Offset - Factor × ln(PD/(1-PD))`              |
 | `ai_risk_score`       | int    | **0 – 100**         | Điểm rủi ro AI. 0 = rủi ro thấp nhất, 100 = rủi ro cao nhất. Tính bằng: `round(default_probability × 100)` |
 | `default_probability` | float  | **0.0 – 1.0**       | Xác suất vỡ nợ (PD). 0.0 = không có khả năng vỡ nợ, 1.0 = chắc chắn vỡ nợ                                  |
 | `status`              | string | "success" / "error" | Trạng thái xử lý                                                                                           |
 
-### 6.4. Luồng Inference (Level 1 → Level 2)
+### 6.4. Luồng Inference (Stage 1 → Stage 2 → Stage 3)
 
 ```python
-# 1. Per-feature scaling (15 scalers)
-for i, feature_name in enumerate(FEATURE_NAMES):
-    X[0, i] = scalers[feature_name].transform(X_raw[0, i])
+# 1. Smart per-feature scaling (6 strategies)
+X = apply_per_feature_scalers(X_raw, scalers, FEATURE_NAMES)
+# VD: capital → log1p → StandardScaler
+#     monthly_income → log1p → RobustScaler
+#     dti → RobustScaler
+#     purpose_enc → passthrough (giữ nguyên)
 
-# 2. Level 1: 5 Base Learners predict riêng lẻ
-PD_xgb  = xgb_model.predict_proba(X)[0, 1]
-PD_lgbm = lgbm_model.predict(X)[0]
-PD_cat  = cat_model.predict_proba(X)[0, 1]
-PD_et   = et_model.predict_proba(X)[0, 1]
-PD_gb   = gb_model.predict_proba(X)[0, 1]
+# 2. Stage 1: XGBoost → Leaf Indices
+leaves = xgb_model.apply(X)          # shape: (1, n_trees)
+L = leaf_encoder.transform(leaves)   # OneHot sparse
 
-# 3. Level 2: LR Meta-Learner
-X_meta = [PD_xgb, PD_lgbm, PD_cat, PD_et, PD_gb] + X (15 features)
-PD_final = lr_meta.predict_proba(X_meta)[0, 1]
+# 3. Stage 2: LR → PD
+X_lr = hstack([L, X])                # Leaf OHE + 15 original
+PD = lr_model.predict_proba(X_lr)[0, 1]
 
-# 4. Output
-ai_risk_score = round(PD_final × 100)
+# 4. Stage 3: Scorecard → Credit Score
+Score = 487.12 - 28.854 × ln(PD / (1 - PD))
+Score = clip(Score, 150, 950)
+
+# 5. Output
+ai_risk_score = round(PD × 100)
 ```
 
 ### 6.5. Batch Scoring
@@ -611,6 +748,7 @@ Response:
       {
         "ai_risk_score": 18,
         "default_probability": 0.1812,
+        "credit_score": 561,
         "status": "success",
         "index": 0
       },
@@ -623,8 +761,9 @@ Response:
       "errors": 0,
       "avg_risk_score": 52.0,
       "avg_pd": 0.5228,
-      "min_risk_score": 18,
-      "max_risk_score": 77
+      "avg_credit_score": 495,
+      "min_credit_score": 380,
+      "max_credit_score": 561
     }
   }
 }
@@ -652,7 +791,7 @@ Response:
 
 ### 7.2. Optimal Threshold — Youden's J
 
-Thay vì dùng threshold mặc định 0.5, Hybrid Stacking sử dụng **Youden's J index** để tìm threshold tối ưu:
+Thay vì dùng threshold mặc định 0.5, model sử dụng **Youden's J index** để tìm threshold tối ưu:
 
 $$J = \text{Sensitivity} + \text{Specificity} - 1 = \text{TPR} - \text{FPR}$$
 
@@ -662,40 +801,42 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 
 ### 7.3. 20 Biểu đồ đánh giá
 
-| #   | Tên biểu đồ                            | File                            | Mô tả                                        |
-| --- | -------------------------------------- | ------------------------------- | -------------------------------------------- |
-| 1   | ROC Curve (All Models)                 | `01_roc_curve_all_models.png`   | ROC cho 5 base + meta + hybrid               |
-| 2   | Precision-Recall Curve                 | `02_precision_recall_curve.png` | PR curve cho tất cả models                   |
-| 3   | Confusion Matrix (Counts + Normalized) | `03_confusion_matrix.png`       | Ma trận nhầm lẫn absolute + %                |
-| 4   | Feature Importance (XGBoost vs LGBM)   | `04_feature_importance.png`     | So sánh feature importance 2 model chính     |
-| 5   | PD Distribution (All Models)           | `05_pd_distribution_all.png`    | Phân phối PD cho 6 models (2×3 grid)         |
-| 6   | Calibration Curve                      | `06_calibration_curve.png`      | Calibration cho tất cả models                |
-| 7   | CV AUC per Fold                        | `07_cv_auc_per_fold.png`        | AUC từng fold nested CV                      |
-| 8   | Threshold Sensitivity                  | `08_threshold_sensitivity.png`  | Prec/Rec/F1/Acc/Spec theo threshold          |
-| 9   | OOF Correlation Heatmap                | `09_oof_correlation.png`        | Tương quan giữa 5 OOF predictions            |
-| 10  | Model Comparison Bar Chart             | `10_model_comparison_bar.png`   | So sánh 7 models × 5 metrics                 |
-| 11  | Cumulative Gain & Lift Curve           | `11_gain_lift_curve.png`        | Gain + Lift curve (model vs random)          |
-| 12  | KS Statistic                           | `12_ks_statistic.png`           | Kolmogorov-Smirnov TPR vs FPR                |
-| 13  | Stacking Architecture Diagram          | `13_architecture.png`           | Sơ đồ kiến trúc 2 tầng (visual)              |
-| 14  | CV Fold Metrics Heatmap                | `14_cv_fold_heatmap.png`        | Heatmap metrics từng fold                    |
-| 15  | Risk Band Distribution                 | `15_risk_band.png`              | 5 nhóm rủi ro (count + default rate)         |
-| 16  | Feature Correlation Heatmap            | `16_feature_correlation.png`    | Tương quan 15 features (triangle heatmap)    |
-| 17  | OOF Boxplot by Class                   | `17_oof_boxplot.png`            | Boxplot OOF predictions Paid vs Default      |
-| 18  | Radar Chart (All Models)               | `18_radar_chart.png`            | Radar 6 metrics cho 6 models                 |
-| 19  | Error Analysis (FP vs FN)              | `19_error_analysis.png`         | Phân tích False Positives vs False Negatives |
-| 20  | Summary Dashboard                      | `20_summary_dashboard.png`      | Tổng hợp 7 mini-charts + metrics table       |
+| #   | Tên biểu đồ                            | File                                | Mô tả                                           |
+| --- | -------------------------------------- | ----------------------------------- | ----------------------------------------------- |
+| 1   | ROC Curve (XGBoost vs LR)              | `01_roc_curve.png`                  | ROC cho XGBoost raw vs LR Scorecard             |
+| 2   | Precision-Recall Curve                 | `02_precision_recall_curve.png`     | PR curve cho 2 models                           |
+| 3   | Confusion Matrix (Counts + Normalized) | `03_confusion_matrix.png`           | Ma trận nhầm lẫn absolute + %                   |
+| 4   | Feature Importance (XGBoost)           | `04_feature_importance_xgb.png`     | XGBoost feature importance (Stage 1)            |
+| 5   | PD Distribution (XGBoost vs LR)        | `05_pd_distribution.png`            | Phân phối PD cho 2 models (Paid vs Default)     |
+| 6   | Calibration Curve                      | `06_calibration_curve.png`          | Calibration cho XGBoost vs LR                   |
+| 7   | CV AUC per Fold                        | `07_cv_auc_per_fold.png`            | AUC từng fold 5-Fold CV                         |
+| 8   | Threshold Sensitivity                  | `08_threshold_sensitivity.png`      | Prec/Rec/F1/Acc theo threshold                  |
+| 9   | Score Distribution by Class            | `09_score_distribution.png`         | **Phân phối Credit Score: Paid vs Default**     |
+| 10  | Model Comparison Bar Chart             | `10_model_comparison.png`           | So sánh XGBoost vs LR × 5 metrics              |
+| 11  | Cumulative Gain & Lift Curve           | `11_gain_lift_curve.png`            | Gain + Lift curve (model vs random)             |
+| 12  | KS Statistic                           | `12_ks_statistic.png`               | Kolmogorov-Smirnov TPR vs FPR                   |
+| 13  | Architecture Diagram                   | `13_architecture.png`               | Sơ đồ kiến trúc 3 tầng (visual)                 |
+| 14  | CV Fold Metrics Heatmap                | `14_cv_fold_heatmap.png`            | Heatmap metrics từng fold                       |
+| 15  | Risk Band by Score                     | `15_risk_band_score.png`            | **5 nhóm rủi ro theo Credit Score + default %** |
+| 16  | Feature Correlation Heatmap            | `16_feature_correlation.png`        | Tương quan 15 features (triangle heatmap)       |
+| 17  | Scorecard Feature Points               | `17_scorecard_feature_points.png`   | **LR coef → Score points per feature**          |
+| 18  | Score vs Default Rate                  | `18_score_vs_default_rate.png`      | **Credit Score vs Default Rate validation**     |
+| 19  | Error Analysis (FP vs FN)              | `19_error_analysis.png`             | Phân tích FP vs FN theo Score Distribution      |
+| 20  | Summary Dashboard                      | `20_summary_dashboard.png`          | Tổng hợp mini-charts + metrics table            |
 
-### 7.4. So sánh hiệu năng: v3.0 (Soft Voting) vs v4.0 (Hybrid Stacking)
+### 7.4. So sánh hiệu năng: v4.0 (Hybrid Stacking) vs v5.0 (XGBoost + LR Scorecard)
 
-| Tiêu chí                | v3.0 Soft Voting (3 models) | v4.0 Hybrid Stacking (5+1 models)  |
-| ----------------------- | --------------------------- | ---------------------------------- |
-| **Số models Level 1**   | 3                           | 5                                  |
-| **Meta-Learner**        | Simple mean                 | LogisticRegression (20 dims input) |
-| **OOF**                 | Không                       | Có (5-Fold StratifiedKFold)        |
-| **Per-Feature Scaling** | 1 scaler chung              | 15 scaler riêng                    |
-| **Nested CV**           | 5-Fold đơn                  | 5 Outer × 5 Inner                  |
-| **Metrics bổ sung**     | AUC, Acc, Prec, Rec, F1     | + MCC, Kappa, KS, Balanced Acc     |
-| **Biểu đồ**             | 8 charts                    | 20 charts                          |
+| Tiêu chí                | v4.0 Hybrid Stacking (5+1 models) | v5.0 XGBoost + LR Scorecard (2 models)     |
+| ----------------------- | ---------------------------------- | ------------------------------------------ |
+| **Số models**           | 6                                  | 2                                          |
+| **Chuẩn hóa**           | 15 StandardScaler giống nhau       | **Smart Scaling: 6 chiến lược khác nhau**  |
+| **Output**              | PD + ai_risk_score                 | **PD + Credit Score (150-950) + ai_risk** |
+| **Interpretability**    | Thấp (black box)                   | **Cao (LR coef → score points)**           |
+| **Inference latency**   | Chậm (5 model tuần tự)            | **Nhanh (1 XGBoost + 1 LR sparse)**       |
+| **Artifact size**       | 8 files                           | **5 files**                                |
+| **Regulatory**          | Khó giải trình                     | **Chuẩn Basel II/III**                     |
+| **Cross-Validation**    | 5 Outer × 5 Inner                  | 5-Fold StratifiedKFold                     |
+| **Biểu đồ**             | 20 charts                          | 20 charts (3 mới cho Scorecard)            |
 
 ---
 
@@ -704,14 +845,15 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 ### 8.1. Kiến trúc tích hợp
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────────┐
-│  React Native│────→│  NestJS Backend  │────→│  AIScore Service            │
-│  Mobile App  │     │  (server_do_an_  │ POST│  FastAPI Port 8001          │
-│  (Client)    │     │   new)           │ /api│                             │
-│              │←────│                  │←────│  Hybrid Stacking            │
-│  Hiển thị    │     │  Lưu score +     │score│  5 Base (OOF) + LR Meta    │
-│  Risk Score  │     │  quyết định      │     │  Per-Feature Scaling        │
-└─────────────┘     └──────────────────┘     └─────────────────────────────┘
+┌─────────────┐     ┌──────────────────┐     ┌──────────────────────────────────┐
+│  React Native│────→│  NestJS Backend  │────→│  AIScore Service                 │
+│  Mobile App  │     │  (server_do_an_  │ POST│  FastAPI Port 8001               │
+│  (Client)    │     │   new)           │ /api│                                  │
+│              │←────│                  │←────│  XGBoost + LR Scorecard          │
+│  Hiển thị    │     │  Lưu score +     │score│  Smart Per-Feature Scaling       │
+│  Credit Score│     │  quyết định      │     │  Scorecard Formula → Credit Score│
+│  + Risk Score│     │                  │     │                                  │
+└─────────────┘     └──────────────────┘     └──────────────────────────────────┘
 ```
 
 ### 8.2. Mapping NestJS → AIScore Request
@@ -734,15 +876,27 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 | `homeOwnership`        | `home_ownership`         | RENT / OWN / MORTGAGE        |
 | `loanPurpose`          | `loan_purpose`           | Mục đích vay                 |
 
-### 8.3. Cách sử dụng AI Risk Score
+### 8.3. Cách sử dụng Credit Score & AI Risk Score
 
-| AI Risk Score | Nhóm rủi ro    | Hành động hệ thống                    |
-| ------------- | -------------- | ------------------------------------- |
-| 0 – 10        | **Rất thấp**   | Tự động duyệt, lãi suất ưu đãi        |
-| 11 – 25       | **Thấp**       | Duyệt nhanh, lãi suất thông thường    |
-| 26 – 40       | **Trung bình** | Cần review thủ công, lãi suất cao hơn |
-| 41 – 60       | **Cao**        | Yêu cầu tài sản bảo đảm, hạn mức thấp |
-| 61 – 100      | **Rất cao**    | Từ chối hoặc yêu cầu thêm chứng từ    |
+#### Theo Credit Score (150–950)
+
+| Credit Score | Nhóm rủi ro    | Hành động hệ thống                    |
+| ------------ | -------------- | ------------------------------------- |
+| 700 – 950   | **Rất thấp**   | Tự động duyệt, lãi suất ưu đãi        |
+| 600 – 699   | **Thấp**       | Duyệt nhanh, lãi suất thông thường    |
+| 500 – 599   | **Trung bình** | Cần review thủ công, lãi suất cao hơn |
+| 400 – 499   | **Cao**        | Yêu cầu tài sản bảo đảm, hạn mức thấp |
+| 150 – 399   | **Rất cao**    | Từ chối hoặc yêu cầu thêm chứng từ    |
+
+#### Theo AI Risk Score (0–100)
+
+| AI Risk Score | Nhóm rủi ro    | Tương đương Credit Score |
+| ------------- | -------------- | ----------------------- |
+| 0 – 10        | **Rất thấp**   | ~700+                   |
+| 11 – 25       | **Thấp**       | ~600–700                |
+| 26 – 40       | **Trung bình** | ~500–600                |
+| 41 – 60       | **Cao**        | ~400–500                |
+| 61 – 100      | **Rất cao**    | ~150–400                |
 
 ### 8.4. Luồng xử lý trong NestJS
 
@@ -754,8 +908,8 @@ $$\text{Optimal Threshold} = \arg\max_t (TPR(t) - FPR(t))$$
 2. Gọi AIScore Service:
    POST http://localhost:8001/api/score
    Body: { credit_score, capital, monthly_income, ... }
-3. Nhận response: { ai_risk_score, default_probability }
-4. Nếu decision = REJECT → BadRequestException
+3. Nhận response: { credit_score, ai_risk_score, default_probability }
+4. Nếu credit_score < 400 → BadRequestException (từ chối)
 5. Nếu APPROVE → Tạo đơn vay trên Fineract
 6. Cập nhật user.creditProfile
 ```
@@ -793,11 +947,16 @@ GET /api/health
 
 {
   "status": "ok",
-  "service": "aiscore-service-v4-hybrid-stacking",
+  "service": "aiscore-service-v5-xgb-lr-scorecard",
   "model_loaded": true,
-  "model_type": "Hybrid Stacking 2-Layer (5 Base OOF + LR Meta-Learner)",
+  "model_type": "XGBoost + Logistic Regression Scorecard (3-Stage)",
   "n_features": 15,
-  "n_meta_features": 20,
+  "scaling": "smart_per_feature (6 strategies)",
+  "scorecard": {
+    "base_score": 600,
+    "pdo": 20,
+    "score_range": "150–950"
+  },
   "exchange_rate": {
     "rate": 26251,
     "source": "open.er-api.com"
@@ -811,16 +970,38 @@ GET /api/health
 GET /api/model/info
 
 {
-  "model_type": "hybrid_stacking_5_base",
-  "architecture": "Level1(XGB+LGBM+CatBoost+ExtraTrees+GradBoost OOF) -> Level2(LR Meta)",
+  "model_type": "xgboost_lr_scorecard",
+  "architecture": "XGBoost(leaf_indices) -> OneHotEncode -> LR(PD) -> Scorecard(Score)",
   "feature_names": ["credit_score", "capital", "monthly_income", ...],
-  "meta_feature_names": ["oof_xgb", "oof_lgbm", "oof_cat", "oof_et", "oof_gb", "credit_score", ...],
   "n_features": 15,
-  "n_meta_features": 20,
-  "n_folds_oof": 5,
+  "scaling_strategies": {
+    "credit_score": "standard",
+    "capital": "log_standard",
+    "monthly_income": "log_robust",
+    "monthly_pay": "log_standard",
+    "revolving_balance": "log_standard",
+    "dti": "robust",
+    "revolving_util_percent": "robust",
+    "term_months": "standard",
+    "emp_length_years": "minmax",
+    "active_bad_debts": "robust",
+    "bankruptcies": "robust",
+    "active_loans": "standard",
+    "total_loans_history": "standard",
+    "home_ownership_enc": "passthrough",
+    "purpose_enc": "passthrough"
+  },
+  "scorecard": {
+    "base_score": 600,
+    "pdo": 20,
+    "base_odds": 50,
+    "factor": 28.854,
+    "offset": 487.12
+  },
   "optimal_threshold": 0.XXXX,
   "test_metrics": {
-    "auc_roc": 0.XXXX,
+    "xgb_raw_auc": 0.XXXX,
+    "lr_auc": 0.XXXX,
     "accuracy": 0.XXXX,
     "balanced_accuracy": 0.XXXX,
     "precision": 0.XXXX,
@@ -832,21 +1013,14 @@ GET /api/model/info
     "kappa": 0.XXXX,
     "ks_statistic": 0.XXXX
   },
-  "level1_oof_auc": {
-    "xgb": 0.XXXX, "lgbm": 0.XXXX, "cat": 0.XXXX, "et": 0.XXXX, "gb": 0.XXXX
-  },
-  "level1_test_auc": {
-    "xgb": 0.XXXX, "lgbm": 0.XXXX, "cat": 0.XXXX, "et": 0.XXXX, "gb": 0.XXXX
-  },
   "cv_auc_mean": 0.XXXX,
   "cv_auc_std": 0.XXXX,
-  "scaling": "per_feature_standard_scaler",
   "train_size": 316824,
   "test_size": 79206
 }
 ```
 
-> **Lưu ý**: Các giá trị metrics `0.XXXX` sẽ được điền sau khi chạy train trên Google Colab. Metrics thực tế phụ thuộc vào tỷ giá và random seed.
+> **Lưu ý**: Các giá trị metrics `0.XXXX` sẽ được điền sau khi chạy train trên Google Colab.
 
 ---
 
@@ -854,38 +1028,39 @@ GET /api/model/info
 
 ### 10.1. Tóm tắt
 
-AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base Learners (OOF) + LogisticRegression Meta-Learner để dự đoán xác suất vỡ nợ (PD) cho hệ thống P2P Lending Việt Nam.
+AIScore Service v5.0 sử dụng **XGBoost + Logistic Regression Scorecard** — phương pháp **tiêu chuẩn vàng ngành ngân hàng** — để dự đoán xác suất vỡ nợ (PD) và tính Credit Score cho hệ thống P2P Lending Việt Nam.
 
 **Kết quả chính:**
 
-- **Kiến trúc**: Level 1 (5 OOF: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost) → Level 2 (LR Meta)
+- **Kiến trúc 3 tầng**: XGBoost → Leaf Extraction + OHE → LR → PD → Scorecard Formula → Credit Score
 - **15 features** đầu vào (loại bỏ `interest_rate` vì là thông tin động)
-- **Per-Feature Scaling**: 15 StandardScaler riêng biệt
-- **OOF**: 5-Fold StratifiedKFold — chống data leakage hoàn toàn
-- **Nested CV**: 5 outer × 5 inner folds
-- **20 biểu đồ** đánh giá chi tiết
+- **Smart Per-Feature Scaling**: 6 chiến lược chuẩn hóa khác nhau (log_standard, log_robust, robust, standard, minmax, passthrough) — chọn theo phân phối dữ liệu thực tế
+- **Scorecard Formula**: Score = 487.12 - 28.854 × ln(PD/(1-PD)), range 150–950
+- **3 output**: `credit_score` (150-950) + `ai_risk_score` (0-100) + `default_probability` (0-1)
+- **20 biểu đồ** đánh giá chi tiết (3 biểu đồ mới cho Scorecard)
 - **Dữ liệu**: 396,030 khoản vay Lending Club, quy đổi VNĐ
 - **Tỷ lệ vỡ nợ**: 19.61%
 
-### 10.2. Cải thiện so với v3.0
+### 10.2. Cải thiện so với v4.0
 
-| Tiêu chí           | v3.0 (Soft Voting)  | v4.0 (Hybrid Stacking)   |
-| ------------------ | ------------------- | ------------------------ |
-| Số models Level 1  | 3                   | **5**                    |
-| Meta-Learner       | Trung bình đơn giản | **LR Meta (20 dims)**    |
-| Chống Data Leakage | ❌                  | **✅ OOF 5-Fold**        |
-| Scaling            | 1 scaler chung      | **15 scaler riêng**      |
-| Cross-Validation   | 5-Fold đơn          | **Nested 5×5**           |
-| Số biểu đồ         | 8                   | **20**                   |
-| Inference pipeline | mean(3 PD)          | **Level 1 → LR Level 2** |
+| Tiêu chí           | v4.0 (Hybrid Stacking)        | v5.0 (XGBoost + LR Scorecard)         |
+| ------------------ | ----------------------------- | -------------------------------------- |
+| Kiến trúc          | 5 Base OOF + LR Meta (6 model) | **XGBoost + LR (2 model)**            |
+| Chuẩn hóa          | 15 StandardScaler giống nhau  | **Smart: 6 chiến lược theo dữ liệu**  |
+| Output             | PD + ai_risk_score            | **PD + Credit Score + ai_risk_score** |
+| Giải thích được    | Thấp                          | **Cao (LR coef, score points)**        |
+| Inference speed    | Chậm (5 model)               | **Nhanh (2 model)**                   |
+| Artifact files     | 8                             | **5**                                 |
+| Regulatory         | Khó giải trình                | **Chuẩn Basel II/III**                |
+| Tiêu chuẩn ngành   | Kaggle stacking               | **Tiêu chuẩn vàng ngân hàng**         |
 
 ### 10.3. Hướng phát triển
 
 1. **Thêm behavioral features**: Lịch sử trả nợ, login frequency, spending patterns → tăng AUC > 0.8
-2. **Threshold tuning**: Tối ưu PD threshold cho business objectives (minimize loss vs maximize approval)
+2. **WOE/IV binning**: Weight of Evidence binning cho LR → tăng interpretability
 3. **Model monitoring**: Theo dõi drift, recalibrate định kỳ
 4. **SHAP values**: Giải thích prediction cho từng case cụ thể
-5. **Bayesian Hyperparameter Tuning**: Optuna/Hyperopt cho tự động tune
+5. **Bayesian Hyperparameter Tuning**: Optuna cho tự động tune XGBoost
 6. **Thêm dữ liệu VN thực tế**: Khi tích lũy đủ data từ hệ thống P2P, retrain trên dữ liệu thực
 
 ### 10.4. Cấu trúc Files — AIScore Service
@@ -893,7 +1068,7 @@ AIScore Service v4.0 sử dụng **Hybrid Stacking 2 tầng** kết hợp 5 Base
 ```
 aiscore_service/
 ├── app.py                    # FastAPI REST API (port 8001)
-├── scorer.py                 # CreditScorer class — inference (5 Base + LR Meta)
+├── scorer.py                 # CreditScorer class — inference (XGB + LR + Scorecard)
 ├── train_model.py            # MEGA pipeline — train + charts + scorer (Colab)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile                # Docker build (production)
@@ -903,15 +1078,12 @@ aiscore_service/
 ├── README.md                 # Hướng dẫn setup & API
 ├── models/                   # Model artifacts
 │   ├── xgb_pd_model.json
-│   ├── lgbm_pd_model.txt
-│   ├── cat_pd_model.joblib
-│   ├── et_pd_model.joblib
-│   ├── gb_pd_model.joblib
-│   ├── lr_meta_model.joblib
+│   ├── lr_scorecard_model.joblib
+│   ├── leaf_encoder.joblib
 │   ├── per_feature_scalers.joblib
 │   └── metadata.json
 └── docs/                     # Charts output (20 biểu đồ)
-    ├── 01_roc_curve_all_models.png
+    ├── 01_roc_curve.png
     ├── 02_precision_recall_curve.png
     ├── ...
     └── 20_summary_dashboard.png
@@ -919,5 +1091,5 @@ aiscore_service/
 
 ---
 
-_Tài liệu được cập nhật cho AIScore Service v4.0 — Hybrid Stacking 2 Tầng (5 OOF + LR Meta)_
+_Tài liệu được cập nhật cho AIScore Service v5.0 — XGBoost + LR Scorecard + Smart Per-Feature Scaling_
 _Ngày cập nhật: 28/03/2026_
