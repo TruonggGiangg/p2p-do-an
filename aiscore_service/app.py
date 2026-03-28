@@ -1,36 +1,38 @@
 """
-AIScore Service — FastAPI REST API (VNĐ Context)
-==================================================
+AIScore Service — FastAPI REST API
+====================================
 
-Hybrid Stacking 2 tầng (5 Base Learners OOF + RF Meta-Learner):
-  Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
-  Level 2: Random Forest Meta-Learner (5 OOF + 15 features = 20 dims)
+XGBoost (benchmark) + Random Forest Scorecard:
+  Stage 1: XGBoost → benchmark AUC + Feature Importance
+  Stage 2: Random Forest on 14 features (9 NUM + 5 CAT) → PD
+  Stage 3: PD → Scorecard formula → ai_risk_score (0-100)
+
+Dataset: Lending Club accepted + rejected (2007-2018 Q4)
 
 Endpoints:
-  POST /api/score         - Score 1 borrower → ai_risk_score + default_probability
-  POST /api/score/batch   - Score nhiều borrower
+  POST /api/score         - Score 1 borrower → ai_risk_score + PD
+  POST /api/score/batch   - Score nhieu borrower
   GET  /api/model/info    - Model metadata
   GET  /api/health        - Health check
   POST /api/model/retrain - Retrain model
 
-Input từ NestJS (VNĐ):
+Input tu NestJS (VND context):
   {
-    "credit_score": 580,
-    "capital": 50000000,
-    "monthly_income": 15000000,
-    "monthly_pay": 2500000,
-    "revolving_balance": 10000000,
-    "dti": 22.0,
-    "revolving_util_percent": 45.0,
-    "term_months": 36,
-    "emp_length_years": 3,
-    "active_bad_debts": 0,
-    "bankruptcies": 0,
-    "active_loans": 2,
-    "total_loans_history": 5,
+    "credit_score": 650,
+    "loan_amnt": 250000000,
+    "int_rate": 12.5,
+    "annual_inc": 300000000,
+    "dti": 15.0,
+    "revol_util": 40.0,
+    "open_acc": 5,
+    "pub_rec": 0,
+    "term": 36,
     "home_ownership": "RENT",
-    "loan_purpose": "debt_consolidation"
+    "verification_status": "Verified",
+    "purpose": "debt_consolidation",
+    "emp_length": "5 years"
   }
+  (loan_to_income tu tinh tu loan_amnt / annual_inc)
 
 Output:
   {
@@ -55,21 +57,19 @@ from scorer import CreditScorer
 # ── Pydantic models ──
 
 class ScoreRequest(BaseModel):
-    credit_score: float = Field(..., ge=150, le=750, description="Điểm tín dụng NestJS (150-750)")
-    capital: float = Field(..., gt=0, description="Số tiền vay (VNĐ)")
-    monthly_income: float = Field(..., ge=0, description="Lương tháng (VNĐ)")
-    monthly_pay: float = Field(..., ge=0, description="Trả góp/tháng (VNĐ)")
-    revolving_balance: float = Field(default=0, ge=0, description="Dư nợ tín dụng (VNĐ)")
-    dti: float = Field(default=0, ge=0, le=100, description="Nợ/Thu nhập (%)")
-    revolving_util_percent: float = Field(default=50, ge=0, le=150, description="% sử dụng hạn mức")
-    term_months: Optional[float] = Field(default=36, alias="periodMonth", description="Kỳ hạn (tháng)")
-    emp_length_years: float = Field(default=5, ge=0, le=30, description="Số năm đi làm")
-    active_bad_debts: float = Field(default=0, ge=0, description="Nợ xấu đang active")
-    bankruptcies: float = Field(default=0, ge=0, description="Số lần phá sản")
-    active_loans: float = Field(default=0, ge=0, description="Số khoản vay đang mở")
-    total_loans_history: float = Field(default=0, ge=0, description="Tổng khoản vay từng có")
-    home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE")
-    loan_purpose: Optional[str] = Field(default="other", description="Mục đích vay")
+    credit_score: float = Field(..., ge=300, le=850, description="Diem tin dung (FICO/CIC 300-850)")
+    loan_amnt: float = Field(..., gt=0, description="So tien vay (VND)", alias="capital")
+    int_rate: float = Field(default=12.0, ge=0, le=40, description="Lai suat (%/nam)")
+    annual_inc: float = Field(default=0, ge=0, description="Thu nhap hang nam (VND)")
+    dti: float = Field(default=0, ge=0, le=100, description="No/Thu nhap (%)")
+    revol_util: float = Field(default=50, ge=0, le=150, description="% su dung han muc tin dung")
+    open_acc: int = Field(default=5, ge=0, le=50, description="So tai khoan tin dung dang mo")
+    pub_rec: int = Field(default=0, ge=0, le=20, description="So ho so cong khai (pha san...)")
+    term: Optional[int] = Field(default=36, description="Ky han (thang)", alias="periodMonth")
+    home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE / OTHER")
+    verification_status: Optional[str] = Field(default="Not Verified", description="Muc xac minh eKYC")
+    purpose: Optional[str] = Field(default="other", description="Muc dich vay (debt_consolidation, credit_card, ...)")
+    emp_length: Optional[str] = Field(default="5 years", description="Tham nien lam viec (< 1 year ... 10+ years)")
 
     class Config:
         populate_by_name = True
@@ -93,10 +93,10 @@ _EXCHANGE_RATE_CACHE: dict = {"rate": None, "source": "default"}
 
 async def fetch_exchange_rate() -> tuple[float, str]:
     """
-    Lấy tỷ giá USD→VNĐ:
-      1. Env var USD_TO_VND (override cứng nếu cần)
-      2. open.er-api.com (miễn phí, không cần key)
-      3. exchangerate-api.com (backup)
+    Lay ty gia USD→VND:
+      1. Env var USD_TO_VND
+      2. open.er-api.com
+      3. exchangerate-api.com
       4. Fallback 25000
     """
     env_rate = os.environ.get("USD_TO_VND")
@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI):
     # Fetch exchange rate on startup
     rate, source = await fetch_exchange_rate()
     _EXCHANGE_RATE_CACHE = {"rate": rate, "source": source}
-    print(f"[AIScore] Exchange rate: 1 USD = {rate:,.0f} VNĐ (source: {source})")
+    print(f"[AIScore] Exchange rate: 1 USD = {rate:,.0f} VND (source: {source})")
 
     yield
     # Shutdown
@@ -152,8 +152,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AIScore Service",
-    description="Hybrid Stacking Risk Scoring (5 Base OOF + RF Meta-Learner) — VNĐ Context (P2P Lending)",
-    version="4.0.0",
+    description="XGBoost + Random Forest Scorecard (14 Features: 9 NUM + 5 CAT) — Lending Club (P2P Lending)",
+    version="7.0.0",
     lifespan=lifespan,
 )
 
@@ -174,13 +174,13 @@ async def health():
     test_metrics = scorer.metadata.get("test_metrics", metrics) if scorer else metrics
     return {
         "status": "ok",
-        "service": "aiscore-service-v4-hybrid-stacking",
-        "model_loaded": scorer is not None and scorer.xgb_model is not None,
-        "model_type": "Hybrid Stacking 2-Layer (5 Base OOF + RF Meta-Learner)",
+        "service": "aiscore-service-v7-xgb-rf-scorecard",
+        "model_loaded": scorer is not None and scorer.rf_model is not None,
+        "model_type": "XGBoost (benchmark) + Random Forest Scorecard (14 feat: 9 NUM + 5 CAT)",
+        "data_source": "Lending Club accepted + rejected (2007-2018 Q4)",
         "architecture": scorer.metadata.get("architecture", "N/A") if scorer else "N/A",
-        "n_features": 15,
-        "n_meta_features": 20,
-        "auc_roc": test_metrics.get("auc_roc", "N/A"),
+        "n_features": len(scorer.metadata.get("feature_names", [])) if scorer else 14,
+        "auc_roc": test_metrics.get("rf_auc", test_metrics.get("auc_roc", "N/A")),
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }
 
@@ -188,9 +188,9 @@ async def health():
 @app.post("/api/score", response_model=ScoreResponse)
 async def predict_score(req: ScoreRequest):
     """
-    Score 1 borrower. Input đã ở VNĐ (từ NestJS gửi sang).
+    Score 1 borrower. Input nhan tu NestJS (VND context).
     """
-    if scorer is None or scorer.xgb_model is None:
+    if scorer is None or scorer.rf_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
@@ -207,9 +207,9 @@ async def predict_score(req: ScoreRequest):
 @app.post("/api/score/batch")
 async def predict_batch(req: BatchRequest):
     """
-    Score nhiều borrower cùng lúc (max 100).
+    Score nhieu borrower cung luc (max 100).
     """
-    if scorer is None or scorer.xgb_model is None:
+    if scorer is None or scorer.rf_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     if len(req.applicants) > 100:
@@ -246,7 +246,7 @@ async def predict_batch(req: BatchRequest):
 
 @app.get("/api/model/info")
 async def model_info():
-    """Metadata & metrics của model."""
+    """Metadata & metrics cua model."""
     if scorer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     return {"status": "success", "data": scorer.metadata}
@@ -254,7 +254,7 @@ async def model_info():
 
 @app.get("/api/exchange-rate", response_model=ExchangeRateResponse)
 async def get_exchange_rate():
-    """Lấy tỷ giá USD→VNĐ hiện tại (cached hoặc live)."""
+    """Lay ty gia USD→VND hien tai (cached hoac live)."""
     rate, source = await fetch_exchange_rate()
     _EXCHANGE_RATE_CACHE["rate"] = rate
     _EXCHANGE_RATE_CACHE["source"] = source

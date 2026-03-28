@@ -1,137 +1,119 @@
 """
-AIScore Service — Hybrid Stacking PD Scorer (VNĐ Context)
+AIScore Service — XGBoost + Random Forest Scorecard Scorer
 ===========================================================
 
-Hybrid Stacking 2 tầng (5 Base Learners):
-  Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
-  Level 2: Random Forest Meta-Learner
-    Input = [PD_xgb, PD_lgbm, PD_cat, PD_et, PD_gb] + 15 original features
-    Output = PD_final
+Architecture:
+  Stage 1: XGBoost → benchmark AUC + Feature Importance
+  Stage 2: Random Forest → PD (14 features: 9 NUMERIC + 5 CATEGORICAL)
+  Stage 3: PD → Scorecard formula → ai_risk_score (0-100)
 
-Nhận input từ NestJS (đã ở VNĐ), build feature vector, predict PD.
-Output: { ai_risk_score, default_probability, status }
+14 Features (from Lending Club data):
+  NUMERIC (9):  credit_score, loan_amnt, int_rate, annual_inc,
+                dti, revol_util, open_acc, pub_rec, loan_to_income
+  CATEGORY (5): term_enc, home_ownership_enc, verification_status_enc,
+                purpose_enc, emp_length_enc
 
-Input mapping (NestJS → FastAPI):
-  credit_score       → Điểm tín dụng NestJS (150-750)
-  capital            → Số tiền vay (VNĐ)
-  monthly_income     → Lương tháng (VNĐ)
-  monthly_pay        → Trả góp/tháng (VNĐ)
-  revolving_balance  → Dư nợ tín dụng (VNĐ)
-  dti                → Nợ/Thu nhập (%)
-  revolving_util_percent → % sử dụng hạn mức
-  term_months        → Kỳ hạn vay (tháng)
-  emp_length_years   → Số năm đi làm (0-10)
-  active_bad_debts   → Nợ xấu đang active
-  bankruptcies       → Số lần phá sản
-  active_loans       → Số khoản vay đang mở
-  total_loans_history → Tổng khoản vay từng có
-  home_ownership     → RENT / OWN / MORTGAGE
-  loan_purpose       → Mục đích vay (tên sản phẩm)
+Input tu NestJS (VND context):
+  {
+    "credit_score": 650,
+    "loan_amnt": 250000000,
+    "int_rate": 12.5,
+    "annual_inc": 300000000,
+    "dti": 15.0,
+    "revol_util": 40.0,
+    "open_acc": 5,
+    "pub_rec": 0,
+    "term": 36,
+    "home_ownership": "RENT",
+    "verification_status": "Verified",
+    "purpose": "debt_consolidation",
+    "emp_length": "5 years"
+  }
+  (loan_to_income tu tinh tu loan_amnt / annual_inc)
+
+Output:
+  { "ai_risk_score": 21, "default_probability": 0.2098, "status": "success" }
 """
 
 import os
 import numpy as np
 import xgboost as xgb
-import lightgbm as lgb
 import joblib
 import json
 from typing import Optional
 
-try:
-    from catboost import CatBoostClassifier
-except ImportError:
-    CatBoostClassifier = None
-
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
-# Features phải khớp thứ tự với train_model.py
-# LƯU Ý: interest_rate bị loại — lãi suất là động (nhân viên duyệt / bên thứ 3)
-FEATURE_NAMES = [
-    "credit_score",
-    "capital",
-    "monthly_income",
-    "monthly_pay",
-    "revolving_balance",
-    "dti",
-    "revolving_util_percent",
-    "term_months",
-    "emp_length_years",
-    "active_bad_debts",
-    "bankruptcies",
-    "active_loans",
-    "total_loans_history",
-    "home_ownership_enc",
-    "purpose_enc",
+NUMERIC_FEATURES = [
+    "credit_score", "loan_amnt", "int_rate", "annual_inc",
+    "dti", "revol_util", "open_acc", "pub_rec", "loan_to_income",
 ]
 
-HOME_OWNERSHIP_MAP = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3}
+CATEGORICAL_FEATURES = [
+    "term_enc", "home_ownership_enc", "verification_status_enc",
+    "purpose_enc", "emp_length_enc",
+]
 
-# Phải khớp với train_model.py
+FEATURE_NAMES = NUMERIC_FEATURES + CATEGORICAL_FEATURES  # 14 total
+
+HOME_OWNERSHIP_MAP = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3, "NONE": 3, "ANY": 3}
+
+VERIFICATION_MAP = {
+    "Not Verified": 0, "Source Verified": 1, "Verified": 2,
+    "not_verified": 0, "source_verified": 1, "verified": 2,
+    "NONE": 0, "PENDING": 0, "VERIFIED": 2, "REJECTED": 0,
+    "0": 0, "1": 1, "2": 2,
+}
+
 PURPOSE_MAP = {
     "debt_consolidation": 0, "credit_card": 1, "home_improvement": 2,
     "other": 3, "major_purchase": 4, "medical": 5, "small_business": 6,
     "car": 7, "vacation": 8, "moving": 9, "house": 10,
     "wedding": 11, "renewable_energy": 12, "educational": 13,
+    # Vietnamese aliases
+    "hop_nhat_no": 0, "the_tin_dung": 1, "sua_nha": 2, "khac": 3,
+    "mua_sam_lon": 4, "y_te": 5, "kinh_doanh_nho": 6, "mua_xe": 7,
+}
+
+EMP_LENGTH_MAP = {
+    "< 1 year": 0, "1 year": 1, "2 years": 2, "3 years": 3,
+    "4 years": 4, "5 years": 5, "6 years": 6, "7 years": 7,
+    "8 years": 8, "9 years": 9, "10+ years": 10,
 }
 
 
 class CreditScorer:
     """
-    Hybrid Stacking PD scorer (5 Base Learners + RF Meta):
-      Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradientBoosting
-      Level 2: RF Meta-Learner(5 PDs + 15 features) → PD_final
+    XGBoost (benchmark) + Random Forest Scorecard scorer.
+    Load models from MODEL_DIR, predict PD + ai_risk_score from features.
     """
 
     def __init__(self, model_dir: str = MODEL_DIR):
         self.xgb_model: Optional[xgb.XGBClassifier] = None
-        self.lgbm_model = None
-        self.cat_model = None
-        self.et_model = None
-        self.gb_model = None
-        self.rf_meta_model = None
+        self.rf_model = None
         self.per_feature_scalers: Optional[dict] = None
         self.metadata: dict = {}
         self.model_dir = model_dir
         self._load_models()
 
     def _load_models(self):
-        xgb_path = os.path.join(self.model_dir, "xgb_pd_model.json")
-        lgbm_path = os.path.join(self.model_dir, "lgbm_pd_model.txt")
-        cat_path = os.path.join(self.model_dir, "cat_pd_model.joblib")
-        et_path = os.path.join(self.model_dir, "et_pd_model.joblib")
-        gb_path = os.path.join(self.model_dir, "gb_pd_model.joblib")
-        rf_meta_path = os.path.join(self.model_dir, "rf_meta_model.joblib")
+        xgb_path = os.path.join(self.model_dir, "xgb_benchmark_model.json")
+        rf_path = os.path.join(self.model_dir, "rf_scorecard_model.joblib")
         scalers_path = os.path.join(self.model_dir, "per_feature_scalers.joblib")
         metadata_path = os.path.join(self.model_dir, "metadata.json")
 
-        if not os.path.exists(xgb_path):
+        if not os.path.exists(rf_path):
             raise FileNotFoundError(
-                f"XGBoost model not found at {xgb_path}.\nRun train_model.py on Colab first."
+                f"RF model not found at {rf_path}.\nRun train_model.py on Colab first."
             )
 
-        # Level 1: XGBoost
-        self.xgb_model = xgb.XGBClassifier()
-        self.xgb_model.load_model(xgb_path)
+        # XGBoost (benchmark only)
+        if os.path.exists(xgb_path):
+            self.xgb_model = xgb.XGBClassifier()
+            self.xgb_model.load_model(xgb_path)
 
-        # Level 1: LightGBM
-        if os.path.exists(lgbm_path):
-            self.lgbm_model = lgb.Booster(model_file=lgbm_path)
-
-        # Level 1: CatBoost
-        if os.path.exists(cat_path):
-            self.cat_model = joblib.load(cat_path)
-
-        # Level 1: ExtraTrees
-        if os.path.exists(et_path):
-            self.et_model = joblib.load(et_path)
-
-        # Level 1: GradientBoosting
-        if os.path.exists(gb_path):
-            self.gb_model = joblib.load(gb_path)
-
-        # Level 2: Random Forest Meta-Learner
-        if os.path.exists(rf_meta_path):
-            self.rf_meta_model = joblib.load(rf_meta_path)
+        # Random Forest (main model)
+        self.rf_model = joblib.load(rf_path)
 
         # Per-feature scalers
         if os.path.exists(scalers_path):
@@ -144,62 +126,31 @@ class CreditScorer:
 
     def predict(self, features: dict) -> dict:
         """
-        Predict PD bằng Hybrid Stacking (5 Base Learners):
-          Level 1: XGBoost + LightGBM + CatBoost + ExtraTrees + GradBoost
-          Level 2: RF Meta-Learner(5 PDs + 15 features) → PD_final
+        Predict PD using Random Forest (14 features: 9 NUM + 5 CAT).
         """
         processed = self._process_features(features)
+        X_raw = np.array([[processed[f] for f in FEATURE_NAMES]], dtype=np.float64)
 
-        missing = [f for f in FEATURE_NAMES if f not in processed]
-        if missing:
-            raise ValueError(f"Missing features after processing: {missing}")
-
-        X_raw = np.array([[processed[f] for f in FEATURE_NAMES]])
-
-        # Per-feature scaling
+        # Per-feature scaling (numeric scaled, categorical passthrough)
         if self.per_feature_scalers is not None:
             X = np.zeros_like(X_raw, dtype=np.float64)
             for i, fname in enumerate(FEATURE_NAMES):
                 if fname in self.per_feature_scalers:
-                    X[0, i] = self.per_feature_scalers[fname].transform(
-                        X_raw[0, i].reshape(1, -1)
-                    ).ravel()[0]
+                    strategy, scaler = self.per_feature_scalers[fname]
+                    if strategy == "passthrough" or scaler is None:
+                        X[0, i] = X_raw[0, i]
+                    elif strategy in ("log_standard", "log_robust"):
+                        val = np.log1p(max(X_raw[0, i], 0)).reshape(1, -1)
+                        X[0, i] = scaler.transform(val).ravel()[0]
+                    else:
+                        X[0, i] = scaler.transform(X_raw[0, i].reshape(1, -1)).ravel()[0]
                 else:
                     X[0, i] = X_raw[0, i]
         else:
             X = X_raw
 
-        # ── Level 1: 5 Base Learners ──
-        level1_pds = []
-
-        # XGBoost
-        xgb_pd = float(self.xgb_model.predict_proba(X)[0, 1]) if self.xgb_model else 0.0
-        level1_pds.append(xgb_pd)
-
-        # LightGBM
-        lgbm_pd = float(self.lgbm_model.predict(X)[0]) if self.lgbm_model else 0.0
-        level1_pds.append(lgbm_pd)
-
-        # CatBoost
-        cat_pd = float(self.cat_model.predict_proba(X)[0, 1]) if self.cat_model else 0.0
-        level1_pds.append(cat_pd)
-
-        # ExtraTrees
-        et_pd = float(self.et_model.predict_proba(X)[0, 1]) if self.et_model else 0.0
-        level1_pds.append(et_pd)
-
-        # GradientBoosting
-        gb_pd = float(self.gb_model.predict_proba(X)[0, 1]) if self.gb_model else 0.0
-        level1_pds.append(gb_pd)
-
-        # ── Level 2: RF Meta-Learner ──
-        if self.rf_meta_model is not None:
-            X_meta = np.column_stack([level1_pds, X])
-            pd_val = float(self.rf_meta_model.predict_proba(X_meta)[0, 1])
-        else:
-            # Fallback: average of all Level 1
-            pd_val = sum(level1_pds) / max(len(level1_pds), 1)
-
+        # Random Forest → PD
+        pd_val = float(self.rf_model.predict_proba(X)[0, 1])
         ai_risk_score = int(round(min(max(pd_val, 0), 1) * 100))
 
         return {
@@ -209,39 +160,54 @@ class CreditScorer:
         }
 
     def _process_features(self, raw: dict) -> dict:
-        """
-        Nhận VNĐ features từ NestJS, build 15-feature vector.
-        Tất cả các trường tiền tệ đã ở VNĐ rồi.
+        """Map raw input dict → 14 feature dict.
+
+        Accepts multiple aliases for backward compatibility:
+          loan_amnt / capital
+          annual_inc / annual_income / monthly_income (×12)
+          term / term_months / periodMonth
         """
         f = {}
 
-        # ── Numeric features (VNĐ — đã scale sẵn bởi NestJS) ──
-        f["credit_score"] = float(raw.get("credit_score", 450))
-        f["capital"] = float(raw.get("capital", 0))
-        f["monthly_income"] = float(raw.get("monthly_income", 0))
-        f["monthly_pay"] = float(raw.get("monthly_pay", 0))
-        f["revolving_balance"] = float(raw.get("revolving_balance", 0))
-        # interest_rate loại bỏ — lãi suất là động
-        f["dti"] = float(raw.get("dti", 0))
-        f["revolving_util_percent"] = float(raw.get("revolving_util_percent", 50))
-        f["term_months"] = float(raw.get("term_months", raw.get("periodMonth", 36)))
-        f["emp_length_years"] = float(raw.get("emp_length_years", 5))
-        f["active_bad_debts"] = float(raw.get("active_bad_debts", 0))
-        f["bankruptcies"] = float(raw.get("bankruptcies", 0))
-        f["active_loans"] = float(raw.get("active_loans", 0))
-        f["total_loans_history"] = float(raw.get("total_loans_history", 0))
+        # ── NUMERIC (9) ──
+        f["credit_score"] = min(max(float(raw.get("credit_score", 600)), 300), 850)
 
-        # ── Categoricals ──
+        f["loan_amnt"] = max(float(raw.get("loan_amnt", raw.get("capital", 0))), 0)
+
+        f["int_rate"] = min(max(float(raw.get("int_rate", 12)), 0), 40)
+
+        f["annual_inc"] = max(float(raw.get("annual_inc", raw.get("annual_income", 0))), 0)
+        if f["annual_inc"] == 0 and "monthly_income" in raw:
+            f["annual_inc"] = float(raw["monthly_income"]) * 12
+
+        f["dti"] = min(max(float(raw.get("dti", 0)), 0), 100)
+
+        f["revol_util"] = min(max(float(raw.get("revol_util", raw.get("revolving_util_percent", 50))), 0), 150)
+
+        f["open_acc"] = min(max(float(raw.get("open_acc", 5)), 0), 50)
+
+        f["pub_rec"] = min(max(float(raw.get("pub_rec", 0)), 0), 20)
+
+        # Engineered: loan_to_income
+        annual_safe = max(f["annual_inc"], 1)
+        f["loan_to_income"] = f["loan_amnt"] / annual_safe
+
+        # ── CATEGORICAL (5) ──
+        f["term_enc"] = float(raw.get("term", raw.get("term_months", raw.get("periodMonth", 36))))
+
         home = str(raw.get("home_ownership", "RENT")).upper()
         f["home_ownership_enc"] = HOME_OWNERSHIP_MAP.get(home, 3)
 
-        purpose = str(raw.get("loan_purpose", raw.get("purpose", "other"))).lower()
-        f["purpose_enc"] = PURPOSE_MAP.get(purpose, PURPOSE_MAP["other"])
+        vs = str(raw.get("verification_status", "Not Verified"))
+        f["verification_status_enc"] = VERIFICATION_MAP.get(vs, 0)
 
-        # ── Clip outliers (tương tự train) ──
-        f["credit_score"] = min(max(f["credit_score"], 150), 750)
-        f["dti"] = min(max(f["dti"], 0), 100)
-        f["active_loans"] = min(max(f["active_loans"], 0), 50)
-        f["revolving_util_percent"] = min(max(f["revolving_util_percent"], 0), 150)
+        purpose = str(raw.get("purpose", "other")).lower()
+        f["purpose_enc"] = PURPOSE_MAP.get(purpose, 3)
+
+        emp = raw.get("emp_length", "5 years")
+        if isinstance(emp, (int, float)):
+            f["emp_length_enc"] = min(max(int(emp), 0), 10)
+        else:
+            f["emp_length_enc"] = EMP_LENGTH_MAP.get(str(emp), 5)
 
         return f

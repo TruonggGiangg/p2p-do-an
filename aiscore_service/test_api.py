@@ -1,8 +1,11 @@
-"""Quick test script for AIScore FastAPI (VNĐ context)."""
+"""Quick test script for AIScore FastAPI v7 (14 features — Lending Club)."""
 import requests
 import json
 
 BASE = "http://localhost:8001"
+
+# VND rate = 25,000
+RATE = 25_000
 
 
 def test_case(label, payload):
@@ -21,83 +24,72 @@ def test_case(label, payload):
     print()
 
 
-# VNĐ rate = 25,000
-RATE = 25_000
-
-# Test 1: Khách hàng tốt (rủi ro thấp)
-test_case("TEST 1: Khách tốt — Lương cao, ít nợ", {
-    "credit_score": 680,
-    "capital": 10_000 * RATE,           # $10K → 250M VNĐ
-    "monthly_income": (120_000 / 12) * RATE,  # $10K/tháng → 250M
-    "monthly_pay": 310 * RATE,          # $310 → 7.75M
-    "revolving_balance": 5_000 * RATE,
+# Test 1: Khach hang tot (rui ro thap)
+test_case("TEST 1: Khach tot — Luong cao, it no, 10+ years kinh nghiem", {
+    "credit_score": 750,
+    "loan_amnt": 10_000 * RATE,           # $10K → 250M VND
+    "int_rate": 7.5,
+    "annual_inc": 120_000 * RATE,          # $120K/year → 3B VND
     "dti": 8.5,
-    "revolving_util_percent": 15.0,
-    "term_months": 36,
-    "emp_length_years": 10,
-    "active_bad_debts": 0,
-    "bankruptcies": 0,
-    "active_loans": 2,
-    "total_loans_history": 12,
+    "revol_util": 15.0,
+    "open_acc": 8,
+    "pub_rec": 0,
+    "term": 36,
     "home_ownership": "OWN",
-    "loan_purpose": "debt_consolidation",
+    "verification_status": "Verified",
+    "purpose": "debt_consolidation",
+    "emp_length": "10+ years",
 })
 
-# Test 2: Khách trung bình (rủi ro trung bình)
-test_case("TEST 2: Khách trung bình — Lương TB, nợ vừa", {
-    "credit_score": 480,
-    "capital": 20_000 * RATE,
-    "monthly_income": (55_000 / 12) * RATE,
-    "monthly_pay": 693 * RATE,
-    "revolving_balance": 18_000 * RATE,
+# Test 2: Khach trung binh (rui ro trung binh)
+test_case("TEST 2: Khach trung binh — Luong TB, no vua", {
+    "credit_score": 650,
+    "loan_amnt": 20_000 * RATE,            # $20K → 500M VND
+    "int_rate": 13.5,
+    "annual_inc": 55_000 * RATE,            # $55K/year
     "dti": 22.0,
-    "revolving_util_percent": 65.0,
-    "term_months": 36,
-    "emp_length_years": 3,
-    "active_bad_debts": 0,
-    "bankruptcies": 0,
-    "active_loans": 3,
-    "total_loans_history": 8,
+    "revol_util": 55.0,
+    "open_acc": 5,
+    "pub_rec": 0,
+    "term": 36,
     "home_ownership": "RENT",
-    "loan_purpose": "credit_card",
+    "verification_status": "Source Verified",
+    "purpose": "credit_card",
+    "emp_length": "3 years",
 })
 
-# Test 3: Khách rủi ro cao
-test_case("TEST 3: Khách xấu — Nợ nhiều, lương thấp", {
-    "credit_score": 280,
-    "capital": 35_000 * RATE,
-    "monthly_income": (30_000 / 12) * RATE,
-    "monthly_pay": 1_400 * RATE,
-    "revolving_balance": 45_000 * RATE,
-    "dti": 35.0,
-    "revolving_util_percent": 95.0,
-    "term_months": 60,
-    "emp_length_years": 0.5,
-    "active_bad_debts": 2,
-    "bankruptcies": 1,
-    "active_loans": 5,
-    "total_loans_history": 6,
-    "home_ownership": "RENT",
-    "loan_purpose": "small_business",
-})
-
-# Test 4: Khách Việt Nam thực tế
-test_case("TEST 4: Khách VN — Vay 50 triệu, lương 15 triệu", {
+# Test 3: Khach rui ro cao
+test_case("TEST 3: Khach xau — No nhieu, luong thap, co pha san", {
     "credit_score": 550,
-    "capital": 50_000_000,
-    "monthly_income": 15_000_000,
-    "monthly_pay": 2_500_000,
-    "revolving_balance": 10_000_000,
-    "dti": 16.7,
-    "revolving_util_percent": 40.0,
-    "term_months": 24,
-    "emp_length_years": 5,
-    "active_bad_debts": 0,
-    "bankruptcies": 0,
-    "active_loans": 1,
-    "total_loans_history": 3,
+    "loan_amnt": 35_000 * RATE,            # $35K → 875M VND
+    "int_rate": 24.0,
+    "annual_inc": 30_000 * RATE,            # $30K/year
+    "dti": 35.0,
+    "revol_util": 90.0,
+    "open_acc": 3,
+    "pub_rec": 2,
+    "term": 60,
     "home_ownership": "RENT",
-    "loan_purpose": "other",
+    "verification_status": "Not Verified",
+    "purpose": "small_business",
+    "emp_length": "< 1 year",
+})
+
+# Test 4: Khach Viet Nam thuc te
+test_case("TEST 4: Khach VN — Vay 50 trieu, luong 15 trieu/thang", {
+    "credit_score": 620,
+    "loan_amnt": 50_000_000,               # 50 trieu VND
+    "int_rate": 18.0,
+    "annual_inc": 15_000_000 * 12,          # 15tr/thang → 180tr/nam
+    "dti": 16.7,
+    "revol_util": 40.0,
+    "open_acc": 2,
+    "pub_rec": 0,
+    "term": 24,
+    "home_ownership": "RENT",
+    "verification_status": "Verified",
+    "purpose": "other",
+    "emp_length": "5 years",
 })
 
 # Test 5: Batch scoring
@@ -107,30 +99,49 @@ print("=" * 60)
 r = requests.post(f"{BASE}/api/score/batch", json={
     "applicants": [
         {
-            "credit_score": 700,
-            "capital": 100_000_000,
-            "monthly_income": 30_000_000,
-            "monthly_pay": 5_000_000,
+            "credit_score": 730,
+            "loan_amnt": 100_000_000,
+            "int_rate": 8.0,
+            "annual_inc": 500_000_000,
             "dti": 10.0,
-            "term_months": 36,
+            "revol_util": 20.0,
+            "open_acc": 10,
+            "pub_rec": 0,
+            "term": 36,
+            "home_ownership": "MORTGAGE",
+            "verification_status": "Verified",
+            "purpose": "home_improvement",
+            "emp_length": "8 years",
         },
         {
-            "credit_score": 400,
-            "capital": 200_000_000,
-            "monthly_income": 12_000_000,
-            "monthly_pay": 8_000_000,
+            "credit_score": 580,
+            "loan_amnt": 200_000_000,
+            "int_rate": 18.0,
+            "annual_inc": 150_000_000,
             "dti": 35.0,
-            "term_months": 60,
+            "revol_util": 70.0,
+            "open_acc": 4,
+            "pub_rec": 1,
+            "term": 60,
+            "home_ownership": "RENT",
+            "verification_status": "Not Verified",
+            "purpose": "credit_card",
+            "emp_length": "2 years",
         },
         {
-            "credit_score": 250,
-            "capital": 500_000_000,
-            "monthly_income": 8_000_000,
-            "monthly_pay": 15_000_000,
+            "credit_score": 500,
+            "loan_amnt": 500_000_000,
+            "int_rate": 28.0,
+            "annual_inc": 100_000_000,
             "dti": 60.0,
-            "term_months": 60,
-            "active_bad_debts": 3,
-            "bankruptcies": 1,
+            "revol_util": 95.0,
+            "open_acc": 2,
+            "pub_rec": 3,
+            "term": 60,
+            "home_ownership": "RENT",
+            "verification_status": "Not Verified",
+            "purpose": "small_business",
+            "emp_length": "< 1 year",
         },
     ]
 })
