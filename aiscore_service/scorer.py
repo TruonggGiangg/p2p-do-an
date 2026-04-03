@@ -1,12 +1,16 @@
 """
-CreditScorer — XGBoost + LR Scorecard Inference (v8.0)
-========================================================
+CreditScorer — Stacking Ensemble Inference (v9.0)
+===================================================
 
-Pipeline:  25 features → Smart Scaling → XGBoost(leaf) → OHE → LR → PD
+Pipeline:  25 features → Smart Scaling → XGBoost prob + SVM prob
+           → [XGB_p, SVM_p, 25 scaled features] → LR Meta → PD
 
-2 Stages:
-  Stage 1: XGBoost → Leaf Indices → OneHotEncode (sparse)
-  Stage 2: LR on [Leaf OHE + 25 Original Features] → PD (0.0-1.0)
+Architecture (Stacking — 2 Levels):
+  Level 1 — Base Learners:
+    XGBoost:  Non-linear pattern detection → probability
+    SVM (SGD linear): Geometric boundary → probability
+  Level 2 — Meta Learner:
+    LR on [XGB_proba, SVM_proba] + 25 original features → PD (calibrated)
 
 25 Features (Lending Club → mapped to P2P system):
   NUMERIC (21): credit_score, capital, monthly_income, monthly_pay,
@@ -32,7 +36,6 @@ import json
 import numpy as np
 import xgboost as xgb
 import joblib
-from scipy.sparse import hstack, csr_matrix
 
 
 # ── Feature Lists ──
@@ -90,12 +93,12 @@ def _transform_one_feature(values_1d, strategy, scaler):
 
 
 class CreditScorer:
-    """XGBoost + LR Scorecard scorer (v8.0).
+    """Stacking Ensemble scorer (v9.0).
 
     Artifacts (from train_model.py):
-      - xgb_pd_model.json          (XGBoost Stage 1 — leaf extractor)
-      - lr_scorecard_model.joblib   (LR Stage 2 — PD predictor)
-      - leaf_encoder.joblib         (OneHotEncoder for leaf indices)
+      - xgb_pd_model.json          (XGBoost Level 1 — probability)
+      - svm_model.joblib            (SVM Level 1 — probability)
+      - lr_meta_model.joblib        (LR Level 2 — meta learner)
       - per_feature_scalers.joblib  ({feature: (strategy, scaler)})
       - metadata.json               (metrics + config)
     """
@@ -103,15 +106,15 @@ class CreditScorer:
     def __init__(self, model_dir="models"):
         self.model_dir = model_dir
 
-        # Stage 1: XGBoost (leaf extractor)
+        # Level 1: XGBoost (probability predictor)
         self.xgb_model = xgb.XGBClassifier()
         self.xgb_model.load_model(os.path.join(model_dir, "xgb_pd_model.json"))
 
-        # Leaf OneHotEncoder
-        self.leaf_encoder = joblib.load(os.path.join(model_dir, "leaf_encoder.joblib"))
+        # Level 1: SVM (probability predictor)
+        self.svm_model = joblib.load(os.path.join(model_dir, "svm_model.joblib"))
 
-        # Stage 2: Logistic Regression (scorecard)
-        self.lr_model = joblib.load(os.path.join(model_dir, "lr_scorecard_model.joblib"))
+        # Level 2: Logistic Regression (meta learner)
+        self.lr_model = joblib.load(os.path.join(model_dir, "lr_meta_model.joblib"))
 
         # Smart per-feature scalers
         self.scalers = joblib.load(os.path.join(model_dir, "per_feature_scalers.joblib"))
@@ -120,11 +123,11 @@ class CreditScorer:
         with open(os.path.join(model_dir, "metadata.json"), "r") as f:
             self.metadata = json.load(f)
 
-        # Backward-compat alias (app.py checks scorer.rf_model)
+        # Backward-compat alias (app.py health check)
         self.rf_model = self.lr_model
 
     def predict(self, features: dict) -> dict:
-        """Predict PD using XGBoost + LR pipeline (25 features).
+        """Predict PD using Stacking pipeline (25 features).
 
         Returns ai_risk_score (0-100) and default_probability (0.0-1.0).
         """
@@ -137,13 +140,13 @@ class CreditScorer:
             strategy, sc = self.scalers[fname]
             X[:, i] = _transform_one_feature(X_raw[:, i], strategy, sc)
 
-        # Stage 1: XGBoost → Leaf Indices → OHE (sparse)
-        leaves = self.xgb_model.apply(X)
-        L = self.leaf_encoder.transform(leaves)
+        # Level 1: Base learner probabilities
+        xgb_p = float(self.xgb_model.predict_proba(X)[0, 1])
+        svm_p = float(self.svm_model.predict_proba(X)[0, 1])
 
-        # Stage 2: [Leaf OHE + 25 Original] → LR → PD
-        X_lr = hstack([L, csr_matrix(X)])
-        pd_val = float(self.lr_model.predict_proba(X_lr)[0, 1])
+        # Level 2: Meta features → LR → PD
+        meta = np.column_stack([[xgb_p], [svm_p], X])
+        pd_val = float(self.lr_model.predict_proba(meta)[0, 1])
         pd_val = min(max(pd_val, 1e-15), 1 - 1e-15)
 
         # ai_risk_score: 0 = safe, 100 = very risky
@@ -253,7 +256,7 @@ class CreditScorer:
                      raw.get("latePayments", raw.get("delinq_2yrs", 0)))
         ), 0), 20)
 
-        # ── NEW: Delinquency & debt features (mapped to P2P system) ──
+        # ── Delinquency & debt features ──
 
         f["accounts_delinquent"] = min(max(float(
             raw.get("accounts_delinquent",

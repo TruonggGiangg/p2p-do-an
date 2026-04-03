@@ -1,9 +1,11 @@
 """
-AIScore Service — FastAPI REST API (v8.0)
+AIScore Service — FastAPI REST API (v9.0)
 ===========================================
-XGBoost + Logistic Regression Scorecard:
-  Stage 1: XGBoost → Leaf Indices → OneHotEncode
-  Stage 2: LR on [Leaf OHE + 25 Features] → PD (calibrated)
+Stacking Ensemble: XGBoost + SVM (Level 1) → LR Meta (Level 2)
+
+Pipeline:
+  25 features → Smart Scaling → XGB prob + SVM prob
+  → [XGB_p, SVM_p, 25 features] → LR Meta → PD (calibrated)
 
 Dataset: Lending Club accepted + rejected (2007-2018 Q4)
 25 Features: 21 NUMERIC + 4 CATEGORICAL
@@ -124,7 +126,7 @@ async def lifespan(app: FastAPI):
     # Startup: load model
     try:
         scorer = CreditScorer()
-        print("[AIScore] Model loaded successfully (XGBoost + LR Scorecard, 25 features).")
+        print("[AIScore] Model loaded successfully (Stacking: XGB+SVM→LR, 25 features).")
     except FileNotFoundError:
         print("[AIScore] Model not found. Training now...")
         from train_model import train_model
@@ -144,8 +146,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AIScore Service",
-    description="XGBoost + LR Scorecard (25 Features: 21 NUM + 4 CAT) — P2P Lending Credit Scoring",
-    version="8.0.0",
+    description="Stacking Ensemble (XGB+SVM→LR Meta, 25 Features: 21 NUM + 4 CAT) — P2P Lending Credit Scoring",
+    version="9.0.0",
     lifespan=lifespan,
 )
 
@@ -166,13 +168,13 @@ async def health():
     test_metrics = scorer.metadata.get("test_metrics", metrics) if scorer else metrics
     return {
         "status": "ok",
-        "service": "aiscore-service-v8-xgb-lr-scorecard",
+        "service": "aiscore-service-v9-stacking",
         "model_loaded": scorer is not None and scorer.lr_model is not None,
-        "model_type": "XGBoost + LR Scorecard (25 feat: 21 NUM + 4 CAT)",
-        "architecture": "XGBoost(leaf) → OHE → LR(PD)",
+        "model_type": "Stacking (XGB+SVM→LR Meta, 25 feat: 21 NUM + 4 CAT)",
+        "architecture": "Level 1: XGBoost + SVM → Level 2: LR Meta(PD)",
         "data_source": "Lending Club accepted + rejected (2007-2018 Q4)",
-        "n_features": len(scorer.metadata.get("feature_names", [])) if scorer else 25,
-        "auc_roc": test_metrics.get("lr_auc", test_metrics.get("auc_roc", "N/A")),
+        "n_features": len(scorer.metadata.get("features", [])) if scorer else 25,
+        "auc_roc": test_metrics.get("stacking_auc", test_metrics.get("auc_roc", "N/A")),
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }
 
@@ -260,7 +262,7 @@ async def retrain_model():
         from train_model import train_model
         train_model()
         scorer = CreditScorer()
-        return {"status": "success", "message": "Model retrained and reloaded (XGBoost + LR Scorecard, 25 features)"}
+        return {"status": "success", "message": "Model retrained and reloaded (Stacking: XGB+SVM→LR, 25 features)"}
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)}")

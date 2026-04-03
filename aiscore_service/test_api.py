@@ -1,4 +1,4 @@
-"""Quick test script for AIScore FastAPI v8.0 (25 features — XGBoost + LR Scorecard)."""
+"""Quick test script for AIScore FastAPI v9.0 (25 features — Stacking: XGBoost + SVM → LR Meta)."""
 import requests
 import json
 
