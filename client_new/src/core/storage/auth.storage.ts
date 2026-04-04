@@ -30,11 +30,12 @@ export const authStorage = {
 
     // User
     async saveUser(user: User): Promise<void> {
-        await storage.setItem(KEYS.USER, JSON.stringify(user));
+        // User object can be > 2KB, so we use basic storage (AsyncStorage)
+        await storage.setBasicItem(KEYS.USER, JSON.stringify(user));
     },
 
     async getUser(): Promise<User | null> {
-        const userStr = await storage.getItem(KEYS.USER);
+        const userStr = await storage.getBasicItem(KEYS.USER);
         return userStr ? JSON.parse(userStr) : null;
     },
 
@@ -69,10 +70,10 @@ export const authStorage = {
     },
 
     async clearAll(): Promise<void> {
-        await storage.multiRemove([
-            KEYS.ACCESS_TOKEN,
-            KEYS.REFRESH_TOKEN,
-            KEYS.USER,
+        await Promise.all([
+            storage.removeItem(KEYS.ACCESS_TOKEN),
+            storage.removeItem(KEYS.REFRESH_TOKEN),
+            storage.removeBasicItem(KEYS.USER),
         ]);
     },
 

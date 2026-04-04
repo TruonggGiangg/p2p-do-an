@@ -116,6 +116,7 @@ export const useSmartOTP = () => {
       if (lastTimeStepRef.current !== currentTimeStep) {
         lastTimeStepRef.current = currentTimeStep;
         try {
+          console.log(`[useSmartOTP] Periodic update: refreshing OTP for step ${currentTimeStep}`);
           const newOtp = await SmartOTPService.generateTOTP();
           setOtp(newOtp);
         } catch (err) {

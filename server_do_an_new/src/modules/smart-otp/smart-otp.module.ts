@@ -28,6 +28,6 @@ import { TwoFactorModule } from '../two-factor/two-factor.module';
     DeviceBindingService,
     OtpSessionService,
   ],
-  exports: [SmartOtpService],
+  exports: [SmartOtpService, OtpSessionService],
 })
 export class SmartOtpModule { }

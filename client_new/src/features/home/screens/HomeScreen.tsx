@@ -9,7 +9,6 @@ import {
     ScrollView,
     NativeSyntheticEvent,
     NativeScrollEvent,
-    Pressable,
 } from 'react-native';
 import Animated, {
     FadeInDown,
@@ -31,7 +30,7 @@ import { walletAPI } from '../../wallet/api/wallet.api';
 import { BinanceHeader, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
 import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import {
     Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
     CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
@@ -361,7 +360,7 @@ function FlippableCard({
     });
 
     return (
-        <Pressable onPress={handleFlip} style={styles.flippableCardWrap}>
+        <TouchableOpacity onPress={handleFlip} activeOpacity={0.9} style={styles.flippableCardWrap}>
             <Animated.View style={[styles.cardSide, frontStyle]}>
                 <CardFront wallet={wallet} gradientColors={gradientColors} isDefault={isDefault} userName={userName} />
             </Animated.View>
@@ -377,77 +376,137 @@ function FlippableCard({
                     style={StyleSheet.absoluteFill}
                 />
             </Animated.View>
-        </Pressable>
+        </TouchableOpacity>
     );
 }
 
 // ─────────────────────────────────────────────
+// Bento Service Item — Obsidian Glass style
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Balance Toggle Icon — Interactive micro-animation
+// ─────────────────────────────────────────────
+const BalanceToggleIcon = ({ visible, color, onPress }: { visible: boolean, color: string, onPress: () => void }) => {
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: withSpring(scale.value) }]
+    }));
+
+    return (
+        <Animated.View style={animatedStyle}>
+            <TouchableOpacity 
+                activeOpacity={0.8}
+                onPressIn={() => { scale.value = 0.8; }}
+                onPressOut={() => { scale.value = 1; }}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onPress();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+                <MaterialCommunityIcons 
+                    name={visible ? 'eye-outline' : 'eye-off-outline'} 
+                    size={22} 
+                    color={color} 
+                />
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
+
+const ServiceGridItem = ({ item, index, theme }: { item: ShortcutItem, index: number, theme: any }) => {
+    const navigation = useNavigation<any>();
+    const IconComp = PHOSPHOR_MAP[item.icon] || PHOSPHOR_MAP.CurrencyDollar;
+    const isDark = theme.mode === 'dark';
+    
+    // Scale animation
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: withSpring(scale.value, { damping: 15, stiffness: 150 }) }]
+    }));
+
+    return (
+        <Animated.View entering={FadeInDown.delay(400 + index * 50).duration(500)} style={[styles.serviceItemWrap, animatedStyle]}>
+            <TouchableOpacity
+                style={[
+                    styles.serviceItem,
+                    { 
+                        backgroundColor: isDark ? 'rgba(26, 25, 25, 0.6)' : '#F8F9FA',
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                        borderWidth: 1,
+                    }
+                ]}
+                activeOpacity={0.9}
+                onPressIn={() => { scale.value = 0.95; }}
+                onPressOut={() => { scale.value = 1; }}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (item.nav) navigation.navigate(item.nav);
+                }}
+            >
+                <LinearGradient
+                    colors={isDark ? ['rgba(205, 234, 45, 0.15)', 'transparent'] : ['rgba(20, 52, 43, 0.05)', 'transparent']}
+                    style={styles.serviceIconCircle}
+                >
+                    <IconComp 
+                        size={22} 
+                        color={isDark ? theme.colors.primary : theme.colors.primary} 
+                        weight="duotone"
+                    />
+                </LinearGradient>
+                <View style={styles.serviceLabelWrap}>
+                    <Text style={[styles.serviceLabel, { color: theme.colors.text }]}>{item.label}</Text>
+                    <Text style={[styles.serviceDesc, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                        {item.description}
+                    </Text>
+                </View>
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
+
+// ─────────────────────────────────────────────
 // Quick Action
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Quick Action — Sovereign Monolith Glass
 // ─────────────────────────────────────────────
 function QuickActionButton({
     item, onPress, colors, delay = 0,
 }: { item: ShortcutItem; onPress: () => void; colors: any; delay?: number; }) {
+    const { theme, themeMode } = useTheme();
+    const isDark = themeMode === 'dark';
+    const scale = useSharedValue(1);
+    
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: withSpring(scale.value) }]
+    }));
+
+    const onPressIn = () => { scale.value = 0.92; };
+    const onPressOut = () => { scale.value = 1; };
+
     return (
-        <Animated.View entering={FadeInDown.delay(delay).duration(500)}>
-            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
-                <View style={[styles.quickActionCircle, { backgroundColor: colors.accent }]}>
-                    <PIcon name={item.icon} size={24} color="#CDEA2D" weight="duotone" />
+        <Animated.View entering={FadeInDown.delay(delay).duration(600)} style={animatedStyle}>
+            <TouchableOpacity 
+                style={styles.quickActionBtn} 
+                activeOpacity={0.9}
+                onPressIn={onPressIn}
+                onPressOut={onPressOut}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
+            >
+                <View style={styles.quickActionGlassContainer}>
+                    <LinearGradient
+                        colors={[isDark ? 'rgba(205, 234, 45, 0.28)' : 'rgba(20, 52, 43, 0.12)', 'rgba(205, 234, 45, 0.04)']}
+                        style={styles.quickActionCircle}
+                    >
+                        <PIcon name={item.icon} size={26} color={theme.colors.primary} weight="duotone" />
+                    </LinearGradient>
                 </View>
                 <Text style={[styles.quickActionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
             </TouchableOpacity>
         </Animated.View>
     );
 }
-
-// ─────────────────────────────────────────────
-// Service Item
-// ─────────────────────────────────────────────
-function ServiceGridItem({
-    item, onPress, colors, isDark, index,
-}: { item: ShortcutItem; onPress: () => void; colors: any; isDark: boolean; index: number; }) {
-    const itemColor = item.color || colors.accent;
-    const iconBg = isDark
-        ? `${itemColor}18`
-        : `${itemColor}14`;
-
-    return (
-        <Animated.View entering={FadeInDown.delay(400 + index * 60).duration(500)} style={styles.serviceItemWrap}>
-            <TouchableOpacity style={[styles.serviceItem, {
-                backgroundColor: isDark ? 'rgba(37,57,51,0.5)' : '#FFF',
-                ...Platform.select({
-                    ios: { shadowColor: isDark ? '#000' : '#14342B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.25 : 0.06, shadowRadius: 12 },
-                    android: { elevation: isDark ? 3 : 2 },
-                }),
-            }]} activeOpacity={0.6}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
-                <View style={[
-                    styles.serviceIconCircle,
-                    { backgroundColor: colors.accent || '#14342B' },
-                ]}>
-                    <PIcon
-                        name={item.icon}
-                        size={22}
-                        color="#CDEA2D"
-                        weight="duotone"
-                    />
-                </View>
-                <View style={styles.serviceLabelWrap}>
-                    <Text style={[styles.serviceLabel, { color: colors.textPrimary }]} numberOfLines={1}>
-                        {item.label}
-                    </Text>
-                    {item.description && (
-                        <Text style={[styles.serviceDesc, { color: colors.textMuted || colors.textSecondary }]} numberOfLines={1}>
-                            {item.description}
-                        </Text>
-                    )}
-                </View>
-            </TouchableOpacity>
-        </Animated.View>
-    );
-}
-
-
 
 // ═══════════════════════════════════════════════
 // HOME SCREEN
@@ -540,10 +599,11 @@ export default function HomeScreen() {
                         <Text style={[styles.greetingText, { color: c.textSecondary }]}>{getGreeting()} 👋</Text>
                         <View style={styles.greetingRow}>
                             <Text style={[styles.greetingName, { color: c.textPrimary }]}>{userName}</Text>
-                            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setBalanceVisible(v => !v); }}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <MaterialCommunityIcons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={22} color={c.textSecondary} />
-                            </TouchableOpacity>
+                            <BalanceToggleIcon 
+                                visible={balanceVisible} 
+                                color={c.textSecondary}
+                                onPress={() => { setBalanceVisible(v => !v); }} 
+                            />
                         </View>
                     </Animated.View>
 
@@ -562,7 +622,7 @@ export default function HomeScreen() {
                             <View style={styles.cardDots}>
                                 {displayWallets.map((_, i) => (
                                     <View key={i} style={[styles.cardDot, {
-                                        backgroundColor: i === activeCardIndex ? '#CDEA2D' : (isDark ? c.border : '#D1D5DB'),
+                                        backgroundColor: i === activeCardIndex ? theme.colors.primary : (theme.mode === 'dark' ? theme.colors.border : '#D1D5DB'),
                                         width: i === activeCardIndex ? 20 : 8,
                                     }]} />
                                 ))}
@@ -590,7 +650,7 @@ export default function HomeScreen() {
                         </View>
                         <View style={styles.servicesCard}>
                             {SERVICES_GRID.map((item, idx) => (
-                                <ServiceGridItem key={idx} item={item} onPress={() => handleItemPress(item)} colors={c} isDark={isDark} index={idx} />
+                                <ServiceGridItem key={idx} item={item} theme={theme} index={idx} />
                             ))}
                         </View>
                     </Animated.View>
@@ -602,7 +662,7 @@ export default function HomeScreen() {
                         </View>
                         <View style={styles.servicesCard}>
                             {UTILITIES_GRID.map((item, idx) => (
-                                <ServiceGridItem key={idx} item={item} onPress={() => handleItemPress(item)} colors={c} isDark={isDark} index={idx} />
+                                <ServiceGridItem key={idx} item={item} theme={theme} index={idx} />
                             ))}
                         </View>
                     </Animated.View>
@@ -803,24 +863,70 @@ const styles = StyleSheet.create({
     swipeHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8 },
     swipeHintText: { fontSize: 11, fontWeight: '500' },
 
-    // ── Quick Actions ──
-    quickActionsSection: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, marginTop: 24 },
-    quickActionBtn: { alignItems: 'center', width: 72 },
-    quickActionCircle: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    quickActionLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
-
-    // ── Services — Stitch "Bioluminescent Vault" 2-column card grid ──
-    servicesSection: { paddingHorizontal: 20, marginTop: 28 },
-    servicesCard: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-    serviceItemWrap: { width: '50%', padding: 4 },
-    serviceItem: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        paddingVertical: 14, paddingHorizontal: 12, borderRadius: 16,
+    // ── Quick Actions (Sovereign Monolith) ──
+    quickActionsSection: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-around', 
+        paddingHorizontal: 16, 
+        marginTop: 28,
+        paddingVertical: 4,
     },
-    serviceIconCircle: { width: 42, height: 42, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+    quickActionBtn: { alignItems: 'center', width: 78 },
+    quickActionGlassContainer: {
+        width: 62, 
+        height: 62, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        marginBottom: 10,
+        position: 'relative',
+    },
+    quickActionCircle: { 
+        width: 62, 
+        height: 62, 
+        borderRadius: 22, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+    },
+    quickActionLabel: { 
+        fontSize: 12, 
+        fontWeight: '700', 
+        textAlign: 'center',
+        letterSpacing: -0.2,
+    },
+
+    // ── Services (Obsidian Glass) ──
+    servicesSection: { paddingHorizontal: 20, marginTop: 32 },
+    servicesCard: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+    serviceItemWrap: { width: '50%', padding: 6 },
+    serviceItem: {
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        gap: 12,
+        paddingVertical: 18, 
+        paddingHorizontal: 14, 
+        borderRadius: 24,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+            },
+            android: { elevation: 3 },
+        }),
+    },
+    serviceIconCircle: { 
+        width: 44, 
+        height: 44, 
+        borderRadius: 14, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(134, 254, 167, 0.1)',
+    },
     serviceLabelWrap: { flex: 1 },
-    serviceLabel: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
-    serviceDesc: { fontSize: 10, fontWeight: '500', marginTop: 1, lineHeight: 14, opacity: 0.7 },
+    serviceLabel: { fontSize: 13, fontWeight: '800', lineHeight: 18, letterSpacing: -0.3 },
+    serviceDesc: { fontSize: 10, fontWeight: '600', marginTop: 2, lineHeight: 14, opacity: 0.5 },
 
 });
 

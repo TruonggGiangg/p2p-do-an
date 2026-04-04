@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 interface BinanceHeaderProps {
     mode?: 'dashboard' | 'standard';
@@ -21,9 +22,33 @@ interface BinanceHeaderProps {
     onAvatarPress?: () => void;
     onSearchPress?: () => void;
     rightComponents?: React.ReactNode;
-    /** Hiển thị nút chuyển theme (mặc định: true) */
     showThemeToggle?: boolean;
 }
+
+// ─────────────────────────────────────────────
+// Animated Header Button Component
+// ─────────────────────────────────────────────
+const AnimatedBtn = ({ icon, onPress, badge, colors, size = 22 }: any) => {
+    const scale = useSharedValue(1);
+    const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value) }] }));
+
+    return (
+        <Animated.View style={animStyle}>
+            <TouchableOpacity 
+                style={styles.iconBtn} 
+                onPressIn={() => scale.value = 0.9}
+                onPressOut={() => scale.value = 1}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onPress?.();
+                }}
+            >
+                <MaterialCommunityIcons name={icon} size={size} color={colors.textPrimary} />
+                {badge && <View style={[styles.dot, { backgroundColor: colors.primary }]} />}
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
 
 export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     mode = 'standard',
@@ -38,12 +63,10 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
     const { theme, themeMode, toggleThemeWithTransition, toggleThemeWithOverlay } = useTheme();
     const insets = useSafeAreaInsets();
 
-    // Use a stable fallback for first render to prevent header jumping
     const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
     const cachedTopInset = useRef<number>(FALLBACK_TOP);
     const [ready, setReady] = useState(false);
 
-    // Once insets arrive with a real value, lock it in
     useLayoutEffect(() => {
         if (insets.top > 0 && !ready) {
             cachedTopInset.current = insets.top;
@@ -71,61 +94,74 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
         }
     };
 
-    const ThemeToggleButton = () => (
-        <TouchableOpacity style={styles.iconBtn} onPress={(e) => handleThemePress(e)}>
-            <MaterialCommunityIcons
-                name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
-                size={22}
-                color={theme.colors.textPrimary}
-            />
-        </TouchableOpacity>
-    );
+    const ThemeToggleButton = () => {
+        const scale = useSharedValue(1);
+        const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value) }] }));
+
+        return (
+            <Animated.View style={animStyle}>
+                <TouchableOpacity 
+                    style={styles.iconBtn} 
+                    onPressIn={() => scale.value = 0.9}
+                    onPressOut={() => scale.value = 1}
+                    onPress={(e) => handleThemePress(e)}
+                >
+                    <MaterialCommunityIcons
+                        name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
+                        size={22}
+                        color={theme.colors.textPrimary}
+                    />
+                </TouchableOpacity>
+            </Animated.View>
+        );
+    };
 
     const topPadding = Platform.OS === 'ios' ? stableTop : Math.max(stableTop, (StatusBar.currentHeight || 24));
 
     if (mode === 'dashboard') {
+        const avatarScale = useSharedValue(1);
+        const avatarStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(avatarScale.value) }] }));
+        
+        const searchScale = useSharedValue(1);
+        const searchStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(searchScale.value) }] }));
+
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: topPadding }]}>
                 <View style={styles.dashboardContent}>
                     {/* Left: Avatar */}
-                    <TouchableOpacity
-                        style={[styles.avatarContainer, { backgroundColor: theme.colors.surfaceLight }]}
-                        onPress={onAvatarPress}
-                    >
-                        <MaterialCommunityIcons name="account" size={20} color={theme.colors.textPrimary} />
-                        <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.primary }]}>
-                            <MaterialCommunityIcons name="check" size={8} color="#000" />
-                        </View>
-                    </TouchableOpacity>
+                    <Animated.View style={avatarStyle}>
+                        <TouchableOpacity
+                            style={[styles.avatarContainer, { backgroundColor: theme.colors.surfaceLight }]}
+                            onPressIn={() => avatarScale.value = 0.9}
+                            onPressOut={() => avatarScale.value = 1}
+                            onPress={onAvatarPress}
+                        >
+                            <MaterialCommunityIcons name="account" size={20} color={theme.colors.textPrimary} />
+                            <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.primary }]}>
+                                <MaterialCommunityIcons name="check" size={8} color="#000" />
+                            </View>
+                        </TouchableOpacity>
+                    </Animated.View>
 
                     {/* Center: Search Bar style */}
-                    <TouchableOpacity
-                        style={[styles.searchBar, { backgroundColor: theme.colors.surfaceLight }]}
-                        onPress={onSearchPress}
-                        activeOpacity={0.8}
-                    >
-                        <MaterialCommunityIcons name="magnify" size={18} color={theme.colors.textDim} />
-                        <Text style={[styles.searchText, { color: theme.colors.textDim }]}>Search coins/features</Text>
-                    </TouchableOpacity>
+                    <Animated.View style={[{flex: 1}, searchStyle]}>
+                        <TouchableOpacity
+                            style={[styles.searchBar, { backgroundColor: theme.colors.surfaceLight }]}
+                            onPressIn={() => searchScale.value = 0.98}
+                            onPressOut={() => searchScale.value = 1}
+                            onPress={onSearchPress}
+                            activeOpacity={0.9}
+                        >
+                            <MaterialCommunityIcons name="magnify" size={18} color={theme.colors.textDim} />
+                            <Text style={[styles.searchText, { color: theme.colors.textDim }]}>Search coins/features</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
 
                     {/* Right: Icons */}
                     <View style={styles.rightIcons}>
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => (navigation as any).navigate('Notifications')}>
-                            <MaterialCommunityIcons name="bell-outline" size={22} color={theme.colors.textPrimary} />
-                            <View style={[styles.dot, { backgroundColor: theme.colors.primary }]} />
-                        </TouchableOpacity>
-                        {showThemeToggle && (
-                            <TouchableOpacity style={styles.iconBtn} onPress={(e) => handleThemePress(e)}>
-                                <MaterialCommunityIcons
-                                    name={themeMode === 'dark' ? 'weather-sunny' : 'weather-night'}
-                                    size={22}
-                                    color={theme.colors.textPrimary}
-                                />
-                            </TouchableOpacity>
-                        )}
-                        <TouchableOpacity style={styles.iconBtn}>
-                            <MaterialCommunityIcons name="headphones" size={20} color={theme.colors.textPrimary} />
-                        </TouchableOpacity>
+                        <AnimatedBtn icon="bell-outline" badge colors={theme.colors} onPress={() => (navigation as any).navigate('Notifications')} />
+                        {showThemeToggle && <ThemeToggleButton />}
+                        <AnimatedBtn icon="headphones" colors={theme.colors} onPress={() => {}} />
                     </View>
                 </View>
             </View>
@@ -181,9 +217,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     avatarContainer: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 34,
+        height: 34,
+        borderRadius: 17,
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
@@ -204,14 +240,13 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        height: 32,
-        borderRadius: 16,
+        height: 34,
+        borderRadius: 17,
         paddingHorizontal: 12,
         gap: 8,
     },
     searchText: {
         fontSize: 12,
-        fontFamily: 'Poppins_400Regular',
     },
     rightIcons: {
         flexDirection: 'row',
@@ -219,12 +254,16 @@ const styles = StyleSheet.create({
         gap: 14,
     },
     iconBtn: {
-        position: 'relative',
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     dot: {
         position: 'absolute',
-        top: 0,
-        right: 0,
+        top: 8,
+        right: 8,
         width: 6,
         height: 6,
         borderRadius: 3,
@@ -235,7 +274,7 @@ const styles = StyleSheet.create({
     },
     standardTitle: {
         fontSize: 18,
-        fontFamily: 'Poppins_600SemiBold',
+        fontWeight: '600',
     },
     rightActions: {
         flexDirection: 'row',

@@ -33,6 +33,7 @@ export interface TransferRequest {
     toWalletId: string;
     amount: number;
     description?: string;
+    deviceId: string;
 }
 
 export interface TransferByPhoneRequest {
@@ -40,6 +41,7 @@ export interface TransferByPhoneRequest {
     recipientPhone: string;
     amount: number;
     description?: string;
+    deviceId: string;
 }
 
 export interface TransferByAccountRequest {
@@ -47,6 +49,15 @@ export interface TransferByAccountRequest {
     recipientAccountNo: string;
     amount: number;
     description?: string;
+    deviceId: string;
+}
+
+export interface ConfirmTransferRequest {
+    sessionId: string;
+    otp: string;
+    signature: string;
+    deviceId: string;
+    timestamp: number;
 }
 
 export interface TransferResponse {
@@ -106,8 +117,8 @@ export const walletAPI = {
     },
 
     /** Transfer money by phone number */
-    transferByPhone: async (data: TransferByPhoneRequest): Promise<TransferResponse> => {
-        const response = await api.post<{ data: TransferResponse }>('/api/wallets/transfer/phone', data);
+    transferByPhone: async (data: TransferByPhoneRequest): Promise<any> => {
+        const response = await api.post<{ data: any }>('/api/wallets/transfer/phone', data);
         return response.data.data;
     },
 
@@ -118,8 +129,14 @@ export const walletAPI = {
     },
 
     /** Transfer money by account number */
-    transferByAccountNumber: async (data: TransferByAccountRequest): Promise<TransferResponse> => {
-        const response = await api.post<{ data: TransferResponse }>('/api/wallets/transfer/account', data);
+    transferByAccountNumber: async (data: TransferByAccountRequest): Promise<any> => {
+        const response = await api.post<{ data: any }>('/api/wallets/transfer/account', data);
+        return response.data.data;
+    },
+
+    /** Confirm and execute transfer after OTP */
+    confirmTransfer: async (data: ConfirmTransferRequest): Promise<TransferResponse> => {
+        const response = await api.post<{ data: TransferResponse }>('/api/wallets/transfer/confirm', data);
         return response.data.data;
     },
 };

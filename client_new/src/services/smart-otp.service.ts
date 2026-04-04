@@ -194,6 +194,16 @@ const generateTOTP = async (): Promise<string> => {
 
     // otplib v13 functional API
     const code = generateSync({ secret: totpSecret });
+
+    const remaining = getRemainingSeconds();
+    const step = getTimeStep();
+    console.log("========== [CLIENT] SMART OTP GENERATED ==========");
+    console.log(`OTP Code: ${code}`);
+    console.log(`Remaining: ${remaining}s`);
+    console.log(`Time Step: ${step}`);
+    console.log(`Local Time: ${new Date().toISOString()}`);
+    console.log("==================================================");
+
     return code;
   } catch (error) {
     console.error("[SmartOTPService] generateTOTP error:", error);
@@ -369,8 +379,16 @@ const verifyOTP = async (
   const deviceId = await getDeviceId();
   const timestamp = Math.floor(Date.now() / 1000);
 
+  console.log("========== [CLIENT] VERIFYING OTP ==========");
+  console.log(`Session ID: ${sessionId}`);
+  console.log(`Action Type: ${actionType}`);
+  console.log(`OTP Code: ${otp}`);
+  console.log(`Signing Timestamp: ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
+  console.log(`Device ID: ${deviceId}`);
+
   // Sign the payload
   const signature = await signPayload(otp, timestamp, actionType);
+  console.log(`Signature Base64: ${signature.substring(0, 20)}...`);
 
   const response = await api.post<VerifyOtpResponse>("/api/otp/verify", {
     sessionId,
@@ -380,6 +398,9 @@ const verifyOTP = async (
     deviceId,
     actionType,
   });
+  console.log("Server Response:", JSON.stringify(response.data));
+  console.log("============================================");
+
   const envelope: any = response.data;
   const payload: any = envelope?.data ?? envelope;
 

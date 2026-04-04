@@ -12,7 +12,7 @@ import {
     Keyboard,
     TouchableWithoutFeedback,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { CommonButton, CommonInput, CommonCard, BinanceHeader } from '../../../components';
@@ -21,11 +21,13 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI } from '../api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
 import type { Wallet } from '../../../types/auth.types';
+import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { WalletSelectorModal } from '../components/WalletSelectorModal';
 import * as Haptics from 'expo-haptics';
+import SmartOTPService from '../../../services/smart-otp.service';
 
 export default function TransferScreen() {
-    const navigation = useNavigation();
+    const navigation = useNavigation<NavigationProp<RootStackParamList>>();
     const route = useRoute();
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
@@ -89,19 +91,44 @@ export default function TransferScreen() {
         try {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             const fromWalletId = selectedWallet.fineractId || selectedWallet.accountNo || selectedWallet.id || selectedWallet._id;
+            const deviceId = await SmartOTPService.getDeviceId();
 
-            await walletAPI.transferByAccountNumber({
+            const result = await walletAPI.transferByAccountNumber({
                 fromWalletId: fromWalletId as string,
                 recipientAccountNo: recipientAccountNo.trim(),
                 amount: amountNum,
                 description: description.trim() || undefined,
+                deviceId,
             });
 
-            Alert.alert('Thành công', `Đã chuyển ${formatCurrency(amountNum)} đến tài khoản ${recipientAccountNo}`, [
-                { text: 'OK', onPress: () => navigation.goBack() }
-            ]);
+            // Navigate to Confirm screen with session info
+            navigation.navigate('TransferConfirm', {
+                sessionId: result.sessionId,
+                transactionData: {
+                    fromWalletName: selectedWallet?.productName || 'Ví nguồn',
+                    fromWalletId: String(fromWalletId),
+                    recipientAccountNo: recipientAccountNo.trim(),
+                    amount: amountNum,
+                    description: description.trim(),
+                }
+            });
         } catch (error: any) {
-            Alert.alert('Thất bại', error.message || 'Có lỗi xảy ra khi chuyển tiền');
+            const msg = error?.response?.data?.message || error?.message || '';
+            if (msg.includes('chưa được đăng ký Smart OTP') || msg.includes('Smart OTP')) {
+                Alert.alert(
+                    'Chưa đăng ký Smart OTP',
+                    'Bạn cần đăng ký thiết bị với Smart OTP trước khi thực hiện chuyển tiền.\n\nVào Tài khoản → Mã OTP thông minh → Đăng ký thiết bị.',
+                    [
+                        { text: 'Để sau', style: 'cancel' },
+                        {
+                            text: 'Đi đăng ký',
+                            onPress: () => navigation.navigate('Main' as any, { screen: 'Profile' }),
+                        },
+                    ],
+                );
+            } else {
+                Alert.alert('Thất bại', msg || 'Có lỗi xảy ra khi chuyển tiền');
+            }
         } finally {
             setLoading(false);
         }

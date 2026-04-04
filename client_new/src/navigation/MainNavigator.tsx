@@ -1,9 +1,12 @@
 import React, { useEffect } from 'react';
-import { Platform, View, StyleSheet } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { View, StyleSheet, Platform, Dimensions, TouchableOpacity } from 'react-native';
+import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePin } from '../contexts/PinContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,6 +67,37 @@ export type MainTabParamList = {
     Profile: undefined;
 };
 
+// ─────────────────────────────────────────────
+// Animated Tab Button — Sovereign Monolith style
+// ─────────────────────────────────────────────
+const TabButton = (props: any) => {
+    const { children, onPress, onLongPress, style, ...rest } = props;
+    const scale = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: withSpring(scale.value, { damping: 12, stiffness: 150 }) }]
+    }));
+
+    return (
+        <Animated.View style={[{ flex: 1 }, animatedStyle]}>
+            <TouchableOpacity 
+                {...rest}
+                onPress={(e) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onPress?.(e);
+                }}
+                onLongPress={onLongPress}
+                onPressIn={() => { scale.value = 0.9; }}
+                onPressOut={() => { scale.value = 1; }}
+                activeOpacity={1}
+                style={[style, { flex: 1 }]}
+            >
+                {children}
+            </TouchableOpacity>
+        </Animated.View>
+    );
+};
+
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainNavigator() {
@@ -76,11 +110,26 @@ export default function MainNavigator() {
         user?.metadata?.userType === 'lender' ||
         (user?.roles || []).some(r => r.toLowerCase() === 'lender');
 
-    const bottomTabHeight = Platform.OS === 'ios' ? 60 + insets.bottom : Math.max(70, 56 + insets.bottom);
+    const bottomTabHeight = 70;
 
     return (
         <Tab.Navigator
+            tabBar={(props) => (
+                <View style={styles.tabBarWrapper}>
+                    <BottomTabBar {...props} />
+                </View>
+            )}
             screenOptions={({ route }) => ({
+                tabBarButton: (props) => <TabButton {...props} />,
+                tabBarBackground: () => (
+                    <View style={{ flex: 1, overflow: 'hidden', borderRadius: 35 }}>
+                        <BlurView
+                            intensity={Platform.OS === 'ios' ? 85 : 100}
+                            tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                            style={StyleSheet.absoluteFill}
+                        />
+                    </View>
+                ),
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName: keyof typeof Ionicons.glyphMap = 'home';
 
@@ -100,29 +149,41 @@ export default function MainNavigator() {
 
                     return (
                         <View style={styles.iconContainer}>
-                            <Ionicons name={iconName} size={focused ? 24 : 22} color={color} />
+                            <Ionicons name={iconName} size={focused ? 25 : 23} color={color} />
                         </View>
                     );
                 },
                 tabBarActiveTintColor: theme.mode === 'dark' ? '#8ECFB9' : '#14342B',
                 tabBarInactiveTintColor: theme.mode === 'dark' ? '#848E9C' : '#474D57',
                 tabBarLabelStyle: {
-                    fontSize: 11,
-                    fontFamily: 'Poppins_600SemiBold',
-                    marginTop: -4,
-                    marginBottom: Platform.OS === 'ios' ? 0 : 8,
+                    fontSize: 10,
+                    fontWeight: '500',
+                    marginBottom: 10,
                 },
                 tabBarStyle: {
-                    backgroundColor: theme.colors.backgroundSecondary,
-                    borderTopWidth: 0,
+                    backgroundColor: Platform.OS === 'ios' ? 'transparent' : (theme.mode === 'dark' ? 'rgba(30,30,30,0.92)' : 'rgba(255,255,255,0.92)'),
                     height: bottomTabHeight,
-                    paddingBottom: Platform.OS === 'ios' ? insets.bottom : Math.max(12, insets.bottom),
-                    paddingTop: 12,
-                    elevation: 20,
+                    paddingBottom: 10,
+                    paddingTop: 10,
+                    borderRadius: 35,
+                    
+                    // Premium Sophisticated 3D Visuals
+                    borderWidth: 1,
+                    borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.03)',
+                    borderTopWidth: 1, 
+                    borderTopColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.85)', // Highlight cực mảnh
+                    borderBottomWidth: 3, 
+                    borderBottomColor: theme.mode === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.06)', // Cạnh đáy tinh tế
+                    
+                    // Diffused Premium Shadow
+                    elevation: 15,
                     shadowColor: '#000',
-                    shadowOffset: { width: 0, height: -4 },
-                    shadowOpacity: theme.mode === 'dark' ? 0.3 : 0.1,
-                    shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: theme.mode === 'dark' ? 0.6 : 0.15, // Bóng tỏa mịn màng
+                    shadowRadius: 15,
+                    
+                    // Elegant Lift
+                    transform: [{ translateY: -5 }],
                 },
                 headerShown: false,
             })}
@@ -172,5 +233,14 @@ const styles = StyleSheet.create({
     iconContainer: {
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    tabBarWrapper: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingHorizontal: 10,
+        paddingBottom: 25,
+        backgroundColor: 'transparent',
     },
 });
