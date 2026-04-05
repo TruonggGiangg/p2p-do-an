@@ -80,7 +80,7 @@ const TabButton = (props: any) => {
 
     return (
         <Animated.View style={[{ flex: 1 }, animatedStyle]}>
-            <TouchableOpacity 
+            <TouchableOpacity
                 {...rest}
                 onPress={(e) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -166,22 +166,22 @@ export default function MainNavigator() {
                     paddingBottom: 10,
                     paddingTop: 10,
                     borderRadius: 35,
-                    
+
                     // Premium Sophisticated 3D Visuals
                     borderWidth: 1,
                     borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.03)',
-                    borderTopWidth: 1, 
+                    borderTopWidth: 1,
                     borderTopColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.85)', // Highlight cực mảnh
-                    borderBottomWidth: 3, 
+                    borderBottomWidth: 3,
                     borderBottomColor: theme.mode === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.06)', // Cạnh đáy tinh tế
-                    
+
                     // Diffused Premium Shadow
                     elevation: 15,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 8 },
                     shadowOpacity: theme.mode === 'dark' ? 0.6 : 0.15, // Bóng tỏa mịn màng
                     shadowRadius: 15,
-                    
+
                     // Elegant Lift
                     transform: [{ translateY: -5 }],
                 },
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        paddingHorizontal: 10,
+        paddingHorizontal: 20,
         paddingBottom: 25,
         backgroundColor: 'transparent',
     },

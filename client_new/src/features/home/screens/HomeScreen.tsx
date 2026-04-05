@@ -15,14 +15,12 @@ import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withSpring,
-    withTiming,
     interpolate,
     Extrapolate,
 } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-// BlurView removed — not used on this screen
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -34,23 +32,28 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import {
     Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
     CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
-    UserCircle, Translate, Question, Headset,
+    UserCircle, Translate, Question, Headset, ArrowUpRight, ArrowDownLeft,
+    DotsThree,
     type IconProps,
 } from 'phosphor-react-native';
 import type { Wallet as WalletType } from '../../../types/auth.types';
 import { formatCurrency } from '../../../shared/utils';
 import {
     QUICK_ACTIONS,
-    SERVICES_GRID,
-    UTILITIES_GRID,
+    MAIN_FEATURES,
+    FINANCIAL_SERVICES,
+    UTILITIES,
     type ShortcutItem,
 } from '../constants/home.constants';
 
-// Phosphor Icon Map — duotone weight for premium fintech look
+// ─────────────────────────────────────────────
+// Phosphor Icon Map
+// ─────────────────────────────────────────────
 const PHOSPHOR_MAP: Record<string, React.ComponentType<IconProps>> = {
     Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
     CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
-    UserCircle, Translate, Question, Headset,
+    UserCircle, Translate, Question, Headset, ArrowUpRight, ArrowDownLeft,
+    DotsThree,
 };
 
 function PIcon({ name, size = 22, color = '#CDEA2D', weight = 'duotone' }: {
@@ -65,7 +68,6 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const WALLET_CARD_W = SCREEN_WIDTH - 48;
 const WALLET_CARD_H = 210;
 
-// Gradient presets
 const CARD_GRADIENTS: [string, string, ...string[]][] = [
     ['#14342B', '#1A3B34', '#245649'],
     ['#0D2820', '#14342B', '#1E4D3F'],
@@ -81,19 +83,10 @@ function getGreeting(): string {
 }
 
 // ─────────────────────────────────────────────
-// FRONT — Glassmorphic Mastercard
-// Clean card: logo, chip, card number, name, validity
+// FRONT — Glassmorphic Card
 // ─────────────────────────────────────────────
-function CardFront({
-    wallet,
-    gradientColors,
-    isDefault,
-    userName,
-}: {
-    wallet: WalletType;
-    gradientColors: [string, string, ...string[]];
-    isDefault: boolean;
-    userName: string;
+function CardFront({ wallet, gradientColors, isDefault, userName }: {
+    wallet: WalletType; gradientColors: [string, string, ...string[]]; isDefault: boolean; userName: string;
 }) {
     const acctNo = wallet.accountNo || wallet.metadata?.accountNo || '0000000000000000';
     const digits = acctNo.replace(/\D/g, '').padEnd(16, '0');
@@ -101,23 +94,11 @@ function CardFront({
 
     return (
         <View style={styles.cardFace}>
-            {/* Glassmorphic background */}
-            <LinearGradient
-                colors={gradientColors}
-                style={StyleSheet.absoluteFillObject}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-            />
-            {/* Glass overlay */}
+            <LinearGradient colors={gradientColors} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
             <View style={styles.glassOverlay} />
-
-            {/* Decorative blobs */}
             <View style={styles.decoBlob1} />
             <View style={styles.decoBlob2} />
-
-            {/* Content */}
             <View style={styles.frontContent}>
-                {/* Header: Logo + Chip */}
                 <View style={styles.frontHeader}>
                     <View style={styles.frontLogoWrap}>
                         <View style={styles.masterCardLogoFront}>
@@ -135,27 +116,16 @@ function CardFront({
                         </View>
                     </View>
                     <View style={styles.chipArea}>
-                        {/* Chip visual */}
-                        <View style={styles.chipBase}>
-                            <View style={styles.chipLine1} />
-                            <View style={styles.chipLine2} />
-                            <View style={styles.chipCenter} />
-                        </View>
+                        <View style={styles.chipBase}><View style={styles.chipLine1} /><View style={styles.chipLine2} /><View style={styles.chipCenter} /></View>
                         <MaterialCommunityIcons name="contactless-payment" size={16} color="rgba(255,255,255,0.4)" />
                     </View>
                 </View>
-
-                {/* Card Number */}
                 <View style={styles.cardNumberSection}>
                     <Text style={styles.cardNumberLabel}>Card Number</Text>
                     <Text style={styles.cardNumberText}>{formatted}</Text>
                 </View>
-
-                {/* Bottom: Name + Validity */}
                 <View style={styles.frontBottom}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.cardHolderName}>{userName.toUpperCase()}</Text>
-                    </View>
+                    <View style={{ flex: 1 }}><Text style={styles.cardHolderName}>{userName.toUpperCase()}</Text></View>
                     <View style={styles.validityWrap}>
                         <Text style={styles.validityLabel}>Valid Thru</Text>
                         <Text style={styles.validityValue}>12/28</Text>
@@ -167,98 +137,40 @@ function CardFront({
 }
 
 // ─────────────────────────────────────────────
-// BACK — Magnetic stripe + Balance + QR Code
+// BACK — Balance + QR Code
 // ─────────────────────────────────────────────
-function CardBack({
-    wallet,
-    balanceVisible,
-    phone,
-}: {
-    wallet: WalletType;
-    balanceVisible: boolean;
-    phone: string;
+function CardBack({ wallet, balanceVisible, phone }: {
+    wallet: WalletType; balanceVisible: boolean; phone: string;
 }) {
     const acctNo = wallet.accountNo || wallet.metadata?.accountNo || 'N/A';
-    const qrData = JSON.stringify({
-        type: 'p2p_wallet',
-        phone,
-        accountNo: acctNo,
-        walletId: wallet._id || wallet.id,
-    });
+    const qrData = JSON.stringify({ type: 'p2p_wallet', phone, accountNo: acctNo, walletId: wallet._id || wallet.id });
 
     return (
         <View style={[styles.cardFace, { padding: 0 }]}>
-            {/* Base gradient */}
-            <LinearGradient
-                colors={['#0A1612', '#14342B', '#0F2820'] as any}
-                style={StyleSheet.absoluteFillObject}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-            />
-
-            {/* Metallic sheen overlay */}
-            <LinearGradient
-                colors={[
-                    'transparent',
-                    'rgba(205,234,45,0.04)',
-                    'rgba(255,255,255,0.06)',
-                    'rgba(205,234,45,0.03)',
-                    'transparent',
-                ] as any}
-                style={[StyleSheet.absoluteFillObject, { borderRadius: 24 }]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-            />
-
-            {/* Metallic line accents */}
-            <View style={styles.backMetalLine1} />
-            <View style={styles.backMetalLine2} />
-            <View style={styles.backMetalCircle} />
-
-            {/* Content */}
+            <LinearGradient colors={['#0A1612', '#14342B', '#0F2820'] as any} style={StyleSheet.absoluteFillObject} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
             <View style={styles.backContent}>
-                {/* Header row */}
                 <View style={styles.backHeader}>
                     <View style={styles.backLogoWrap}>
-                        <View style={styles.backLogoCircle}>
-                            <MaterialCommunityIcons name="wallet-outline" size={14} color="#CDEA2D" />
-                        </View>
+                        <View style={styles.backLogoCircle}><MaterialCommunityIcons name="wallet-outline" size={14} color="#CDEA2D" /></View>
                         <Text style={styles.backBrandText}>Ví điện tử</Text>
                     </View>
-                    <View style={styles.backChipMini}>
-                        <MaterialCommunityIcons name="contactless-payment" size={14} color="rgba(205,234,45,0.5)" />
-                    </View>
                 </View>
-
-                {/* Balance + QR row */}
                 <View style={styles.backMainRow}>
                     <View style={styles.backBalanceWrap}>
                         <View style={styles.backBalanceBorder}>
                             <Text style={styles.backBalanceLabel}>SỐ DƯ KHẢ DỤNG</Text>
-                            <Text style={styles.backBalanceAmount}>
-                                {balanceVisible ? formatCurrency(wallet.balance) : '••••••••'}
-                            </Text>
+                            <Text style={styles.backBalanceAmount}>{balanceVisible ? formatCurrency(wallet.balance) : '••••••••'}</Text>
                         </View>
                         <View style={styles.backAccountRow}>
                             <MaterialCommunityIcons name="credit-card-outline" size={11} color="rgba(205,234,45,0.5)" />
                             <Text style={styles.backAccountValue}>{acctNo}</Text>
                         </View>
                     </View>
-
                     <View style={styles.qrWrap}>
-                        <View style={styles.qrInner}>
-                            <QRCode
-                                value={qrData}
-                                size={62}
-                                color="#14342B"
-                                backgroundColor="#FFFFFF"
-                            />
-                        </View>
+                        <View style={styles.qrInner}><QRCode value={qrData} size={62} color="#14342B" backgroundColor="#FFFFFF" /></View>
                         <Text style={styles.qrLabel}>QUÉT NHẬN TIỀN</Text>
                     </View>
                 </View>
-
-                {/* Footer */}
                 <View style={styles.backFooter}>
                     <MaterialCommunityIcons name="rotate-3d-variant" size={11} color="rgba(205,234,45,0.4)" />
                     <Text style={styles.backFooterText}>Chạm để lật lại</Text>
@@ -269,24 +181,10 @@ function CardBack({
 }
 
 // ─────────────────────────────────────────────
-// Flippable 3D Card — smooth spring flip
+// Flippable 3D Card
 // ─────────────────────────────────────────────
-function FlippableCard({
-    wallet,
-    index,
-    balanceVisible,
-    isDefault,
-    userName,
-    phone,
-    onSetDefault,
-}: {
-    wallet: WalletType;
-    index: number;
-    balanceVisible: boolean;
-    isDefault: boolean;
-    userName: string;
-    phone: string;
-    onSetDefault: () => void;
+function FlippableCard({ wallet, index, balanceVisible, isDefault, userName, phone, onSetDefault }: {
+    wallet: WalletType; index: number; balanceVisible: boolean; isDefault: boolean; userName: string; phone: string; onSetDefault: () => void;
 }) {
     const flipAnim = useSharedValue(0);
     const [isFlipped, setIsFlipped] = useState(false);
@@ -296,213 +194,147 @@ function FlippableCard({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const target = !isFlipped;
         setIsFlipped(target);
-
-        flipAnim.value = withSpring(target ? 1 : 0, {
-            damping: 18,
-            stiffness: 85,
-            mass: 0.8,
-            overshootClamping: false,
-        });
-
-        // Delay default-set until animation finishes to avoid re-render jank
-        if (!target) {
-            setTimeout(() => onSetDefault(), 500);
-        }
+        flipAnim.value = withSpring(target ? 1 : 0, { damping: 18, stiffness: 85, mass: 0.8 });
+        if (!target) setTimeout(() => onSetDefault(), 500);
     };
 
-    const frontStyle = useAnimatedStyle(() => {
-        const rotateY = interpolate(flipAnim.value, [0, 1], [0, 180]);
-        // Full opacity crossfade — Android doesn't support backfaceVisibility reliably
-        const opacity = interpolate(flipAnim.value, [0, 0.4, 0.5, 1], [1, 1, 0, 0], Extrapolate.CLAMP);
-        const scale = interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]);
-        return {
-            transform: [
-                { perspective: 1200 },
-                { rotateY: `${rotateY}deg` },
-                { scale },
-            ],
-            opacity,
-        };
-    });
+    const frontStyle = useAnimatedStyle(() => ({
+        transform: [
+            { perspective: 1200 },
+            { rotateY: `${interpolate(flipAnim.value, [0, 1], [0, 180])}deg` },
+            { scale: interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]) },
+        ],
+        opacity: interpolate(flipAnim.value, [0, 0.4, 0.5, 1], [1, 1, 0, 0], Extrapolate.CLAMP),
+    }));
 
-    const backStyle = useAnimatedStyle(() => {
-        const rotateY = interpolate(flipAnim.value, [0, 1], [180, 360]);
-        const opacity = interpolate(flipAnim.value, [0, 0.5, 0.6, 1], [0, 0, 1, 1], Extrapolate.CLAMP);
-        const scale = interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]);
-        return {
-            transform: [
-                { perspective: 1200 },
-                { rotateY: `${rotateY}deg` },
-                { scale },
-            ],
-            opacity,
-        };
-    });
+    const backStyle = useAnimatedStyle(() => ({
+        transform: [
+            { perspective: 1200 },
+            { rotateY: `${interpolate(flipAnim.value, [0, 1], [180, 360])}deg` },
+            { scale: interpolate(flipAnim.value, [0, 0.5, 1], [1, 0.92, 1]) },
+        ],
+        opacity: interpolate(flipAnim.value, [0, 0.5, 0.6, 1], [0, 0, 1, 1], Extrapolate.CLAMP),
+    }));
 
-    // Shimmer flash overlay — sweeps across at flip midpoint
-    const shimmerStyle = useAnimatedStyle(() => {
-        const translateX = interpolate(
-            flipAnim.value,
-            [0.2, 0.5, 0.8],
-            [-WALLET_CARD_W, 0, WALLET_CARD_W],
-            Extrapolate.CLAMP,
-        );
-        const opacity = interpolate(
-            flipAnim.value,
-            [0.15, 0.35, 0.5, 0.65, 0.85],
-            [0, 0.7, 1, 0.7, 0],
-            Extrapolate.CLAMP,
-        );
-        return {
-            transform: [{ translateX }, { skewX: '-15deg' }],
-            opacity,
-        };
-    });
+    const shimmerStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: interpolate(flipAnim.value, [0.2, 0.5, 0.8], [-WALLET_CARD_W, 0, WALLET_CARD_W], Extrapolate.CLAMP) },
+            { skewX: '-15deg' },
+        ],
+        opacity: interpolate(flipAnim.value, [0.15, 0.35, 0.5, 0.65, 0.85], [0, 0.7, 1, 0.7, 0], Extrapolate.CLAMP),
+    }));
 
     return (
         <TouchableOpacity onPress={handleFlip} activeOpacity={0.9} style={styles.flippableCardWrap}>
-            <Animated.View style={[styles.cardSide, frontStyle]}>
-                <CardFront wallet={wallet} gradientColors={gradientColors} isDefault={isDefault} userName={userName} />
-            </Animated.View>
-            <Animated.View style={[styles.cardSide, backStyle]}>
-                <CardBack wallet={wallet} balanceVisible={balanceVisible} phone={phone} />
-            </Animated.View>
-            {/* Shimmer flash on flip */}
+            <Animated.View style={[styles.cardSide, frontStyle]}><CardFront wallet={wallet} gradientColors={gradientColors} isDefault={isDefault} userName={userName} /></Animated.View>
+            <Animated.View style={[styles.cardSide, backStyle]}><CardBack wallet={wallet} balanceVisible={balanceVisible} phone={phone} /></Animated.View>
             <Animated.View pointerEvents="none" style={[styles.flipShimmer, shimmerStyle]}>
-                <LinearGradient
-                    colors={['transparent', 'rgba(255,255,255,0.45)', 'rgba(255,255,255,0.15)', 'transparent'] as any}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                />
+                <LinearGradient colors={['transparent', 'rgba(255,255,255,0.45)', 'rgba(255,255,255,0.15)', 'transparent'] as any} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
             </Animated.View>
         </TouchableOpacity>
     );
 }
 
 // ─────────────────────────────────────────────
-// Bento Service Item — Obsidian Glass style
+// Balance Toggle Icon
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// Balance Toggle Icon — Interactive micro-animation
-// ─────────────────────────────────────────────
-const BalanceToggleIcon = ({ visible, color, onPress }: { visible: boolean, color: string, onPress: () => void }) => {
+const BalanceToggleIcon = ({ visible, color, onPress }: { visible: boolean; color: string; onPress: () => void }) => {
     const scale = useSharedValue(1);
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withSpring(scale.value) }]
-    }));
-
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value) }] }));
     return (
         <Animated.View style={animatedStyle}>
-            <TouchableOpacity 
-                activeOpacity={0.8}
-                onPressIn={() => { scale.value = 0.8; }}
-                onPressOut={() => { scale.value = 1; }}
-                onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    onPress();
-                }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-                <MaterialCommunityIcons 
-                    name={visible ? 'eye-outline' : 'eye-off-outline'} 
-                    size={22} 
-                    color={color} 
-                />
+            <TouchableOpacity activeOpacity={0.8} onPressIn={() => { scale.value = 0.8; }} onPressOut={() => { scale.value = 1; }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <MaterialCommunityIcons name={visible ? 'eye-outline' : 'eye-off-outline'} size={22} color={color} />
             </TouchableOpacity>
         </Animated.View>
     );
 };
 
-const ServiceGridItem = ({ item, index, theme }: { item: ShortcutItem, index: number, theme: any }) => {
-    const navigation = useNavigation<any>();
-    const IconComp = PHOSPHOR_MAP[item.icon] || PHOSPHOR_MAP.CurrencyDollar;
+// ─────────────────────────────────────────────
+// Quick Action Button
+// ─────────────────────────────────────────────
+function QuickActionButton({ item, onPress, theme, delay = 0 }: {
+    item: ShortcutItem; onPress: () => void; theme: any; delay?: number;
+}) {
     const isDark = theme.mode === 'dark';
-    
-    // Scale animation
     const scale = useSharedValue(1);
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withSpring(scale.value, { damping: 15, stiffness: 150 }) }]
-    }));
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value) }] }));
 
     return (
-        <Animated.View entering={FadeInDown.delay(400 + index * 50).duration(500)} style={[styles.serviceItemWrap, animatedStyle]}>
-            <TouchableOpacity
-                style={[
-                    styles.serviceItem,
-                    { 
-                        backgroundColor: isDark ? 'rgba(26, 25, 25, 0.6)' : '#F8F9FA',
-                        borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-                        borderWidth: 1,
-                    }
-                ]}
-                activeOpacity={0.9}
-                onPressIn={() => { scale.value = 0.95; }}
-                onPressOut={() => { scale.value = 1; }}
-                onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    if (item.nav) navigation.navigate(item.nav);
-                }}
-            >
-                <LinearGradient
-                    colors={isDark ? ['rgba(205, 234, 45, 0.15)', 'transparent'] : ['rgba(20, 52, 43, 0.05)', 'transparent']}
-                    style={styles.serviceIconCircle}
-                >
-                    <IconComp 
-                        size={22} 
-                        color={isDark ? theme.colors.primary : theme.colors.primary} 
-                        weight="duotone"
-                    />
-                </LinearGradient>
-                <View style={styles.serviceLabelWrap}>
-                    <Text style={[styles.serviceLabel, { color: theme.colors.text }]}>{item.label}</Text>
-                    <Text style={[styles.serviceDesc, { color: theme.colors.textSecondary }]} numberOfLines={2}>
-                        {item.description}
-                    </Text>
+        <Animated.View entering={FadeInDown.delay(delay).duration(500)} style={animatedStyle}>
+            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.9}
+                onPressIn={() => { scale.value = 0.92; }} onPressOut={() => { scale.value = 1; }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
+                <View style={[styles.quickActionCircle, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                    <PIcon name={item.icon} size={24} color={theme.colors.primary} weight="duotone" />
                 </View>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]}>{item.label}</Text>
             </TouchableOpacity>
         </Animated.View>
     );
-};
+}
 
 // ─────────────────────────────────────────────
-// Quick Action
+// Main Feature Card (4 cards hàng ngang)
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// Quick Action — Sovereign Monolith Glass
-// ─────────────────────────────────────────────
-function QuickActionButton({
-    item, onPress, colors, delay = 0,
-}: { item: ShortcutItem; onPress: () => void; colors: any; delay?: number; }) {
-    const { theme, themeMode } = useTheme();
-    const isDark = themeMode === 'dark';
+function MainFeatureCard({ item, onPress, theme, delay = 0 }: {
+    item: ShortcutItem; onPress: () => void; theme: any; delay?: number;
+}) {
+    const isDark = theme.mode === 'dark';
     const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value, { damping: 15, stiffness: 150 }) }] }));
     
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withSpring(scale.value) }]
-    }));
-
-    const onPressIn = () => { scale.value = 0.92; };
-    const onPressOut = () => { scale.value = 1; };
+    // Apply primary color consistently
+    const baseColor = theme.colors.primary;
 
     return (
-        <Animated.View entering={FadeInDown.delay(delay).duration(600)} style={animatedStyle}>
-            <TouchableOpacity 
-                style={styles.quickActionBtn} 
-                activeOpacity={0.9}
-                onPressIn={onPressIn}
-                onPressOut={onPressOut}
+        <Animated.View entering={FadeInDown.delay(delay).duration(500)} style={animatedStyle}>
+            <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.9}
+                onPressIn={() => { scale.value = 0.92; }} onPressOut={() => { scale.value = 1; }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}>
+                <View style={[styles.quickActionCircle, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                    <PIcon name={item.icon} size={24} color={baseColor} weight="duotone" />
+                </View>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]}>{item.label}</Text>
+            </TouchableOpacity>
+        </Animated.View>
+    );
+}
+
+// ─────────────────────────────────────────────
+// Service List Item (Dịch vụ tài chính / Tiện ích)
+// ─────────────────────────────────────────────
+function ServiceListItem({ item, onPress, theme, delay = 0 }: {
+    item: ShortcutItem; onPress: () => void; theme: any; delay?: number;
+}) {
+    const isDark = theme.mode === 'dark';
+    const scale = useSharedValue(1);
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(scale.value) }] }));
+    
+    // Apply primary color consistently
+    const baseColor = theme.colors.primary;
+    const iconBgColor = isDark ? `${baseColor}25` : `${baseColor}15`;
+
+    return (
+        <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={animatedStyle}>
+            <TouchableOpacity
+                style={styles.serviceListItem}
+                activeOpacity={0.8}
+                onPressIn={() => { scale.value = 0.98; }}
+                onPressOut={() => { scale.value = 1; }}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
             >
-                <View style={styles.quickActionGlassContainer}>
-                    <LinearGradient
-                        colors={[isDark ? 'rgba(205, 234, 45, 0.28)' : 'rgba(20, 52, 43, 0.12)', 'rgba(205, 234, 45, 0.04)']}
-                        style={styles.quickActionCircle}
-                    >
-                        <PIcon name={item.icon} size={26} color={theme.colors.primary} weight="duotone" />
-                    </LinearGradient>
+                <View style={[styles.serviceListIcon, { backgroundColor: iconBgColor }]}>
+                    <PIcon name={item.icon} size={20} color={baseColor} weight="duotone" />
                 </View>
-                <Text style={[styles.quickActionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                <View style={styles.serviceListInfo}>
+                    <Text style={[styles.serviceListName, { color: theme.colors.text }]}>{item.label}</Text>
+                    {item.description && (
+                        <Text style={[styles.serviceListDesc, { color: theme.colors.textMuted }]}>{item.description}</Text>
+                    )}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={isDark ? '#454934' : '#D1D5DB'} />
             </TouchableOpacity>
         </Animated.View>
     );
@@ -558,11 +390,10 @@ export default function HomeScreen() {
 
     useEffect(() => { fetchWallets(); }, []);
 
-
-
     const handleItemPress = (item: ShortcutItem) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (item.nav === 'QR') { setWalletSelectorVisible(true); }
+        if (!item.nav) return;
+        if (item.nav === 'MyQR' || item.nav === 'QR') { setWalletSelectorVisible(true); }
         else { item.isParent ? (navigation as any).getParent()?.navigate(item.nav) : (navigation as any).navigate(item.nav); }
     };
     const handleSelectWalletForQR = (wallet: WalletType) => { setWalletSelectorVisible(false); (navigation as any).navigate('MyQR', { wallet }); };
@@ -570,7 +401,6 @@ export default function HomeScreen() {
         const idx = Math.round(e.nativeEvent.contentOffset.x / (WALLET_CARD_W + 12));
         if (idx !== activeCardIndex && idx >= 0 && idx < (wallets.length || 1)) { setActiveCardIndex(idx); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
     };
-    const handleSetDefaultCard = (idx: number) => { setActiveCardIndex(idx); };
 
     const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
     const userName = user?.name || user?.profile?.firstName || 'Bạn';
@@ -599,12 +429,9 @@ export default function HomeScreen() {
                         <Text style={[styles.greetingText, { color: c.textSecondary }]}>{getGreeting()} 👋</Text>
                         <View style={styles.greetingRow}>
                             <Text style={[styles.greetingName, { color: c.textPrimary }]}>{userName}</Text>
-                            <BalanceToggleIcon 
-                                visible={balanceVisible} 
-                                color={c.textSecondary}
-                                onPress={() => { setBalanceVisible(v => !v); }} 
-                            />
+                            <BalanceToggleIcon visible={balanceVisible} color={c.textSecondary} onPress={() => { setBalanceVisible(v => !v); }} />
                         </View>
+                        <Text style={[styles.greetingSub, { color: c.textMuted }]}>Quản lý tài chính thông minh.</Text>
                     </Animated.View>
 
                     {/* 2. 3D CARD CAROUSEL */}
@@ -615,14 +442,14 @@ export default function HomeScreen() {
                             {displayWallets.map((wallet, idx) => (
                                 <FlippableCard key={wallet._id || idx} wallet={wallet} index={idx}
                                     balanceVisible={balanceVisible} isDefault={idx === activeCardIndex}
-                                    userName={userName} phone={phone} onSetDefault={() => handleSetDefaultCard(idx)} />
+                                    userName={userName} phone={phone} onSetDefault={() => setActiveCardIndex(idx)} />
                             ))}
                         </ScrollView>
                         {displayWallets.length > 1 && (
                             <View style={styles.cardDots}>
                                 {displayWallets.map((_, i) => (
                                     <View key={i} style={[styles.cardDot, {
-                                        backgroundColor: i === activeCardIndex ? theme.colors.primary : (theme.mode === 'dark' ? theme.colors.border : '#D1D5DB'),
+                                        backgroundColor: i === activeCardIndex ? theme.colors.primary : (isDark ? theme.colors.border : '#D1D5DB'),
                                         width: i === activeCardIndex ? 20 : 8,
                                     }]} />
                                 ))}
@@ -639,30 +466,36 @@ export default function HomeScreen() {
                     {/* 3. QUICK ACTIONS */}
                     <View style={styles.quickActionsSection}>
                         {QUICK_ACTIONS.map((item, idx) => (
-                            <QuickActionButton key={idx} item={item} onPress={() => handleItemPress(item)} colors={c} delay={400 + idx * 80} />
+                            <QuickActionButton key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={300 + idx * 60} />
                         ))}
                     </View>
 
-                    {/* 4. SERVICES */}
-                    <Animated.View entering={FadeInDown.delay(600).duration(600)} style={styles.servicesSection}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Dịch vụ</Text>
-                        </View>
-                        <View style={styles.servicesCard}>
-                            {SERVICES_GRID.map((item, idx) => (
-                                <ServiceGridItem key={idx} item={item} theme={theme} index={idx} />
+                    {/* 4. MAIN FEATURES — 4 cards ngang */}
+                    <Animated.View entering={FadeInDown.delay(500).duration(600)} style={styles.sectionWrap}>
+                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Chức năng chính</Text>
+                        <View style={styles.mainFeaturesGrid}>
+                            {MAIN_FEATURES.map((item, idx) => (
+                                <MainFeatureCard key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={500 + idx * 60} />
                             ))}
                         </View>
                     </Animated.View>
 
-                    {/* 5. UTILITIES */}
-                    <Animated.View entering={FadeInDown.delay(800).duration(600)} style={styles.servicesSection}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích</Text>
+                    {/* 5. FINANCIAL SERVICES — List group */}
+                    <Animated.View entering={FadeInDown.delay(700).duration(600)} style={styles.sectionWrap}>
+                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Dịch vụ tài chính</Text>
+                        <View style={[styles.serviceListCard, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                            {FINANCIAL_SERVICES.map((item, idx) => (
+                                <ServiceListItem key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={700 + idx * 50} />
+                            ))}
                         </View>
-                        <View style={styles.servicesCard}>
-                            {UTILITIES_GRID.map((item, idx) => (
-                                <ServiceGridItem key={idx} item={item} theme={theme} index={idx} />
+                    </Animated.View>
+
+                    {/* 6. UTILITIES — List group */}
+                    <Animated.View entering={FadeInDown.delay(900).duration(600)} style={styles.sectionWrap}>
+                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích & cài đặt</Text>
+                        <View style={[styles.serviceListCard, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                            {UTILITIES.map((item, idx) => (
+                                <ServiceListItem key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={900 + idx * 50} />
                             ))}
                         </View>
                     </Animated.View>
@@ -684,53 +517,34 @@ const styles = StyleSheet.create({
     scrollContent: { paddingTop: 4 },
 
     // ── Greeting ──
-    greetingSection: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 },
+    greetingSection: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4 },
     greetingText: { fontSize: 13, fontWeight: '500', letterSpacing: 0.3 },
     greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-    greetingName: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+    greetingName: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+    greetingSub: { fontSize: 13, fontWeight: '400', marginTop: 2 },
 
-    // ── Section Headers ──
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-    sectionTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+    // ── Section Layout ──
+    sectionWrap: { paddingHorizontal: 24, marginTop: 28 },
+    sectionTitle: { fontSize: 18, fontWeight: '700', letterSpacing: -0.2, marginBottom: 14 },
 
     // ── Card Carousel ──
     cardCarouselSection: { marginTop: 20 },
     cardScrollContent: { paddingHorizontal: 24, paddingVertical: 8 },
     flippableCardWrap: { width: WALLET_CARD_W, height: WALLET_CARD_H, marginRight: 12 },
     cardSide: { position: 'absolute', width: '100%', height: '100%' },
-    flipShimmer: {
-        position: 'absolute', width: '100%', height: '100%',
-        borderRadius: 24, overflow: 'hidden', zIndex: 10,
-    },
+    flipShimmer: { position: 'absolute', width: '100%', height: '100%', borderRadius: 24, overflow: 'hidden', zIndex: 10 },
 
-    // ── Card Face (shared) ──
+    // ── Card Face ──
     cardFace: {
-        width: '100%', height: '100%', borderRadius: 24, padding: 20,
-        overflow: 'hidden', position: 'relative',
+        width: '100%', height: '100%', borderRadius: 24, padding: 20, overflow: 'hidden', position: 'relative',
         ...Platform.select({
             ios: { shadowColor: '#000', shadowOffset: { width: -6, height: 7 }, shadowOpacity: 0.3, shadowRadius: 15 },
             android: { elevation: 8, shadowColor: '#000' },
         }),
     },
-
-    // ── Glassmorphic overlay ──
-    glassOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(255, 255, 255, 0.12)',
-        borderRadius: 24,
-    },
-
-    // ── Decorative blobs (like CSS ::before/::after) ──
-    decoBlob1: {
-        position: 'absolute', width: 180, height: 180, borderRadius: 90,
-        backgroundColor: 'rgba(205, 234, 45, 0.12)',
-        top: -60, right: -40,
-    },
-    decoBlob2: {
-        position: 'absolute', width: 140, height: 140, borderRadius: 70,
-        backgroundColor: 'rgba(205, 234, 45, 0.06)',
-        bottom: -40, left: -30,
-    },
+    glassOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255, 255, 255, 0.12)', borderRadius: 24 },
+    decoBlob1: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(205, 234, 45, 0.12)', top: -60, right: -40 },
+    decoBlob2: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(205, 234, 45, 0.06)', bottom: -40, left: -30 },
 
     // ── Front Card ──
     frontContent: { flex: 1, justifyContent: 'space-between', zIndex: 1 },
@@ -741,25 +555,14 @@ const styles = StyleSheet.create({
     frontBrandName: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.5 },
     defaultBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
     defaultBadgeText: { fontSize: 9, fontWeight: '700', color: '#CDEA2D', textTransform: 'uppercase', letterSpacing: 0.5 },
-
     chipArea: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    chipBase: {
-        width: 36, height: 28, borderRadius: 5,
-        backgroundColor: 'rgba(205, 234, 45, 0.35)',
-        borderWidth: 1, borderColor: 'rgba(205, 234, 45, 0.2)',
-        justifyContent: 'center', alignItems: 'center',
-        position: 'relative', overflow: 'hidden',
-    },
+    chipBase: { width: 36, height: 28, borderRadius: 5, backgroundColor: 'rgba(205, 234, 45, 0.35)', borderWidth: 1, borderColor: 'rgba(205, 234, 45, 0.2)', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
     chipLine1: { position: 'absolute', width: 36, height: 1, backgroundColor: 'rgba(255,255,255,0.2)', top: 10 },
     chipLine2: { position: 'absolute', width: 36, height: 1, backgroundColor: 'rgba(255,255,255,0.2)', top: 18 },
     chipCenter: { width: 12, height: 10, borderRadius: 2, backgroundColor: 'rgba(205, 234, 45, 0.2)' },
-
-    // Card Number
     cardNumberSection: { marginTop: 8 },
     cardNumberLabel: { color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 },
     cardNumberText: { color: '#FFFFFF', fontSize: 20, fontWeight: '400', letterSpacing: 3 },
-
-    // Front bottom
     frontBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
     cardHolderName: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '300', letterSpacing: 1.5 },
     validityWrap: { alignItems: 'flex-end' },
@@ -767,74 +570,18 @@ const styles = StyleSheet.create({
     validityValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '400' },
 
     // ── Back Card ──
-    backMetalLine1: {
-        position: 'absolute', width: WALLET_CARD_W * 1.4, height: 1,
-        backgroundColor: 'rgba(205,234,45,0.06)',
-        top: WALLET_CARD_H * 0.35, left: -WALLET_CARD_W * 0.2,
-        transform: [{ rotate: '-25deg' }],
-    },
-    backMetalLine2: {
-        position: 'absolute', width: WALLET_CARD_W * 1.4, height: 1,
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        top: WALLET_CARD_H * 0.65, left: -WALLET_CARD_W * 0.2,
-        transform: [{ rotate: '-25deg' }],
-    },
-    backMetalCircle: {
-        position: 'absolute', width: 200, height: 200, borderRadius: 100,
-        borderWidth: 1, borderColor: 'rgba(205,234,45,0.04)',
-        top: -60, right: -60,
-    },
-    backContent: {
-        flex: 1, padding: 18, justifyContent: 'space-between', zIndex: 1,
-    },
-    backHeader: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    },
+    backContent: { flex: 1, padding: 18, justifyContent: 'space-between', zIndex: 1 },
+    backHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     backLogoWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    backLogoCircle: {
-        width: 28, height: 28, borderRadius: 14,
-        backgroundColor: 'rgba(205,234,45,0.12)',
-        justifyContent: 'center', alignItems: 'center',
-        borderWidth: 1, borderColor: 'rgba(205,234,45,0.15)',
-    },
-    backBrandText: {
-        color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600',
-        fontFamily: 'Poppins_600SemiBold', letterSpacing: 0.5,
-    },
-    backChipMini: {
-        width: 28, height: 28, borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-        justifyContent: 'center', alignItems: 'center',
-    },
-
-    backMainRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 14,
-    },
+    backLogoCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(205,234,45,0.12)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(205,234,45,0.15)' },
+    backBrandText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', letterSpacing: 0.5 },
+    backMainRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     backBalanceWrap: { flex: 1 },
-    backBalanceBorder: {
-        borderLeftWidth: 2, borderLeftColor: 'rgba(205,234,45,0.4)',
-        paddingLeft: 10, marginBottom: 8,
-    },
-    backBalanceLabel: {
-        color: 'rgba(205,234,45,0.6)', fontSize: 9, fontWeight: '700',
-        fontFamily: 'Poppins_700Bold',
-        letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4,
-    },
-    backBalanceAmount: {
-        color: '#FFFFFF', fontSize: 20, fontWeight: '800',
-        fontFamily: 'Poppins_700Bold', letterSpacing: -0.3,
-    },
-    backAccountRow: {
-        flexDirection: 'row', alignItems: 'center', gap: 5,
-        paddingLeft: 10,
-    },
-    backAccountLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '600' },
-    backAccountValue: {
-        color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600',
-        fontFamily: 'Poppins_600SemiBold', letterSpacing: 0.5,
-    },
-
+    backBalanceBorder: { borderLeftWidth: 2, borderLeftColor: 'rgba(205,234,45,0.4)', paddingLeft: 10, marginBottom: 8 },
+    backBalanceLabel: { color: 'rgba(205,234,45,0.6)', fontSize: 9, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
+    backBalanceAmount: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+    backAccountRow: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 10 },
+    backAccountValue: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
     qrWrap: { alignItems: 'center' },
     qrInner: {
         padding: 5, borderRadius: 10, backgroundColor: '#FFFFFF',
@@ -843,19 +590,9 @@ const styles = StyleSheet.create({
             android: { elevation: 4 },
         }),
     },
-    qrLabel: {
-        color: 'rgba(205,234,45,0.45)', fontSize: 7, fontWeight: '700',
-        fontFamily: 'Poppins_700Bold',
-        marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.8,
-    },
-
-    backFooter: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    },
-    backFooterText: {
-        color: 'rgba(205,234,45,0.35)', fontSize: 10, fontWeight: '500',
-        fontFamily: 'Poppins_500Medium',
-    },
+    qrLabel: { color: 'rgba(205,234,45,0.45)', fontSize: 7, fontWeight: '700', marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.8 },
+    backFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+    backFooterText: { color: 'rgba(205,234,45,0.35)', fontSize: 10, fontWeight: '500' },
 
     // ── Card Dots ──
     cardDots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 14 },
@@ -863,70 +600,41 @@ const styles = StyleSheet.create({
     swipeHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8 },
     swipeHintText: { fontSize: 11, fontWeight: '500' },
 
-    // ── Quick Actions (Sovereign Monolith) ──
-    quickActionsSection: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-around', 
-        paddingHorizontal: 16, 
-        marginTop: 28,
+    // ── Quick Actions ──
+    quickActionsSection: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: 24,
+        marginTop: 24,
         paddingVertical: 4,
     },
-    quickActionBtn: { alignItems: 'center', width: 78 },
-    quickActionGlassContainer: {
-        width: 62, 
-        height: 62, 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        marginBottom: 10,
-        position: 'relative',
+    quickActionBtn: { alignItems: 'center', width: 70 },
+    quickActionCircle: {
+        width: 52, height: 52, borderRadius: 26,
+        justifyContent: 'center', alignItems: 'center', marginBottom: 8,
     },
-    quickActionCircle: { 
-        width: 62, 
-        height: 62, 
-        borderRadius: 22, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-    },
-    quickActionLabel: { 
-        fontSize: 12, 
-        fontWeight: '700', 
-        textAlign: 'center',
-        letterSpacing: -0.2,
-    },
+    quickActionLabel: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
 
-    // ── Services (Obsidian Glass) ──
-    servicesSection: { paddingHorizontal: 20, marginTop: 32 },
-    servicesCard: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
-    serviceItemWrap: { width: '50%', padding: 6 },
-    serviceItem: {
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        gap: 12,
-        paddingVertical: 18, 
-        paddingHorizontal: 14, 
-        borderRadius: 24,
+    // ── Main Features (4 cards ngang) ──
+    mainFeaturesGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+
+    // ── Service List (grouped card) ──
+    serviceListCard: {
+        borderRadius: 20, paddingVertical: 4,
         ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.1,
-                shadowRadius: 8,
-            },
-            android: { elevation: 3 },
+            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10 },
+            android: { elevation: 2 },
         }),
     },
-    serviceIconCircle: { 
-        width: 44, 
-        height: 44, 
-        borderRadius: 14, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(134, 254, 167, 0.1)',
+    serviceListItem: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingVertical: 14, paddingHorizontal: 16, gap: 14,
     },
-    serviceLabelWrap: { flex: 1 },
-    serviceLabel: { fontSize: 13, fontWeight: '800', lineHeight: 18, letterSpacing: -0.3 },
-    serviceDesc: { fontSize: 10, fontWeight: '600', marginTop: 2, lineHeight: 14, opacity: 0.5 },
-
+    serviceListIcon: {
+        width: 42, height: 42, borderRadius: 14,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    serviceListInfo: { flex: 1, gap: 2 },
+    serviceListName: { fontSize: 15, fontWeight: '600' },
+    serviceListDesc: { fontSize: 11, fontWeight: '400' },
 });
-
