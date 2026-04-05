@@ -166,7 +166,7 @@ export const useSmartOTP = () => {
         return false;
       } catch (err: any) {
         console.error("[useSmartOTP] Register error:", err);
-        setError(err.response?.data?.message || err.message);
+        setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
         return false;
       } finally {
         setIsLoading(false);
@@ -210,7 +210,7 @@ export const useSmartOTP = () => {
         return true;
       } catch (err: any) {
         console.error("[useSmartOTP] Revoke error:", err);
-        setError(err.response?.data?.message || err.message);
+        setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
         return false;
       } finally {
         setIsLoading(false);
@@ -251,7 +251,7 @@ export const useSmartOTP = () => {
         return mappedSession;
       } catch (err: any) {
         console.error("[useSmartOTP] Request session error:", err);
-        setError(err.response?.data?.message || err.message);
+        setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
         return null;
       } finally {
         setIsLoading(false);
