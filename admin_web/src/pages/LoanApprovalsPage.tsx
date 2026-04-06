@@ -16,6 +16,7 @@ import LoanDetailDrawer from '../components/LoanDetailDrawer';
 import LoanTable from '../components/LoanTable';
 import LoanFilterForm from '../components/LoanFilterForm';
 import type { LoanTableRow } from '../config/loanTableConfig';
+import { getRowClassName } from '../config/loanTableConfig';
 import { SimplePageSkeleton } from '../components/PageSkeleton';
 import PageHeader from '../components/PageHeader';
 
@@ -116,6 +117,13 @@ export default function LoanApprovalsPage() {
         }
 
 
+        // Sort by AI score: high to low (loans without score go to end)
+        filtered.sort((a, b) => {
+            const scoreA = a.aiScore?.creditScore ?? -1;
+            const scoreB = b.aiScore?.creditScore ?? -1;
+            return scoreB - scoreA;
+        });
+
         const page = params.current ?? 1;
         const size = params.pageSize ?? 15;
         const start = (page - 1) * size;
@@ -212,65 +220,68 @@ export default function LoanApprovalsPage() {
                     { label: 'Phê duyệt khoản vay' },
                 ]}
             />
-                <LoanTable
-                    variant="approval"
-                    request={fetchData}
-                    onViewDetails={handleViewDetails}
-                    actionColumn={actionColumn}
-                    actionRef={actionRef}
-                    showFilterPanel={showFilters}
-                    filterContent={(ref) => (
-                        <LoanFilterForm
-                            form={form}
-                            actionRef={ref}
-                            products={products}
-                            ranges={[]}
-                            activeTab="pending"
-                        />
-                    )}
-                    headerTitle="Danh sách chờ duyệt"
-                    emptyText={
-                        <span>
-                            Không có khoản vay nào chờ phê duyệt.
-                            <br />
-                            <Link to="/loans">Xem tất cả khoản vay</Link>
-                        </span>
-                    }
-                    toolBarRender={() => [
-                        <Tooltip key="filter" title="Bộ lọc nâng cao">
-                            <Button icon={<FilterOutlined />} onClick={() => setShowFilters(!showFilters)} type={showFilters ? 'primary' : 'default'}>
-                                Bộ lọc
-                            </Button>
-                        </Tooltip>,
-                        <Tooltip key="reload" title="Làm mới danh sách">
-                            <Button
-                                icon={<ReloadOutlined />}
-                                onClick={() => actionRef.current?.reload?.()}
-                            >
-                                Làm mới
-                            </Button>
-                        </Tooltip>,
-                        <Tooltip key="loans" title="Chuyển sang Quản lý khoản vay">
-                            <Button onClick={() => navigate('/loans')}>
-                                Quản lý khoản vay
-                            </Button>
-                        </Tooltip>,
-                    ]}
-                    pagination={{
-                        pageSize: 15,
-                        showSizeChanger: true,
-                        showTotal: t => `Tổng ${t} khoản vay chờ duyệt`,
-                        showQuickJumper: true,
-                    }}
-                    columnsStateKey="loan-approvals-table-v2"
-                />
+            <LoanTable
+                variant="approval"
+                request={fetchData}
+                onViewDetails={handleViewDetails}
+                actionColumn={actionColumn}
+                actionRef={actionRef}
+                showFilterPanel={showFilters}
+                filterContent={(ref) => (
+                    <LoanFilterForm
+                        form={form}
+                        actionRef={ref}
+                        products={products}
+                        ranges={[]}
+                        activeTab="pending"
+                    />
+                )}
+                headerTitle="Danh sách chờ duyệt"
+                emptyText={
+                    <span>
+                        Không có khoản vay nào chờ phê duyệt.
+                        <br />
+                        <Link to="/loans">Xem tất cả khoản vay</Link>
+                    </span>
+                }
+                onRow={(record) => ({
+                    className: getRowClassName(record.aiScore?.creditScore),
+                })}
+                toolBarRender={() => [
+                    <Tooltip key="filter" title="Bộ lọc nâng cao">
+                        <Button icon={<FilterOutlined />} onClick={() => setShowFilters(!showFilters)} type={showFilters ? 'primary' : 'default'}>
+                            Bộ lọc
+                        </Button>
+                    </Tooltip>,
+                    <Tooltip key="reload" title="Làm mới danh sách">
+                        <Button
+                            icon={<ReloadOutlined />}
+                            onClick={() => actionRef.current?.reload?.()}
+                        >
+                            Làm mới
+                        </Button>
+                    </Tooltip>,
+                    <Tooltip key="loans" title="Chuyển sang Quản lý khoản vay">
+                        <Button onClick={() => navigate('/loans')}>
+                            Quản lý khoản vay
+                        </Button>
+                    </Tooltip>,
+                ]}
+                pagination={{
+                    pageSize: 15,
+                    showSizeChanger: true,
+                    showTotal: t => `Tổng ${t} khoản vay chờ duyệt`,
+                    showQuickJumper: true,
+                }}
+                columnsStateKey="loan-approvals-table-v2"
+            />
 
-                <LoanDetailDrawer
-                    open={!!viewLoanId}
-                    onClose={handleCloseDrawer}
-                    loanId={viewLoanId}
-                    mode="approval"
-                />
+            <LoanDetailDrawer
+                open={!!viewLoanId}
+                onClose={handleCloseDrawer}
+                loanId={viewLoanId}
+                mode="approval"
+            />
         </>
     );
 }

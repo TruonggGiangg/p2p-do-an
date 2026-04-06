@@ -65,8 +65,7 @@ class ScoreRequest(BaseModel):
     verification_status: Optional[str] = Field(default="Not Verified", description="Muc xac minh eKYC")
     purpose: Optional[str] = Field(default="other", description="Muc dich vay")
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True}
 
 class ScoreResponse(BaseModel):
     ai_risk_score: int
@@ -168,12 +167,12 @@ async def health():
     test_metrics = scorer.metadata.get("test_metrics", metrics) if scorer else metrics
     return {
         "status": "ok",
-        "service": "aiscore-service-v9-stacking",
-        "model_loaded": scorer is not None and scorer.lr_model is not None,
-        "model_type": "Stacking (XGB+SVM→LR Meta, 25 feat: 21 NUM + 4 CAT)",
-        "architecture": "Level 1: XGBoost + SVM → Level 2: LR Meta(PD)",
+        "service": "aiscore-service-v17-hybrid",
+        "model_loaded": scorer is not None and scorer.xgb_model is not None,
+        "model_type": "Explainable Hybrid (Scorecard + XGB + LGBM → Meta-LR → Isotonic)",
+        "architecture": "Nhánh 1: WOE-LR Scorecard | Nhánh 2: XGBoost | Nhánh 3: LightGBM → Meta-LR",
         "data_source": "Lending Club accepted + rejected (2007-2018 Q4)",
-        "n_features": len(scorer.metadata.get("features", [])) if scorer else 25,
+        "n_features": len(scorer.metadata.get("all_features", scorer.metadata.get("features", []))) if scorer else 47,
         "auc_roc": test_metrics.get("stacking_auc", test_metrics.get("auc_roc", "N/A")),
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }

@@ -1,27 +1,23 @@
 """
-CreditScorer — Stacking Ensemble Inference (v9.0)
-===================================================
+CreditScorer — Explainable Hybrid Inference (v17.0)
+=====================================================
 
-Pipeline:  25 features → Smart Scaling → XGBoost prob + SVM prob
-           → [XGB_p, SVM_p, 25 scaled features] → LR Meta → PD
+Pipeline:
+  Nhánh 1 — WOE → LR Scorecard → scorecard_pd
+  Nhánh 2 — Smart Scaling → XGBoost → xgb_pd
+  Nhánh 3 — Smart Scaling → LightGBM → lgbm_pd (optional)
+  Stacking — Meta-LR(SC, XGB, LGBM) → Isotonic calibration → PD
 
-Architecture (Stacking — 2 Levels):
-  Level 1 — Base Learners:
-    XGBoost:  Non-linear pattern detection → probability
-    SVM (SGD linear): Geometric boundary → probability
-  Level 2 — Meta Learner:
-    LR on [XGB_proba, SVM_proba] + 25 original features → PD (calibrated)
-
-25 Features (Lending Club → mapped to P2P system):
-  NUMERIC (21): credit_score, capital, monthly_income, monthly_pay,
-                revolving_balance, total_current_balance, dti,
-                revolving_util_percent, emp_length_years, active_bad_debts,
-                bankruptcies, active_loans, total_loans_history,
-                credit_history_months, recent_inquiries, delinquencies_2yr,
-                accounts_delinquent, severe_delinquencies_24m,
-                pct_never_delinquent, collections_12m, loan_to_income
-  CATEGORY (4): term_enc, home_ownership_enc, verification_status_enc,
-                purpose_enc
+Artifacts (from train_model.py v17):
+  - xgb_pd_model.json           (XGBoost Level 1)
+  - lgbm_pd_model.txt           (LightGBM Level 1, optional)
+  - lr_scorecard_model.joblib   (WOE-LR Scorecard Level 1)
+  - woe_binning.joblib          (WOE bin edges + maps)
+  - meta_lr.joblib              (Meta-LR Level 2)
+  - iso_calibrator.joblib       (Isotonic calibration)
+  - per_feature_scalers.joblib  ({feature: (strategy, scaler)})
+  - metadata.json               (metrics + config + feature lists)
+  - scorecard_table.json        (human-readable point breakdown)
 
 Output:
   {
@@ -37,25 +33,26 @@ import numpy as np
 import xgboost as xgb
 import joblib
 
+try:
+    import lightgbm as lgb
+    HAS_LGBM = True
+except ImportError:
+    HAS_LGBM = False
 
-# ── Feature Lists ──
 
-NUMERIC_FEATURES = [
-    "credit_score", "capital", "monthly_income", "monthly_pay",
-    "revolving_balance", "total_current_balance", "dti",
-    "revolving_util_percent", "emp_length_years", "active_bad_debts",
-    "bankruptcies", "active_loans", "total_loans_history",
-    "credit_history_months", "recent_inquiries", "delinquencies_2yr",
-    "accounts_delinquent", "severe_delinquencies_24m",
-    "pct_never_delinquent", "collections_12m", "loan_to_income",
-]
+# ── Scorecard constants ──
+BASE_SCORE = 600
+PDO = 20
+BASE_ODDS = 50
+FACTOR = PDO / np.log(2)
+OFFSET = BASE_SCORE - FACTOR * np.log(BASE_ODDS)
 
-CATEGORICAL_FEATURES = [
-    "term_enc", "home_ownership_enc", "verification_status_enc",
-    "purpose_enc",
-]
 
-FEATURE_NAMES = NUMERIC_FEATURES + CATEGORICAL_FEATURES  # 25 total
+def pd_to_score(pd_arr):
+    pd_c = np.clip(np.asarray(pd_arr, dtype=np.float64), 1e-15, 1 - 1e-15)
+    odds = pd_c / (1 - pd_c)
+    scores = OFFSET - FACTOR * np.log(odds)
+    return np.clip(scores, 150, 950)
 
 
 # ── Encoding Maps ──
@@ -92,69 +89,213 @@ def _transform_one_feature(values_1d, strategy, scaler):
         raise ValueError(f"Unknown strategy: {strategy}")
 
 
-class CreditScorer:
-    """Stacking Ensemble scorer (v9.0).
+def apply_per_feature_scalers(X_raw, scalers, feature_names):
+    X_scaled = np.zeros_like(X_raw, dtype=np.float64)
+    for i, fname in enumerate(feature_names):
+        strategy, sc = scalers[fname]
+        X_scaled[:, i] = _transform_one_feature(X_raw[:, i], strategy, sc)
+    return X_scaled
 
-    Artifacts (from train_model.py):
-      - xgb_pd_model.json          (XGBoost Level 1 — probability)
-      - svm_model.joblib            (SVM Level 1 — probability)
-      - lr_meta_model.joblib        (LR Level 2 — meta learner)
-      - per_feature_scalers.joblib  ({feature: (strategy, scaler)})
-      - metadata.json               (metrics + config)
+
+def apply_woe_transform(X_raw, feature_names, woe_data):
+    """Transform raw features → WOE values using pre-computed binning."""
+    X_woe = np.zeros_like(X_raw, dtype=np.float64)
+    for i, fname in enumerate(feature_names):
+        col = X_raw[:, i]
+        fd = woe_data[fname]
+        edges = np.array(fd['edges'])
+        woe_map = fd['woe_map']
+        bin_indices = np.digitize(col, edges[1:-1], right=False)
+        default_woe = 0.0
+        woe_values = np.array([woe_map.get(int(b), default_woe) for b in bin_indices])
+        X_woe[:, i] = woe_values
+    return X_woe
+
+
+class CreditScorer:
+    """Explainable Hybrid scorer (v17.0).
+
+    Architecture: Scorecard + XGBoost + LightGBM → Meta-LR → Isotonic → PD
     """
+
+    FEATURE_ALIASES = {
+        "so_tien_vay": "capital", "thu_nhap_hang_thang": "monthly_income",
+        "tra_hang_thang": "monthly_pay", "du_no_quay_vong": "revolving_balance",
+        "tong_du_no_hien_tai": "total_current_balance",
+        "ti_le_no_thu_nhap": "dti", "ti_le_su_dung_tin_dung": "revolving_util_percent",
+        "so_nam_lam_viec": "emp_length_years", "no_xau_dang_hoat_dong": "active_bad_debts",
+        "so_lan_pha_san": "bankruptcies", "khoan_vay_dang_hoat_dong": "active_loans",
+        "tong_lich_su_vay": "total_loans_history",
+        "so_thang_lich_su_tin_dung": "credit_history_months",
+        "so_lan_truy_van_gan_day": "recent_inquiries",
+        "diem_tin_dung": "credit_score",
+        "ky_han_thang": "term_enc", "loai_nha_o": "home_ownership_enc",
+        "trang_thai_xac_minh": "verification_status_enc",
+        "muc_dich_vay": "purpose_enc",
+        "so_lan_qua_han_2_nam": "delinquencies_2yr",
+        "so_tai_khoan_qua_han": "accounts_delinquent",
+        "qua_han_nang_24_thang": "severe_delinquencies_24m",
+        "ty_le_khong_qua_han": "pct_never_delinquent",
+        "thu_no_12_thang": "collections_12m",
+        "ty_le_vay_thu_nhap": "loan_to_income",
+        "rui_ro_lai_vay": "rate_loan_risk",
+        "ty_le_tin_dung_con_lai": "credit_headroom_pct",
+    }
 
     def __init__(self, model_dir="models"):
         self.model_dir = model_dir
 
-        # Level 1: XGBoost (probability predictor)
+        # Level 1: XGBoost
         self.xgb_model = xgb.XGBClassifier()
         self.xgb_model.load_model(os.path.join(model_dir, "xgb_pd_model.json"))
 
-        # Level 1: SVM (probability predictor)
-        self.svm_model = joblib.load(os.path.join(model_dir, "svm_model.joblib"))
+        # Level 1: LightGBM (optional)
+        lgbm_path = os.path.join(model_dir, "lgbm_pd_model.txt")
+        if os.path.exists(lgbm_path) and HAS_LGBM:
+            self.lgbm_model = lgb.Booster(model_file=lgbm_path)
+        else:
+            self.lgbm_model = None
 
-        # Level 2: Logistic Regression (meta learner)
-        self.lr_model = joblib.load(os.path.join(model_dir, "lr_meta_model.joblib"))
+        # Level 1: WOE-LR Scorecard
+        self.lr_model = joblib.load(os.path.join(model_dir, "lr_scorecard_model.joblib"))
+        self.woe_data = joblib.load(os.path.join(model_dir, "woe_binning.joblib"))
 
         # Smart per-feature scalers
         self.scalers = joblib.load(os.path.join(model_dir, "per_feature_scalers.joblib"))
+
+        # Isotonic calibration
+        self.iso_calibrator = joblib.load(os.path.join(model_dir, "iso_calibrator.joblib"))
+
+        # Level 2: Meta-learner
+        meta_path = os.path.join(model_dir, "meta_lr.joblib")
+        if os.path.exists(meta_path):
+            self.meta_lr = joblib.load(meta_path)
+        else:
+            self.meta_lr = None
 
         # Metadata
         with open(os.path.join(model_dir, "metadata.json"), "r") as f:
             self.metadata = json.load(f)
 
-        # Backward-compat alias (app.py health check)
-        self.rf_model = self.lr_model
+        # Feature lists from metadata (v12+: decoupled paths)
+        self.all_features = self.metadata.get("all_features", self.metadata["features"])
+        self.sc_features = self.metadata.get("scorecard_features", self.metadata["features"])
+        self.alpha = self.metadata.get("hybrid", {}).get("alpha", 0.3)
+        self.optimal_threshold = self.metadata.get("threshold", {}).get("value", 0.5)
+
+        # Scorecard table
+        sc_path = os.path.join(model_dir, "scorecard_table.json")
+        if os.path.exists(sc_path):
+            with open(sc_path, "r") as f:
+                self.scorecard_table = json.load(f)
+        else:
+            self.scorecard_table = None
+
+        ensemble_str = "SC+XGB+LGBM→Meta-LR" if self.lgbm_model else "SC+XGB→Meta-LR" if self.meta_lr else f"α={self.alpha:.2f}"
+        print(f"[CreditScorer] Loaded v{self.metadata.get('version', '17')} "
+              f"({ensemble_str}, XGB={len(self.all_features)}feat, SC={len(self.sc_features)}feat)")
 
     def predict(self, features: dict) -> dict:
-        """Predict PD using Stacking pipeline (25 features).
+        """Predict PD using Explainable Hybrid pipeline.
 
         Returns ai_risk_score (0-100) and default_probability (0.0-1.0).
         """
-        f = self._process_features(features)
-        X_raw = np.array([[f[n] for n in FEATURE_NAMES]])
+        # Resolve aliases → canonical names
+        resolved = {}
+        for k, v in features.items():
+            canon = self.FEATURE_ALIASES.get(k, k)
+            resolved[canon] = v
 
-        # Smart per-feature scaling
-        X = np.zeros_like(X_raw, dtype=np.float64)
-        for i, fname in enumerate(FEATURE_NAMES):
-            strategy, sc = self.scalers[fname]
-            X[:, i] = _transform_one_feature(X_raw[:, i], strategy, sc)
+        # Process base features (NestJS compatible)
+        f = self._process_features(resolved)
 
-        # Level 1: Base learner probabilities
-        xgb_p = float(self.xgb_model.predict_proba(X)[0, 1])
-        svm_p = float(self.svm_model.predict_proba(X)[0, 1])
+        # Auto-compute interaction features (v12+)
+        mi = f.get("monthly_income", 0)
+        mp = f.get("monthly_pay", 0)
+        tcb = f.get("total_current_balance", 0)
+        rb = f.get("revolving_balance", 0)
+        d2y = f.get("delinquencies_2yr", 0)
+        acd = f.get("accounts_delinquent", 0)
+        sd24 = f.get("severe_delinquencies_24m", 0)
+        ri = f.get("recent_inquiries", 0)
+        al = f.get("active_loans", 0)
+        chm = f.get("credit_history_months", 0)
+        pnd = f.get("pct_never_delinquent", 100)
+        f.setdefault("payment_burden", mp / (mi + 1))
+        f.setdefault("balance_income_ratio", tcb / (mi * 12 + 1))
+        f.setdefault("revolving_concentration", rb / (tcb + 1))
+        f.setdefault("delinquency_severity", d2y + 2 * acd + 3 * sd24)
+        f.setdefault("inquiry_per_account", ri / (al + 1))
+        f.setdefault("credit_quality_depth", chm * pnd / 100)
 
-        # Level 2: Meta features → LR → PD
-        meta = np.column_stack([[xgb_p], [svm_p], X])
-        pd_val = float(self.lr_model.predict_proba(meta)[0, 1])
-        pd_val = min(max(pd_val, 1e-15), 1 - 1e-15)
+        # Power features (v15)
+        abd = f.get("active_bad_debts", 0)
+        bk = f.get("bankruptcies", 0)
+        col12 = f.get("collections_12m", 0)
+        cs = f.get("credit_score", 600)
+        rup = f.get("revolving_util_percent", 50)
+        dti = f.get("dti", 15)
+        tlh = f.get("total_loans_history", 10)
+        te = f.get("term_enc", 36)
+        lti = f.get("loan_to_income", 0.2)
+        f.setdefault("income_per_loan", mi / (al + 1))
+        f.setdefault("risk_accumulation", abd + 2 * bk + 3 * sd24 + d2y + col12)
+        f.setdefault("term_loan_risk", (te / 36) * lti)
+        f.setdefault("dti_squared", (dti / 100) ** 2)
+        f.setdefault("score_utilization", cs * (1 - rup / 150))
+        annual_inc = mi * 12 if mi * 12 > 0 else 1
+        f.setdefault("installment_income_term", mp * te / annual_inc)
+        f.setdefault("delinquency_rate", (d2y + acd) / (tlh + 1))
+        f.setdefault("net_monthly_cashflow", max(0, mi - mp))
 
-        # ai_risk_score: 0 = safe, 100 = very risky
-        ai_risk_score = int(round(min(max(pd_val, 0), 1) * 100))
+        # High-Signal features (v17)
+        ir = f.get("interest_rate", 12.0)
+        rcl = f.get("revolving_credit_limit", 0)
+        f.setdefault("rate_loan_risk", ir * lti)
+        f.setdefault("credit_headroom_pct",
+                      1 - rb / (rcl + 1) if rcl > 0 else 0.0)
+
+        # Full feature vector (ALL features, for XGBoost/LightGBM)
+        vec_full = np.array([[f.get(fn, 0.0) for fn in self.all_features]], dtype=np.float64)
+
+        # Nhánh 1: WOE → LR → Scorecard PD (SC features only)
+        sc_idx = [self.all_features.index(fn) for fn in self.sc_features if fn in self.all_features]
+        vec_sc = vec_full[:, sc_idx]
+        vec_woe = apply_woe_transform(vec_sc, self.sc_features, self.woe_data)
+        scorecard_pd = float(self.lr_model.predict_proba(vec_woe)[:, 1][0])
+
+        # Nhánh 2: Scaled → XGBoost PD (ALL features)
+        vec_scaled = apply_per_feature_scalers(vec_full, self.scalers, self.all_features)
+        xgb_pd = float(self.xgb_model.predict_proba(vec_scaled)[:, 1][0])
+
+        # Nhánh 3: Scaled → LightGBM PD (ALL features) if available
+        lgbm_pd = None
+        if self.lgbm_model is not None:
+            lgbm_pd = float(self.lgbm_model.predict(vec_scaled)[0])
+
+        # Stacking or simple blend
+        if self.meta_lr is not None:
+            if lgbm_pd is not None:
+                meta_vec = np.array([[scorecard_pd, xgb_pd, lgbm_pd]])
+            else:
+                meta_vec = np.array([[scorecard_pd, xgb_pd]])
+            hybrid_raw = float(self.meta_lr.predict_proba(meta_vec)[:, 1][0])
+        else:
+            hybrid_raw = self.alpha * scorecard_pd + (1 - self.alpha) * xgb_pd
+
+        # Isotonic calibration
+        pd_cal = float(self.iso_calibrator.predict(np.array([hybrid_raw]))[0])
+        pd_cal = float(np.clip(pd_cal, 0.0, 1.0))
+
+        # ai_risk_score: credit score scale (150-950)
+        score = int(round(pd_to_score(np.array([pd_cal]))[0]))
+
+        # Also compute simple 0-100 risk score for backward compat
+        ai_risk_score = int(round(min(max(hybrid_raw, 0), 1) * 100))
 
         return {
             "ai_risk_score": ai_risk_score,
-            "default_probability": round(pd_val, 4),
+            "default_probability": round(pd_cal, 4),
             "status": "success",
         }
 

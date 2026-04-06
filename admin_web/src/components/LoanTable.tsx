@@ -47,6 +47,8 @@ export type LoanTableProps = {
     columnsStateKey?: string;
     /** Ref để parent gọi reloadAndRest (cho tab change, filter) */
     actionRef?: React.RefObject<ActionType | undefined>;
+    /** Custom row style callback */
+    onRow?: (record: LoanTableRow) => React.HTMLAttributes<HTMLTableRowElement>;
 };
 
 export default function LoanTable({
@@ -66,6 +68,7 @@ export default function LoanTable({
     postData,
     columnsStateKey = 'loan-table',
     actionRef: actionRefProp,
+    onRow,
 }: LoanTableProps) {
     const { token } = theme.useToken();
     const navigate = useNavigate();
@@ -112,6 +115,7 @@ export default function LoanTable({
                 scroll={{ x: 'max-content' }}
                 options={{ reload: true, density: true, fullScreen: true, setting: true }}
                 columnsState={{ persistenceKey: columnsStateKey, persistenceType: 'localStorage' }}
+                onRow={onRow}
             />
         </>
     );

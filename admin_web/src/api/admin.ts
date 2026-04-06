@@ -246,6 +246,17 @@ export interface LoanDto {
   disbursementDate?: string;
   createdAt: string;
   willing?: string;
+  aiScore?: {
+    pd: number;
+    creditScore: number;
+    grade: string;
+    subGrade: string;
+    tier: string;
+    decision: string;
+    riskLevel: string;
+    riskFactors: any[];
+    scoredAt: string;
+  } | null;
 }
 
 // ── Staff types ──────────────────────────────────────────────────────────────

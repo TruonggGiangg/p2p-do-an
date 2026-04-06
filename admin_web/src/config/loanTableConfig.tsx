@@ -4,7 +4,7 @@
  * Chỉ khác: giai đoạn lọc ban đầu + tùy biến theo chức năng từng page
  */
 import type { ProColumns } from '@ant-design/pro-components';
-import { Tag, Typography, Space, Button, Tooltip } from 'antd';
+import { Tag, Typography, Space, Button, Tooltip, Progress } from 'antd';
 import { UserOutlined, EyeOutlined } from '@ant-design/icons';
 import { FineractStatusBadge, fmtVND } from '../utils/fineractStatus';
 
@@ -32,6 +32,17 @@ export type LoanTableRow = {
     delinquentDays?: number;
     delinquencyClassification?: string | null;
     lastSyncedAt?: string | null;
+    aiScore?: {
+        pd: number;
+        creditScore: number;
+        grade: string;
+        subGrade: string;
+        tier: string;
+        decision: string;
+        riskLevel: string;
+        riskFactors: any[];
+        scoredAt: string;
+    } | null;
 };
 
 export type TabKey = 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
@@ -68,6 +79,35 @@ function getStatusDisplay(r: LoanTableRow) {
 
 function getCustomerName(r: LoanTableRow) {
     return r.clientName || r.customerName || r.customerUsername || '–';
+}
+
+/** Lấy màu sắc theo điểm đánh giá (0-100) */
+function getScoreColor(score: number): string {
+    if (score >= 80) return '#52c41a'; // green - rủi ro thấp
+    if (score >= 60) return '#1890ff'; // blue - trung bình
+    if (score >= 40) return '#faad14'; // orange - cao
+    return '#ff4d4f'; // red - rất cao
+}
+
+/** Lấy CSS class cho row theo điểm đánh giá */
+export function getRowClassName(score: number | undefined | null): string {
+    if (score == null) return 'ai-row-gray';
+    if (score < 40) return 'ai-row-red';
+    if (score < 60) return 'ai-row-orange';
+    if (score < 80) return 'ai-row-blue';
+    return 'ai-row-green';
+}
+
+function getDecisionTag(decision: string) {
+    switch (decision) {
+        case 'APPROVE':
+            return <Tag color="success">Tự động duyệt</Tag>;
+        case 'REJECT':
+            return <Tag color="error">Tự động từ chối</Tag>;
+        case 'REVIEW':
+        default:
+            return <Tag color="warning">Chờ thẩm định</Tag>;
+    }
 }
 
 function formatCreatedAt(v: string | number[] | undefined) {
@@ -310,5 +350,73 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
         ? base.filter((col) => col.key !== 'customer')
         : base;
 
-    return [...normalizedBase, actionCol];
+    // Add AI Score columns for approval variant
+    const aiScoreColumns: ProColumns<LoanTableRow>[] = variant === 'approval' ? [
+        {
+            title: 'Điểm AI',
+            key: 'aiScore',
+            width: 130,
+            align: 'center',
+            search: false,
+            sorter: (a, b) => (a.aiScore?.creditScore ?? -1) - (b.aiScore?.creditScore ?? -1),
+            defaultSortOrder: 'descend',
+            render: (_, r) => {
+                const ai = r.aiScore;
+                if (!ai) return <Typography.Text type="secondary" style={{ fontSize: 11 }}>Chưa chấm</Typography.Text>;
+                const score = ai.creditScore;
+                const color = getScoreColor(score);
+                return (
+                    <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                        <Progress
+                            percent={score}
+                            size="small"
+                            strokeColor={color}
+                            format={() => <span style={{ fontWeight: 700, color, fontSize: 13 }}>{score}</span>}
+                        />
+                        <Typography.Text style={{ fontSize: 10, color: '#888' }}>
+                            PD: {(ai.pd * 100).toFixed(1)}%
+                        </Typography.Text>
+                    </Space>
+                );
+            },
+        },
+        {
+            title: 'Hạng',
+            key: 'aiGrade',
+            width: 140,
+            align: 'center',
+            search: false,
+            render: (_, r) => {
+                const ai = r.aiScore;
+                if (!ai) return '–';
+                const gradeColorMap: Record<string, string> = {
+                    'A': 'green', 'B': 'blue', 'C': 'orange', 'D': 'red', 'E': 'red',
+                };
+                return (
+                    <Space direction="vertical" size={0}>
+                        <Tag color={gradeColorMap[ai.grade] || 'default'} style={{ fontWeight: 700, fontSize: 13 }}>
+                            {ai.grade}
+                        </Tag>
+                        <Typography.Text style={{ fontSize: 10, color: '#888' }}>
+                            {ai.subGrade}
+                        </Typography.Text>
+                    </Space>
+                );
+            },
+        },
+        {
+            title: 'Quyết định',
+            key: 'aiDecision',
+            width: 130,
+            align: 'center',
+            search: false,
+            render: (_, r) => {
+                const ai = r.aiScore;
+                if (!ai) return '–';
+                return getDecisionTag(ai.decision);
+            },
+        },
+    ] : [];
+
+    return [...normalizedBase, ...aiScoreColumns, actionCol];
 }

@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
@@ -63,6 +64,7 @@ export class LoanService {
     private readonly walletsService: WalletsService,
     private readonly smartOtpService: SmartOtpService,
     private readonly creditScoreService: CreditScoreService,
+    private readonly configService: ConfigService,
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
@@ -581,77 +583,113 @@ export class LoanService {
     this.logger.log(`[createApplication] expectedDisbursementDate=${expectedDisbursementDate}`);
 
     // ══════════════════════════════════════════════════════════════════════
-    // AIScore PD Integration (COMMENTED OUT - chưa test production)
-    // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
-    //
-    // Khi bật: set AISCORE_ENABLED=true trong .env
-    // Service URL: AISCORE_SERVICE_URL=http://localhost:8001
+    // AIScore PD Integration + Loan Evaluation Config (Rule Engine)
+    // Luồng: CIC Score + Loan Data → AI Service → ai_risk_score
+    //        evaluationScore = 100 - ai_risk_score
+    //        evaluationScore → Credit Grade mapping → auto approve/reject/review
     // ══════════════════════════════════════════════════════════════════════
-    /*
     let aiScoreResult: any = null;
+    let evaluationScore: number | null = null;
+    let matchedGrade: any = null;
+    let autoDecision: 'auto_approved' | 'auto_rejected' | 'pending' = 'pending';
+
     try {
       const aiscoreConfig = this.configService.get('aiscore');
       if (aiscoreConfig?.enabled) {
+        // 1. Lấy điểm CIC nội bộ (150-750) của user
+        const creditScoreDoc = await this.creditScoreService.ensureCreditScoreForUser(userId);
+        const rawCic = creditScoreDoc.score ?? 570;
+        const cicScore = Math.max(150, Math.min(750, rawCic));
+
+        // 2. Gọi AI Score service
         const { default: axios } = await import('axios');
         const scoreResponse = await axios.post(
           `${aiscoreConfig.serviceUrl}/api/score`,
           {
-            loan_amnt: dto.capital,
-            int_rate: monthlyRate * 12, // convert monthly → annual for Lending Club format
-            installment: schedule.monthlyPay,
-            annual_inc: 0, // Tính năng tương lai: lấy tổng thu nhập từ user profile hoặc eKYC data
-            dti: 0,        // Tính năng tương lai: tính hệ số DTI từ tổng dư nợ / thu nhập định kỳ
-            term: `${dto.periodMonth} months`,
+            credit_score: cicScore,
+            loanAmount: dto.capital,
+            monthly_income: 10_000_000,
+            monthly_pay: schedule.monthlyPay,
+            periodMonth: dto.periodMonth,
           },
           { timeout: aiscoreConfig.timeout || 15000 },
         );
 
-        if (scoreResponse.data?.success) {
-          aiScoreResult = {
-            pd: scoreResponse.data.data.pd,
-            creditScore: scoreResponse.data.data.credit_score,
-            grade: scoreResponse.data.data.grade,
-            subGrade: scoreResponse.data.data.sub_grade,
-            tier: scoreResponse.data.data.tier,
-            decision: scoreResponse.data.data.decision,
-            riskLevel: scoreResponse.data.data.risk_level,
-            riskFactors: scoreResponse.data.data.risk_factors || [],
-            scoredAt: new Date(),
-          };
-          this.logger.log(
-            `[createApplication] AIScore: PD=${aiScoreResult.pd} Score=${aiScoreResult.creditScore} ` +
-            `Grade=${aiScoreResult.subGrade} Tier=${aiScoreResult.tier} Decision=${aiScoreResult.decision}`,
-          );
+        const aiRiskScore = scoreResponse.data?.ai_risk_score;
+        const defaultProbability = scoreResponse.data?.default_probability;
 
-          // Reject nếu PD quá cao (decision = REJECT)
-          if (aiScoreResult.decision === 'REJECT') {
-            throw new BadRequestException(
-              `Khoản vay bị từ chối do rủi ro tín dụng quá cao (PD=${(aiScoreResult.pd * 100).toFixed(1)}%, ` +
-              `Grade=${aiScoreResult.subGrade}). Vui lòng liên hệ hỗ trợ.`,
-            );
+        if (aiRiskScore != null) {
+          // 3. Tính evaluationScore = 100 - ai_risk_score
+          evaluationScore = Math.max(0, Math.min(100, 100 - aiRiskScore));
+
+          // 4. Lấy cấu hình đánh giá (version mới nhất)
+          const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
+
+          // 5. Tìm hạng tín dụng phù hợp
+          const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
+          matchedGrade = sortedGrades.find(g => evaluationScore! >= g.minScore && evaluationScore! <= g.maxScore);
+
+          // 6. Xác định decision dựa vào auto thresholds
+          if (evaluationScore < evalConfig.autoRejectScore) {
+            autoDecision = 'auto_rejected';
+          } else if (evaluationScore >= evalConfig.autoApproveScore) {
+            autoDecision = 'auto_approved';
+          } else {
+            autoDecision = 'pending'; // manual review
           }
 
-          // Update user credit profile
+          aiScoreResult = {
+            pd: defaultProbability,
+            creditScore: evaluationScore,
+            grade: matchedGrade?.grade || 'N/A',
+            subGrade: matchedGrade?.label || 'Chưa xếp hạng',
+            tier: matchedGrade?.grade || 'N/A',
+            decision:
+              autoDecision === 'auto_approved' ? 'APPROVE' : autoDecision === 'auto_rejected' ? 'REJECT' : 'REVIEW',
+            riskLevel:
+              matchedGrade?.grade === 'A'
+                ? 'LOW'
+                : matchedGrade?.grade === 'B'
+                  ? 'MEDIUM'
+                  : matchedGrade?.grade === 'C'
+                    ? 'HIGH'
+                    : 'VERY_HIGH',
+            riskFactors: [],
+            scoredAt: new Date(),
+          };
+
+          this.logger.log(
+            `[createApplication] AIScore: ai_risk_score=${aiRiskScore} evaluationScore=${evaluationScore} ` +
+              `Grade=${matchedGrade?.grade || 'N/A'} (${matchedGrade?.label || '-'}) Decision=${autoDecision}`,
+          );
+
+          // 7. Update user credit profile
           await this.userModel.findByIdAndUpdate(userId, {
             $set: {
-              'creditProfile.pd': aiScoreResult.pd,
-              'creditProfile.creditScore': aiScoreResult.creditScore,
-              'creditProfile.grade': aiScoreResult.grade,
-              'creditProfile.subGrade': aiScoreResult.subGrade,
-              'creditProfile.tier': aiScoreResult.tier,
+              'creditProfile.pd': defaultProbability,
+              'creditProfile.creditScore': evaluationScore,
+              'creditProfile.grade': matchedGrade?.grade,
               'creditProfile.riskLevel': aiScoreResult.riskLevel,
               'creditProfile.lastScoredAt': new Date(),
             },
           });
-          this.logger.log(`[createApplication] User credit profile updated: tier=${aiScoreResult.tier}`);
         }
       }
     } catch (aiError: any) {
       // AIScore failure should NOT block loan creation (graceful degradation)
-      if (aiError instanceof BadRequestException) throw aiError; // Re-throw REJECT decision
       this.logger.warn(`[createApplication] AIScore FAILED (non-blocking): ${aiError.message}`);
     }
-    */
+
+    // Auto-reject: không tạo khoản vay nếu bị AI từ chối
+    if (autoDecision === 'auto_rejected' && aiScoreResult) {
+      throw new BadRequestException(
+        `Khoản vay bị từ chối tự động do điểm đánh giá quá thấp (${evaluationScore}/100, ` +
+          `Hạng ${aiScoreResult.grade} - ${aiScoreResult.subGrade}). Vui lòng liên hệ hỗ trợ.`,
+      );
+    }
+
+    // Determine initial status: auto_approved → approved, else → pending
+    const initialStatus = autoDecision === 'auto_approved' ? 'approved' : 'pending';
 
     // 5. Create MongoDB record first
     const doc = await this.loanApplicationModel.create({
@@ -665,7 +703,7 @@ export class LoanService {
       willing: dto.willing,
       disbursementDate: dto.disbursementDate,
       disbursementWalletId: new Types.ObjectId(dto.disbursementWalletId),
-      status: 'pending',
+      status: initialStatus,
       schedulePreview: schedule.schedulePreview,
       monthlyPay: schedule.monthlyPay,
       entirelyPay: schedule.entirelyPay,
@@ -675,12 +713,11 @@ export class LoanService {
         uri: d.uri,
         uploadedAt: new Date(),
       })),
-      // AIScore PD result (COMMENTED OUT - bật khi AISCORE_ENABLED=true)
-      // ...(aiScoreResult ? { aiScore: aiScoreResult } : {}),
+      ...(aiScoreResult ? { aiScore: aiScoreResult } : {}),
     });
-    this.logger.log(`[createApplication] MongoDB doc created id=${doc._id}`);
+    this.logger.log(`[createApplication] MongoDB doc created id=${doc._id} status=${initialStatus}`);
 
-    // 6. Create on Fineract (chỉ tạo, KHÔNG approve/disburse - trạng thái "Đã nộp, chờ phê duyệt")
+    // 6. Create on Fineract
     try {
       const fineractLoanId = await this.fineractLoanService.createLoanApplication({
         clientId: fineractClientId,
@@ -690,14 +727,30 @@ export class LoanService {
         interestRatePerPeriod: rateForFineract, // theo ràng buộc product (min/max)
         expectedDisbursementDate,
       });
-      this.logger.log(`[createApplication] Fineract loan created id=${fineractLoanId} (pending approval)`);
+      this.logger.log(`[createApplication] Fineract loan created id=${fineractLoanId}`);
 
-      // 7. Update MongoDB with fineractLoanId, giữ status=pending (chờ admin phê duyệt & giải ngân)
+      // 7. Update MongoDB with fineractLoanId
       doc.fineractLoanId = fineractLoanId;
-      doc.status = 'pending'; // Đã nộp, chờ phê duyệt - KHÔNG auto approve/disburse
+      doc.status = initialStatus;
       await doc.save();
+
+      // 8. Nếu auto_approved → approve trên Fineract luôn
+      if (autoDecision === 'auto_approved') {
+        try {
+          const approvedOnDate = expectedDisbursementDate || new Date().toISOString().split('T')[0];
+          await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
+          this.logger.log(`[createApplication] Auto-approved on Fineract: fineractLoanId=${fineractLoanId}`);
+        } catch (approveErr: any) {
+          this.logger.warn(`[createApplication] Auto-approve on Fineract failed (non-blocking): ${approveErr.message}`);
+          // Rollback status to pending if Fineract auto-approve fails
+          doc.status = 'pending';
+          if (aiScoreResult) aiScoreResult.decision = 'REVIEW';
+          await doc.save();
+        }
+      }
+
       this.logger.log(
-        `[createApplication] SUCCESS | mongoId=${doc._id} fineractLoanId=${fineractLoanId} status=pending`,
+        `[createApplication] SUCCESS | mongoId=${doc._id} fineractLoanId=${fineractLoanId} status=${doc.status}`,
       );
     } catch (fineractError: any) {
       this.logger.error(`[createApplication] Fineract FAILED: ${fineractError.message}`);

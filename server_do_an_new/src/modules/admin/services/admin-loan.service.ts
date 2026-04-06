@@ -28,6 +28,7 @@ import { Notification } from '../../loan/schemas/notification.schema';
 import { LoanContract } from '../../loan/schemas/loan-contract.schema';
 import { ContractService } from '../../loan/contract.service';
 import { DocumentType } from '../schemas/document-type.schema';
+import { ConfigService } from '@nestjs/config';
 import { CreditScoreService } from '../../credit-score/credit-score.service';
 import { CreateDelinquencyPolicyDto } from '../../delinquency/dto/create-delinquency-policy.dto';
 import { UpdateDelinquencyPolicyDto } from '../../delinquency/dto/update-delinquency-policy.dto';
@@ -94,6 +95,7 @@ export class AdminLoanService {
     @Inject(forwardRef(() => ContractService)) private readonly contractService: ContractService,
     private readonly customerService: AdminCustomerService,
     private readonly creditScoreService: CreditScoreService,
+    private readonly configService: ConfigService,
   ) {}
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
@@ -245,6 +247,77 @@ export class AdminLoanService {
     const userMap = new Map(mongoUsers.map(u => [u.fineractClientId, u]));
     const loanMap = new Map(mongoLoans.map(l => [l.fineractLoanId, l]));
 
+    // 3.5 Retroactive AI scoring: score pending loans that don't have aiScore yet
+    const aiscoreConfig = this.configService.get('aiscore');
+    if (aiscoreConfig?.enabled) {
+      const unscoredLoans = mongoLoans.filter((l: any) => l.fineractLoanId && !l.aiScore);
+      if (unscoredLoans.length > 0) {
+        this.logger.log(`[getAllPendingLoans] Retroactive AI scoring for ${unscoredLoans.length} un-scored loans`);
+        await Promise.allSettled(
+          unscoredLoans.map(async (loan: any) => {
+            try {
+              const loanCapital = loan.capital ?? 0;
+              if (loanCapital <= 0) return; // skip invalid loans
+              const user = mongoUsers.find((u: any) => u._id?.toString() === loan.userId?.toString());
+              const rawCic = user?.creditProfile?.creditScore ?? 570;
+              const cicScore = Math.max(150, Math.min(750, rawCic));
+              const { default: axios } = await import('axios');
+              const scoreResponse = await axios.post(
+                `${aiscoreConfig.serviceUrl}/api/score`,
+                {
+                  credit_score: cicScore,
+                  loanAmount: loanCapital,
+                  monthly_income: 10_000_000,
+                  monthly_pay: loan.monthlyPay ?? 0,
+                  periodMonth: loan.periodMonth ?? 12,
+                },
+                { timeout: aiscoreConfig.timeout || 15000 },
+              );
+              const aiRiskScore = scoreResponse.data?.ai_risk_score;
+              const defaultProbability = scoreResponse.data?.default_probability;
+              if (aiRiskScore != null) {
+                const evaluationScore = Math.max(0, Math.min(100, 100 - aiRiskScore));
+                const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
+                const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
+                const grade = sortedGrades.find(g => evaluationScore >= g.minScore && evaluationScore <= g.maxScore);
+                const aiScore = {
+                  pd: defaultProbability,
+                  creditScore: evaluationScore,
+                  grade: grade?.grade || 'N/A',
+                  subGrade: grade?.label || 'Chưa xếp hạng',
+                  tier: grade?.grade || 'N/A',
+                  decision:
+                    evaluationScore < (evalConfig.autoRejectScore ?? 0)
+                      ? 'REJECT'
+                      : evaluationScore >= (evalConfig.autoApproveScore ?? 100)
+                        ? 'APPROVE'
+                        : 'REVIEW',
+                  riskLevel:
+                    grade?.grade === 'A'
+                      ? 'LOW'
+                      : grade?.grade === 'B'
+                        ? 'MEDIUM'
+                        : grade?.grade === 'C'
+                          ? 'HIGH'
+                          : 'VERY_HIGH',
+                  riskFactors: [],
+                  scoredAt: new Date(),
+                };
+                await this.loanApplicationModel.updateOne({ _id: loan._id }, { $set: { aiScore } });
+                // Update loanMap so the current response includes the new score
+                loanMap.set(loan.fineractLoanId, { ...loan, aiScore });
+                this.logger.log(
+                  `[getAllPendingLoans] Scored loan ${loan.fineractLoanId}: score=${evaluationScore} grade=${aiScore.grade}`,
+                );
+              }
+            } catch (err: any) {
+              this.logger.warn(`[getAllPendingLoans] Failed to score loan ${loan.fineractLoanId}: ${err.message}`);
+            }
+          }),
+        );
+      }
+    }
+
     // 4. Transform
     return pendingFineractLoans.map(fl => {
       const productId = fl.productId || fl.loanProductId;
@@ -271,6 +344,8 @@ export class AdminLoanService {
         willing: ll?.willing ?? '',
         // Client display name for easier approval
         clientName: fl.clientName ?? u?.username ?? `Client ${fl.clientId}`,
+        // AI Score data for approval UI
+        aiScore: ll?.aiScore ?? null,
       };
     });
   }
@@ -1795,6 +1870,7 @@ export class AdminLoanService {
         disbursementDate: (fl as any).disbursementDate ?? null,
         createdAt: (fl as any).createdAt ?? null,
         lastSyncedAt: null,
+        aiScore: (fl as any).aiScore ?? null,
       }));
       items = applyProductFilter(applyKeywordFilter(items));
       return items;

@@ -90,6 +90,72 @@
   /* Chưa đến hạn: để mặc định hoặc xám nhạt */
 }
 
+/* ── AI Score Row Highlighting (Loan Approvals) ── */
+.ant-table-tbody tr.ai-row-green td {
+  background: #f6ffed !important;
+  border-left-color: #52c41a;
+}
+
+.ant-table-tbody tr.ai-row-green>td:first-child {
+  border-left: 4px solid #52c41a !important;
+}
+
+.ant-table-tbody tr.ai-row-blue td {
+  background: #e6f4ff !important;
+  border-left-color: #1677ff;
+}
+
+.ant-table-tbody tr.ai-row-blue>td:first-child {
+  border-left: 4px solid #1677ff !important;
+}
+
+.ant-table-tbody tr.ai-row-orange td {
+  background: #fff7e6 !important;
+  border-left-color: #faad14;
+}
+
+.ant-table-tbody tr.ai-row-orange>td:first-child {
+  border-left: 4px solid #faad14 !important;
+}
+
+.ant-table-tbody tr.ai-row-red td {
+  background: #fff1f0 !important;
+  border-left-color: #ff4d4f;
+}
+
+.ant-table-tbody tr.ai-row-red>td:first-child {
+  border-left: 4px solid #ff4d4f !important;
+}
+
+.ant-table-tbody tr.ai-row-gray td {
+  background: #f5f5f5 !important;
+  border-left-color: #d9d9d9;
+}
+
+.ant-table-tbody tr.ai-row-gray>td:first-child {
+  border-left: 4px solid #d9d9d9 !important;
+}
+
+[data-theme="dark"] .ant-table-tbody tr.ai-row-green td {
+  background: rgba(82, 196, 26, 0.12) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody tr.ai-row-blue td {
+  background: rgba(22, 119, 255, 0.12) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody tr.ai-row-orange td {
+  background: rgba(250, 173, 20, 0.12) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody tr.ai-row-red td {
+  background: rgba(255, 77, 79, 0.15) !important;
+}
+
+[data-theme="dark"] .ant-table-tbody tr.ai-row-gray td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
 /* ── Roles & Permissions Page ── */
 
 /* Permission card items */
