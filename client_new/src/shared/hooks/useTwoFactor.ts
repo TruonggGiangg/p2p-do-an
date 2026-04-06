@@ -46,7 +46,7 @@ export const useTwoFactor = () => {
       return result;
     } catch (err: any) {
       console.error('[useTwoFactor] Get secret error:', err);
-      setError(err.response?.data?.message || err.message);
+      setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
       return null;
     } finally {
       setIsLoading(false);
@@ -72,7 +72,7 @@ export const useTwoFactor = () => {
         return success;
       } catch (err: any) {
         console.error('[useTwoFactor] Enable error:', err);
-        setError(err.response?.data?.message || err.message);
+        setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
         return false;
       } finally {
         setIsLoading(false);
@@ -94,7 +94,7 @@ export const useTwoFactor = () => {
       return success;
     } catch (err: any) {
       console.error('[useTwoFactor] Disable error:', err);
-      setError(err.response?.data?.message || err.message);
+      setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
       return false;
     } finally {
       setIsLoading(false);
@@ -110,7 +110,7 @@ export const useTwoFactor = () => {
       return await TwoFactorService.verifyToken(token);
     } catch (err: any) {
       console.error('[useTwoFactor] Verify error:', err);
-      setError(err.response?.data?.message || err.message);
+      setError(err.response?.data?.errMsg || err.response?.data?.message || err.message);
       return false;
     } finally {
       setIsLoading(false);

@@ -59,14 +59,37 @@ export class TotpService {
     }
   }
 
+  private base32ToBuffer(encoded: string): Buffer {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let padding = encoded.match(/=*$/);
+    let length = encoded.length;
+    if (padding) length -= padding[0].length;
+
+    let buffer = Buffer.alloc(Math.ceil((length * 5) / 8));
+    let bits = 0;
+    let value = 0;
+    let index = 0;
+
+    for (let i = 0; i < length; i++) {
+        value = (value << 5) | alphabet.indexOf(encoded[i].toUpperCase());
+        bits += 5;
+        if (bits >= 8) {
+            buffer[index++] = (value >>> (bits - 8)) & 255;
+            bits -= 8;
+        }
+    }
+    return buffer;
+  }
+
   /**
    * Simple TOTP generation (fallback using crypto)
    */
-  private generateFallback(secret: string): string {
+  private generateFallback(secret: string, epochMs?: number): string {
     try {
-      const timeStep = Math.floor(Date.now() / 1000 / TOTP_CONFIG.step);
-      // Use base32 decode for secret
-      const secretBuffer = Buffer.from(secret, 'base64');
+      const timeMs = epochMs || Date.now();
+      const timeStep = Math.floor(timeMs / 1000 / TOTP_CONFIG.step);
+      // Use accurate base32 decode for secret
+      const secretBuffer = this.base32ToBuffer(secret);
       const hmac = crypto.createHmac('sha1', secretBuffer);
       const timeBuffer = Buffer.alloc(8);
       timeBuffer.writeBigInt64BE(BigInt(timeStep));
@@ -107,8 +130,8 @@ export class TotpService {
 
       for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
         if (delta === 0) continue; // đã check ở trên
-        const testEpoch = (currentStep + delta) * TOTP_CONFIG.step;
-        const expectedToken = generateSync({ secret, epoch: testEpoch });
+        const testEpochMs = (currentStep + delta) * TOTP_CONFIG.step * 1000;
+        const expectedToken = generateSync({ secret, epoch: testEpochMs });
         if (token === expectedToken) {
           this.logger.debug(`TOTP valid at delta=${delta} (step=${currentStep + delta})`);
           return true;
@@ -127,8 +150,8 @@ export class TotpService {
         const currentStep = Math.floor(nowSec / TOTP_CONFIG.step);
 
         for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
-          const testEpoch = (currentStep + delta) * TOTP_CONFIG.step;
-          const expected = this.generateFallback(secret);
+          const testEpochMs = (currentStep + delta) * TOTP_CONFIG.step * 1000;
+          const expected = this.generateFallback(secret, testEpochMs);
           if (token === expected) {
             this.logger.debug(`verifyTOTP (fallback): valid at delta=${delta}`);
             return true;

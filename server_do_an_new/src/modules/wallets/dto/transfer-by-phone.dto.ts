@@ -35,4 +35,12 @@ export class TransferByPhoneDto {
     @IsOptional()
     @IsString()
     description?: string;
+
+    @ApiProperty({
+        description: 'ID thiết bị thực hiện giao dịch (để khởi tạo Smart OTP)',
+        example: 'device-uuid-123',
+    })
+    @IsString()
+    @IsNotEmpty()
+    deviceId: string;
 }

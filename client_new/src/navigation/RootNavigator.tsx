@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import { TransferScreen, WalletsScreen } from '../features/wallet';
+import { TransferScreen, TransferConfirmScreen, WalletsScreen } from '../features/wallet';
 import { NotificationScreen } from '../features/notifications';
 import LoanProductDetailScreen from '../features/loan/screens/LoanProductDetailScreen';
 import LoanCreateScreen from '../features/loan/screens/LoanCreateScreen';
@@ -47,6 +47,16 @@ export type RootStackParamList = {
     PinChange: undefined;
     CreditScoreDetail: undefined;
     Transfer: undefined;
+    TransferConfirm: {
+        sessionId: string;
+        transactionData: {
+            fromWalletName: string;
+            fromWalletId: string;
+            recipientAccountNo: string;
+            amount: number;
+            description?: string;
+        };
+    };
     Notifications: undefined;
     Wallets: undefined;
     LoanHistory: undefined;
@@ -150,6 +160,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="PinChange" component={PinChangeScreen} />
                     <Stack.Screen name="CreditScoreDetail" component={CreditScoreDetailScreen} />
                     <Stack.Screen name="Transfer" component={TransferScreen} />
+                    <Stack.Screen name="TransferConfirm" component={TransferConfirmScreen} />
                     <Stack.Screen name="Notifications" component={NotificationScreen} />
                     <Stack.Screen name="Wallets" component={WalletsScreen} />
                     <Stack.Screen name="LoanHistory" component={LoanHistoryScreen} />

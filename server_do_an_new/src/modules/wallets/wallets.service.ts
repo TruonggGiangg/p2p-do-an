@@ -5,6 +5,11 @@ import { Wallet } from './schemas/wallet.schema';
 import { User } from '../users/schemas/user.schema';
 import { FineractService } from '../fineract/fineract.service';
 
+import { OtpSessionService } from '../smart-otp/services/otp-session.service';
+import { SmartOtpService } from '../smart-otp/services/smart-otp.service';
+import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
+import { ConfirmTransferDto } from './dto/confirm-transfer.dto';
+
 export interface WalletInfo {
   id: string; // MongoDB ID
   fineractId: string;
@@ -30,6 +35,8 @@ export class WalletsService {
     @InjectModel(Wallet.name) private readonly walletModel: Model<Wallet>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly fineractService: FineractService,
+    private readonly otpSessionService: OtpSessionService,
+    private readonly smartOtpService: SmartOtpService,
   ) {}
 
   // -------------------- HELPER METHODS --------------------
@@ -320,145 +327,99 @@ export class WalletsService {
   }
 
   /**
-   * Transfer money between wallets
+   * Transfer money between wallets (Initiate)
    */
   async transferBetweenWallets(
+    userId: string,
     fromWalletId: string,
     toWalletId: string,
     amount: number,
+    deviceId: string,
     description?: string,
-  ): Promise<{ transactionId: string; fromWallet: any; toWallet: any }> {
-    // fromWalletId and toWalletId are now Fineract IDs, not MongoDB IDs
-    const fromWallet = await this.getWalletByFineractId(fromWalletId);
-    const toWallet = await this.getWalletByFineractId(toWalletId);
+  ): Promise<any> {
+    // 1. Verify wallets ownership and balances
+    const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, userId, amount);
 
-    if (!fromWallet || !toWallet) {
-      throw new NotFoundException('Không tìm thấy ví');
-    }
-
-    if (fromWallet.balance < amount) {
-      throw new BadRequestException(
-        `Số dư không đủ. Số dư hiện tại: ${fromWallet.balance.toLocaleString('vi-VN')} VND`,
-      );
-    }
-
-    // Find users by wallet's fineractSavingsId
-    const fromWalletRef = await this.walletModel.findOne({ fineractSavingsId: fromWalletId }).exec();
     const toWalletRef = await this.walletModel.findOne({ fineractSavingsId: toWalletId }).exec();
-
-    if (!fromWalletRef || !toWalletRef) {
-      throw new NotFoundException('Không tìm thấy thông tin ví');
+    if (!toWalletRef) {
+      throw new NotFoundException('Không tìm thấy thông tin ví đích');
     }
 
-    const fromUser = await this.userModel.findById(fromWalletRef.userId).exec();
     const toUser = await this.userModel.findById(toWalletRef.userId).exec();
-
-    if (!fromUser?.fineractClientId || !toUser?.fineractClientId) {
-      throw new BadRequestException('Người dùng chưa được liên kết với Fineract');
+    if (!toUser?.fineractClientId) {
+      throw new BadRequestException('Người nhận chưa được liên kết với Fineract');
     }
 
-    // Use the specific fineractId provided (fromWalletId and toWalletId are Fineract IDs)
-    // Don't use getActiveEWalletAccount() which only returns the first wallet
-    // Instead, get the specific account details by fineractId
-    const fromAccountDetails = await this.fineractService.getSavingsAccountDetails(fromWalletId);
     const toAccountDetails = await this.fineractService.getSavingsAccountDetails(toWalletId);
-
-    if (!fromAccountDetails || !toAccountDetails) {
-      throw new NotFoundException('Không tìm thấy tài khoản ví điện tử');
+    if (!toAccountDetails || this.fineractService.getWalletType(toAccountDetails) !== 'e_wallet') {
+      throw new BadRequestException('Ví đích không hợp lệ hoặc không phải ví điện tử');
     }
 
-    // Verify both accounts belong to the correct users
-    if (fromAccountDetails.clientId !== Number(fromUser.fineractClientId)) {
-      throw new BadRequestException('Ví nguồn không thuộc về người gửi');
-    }
-    if (toAccountDetails.clientId !== Number(toUser.fineractClientId)) {
-      throw new BadRequestException('Ví đích không thuộc về người nhận');
-    }
-
-    // Verify both are e-wallets
-    const fromWalletType = this.fineractService.getWalletType(fromAccountDetails);
-    const toWalletType = this.fineractService.getWalletType(toAccountDetails);
-    if (fromWalletType !== 'e_wallet' || toWalletType !== 'e_wallet') {
-      throw new BadRequestException('Chỉ có thể chuyển tiền giữa các ví điện tử');
-    }
-
-    const transferNote = description || `Chuyển tiền từ ${fromUser.username || fromUser.keycloakId}`;
-    const result = await this.fineractService.transferFunds(
-      Number(fromUser.fineractClientId),
-      Number(toUser.fineractClientId),
-      Number(fromWalletId), // Use the fineractId directly
-      Number(toWalletId), // Use the fineractId directly
-      amount,
-      transferNote,
+    // 2. Create OTP Session
+    return this.otpSessionService.createSession(
+      userId,
+      deviceId,
+      OtpActionType.TRANSFER,
+      {
+        fromWalletId,
+        toAccountId: toWalletId,
+        toClientId: toUser.fineractClientId,
+        amount,
+        description: description || `Chuyển quỹ nội bộ đến ${toWalletId}`,
+        type: 'INTERNAL_TRANSFER',
+      }
     );
-
-    // Refresh wallet balances
-    const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-    const updatedToWallet = await this.getWalletByFineractId(toWalletId);
-
-    return {
-      transactionId: String(result.resourceId),
-      fromWallet: updatedFromWallet,
-      toWallet: updatedToWallet,
-    };
   }
 
   /**
-   * Transfer money by phone number
+   * Transfer money by phone number (Initiate)
    */
   async transferByPhone(
-    fromUserId: string,
+    userId: string,
     fromWalletId: string,
     recipientPhone: string,
     amount: number,
+    deviceId: string,
     description?: string,
-  ): Promise<{ transactionId: string; fromWallet: any; toWallet?: any }> {
-    // Use shared validation helper
-    const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, fromUserId, amount);
+  ): Promise<any> {
+    // 1. Validation
+    const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, userId, amount);
 
-    // Find recipient by phone number
-    const recipientUser = await this.userModel
-      .findOne({
-        $or: [{ username: recipientPhone }, { 'metadata.phone': recipientPhone }],
-      })
-      .exec();
+    // 2. Find recipient user
+    const cleanPhone = recipientPhone.replace(/\D/g, '');
+    const recipientUser = await this.userModel.findOne({
+      $or: [{ username: cleanPhone }, { phoneNumber: cleanPhone }, { 'metadata.phone': cleanPhone }],
+    }).exec();
 
     if (!recipientUser || !recipientUser.fineractClientId) {
-      throw new NotFoundException('Người nhận không tồn tại trong hệ thống');
+      throw new NotFoundException('Không tìm thấy người dùng nhận hoặc người nhận chưa liên kết Fineract');
     }
 
-    if (fromUser._id.toString() === recipientUser._id.toString()) {
-      throw new BadRequestException('Không thể chuyển tiền cho chính mình');
-    }
-
-    // Get the recipient's active e-wallet
+    // 3. Get recipient's active e-wallet
     const toAccount = await this.fineractService.getActiveEWalletAccount(Number(recipientUser.fineractClientId));
     if (!toAccount) {
       throw new NotFoundException('Người nhận chưa có ví điện tử active');
     }
 
-    // Execute transfer
-    const transferNote =
-      description || `Chuyển tiền từ ${fromUser.username || fromUser.keycloakId} đến ${recipientPhone}`;
-    const result = await this.fineractService.transferFunds(
-      Number(fromUser.fineractClientId),
-      Number(recipientUser.fineractClientId),
-      Number(fromWalletId),
-      toAccount.id,
-      amount,
-      transferNote,
+    if (toAccount.id === Number(fromWalletId)) {
+      throw new BadRequestException('Không thể chuyển tiền cho chính mình');
+    }
+
+    // 4. Create OTP Session
+    return this.otpSessionService.createSession(
+      userId,
+      deviceId,
+      OtpActionType.TRANSFER,
+      {
+        fromWalletId,
+        toAccountId: toAccount.id,
+        toClientId: recipientUser.fineractClientId,
+        amount,
+        description: description || `Chuyển tiền qua SĐT đến ${recipientPhone}`,
+        recipientName: recipientUser.username,
+        type: 'TRANSFER_BY_PHONE',
+      }
     );
-
-    // Refresh and return
-    const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-    const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
-    const recipientEWallet = recipientWallets.find(w => w.type === 'e_wallet');
-
-    return {
-      transactionId: String(result.resourceId),
-      fromWallet: updatedFromWallet,
-      toWallet: recipientEWallet,
-    };
   }
 
   /**
@@ -624,56 +585,148 @@ export class WalletsService {
   /**
    * Transfer money by account number
    */
+  /**
+   * Smart Resolution Transfer by Account Number or Phone (Initiate)
+   */
   async transferByAccountNumber(
     fromUserId: string,
-    fromWalletId: string, // fineractSavingsId
+    fromWalletId: string,
     recipientAccountNo: string,
     amount: number,
+    deviceId: string,
     description?: string,
-  ): Promise<{ transactionId: string; fromWallet: any; toWallet?: any }> {
-    this.logger.log(
-      `[transferByAccountNumber] fromWalletId=${fromWalletId} -> toAccountNo=${recipientAccountNo}, amount=${amount}`,
-    );
-
+  ): Promise<any> {
     // Use shared validation helper
     const { fromWallet, fromUser } = await this.validateTransferRequest(fromWalletId, fromUserId, amount);
 
-    // Resolve recipient by Account Number in Fineract
-    const toAccount = await this.fineractService.getSavingsAccountByAccountNumber(recipientAccountNo);
-    if (!toAccount) {
-      throw new NotFoundException('Không tìm thấy tài khoản đích trong hệ thống Fineract');
+    // Normalize input for phone search
+    const cleanPhone = recipientAccountNo.replace(/\D/g, '');
+    const phoneVariants = [
+      cleanPhone, // 0999000002
+      cleanPhone.startsWith('0') ? cleanPhone.substring(1) : cleanPhone, // 999000002
+      cleanPhone.startsWith('0') ? `+84${cleanPhone.substring(1)}` : `+84${cleanPhone}`, // +84999000002
+    ];
+
+    // Step 1: Smart Resolution - Try MongoDB first (Fastest)
+    let toAccount: any = null;
+    let recipientUser = await this.userModel
+      .findOne({
+        $or: [
+          { username: { $in: phoneVariants } },
+          { phoneNumber: { $in: phoneVariants } },
+          { 'metadata.phone': { $in: phoneVariants } },
+        ],
+      })
+      .exec();
+
+    if (recipientUser && recipientUser.fineractClientId) {
+      this.logger.log(
+        `[transferByAccountNumber] Resolved recipientAccountNo=${recipientAccountNo} as Phone for User=${recipientUser.username}`,
+      );
+      // Get the recipient's active e-wallet
+      toAccount = await this.fineractService.getActiveEWalletAccount(Number(recipientUser.fineractClientId));
+      if (!toAccount) {
+        throw new NotFoundException(`Người nhận ${recipientUser.username} chưa có ví điện tử active`);
+      }
+    } else {
+      // Step 2: Try searching directly in Fineract Clients by phone/identifier
+      const fineractClient = await this.fineractService.findClientByIdentifier(recipientAccountNo);
+      
+      if (fineractClient) {
+        toAccount = await this.fineractService.getActiveEWalletAccount(Number(fineractClient.id));
+        if (!toAccount) {
+          throw new NotFoundException(`Người nhận tìm thấy trên Fineract nhưng chưa có ví điện tử active`);
+        }
+      } else {
+        // Step 3: Fallback - Resolve recipient by Account Number in Fineract directly
+        toAccount = await this.fineractService.getSavingsAccountByAccountNumber(recipientAccountNo);
+        if (!toAccount) {
+          throw new NotFoundException('Không tìm thấy tài khoản hoặc số điện thoại đích. Vui lòng kiểm tra lại.');
+        }
+      }
     }
 
     if (toAccount.id === Number(fromWalletId)) {
-      throw new BadRequestException('Không thể chuyển tiền cho chính tài khoản này');
+      throw new BadRequestException('Không thể chuyển tiền cho chính mình');
     }
 
-    // Resolve recipient user (optional for UX)
-    const recipientUser = await this.userModel.findOne({ fineractClientId: String(toAccount.clientId) }).exec();
+    // Final Stage: Create OTP Session
+    const isPhone = recipientUser && (recipientUser.username === recipientAccountNo || recipientUser.metadata?.phone === recipientAccountNo);
+    const contextDescription = description || `Chuyển tiền đến ${isPhone ? 'SĐT' : 'STK'} ${recipientAccountNo}`;
 
-    // Execute transfer
-    const transferNote = description || `Chuyển tiền đến số tài khoản ${recipientAccountNo}`;
-    const result = await this.fineractService.transferFunds(
-      Number(fromUser.fineractClientId),
-      toAccount.clientId,
-      Number(fromWalletId),
-      toAccount.id,
-      amount,
-      transferNote,
+    return this.otpSessionService.createSession(
+      fromUserId,
+      deviceId,
+      OtpActionType.TRANSFER,
+      {
+        fromWalletId,
+        toAccountId: toAccount.id,
+        toClientId: toAccount.clientId,
+        amount,
+        description: contextDescription,
+        recipientName: recipientUser?.username || `Tài khoản ${toAccount.accountNo}`,
+        type: 'TRANSFER_BY_ACCOUNT',
+      },
+    );
+  }
+
+  /**
+   * Confirm and execute transfer after Smart OTP verification
+   */
+  async confirmTransfer(userId: string, dto: ConfirmTransferDto): Promise<any> {
+    // 1. Verify Smart OTP & Signature
+    const verifyResult = await this.smartOtpService.verifySmartOtp(
+      userId,
+      dto.sessionId,
+      dto.otp,
+      dto.signature,
+      dto.timestamp,
+      dto.deviceId,
+      OtpActionType.TRANSFER,
     );
 
-    // Refresh and return
-    const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
-    let toWalletInfo: any = null;
-    if (recipientUser) {
-      const recipientWallets = await this.getWalletsByUserId(recipientUser._id.toString());
-      toWalletInfo = recipientWallets.find(w => w.fineractId === String(toAccount.id));
+    if (!verifyResult.valid) {
+      throw new BadRequestException(verifyResult.message || 'Xác thực OTP không thành công');
     }
 
+    // 2. Consume session and get transaction data
+    const sessionResult = await this.otpSessionService.consumeSession(
+      userId,
+      dto.sessionId,
+      OtpActionType.TRANSFER,
+    );
+
+    if (!sessionResult.valid) {
+      throw new BadRequestException(sessionResult.message || 'Phiên làm việc không hợp lệ hoặc đã hết hạn');
+    }
+
+    const { fromWalletId, toAccountId, toClientId, amount, description } = sessionResult.actionData;
+
+    // 3. Re-validate balance right before execution
+    const { fromUser } = await this.validateTransferRequest(fromWalletId, userId, amount);
+
+    this.logger.log(`[confirmTransfer] Executing transfer session=${dto.sessionId}, amount=${amount}`);
+
+    // 4. Execute actual transfer on Fineract
+    const result = await this.fineractService.transferFunds(
+      Number(fromUser.fineractClientId),
+      Number(toClientId),
+      Number(fromWalletId),
+      Number(toAccountId),
+      amount,
+      description,
+    );
+
+    // 5. Refresh from wallet to return updated balance
+    const updatedFromWallet = await this.getWalletByFineractId(fromWalletId);
+
     return {
-      transactionId: String(result.resourceId),
+      message: 'Chuyển khoản thành công',
+      transactionId: result.resourceId || result.transactionId,
+      amount,
+      description,
       fromWallet: updatedFromWallet,
-      toWallet: toWalletInfo,
+      verifiedAt: new Date(),
     };
   }
 }

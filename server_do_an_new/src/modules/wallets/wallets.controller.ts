@@ -6,6 +6,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TransferDto } from './dto/transfer.dto';
 import { TransferByPhoneDto } from './dto/transfer-by-phone.dto';
 import { TransferByAccountDto } from './dto/transfer-by-account.dto';
+import { ConfirmTransferDto } from './dto/confirm-transfer.dto';
 
 @ApiTags('wallets')
 @ApiBearerAuth('access-token')
@@ -81,36 +82,33 @@ export class WalletsController {
   }
 
   @Post('transfer')
-  @ApiOperation({ summary: 'Chuyển tiền giữa các ví Fineract' })
-  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
+  @ApiOperation({ summary: 'Khởi tạo chuyển tiền giữa các ví (Yêu cầu OTP)' })
+  @ApiResponse({ status: 200, description: 'Trả về sessionId để xác thực OTP' })
   async transfer(
     @CurrentUser('id') userId: string,
     @Body() body: TransferDto,
   ) {
-    const { fromWalletId, toWalletId, amount, description } = body;
-    const result = await this.walletsService.transferBetweenWallets(fromWalletId, toWalletId, amount, description);
-
-    return result;
+    const { fromWalletId, toWalletId, amount, description, deviceId } = body;
+    return this.walletsService.transferBetweenWallets(userId, fromWalletId, toWalletId, amount, deviceId!, description);
   }
 
   @Post('transfer/phone')
-  @ApiOperation({ summary: 'Chuyển tiền qua số điện thoại' })
-  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
+  @ApiOperation({ summary: 'Khởi tạo chuyển tiền qua số điện thoại (Yêu cầu OTP)' })
+  @ApiResponse({ status: 200, description: 'Trả về sessionId để xác thực OTP' })
   async transferByPhone(
     @CurrentUser('id') userId: string,
     @Body() body: TransferByPhoneDto,
   ) {
-    const { fromWalletId, recipientPhone, amount, description } = body;
+    const { fromWalletId, recipientPhone, amount, description, deviceId } = body;
     const cleanPhone = recipientPhone.replace(/\D/g, '');
-    const result = await this.walletsService.transferByPhone(
+    return this.walletsService.transferByPhone(
       userId,
       fromWalletId,
       cleanPhone,
       amount,
+      deviceId!,
       description,
     );
-
-    return result;
   }
 
   @Patch(':id/default')
@@ -126,21 +124,30 @@ export class WalletsController {
   }
 
   @Post('transfer/account')
-  @ApiOperation({ summary: 'Chuyển tiền qua số tài khoản Fineract' })
-  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
+  @ApiOperation({ summary: 'Khởi tạo chuyển tiền qua số tài khoản (Yêu cầu OTP)' })
+  @ApiResponse({ status: 200, description: 'Trả về sessionId để xác thực OTP' })
   async transferByAccount(
     @CurrentUser('id') userId: string,
     @Body() body: TransferByAccountDto,
   ) {
-    const { fromWalletId, recipientAccountNo, amount, description } = body;
-    const result = await this.walletsService.transferByAccountNumber(
+    const { fromWalletId, recipientAccountNo, amount, description, deviceId } = body;
+    return this.walletsService.transferByAccountNumber(
       userId,
       fromWalletId,
       recipientAccountNo,
       amount,
+      deviceId!,
       description,
     );
+  }
 
-    return result;
+  @Post('transfer/confirm')
+  @ApiOperation({ summary: 'Xác nhận và thực thi giao dịch với Smart OTP & Chữ ký số' })
+  @ApiResponse({ status: 200, description: 'Chuyển khoản thành công' })
+  async confirmTransfer(
+    @CurrentUser('id') userId: string,
+    @Body() body: ConfirmTransferDto,
+  ) {
+    return this.walletsService.confirmTransfer(userId, body);
   }
 }

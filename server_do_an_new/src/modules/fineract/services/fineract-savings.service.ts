@@ -251,7 +251,7 @@ export class FineractSavingsService extends FineractBaseService {
                 toAccountType: ACCOUNT_TYPE_SAVINGS,
                 toAccountId,
                 ...this.getCommonLocaleParams('strict'),
-                transferDate: this.getTodayFormatted('ca'),
+                transferDate: this.getTodayFormatted('iso'),
                 transferAmount: amount,
                 transferDescription: note,
             });

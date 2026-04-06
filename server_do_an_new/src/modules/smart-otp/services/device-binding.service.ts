@@ -18,7 +18,7 @@ import { User } from '../../users/schemas/user.schema';
 @Injectable()
 export class DeviceBindingService {
   private readonly logger = new Logger(DeviceBindingService.name);
-  private readonly MAX_DEVICES = 3;
+  private readonly MAX_DEVICES = 10;
 
   constructor(
     @InjectModel(DeviceBinding.name)

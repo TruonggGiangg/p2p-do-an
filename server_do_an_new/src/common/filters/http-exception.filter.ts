@@ -27,8 +27,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const responseBody: Record<string, any> = {
       success: false,
       statusCode: status,
-      message: typeof message === 'string' ? message : message.message || 'Đã có lỗi xảy ra',
-      error: typeof message === 'object' ? message.error || 'Internal Server Error' : 'Error',
+      message: Array.isArray(message) ? message[0] : (typeof message === 'string' ? message : message.message || 'Đã có lỗi xảy ra'),
+      error: typeof message === 'object' && !Array.isArray(message) ? message.error || 'Internal Server Error' : 'Error',
       path: request.url,
       timestamp: new Date().toISOString(),
     };
