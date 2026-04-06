@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import * as dns from 'node:dns';
@@ -18,7 +18,9 @@ async function bootstrap() {
   // ends up using a non-running local DNS server (e.g., 127.0.0.1).
   // - If DNS_SERVERS is provided, use it (comma-separated).
   // - Else, if Node only has localhost DNS, fall back to public resolvers.
-  const envDnsServers = process.env.DNS_SERVERS?.split(',').map(s => s.trim()).filter(Boolean);
+  const envDnsServers = process.env.DNS_SERVERS?.split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
   if (envDnsServers?.length) {
     dns.setServers(envDnsServers);
     logger.log(`DNS servers (from DNS_SERVERS): ${envDnsServers.join(', ')}`);
@@ -47,6 +49,12 @@ async function bootstrap() {
 
   // Global prefix
   app.setGlobalPrefix('api');
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+
+    // prefix: 'v',
+  });
 
   // Cookie parser
   app.use(cookieParser());
