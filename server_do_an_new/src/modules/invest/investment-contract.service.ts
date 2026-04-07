@@ -182,14 +182,21 @@ export class InvestmentContractService {
     // Nếu đầu tư từ Order → những node đã match được "giải phóng" khi invest
     // nên không cần trừ nodeMatch cho phần đang invest
     let effectiveNodeMatch = nodeMatchSoFar;
+    let orderMatchedNodes = 0;
+    
     if (investmentOrderId) {
       // Tìm order để biết bao nhiêu node match trên loan này thuộc order đó
       const order = await this.orderModel.findById(investmentOrderId);
       if (order) {
         const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
-        const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
-        // Trừ bớt nodeMatch thuộc order này (vì sẽ chuyển sang investedNotes)
-        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+        orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+        
+        if (numNotes !== orderMatchedNodes) {
+          throw new BadRequestException(`Yêu cầu số lượng (${numNotes}) phải bằng đúng số lượng đã giữ (${orderMatchedNodes}).`);
+        }
+
+        // Trừ bớt toàn bộ nodeMatch thuộc order này
+        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - orderMatchedNodes);
       }
     }
 
@@ -266,41 +273,51 @@ export class InvestmentContractService {
       schedulePeriodCount: summary.periodCount,
     });
 
-    await contract.save();
-    this.logger.log(`Created InvestmentContract ${contractId}: ${capital.toLocaleString()} VND, ${numNotes} notes, ${periodMonth} months`);
+    // 7. Update loan atomically: investedNotes++, nodeMatch-- (if from order)
+    //    We do this BEFORE saving contract to revert easily if constraints fail.
+    const nodeMatchDecrement = investmentOrderId ? orderMatchedNodes : 0;
+    const updateResult = await this.loanModel.findOneAndUpdate(
+      {
+        _id: loanApplicationId,
+        $expr: {
+          $gte: [
+            '$totalNotes',
+            { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }
+          ]
+        }
+      },
+      {
+        $inc: {
+          investedNotes: numNotes,
+          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
+        }
+      },
+      { new: true }
+    );
 
-    // 7. Update loan: investedNotes++ and nodeMatch-- (if from order)
-    const newInvestedNotes = investedSoFar + numNotes;
-    let nodeMatchDecrement = 0;
-
-    if (investmentOrderId) {
-      // Khi invest từ Order → giảm nodeMatch tương ứng (Rule 1: same slot, chuyển từ giữ chỗ → đã đầu tư)
-      const order = await this.orderModel.findById(investmentOrderId);
-      if (order) {
-        const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
-        nodeMatchDecrement = Math.min(matchedLoan?.nodeMatch || 0, numNotes);
-      }
+    if (!updateResult) {
+      throw new BadRequestException('Lỗi hệ thống: Khoản vay đã hết room khả dụng (race condition). Vui lòng thử lại.');
     }
 
-    const newNodeMatch = Math.max(0, nodeMatchSoFar - nodeMatchDecrement);
-    const totalClaimed = newInvestedNotes + newNodeMatch;
+    // After atomic increment, update derived fields
+    const totalClaimed = (updateResult as any).investedNotes + ((updateResult as any).nodeMatch || 0);
+    const newMatchPercentage = Math.min(100, Math.round((totalClaimed / updateResult.totalNotes) * 100));
+    const isFullMatch = (updateResult as any).investedNotes >= updateResult.totalNotes;
 
-    await this.loanModel.findByIdAndUpdate(loanApplicationId, {
-      $inc: {
-        investedNotes: numNotes,
-        ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
-      },
-      $set: {
-        totalNotes: totalLoanNotes,
-        isFullMatch: totalClaimed >= totalLoanNotes,
-      },
-    });
+    await this.loanModel.updateOne(
+      { _id: loanApplicationId },
+      { $set: { isFullMatch, matchPercentage: newMatchPercentage } }
+    );
 
     this.logger.log(
-      `Loan ${loanApplicationId}: investedNotes ${investedSoFar}→${newInvestedNotes}, ` +
-      `nodeMatch ${nodeMatchSoFar}→${newNodeMatch}, total claimed ${totalClaimed}/${totalLoanNotes}` +
-      `${totalClaimed >= totalLoanNotes ? ' (FULL MATCH)' : ''}`,
+      `Loan ${loanApplicationId} (Atomic Update): investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
+      `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
+      `${isFullMatch ? ' (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
     );
+
+    // Save contract
+    await contract.save();
+    this.logger.log(`Created InvestmentContract ${contractId}: ${capital.toLocaleString()} VND, ${numNotes} notes`);
 
     // Update order loan entry as invested
     if (investmentOrderId) {
@@ -310,6 +327,9 @@ export class InvestmentContractService {
       );
     }
 
+    // Return contract + isFullMatch flag (để payment service trigger disbursement)
+    (contract as any)._isFullMatch = isFullMatch;
+    (contract as any)._loanApplicationId = loanApplicationId;
     return contract;
   }
 
@@ -395,6 +415,7 @@ export class InvestmentContractService {
   async getSchedulePreview(
     loanApplicationId: string,
     numNotes: number,
+    investmentOrderId?: string,
   ): Promise<{
     capital: number;
     numNotes: number;
@@ -415,7 +436,20 @@ export class InvestmentContractService {
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
     const investedSoFar = (loan as any).investedNotes || 0;
     const nodeMatchSoFar = (loan as any).nodeMatch || 0;
-    const availableNotes = totalLoanNotes - investedSoFar - nodeMatchSoFar;
+
+    let effectiveNodeMatch = nodeMatchSoFar;
+    if (investmentOrderId) {
+      const order = await this.orderModel.findById(investmentOrderId);
+      if (order) {
+        const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
+        const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+      }
+    }
+    
+    console.log(`[getSchedulePreview calc] invOrdId=${investmentOrderId}, nodeMatchSoFar=${nodeMatchSoFar}, effectiveNodeMatch=${effectiveNodeMatch}, availableNotes=${totalLoanNotes - investedSoFar - effectiveNodeMatch}, numNotes=${numNotes}`);
+
+    const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
     if (numNotes > availableNotes) {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }

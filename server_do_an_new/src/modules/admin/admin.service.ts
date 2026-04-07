@@ -399,4 +399,7 @@ export class AdminService implements OnModuleInit {
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
     return this.loanService.getLoanDocumentStream(fineractLoanId, documentId);
   }
+  async triggerAIScoreForLoan(fineractLoanId: number) {
+    return this.loanService.triggerAIScoreForLoan(fineractLoanId);
+  }
 }

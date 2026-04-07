@@ -12,6 +12,7 @@ import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('invest')
 @ApiBearerAuth()
@@ -60,6 +61,13 @@ export class InvestController {
   // ═══════════════════════════════════════════════════════
   //  AVAILABLE LOANS (khoản vay đang cho phép đầu tư)
   // ═══════════════════════════════════════════════════════
+
+  @Get('fix-is-full-match')
+  @Public()
+  @ApiOperation({ summary: 'Fix bad MongoDB data where isFullMatch was incorrectly set to true based on nodeMatch' })
+  async fixIsFullMatch() {
+    return this.investService.fixIsFullMatch();
+  }
 
   @Get('available-loans')
   @ApiOperation({ summary: 'Danh sách khoản vay đang cho phép đầu tư' })
@@ -164,10 +172,11 @@ export class InvestController {
   @Post('schedule-preview')
   @ApiOperation({ summary: 'Preview lịch nhận tiền trước khi đầu tư' })
   async schedulePreview(
-    @Body() body: { loanApplicationId: string; numNotes: number },
+    @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
   ) {
+    console.log(`[schedulePreview API] body=`, body);
     return this.contractService.getSchedulePreview(
-      body.loanApplicationId, body.numNotes,
+      body.loanApplicationId, body.numNotes, body.investmentOrderId
     );
   }
 

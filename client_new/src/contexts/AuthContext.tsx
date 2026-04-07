@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { authStorage, authEvents, AuthEvent } from '../core';
 import { authAPI } from '../features/auth/api/auth.api';
+import { setSmartOTPUserId, clearSmartOTPUserId, migrateFromLegacyKeys } from '../services/smart-otp.service';
 import type { User, LoginRequest, RegisterRequest, LoginResponse } from '../types/auth.types';
 
 interface AuthContextData {
@@ -46,6 +47,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (authData && authData.accessToken) {
                 // Set user from storage immediately for faster UI
                 setUser(authData.user);
+                // Scope SmartOTP keys to restored user
+                const uid = (authData.user as any)?._id || (authData.user as any)?.id;
+                if (uid) {
+                    setSmartOTPUserId(uid);
+                    // Migrate legacy global OTP keys to user-scoped (one-time)
+                    migrateFromLegacyKeys().catch(() => {});
+                }
 
                 // Verify token is still valid by fetching current user
                 try {
@@ -89,6 +97,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const response = await authAPI.login(credentials);
             if (!response.requires2fa && response.data) {
                 setUser(response.data);
+                // Scope SmartOTP keys to this user
+                const uid = (response.data as any)?._id || (response.data as any)?.id;
+                if (uid) setSmartOTPUserId(uid);
             }
             return response;
         } catch (error: unknown) {
@@ -120,10 +131,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             await authAPI.logout();
             await authStorage.clearAll();
+            clearSmartOTPUserId();
             setUser(null);
         } catch {
             // Clear local data even if API call fails
             await authStorage.clearAll();
+            clearSmartOTPUserId();
             setUser(null);
         } finally {
             setIsLoading(false);

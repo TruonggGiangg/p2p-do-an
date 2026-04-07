@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Platform,
     StyleSheet,
@@ -79,6 +80,7 @@ export default function CreditScoreDetailScreen() {
     const [factors, setFactors] = useState<CreditScoreFactors | null>(null);
 
     const loadingMoreRef = useRef(false);
+    const [recalculating, setRecalculating] = useState(false);
 
     const creditScore = user?.creditScore;
     const scoreValue = typeof creditScore?.score === 'number' ? creditScore.score : 570;
@@ -110,7 +112,8 @@ export default function CreditScoreDetailScreen() {
             return () => {
                 active = false;
             };
-        }, [fetchHistory, refreshUser]),
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []),
     );
 
     // Keep factors in sync with user credit score
@@ -126,6 +129,26 @@ export default function CreditScoreDetailScreen() {
         await fetchHistory(1, false);
         setRefreshing(false);
     }, [fetchHistory, refreshUser]);
+
+    const handleRecalculate = useCallback(async () => {
+        if (recalculating) return;
+        setRecalculating(true);
+        try {
+            const result = await authAPI.recalculateCreditScore();
+            // Refresh user & history to reflect new score
+            await refreshUser();
+            await fetchHistory(1, false);
+            setFactors(result.factors);
+            Alert.alert(
+                'Tính lại thành công',
+                `Điểm mới: ${result.score}\nMức rủi ro: ${result.risk?.label ?? '--'}`,
+            );
+        } catch (err: any) {
+            Alert.alert('Lỗi', err?.message || 'Không thể tính lại điểm tín dụng');
+        } finally {
+            setRecalculating(false);
+        }
+    }, [recalculating, refreshUser, fetchHistory]);
 
     const onLoadMore = useCallback(async () => {
         if (loadingMoreRef.current || !hasNextPage || loading || refreshing) return;
@@ -276,6 +299,30 @@ export default function CreditScoreDetailScreen() {
                                     </Text>
                                 </View>
                             </View>
+
+                            {/* ── Recalculate Button ── */}
+                            <TouchableOpacity
+                                style={[
+                                    styles.recalcBtn,
+                                    {
+                                        backgroundColor: band.color + '18',
+                                        borderColor: band.color + '40',
+                                    },
+                                    recalculating && { opacity: 0.6 },
+                                ]}
+                                activeOpacity={0.7}
+                                onPress={handleRecalculate}
+                                disabled={recalculating}
+                            >
+                                {recalculating ? (
+                                    <ActivityIndicator size="small" color={band.color} />
+                                ) : (
+                                    <MaterialCommunityIcons name="refresh" size={16} color={band.color} />
+                                )}
+                                <Text style={[styles.recalcBtnText, { color: band.color }]}>
+                                    {recalculating ? 'Đang tính lại...' : 'Tính lại điểm'}
+                                </Text>
+                            </TouchableOpacity>
                         </CommonCard>
 
                         {/* ── 5-Factor Breakdown Card ── */}
@@ -414,6 +461,21 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     metaValue: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    // ── Recalculate Button ──
+    recalcBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    recalcBtnText: {
         fontSize: 13,
         fontFamily: 'Poppins_600SemiBold',
     },

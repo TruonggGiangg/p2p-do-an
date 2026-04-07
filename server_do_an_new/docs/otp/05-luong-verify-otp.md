@@ -1,439 +1,125 @@
-# 📘 Chương 5: Luồng Verify OTP (Xác thực giao dịch)
+# 📘 Chương 5: Luồng Verify OTP (Xác thực 2 bước 2FA / Smart OTP)
 
-## 5.1. Tổng quan luồng 2 bước
+## 5.1. Tổng quan luồng giao dịch 2 Bước
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    BƯỚC 1: KHỞI TẠO (Initiate)                   │
-│                                                                  │
-│  Client ──POST /transfer/account──► Server                       │
-│  { amount, recipient, deviceId }                                 │
-│                                                                  │
-│  Server: validate → lock actionData → tạo session                │
-│                                                                  │
-│  Server ──{ sessionId, expiresIn }──► Client                     │
-│           Session TTL = 5 phút                                   │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    BƯỚC 2: XÁC THỰC (Confirm)                    │
-│                                                                  │
-│  Client: tạo OTP (offline) + ký ECDSA                            │
-│                                                                  │
-│  Client ──POST /transfer/confirm──► Server                       │
-│  { sessionId, otp, signature, deviceId, timestamp }              │
-│                                                                  │
-│  Server: verify signature → verify TOTP → consume session        │
-│  Server: thực thi giao dịch trên Fineract                        │
-│                                                                  │
-│  Server ──{ success, resourceId }──► Client                      │
-└──────────────────────────────────────────────────────────────────┘
+Hệ thống P2P bảo vệ giao dịch tiền tệ/đầu tư qua quy trình xác thực song song (Initiate - Confirm) bằng thuật toán ECDSA và hàm băm TOTP.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant C as Client App
+    participant S as Server
+    participant F as Fineract Core
+
+    Note over U,F: GIAI ĐOẠN 1: KHỞI TẠO (INITIATE)
+    U->>C: Bấm nút "Xác nhận chuyển khoản/Đầu tư"
+    C->>S: POST /api/transfer/account (Dữ liệu giao dịch)
+    S->>S: Validate logic ví & số dư
+    S->>S: Tạo OTP Session (Lock Action Data)
+    S-->>C: Trả về sessionId & expiresAt (TTL=5m)
+
+    Note over U,F: GIAI ĐOẠN 2: XÁC THỰC (CONFIRM)
+    U->>C: Lệnh nhập OTP (Client tự lấy Secret tạo offline)
+    C->>C: otp = generateTOTP(secret)
+    C->>C: timestamp = Math.floor(Date.now() / 1000)
+    C->>C: payload = otp:timestamp:TRANSFER
+    C->>C: signature = ECDSA.sign(payload, privKey)
+    C->>S: POST /api/transfer/confirm
+    Note right of C: Gửi { sessionId, otp, signature, timestamp, deviceId }
+    
+    S->>S: Verify Session & Retrieve Device Binding
+    S->>S: Verify ECDSA Signature (bằng Public Key)
+    S->>S: Verify Timestamp (Tối đa lệch 120s)
+    S->>S: Verify TOTP Code (±2 cửa sổ thời gian)
+    S->>S: Đánh dấu Session "VERIFIED" -> Consume
+    S->>F: Kênh nội bộ: Đẩy lệnh xuống Fineract (từ Action Data)
+    F-->>S: Trả về Core Resource ID
+    S-->>C: Trả về thành công
+    C-->>U: Hiển thị kết quả giao dịch
 ```
 
 ## 5.2. Bước 1: Khởi tạo giao dịch (Initiate)
 
-### 5.2.1. Client gửi request
+Khi ứng dụng gọi `/transfer/account` hoặc `/invest/create-contract`, API **không thực thi ngay**. Thay vào đó, nó đóng băng lại Payload gọi là **Action Data**.
 
-```
+**Client Request:**
+```http
 POST /api/wallets/transfer/account
 Authorization: Bearer <JWT>
-Content-Type: application/json
 
 {
   "fromWalletId": "1",
   "recipientAccountNo": "0999000002",
   "amount": 50000,
-  "description": "Chuyển tiền test",
-  "deviceId": "d4ecf17695448b8eeed660a196ef4669a202bf7972aaeb1f7bbea4cc1e9b7164"
+  "deviceId": "d4ecf17695448b8e..."
 }
 ```
 
-### 5.2.2. Server xử lý
+**Server Xử lý:**
+1. Validate các ràng buộc nghiệp vụ (Sở hữu ví, đủ số dư, người nhận hợp lệ).
+2. Tạo **OTP Session ID** (trạng thái `pending`).
+3. Dữ liệu gốc (`actionData`) bị khóa cứng phía server. Hacker lúc gửi OTP Confirm không thể lén sửa số tiền `amount`.
 
+## 5.3. Bước 2: Xác thực (Confirm)
+
+Đây là lúc ứng dụng chứng minh _quyền kiểm soát thiết bị_ thông qua cặp mã số bí mật kết hợp chữ ký Private Key.
+
+### 5.3.1. Phía Client (Ký giao dịch)
 ```typescript
-// File: wallets.service.ts
-async transferByAccountNumber(userId, fromWalletId, recipientAccountNo, amount, deviceId, description) {
-  
-  // 1. Validate request
-  const { fromWallet, fromUser } = await this.validateTransferRequest(
-    fromWalletId, userId, amount
-  );
-  // → Kiểm tra: user sở hữu ví? Đủ số dư? Ví active?
+// 1. Tạo OTP
+otp = TOTP.generate(totpSecret); // Ví dụ: "214606"
 
-  // 2. Tìm người nhận (Phone → User → Fineract Client)
-  const recipientUser = await this.findRecipient(recipientAccountNo);
-  // → Tìm trong MongoDB theo SĐT hoặc Fineract Client ID
+// 2. Ký chữ ký số ECDSA Payload
+const timestamp = Math.floor(Date.now() / 1000);
+const payload = `${otp}:${timestamp}:TRANSFER`;
+const hash = SHA256(payload);
+const signature = ECDSA.sign(hash, privateKey);
 
-  // 3. Lấy ví e-wallet của người nhận
-  const toAccount = await this.fineractService.getActiveEWalletAccount(
-    Number(recipientUser.fineractClientId)
-  );
-  
-  // 4. Chống tự chuyển cho mình
-  if (toAccount.id === Number(fromWalletId)) {
-    throw new BadRequestException('Không thể chuyển tiền cho chính mình');
-  }
-
-  // 5. ⭐ TẠO OTP SESSION (thay vì thực thi ngay)
-  return this.otpSessionService.createSession(
-    userId,
-    deviceId,        // ← Kiểm tra device đã đăng ký chưa
-    OtpActionType.TRANSFER,
-    {
-      // ⚠️ actionData được "KHÓA CỨNG" tại đây
-      // Client KHÔNG THỂ thay đổi sau bước này!
-      fromWalletId,
-      toAccountId: toAccount.id,
-      toClientId: recipientUser.fineractClientId,
-      amount,                    // ← Số tiền bị lock
-      description,
-      recipientName: recipientUser.username,
-      type: 'TRANSFER_BY_ACCOUNT',
-    }
-  );
-}
-```
-
-### 5.2.3. OTP Session được tạo
-
-```typescript
-// File: otp-session.service.ts dòng 38-90
-async createSession(userId, deviceId, actionType, actionData) {
-  // 1. Kiểm tra user bị lock?
-  const user = await this.userModel.findById(userId);
-  if (user?.smartOTP?.lockedUntil > new Date()) {
-    throw 'Tài khoản bị khóa OTP. Thử lại sau X phút';
-  }
-
-  // 2. ⭐ KIỂM TRA DEVICE ĐÃ ĐĂNG KÝ?
-  const device = await this.deviceBindingService.isDeviceTrusted(userId, deviceId);
-  if (!device) {
-    throw 'Thiết bị chưa được đăng ký Smart OTP';
-    //     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    //     Đây chính là lỗi user gặp khi chưa bind device!
-  }
-
-  // 3. Tạo session UUID
-  const sessionId = uuidv4();  // "ca7d7d7a-f720-404c-80d5-c9753e7146e0"
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // +5 phút
-
-  // 4. Lưu MongoDB
-  const session = new this.transactionOtpModel({
+// 3. Gửi Confirm Request
+await api.post('/wallets/transfer/confirm', {
     sessionId,
-    userId,
+    otp,
+    signature,
     deviceId,
-    actionType: 'TRANSFER',
-    actionData: { fromWalletId, toAccountId, amount, ... },
-    status: 'pending',
-    expiresAt,
-    attempts: 0,
-  });
-  await session.save();
-
-  return { sessionId, expiresAt };
-}
+    timestamp
+});
 ```
 
-**MongoDB Record sau bước này:**
-```json
-{
-  "_id": "ObjectId(...)",
-  "sessionId": "ca7d7d7a-f720-404c-80d5-c9753e7146e0",
-  "userId": "ObjectId(6989b9f8f6787217af6e3ebb)",
-  "deviceId": "d4ecf17695448b8e...",
-  "actionType": "TRANSFER",
-  "actionData": {
-    "fromWalletId": "1",
-    "toAccountId": 2,
-    "toClientId": "6",
-    "amount": 50000,
-    "description": "Chuyển tiền test",
-    "type": "TRANSFER_BY_ACCOUNT"
-  },
-  "status": "pending",
-  "expiresAt": "2026-04-05T00:24:04.000Z",
-  "attempts": 0,
-  "createdAt": "2026-04-05T00:19:04.000Z"
-}
+### 5.3.2. Phía Server (Kiểm duyệt Pipeline 7 Lớp)
+1. **Kiểm tra Session**: Có tồn tại chưa? Đã hết thời gian thao tác (5 phút)? Sai quá 3 lần?
+2. **Kiểm tra Device**: `deviceId` này có được liên kết và đang ACTIVE không?
+3. **Phê duyệt Chữ Ký ECDSA (⭐ Cốt lõi)**: Tái tạo Hash payload từ dữ liệu đầu vào. Dùng `device.publicKey` để giải mã Verify `signature`. Tạch chữ ký = tạch request.
+4. **Phê duyệt Thời gian thực (Replay Attack Shield)**: Kiểm tra `Date.now() / 1000 - timestamp` chênh lệch tối đa 120 giây. Bất kỳ request chặn bắt nào gửi lặp lại đều bị phát hiện.
+5. **Phê duyệt OATH TOTP (⭐)**: Dùng `device.totpSecret` sinh ra mã TOTP server, trượt qua 5 cửa sổ thời gian (±60 giây) để bù trừ lệch đồng hồ. So sánh với `otp` gửi lên.
+6. **Rate Limit Xử phạt**: Quá 3 lần sai hoặc sai mã OTP, lập tức Lock User trong 5 phút.
+7. **Bàn giao Core Banking**: Nếu hợp lệ toàn bộ, đẩy `session.actionData` xuống service của Fineract xử lý giải ngân/chuyển khoản và chốt trạng thái `COMPLETED`.
+
+## 5.4. Vòng Đời Phiên Giao Dịch (Session Lifecycle)
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: Khởi tạo Transfer / Invest
+    
+    PENDING --> VERIFIED: Đăng nhập OTP đúng + Chữ ký chính xác
+    PENDING --> PENDING: Ký sai/OTP sai (Attempts < 3)
+    PENDING --> EXPIRED: Quá hiệu lực 5 phút
+    
+    VERIFIED --> COMPLETED: Thực thi giao dịch xuống Core Banking thành công
+    VERIFIED --> PENDING: (Trường hợp lỗi kết nối ngắt ngang)
+    
+    PENDING --> [*]: Attempts >= 3 (LOCK USER 5 PHÚT)
 ```
 
----
+## 5.5. Phân tích tấn công
 
-## 5.3. Bước 2: Xác thực OTP + Chữ ký số (Confirm)
-
-### 5.3.1. Client tạo OTP và ký
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│                  TRÊN THIẾT BỊ NGƯỜI DÙNG                      │
-│                                                                │
-│  ┌────────────────────────────────────────┐                    │
-│  │  Bước A: Tạo OTP (TOTP)               │                    │
-│  │                                        │                    │
-│  │  totpSecret = đọc từ SecureStore       │                    │
-│  │  T = floor(Date.now() / 1000 / 30)     │                    │
-│  │  otp = HMAC-SHA1(totpSecret, T) → 6 số │                    │
-│  │  → otp = "214606"                      │                    │
-│  └────────────────────┬───────────────────┘                    │
-│                       │                                        │
-│  ┌────────────────────▼───────────────────┐                    │
-│  │  Bước B: Ký chữ ký số (ECDSA)         │                    │
-│  │                                        │                    │
-│  │  timestamp = floor(Date.now() / 1000)  │                    │
-│  │  → 1775323142                          │                    │
-│  │                                        │                    │
-│  │  payload = "214606:1775323142:TRANSFER"│                    │
-│  │  hash = SHA256(payload)                │                    │
-│  │  → "7a8b9c0d..."                       │                    │
-│  │                                        │                    │
-│  │  privateKey = đọc từ SecureStore       │                    │
-│  │  signature = ECDSA.sign(hash, privKey) │                    │
-│  │  → DER encode → Base64                 │                    │
-│  │  → "MEUCIQDVS/QC1fVlIfKR..."           │                    │
-│  └────────────────────┬───────────────────┘                    │
-│                       │                                        │
-│  ┌────────────────────▼───────────────────┐                    │
-│  │  Bước C: Gửi lên Server               │                    │
-│  │                                        │                    │
-│  │  POST /api/wallets/transfer/confirm    │                    │
-│  │  {                                     │                    │
-│  │    sessionId:  "ca7d7d7a-...",          │                    │
-│  │    otp:        "214606",               │                    │
-│  │    signature:  "MEUCIQDVS/...",         │                    │
-│  │    deviceId:   "d4ecf176...",           │                    │
-│  │    timestamp:  1775323142               │                    │
-│  │  }                                     │                    │
-│  └────────────────────────────────────────┘                    │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**Code Client:**
-```typescript
-// File: TransferConfirmScreen.tsx dòng 57-88
-const handleConfirm = async () => {
-  // A: Lấy OTP đã tạo (hoặc do user nhập)
-  // otp = "214606"
-
-  // B: Tạo chữ ký số
-  const deviceId = await SmartOTPService.getDeviceId();
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = await SmartOTPService.signPayload(otp, timestamp, 'TRANSFER');
-  // Bên trong signPayload():
-  //   payload = "214606:1775323142:TRANSFER"
-  //   hash = SHA256(payload) → hex
-  //   sig = ECDSA.sign(hash, privateKey) → DER → Base64
-
-  // C: Gọi API xác nhận
-  await walletAPI.confirmTransfer({
-    sessionId,     // Từ bước 1
-    otp,           // "214606"
-    signature,     // "MEUCIQDVS/..."
-    deviceId,      // "d4ecf176..."
-    timestamp,     // 1775323142
-  });
-};
-```
-
-### 5.3.2. Server xác thực (7 bước kiểm tra)
-
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                    SERVER VERIFICATION PIPELINE                    │
-│                                                                   │
-│  Request: { sessionId, otp, signature, deviceId, timestamp }      │
-│                                                                   │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ Kiểm tra 1: Session tồn tại?                               │  │
-│  │   → getSession(sessionId, userId)                           │  │
-│  │   → Nếu null → ❌ "Session không tồn tại"                  │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ Kiểm tra 2: Session hợp lệ?                                │  │
-│  │   → status == PENDING?  (chưa dùng?)                        │  │
-│  │   → expiresAt > now?    (chưa hết hạn?)                     │  │
-│  │   → actionType == TRANSFER? (đúng loại?)                    │  │
-│  │   → attempts < 3?      (chưa sai quá 3 lần?)               │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ Kiểm tra 3: Device hợp lệ?                                 │  │
-│  │   → isDeviceTrusted(userId, deviceId)                       │  │
-│  │   → Query: { userId, deviceId, status: 'active' }           │  │
-│  │   → Trả về DeviceBinding (có publicKey + totpSecret)        │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ ⭐ Kiểm tra 4: CHỮ KÝ SỐ ECDSA                             │  │
-│  │                                                             │  │
-│  │   payload = "214606:1775323142:TRANSFER"                    │  │
-│  │   hash = SHA256(payload) → Buffer                           │  │
-│  │   sigBuffer = Base64.decode(signature) → DER bytes          │  │
-│  │   publicKey = device.publicKey (từ DB)                      │  │
-│  │                                                             │  │
-│  │   ECDSA.verify(hash, sigBuffer, publicKey) → true/false     │  │
-│  │                                                             │  │
-│  │   Nếu false → incrementAttempts() → ❌ "Chữ ký không hợp lệ" │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ Kiểm tra 5: TIMESTAMP (chống replay)                        │  │
-│  │                                                             │  │
-│  │   serverTime = Math.floor(Date.now() / 1000)                │  │
-│  │   diff = |serverTime - clientTimestamp|                      │  │
-│  │   Nếu diff > 120 giây → ❌ "Timestamp không hợp lệ"         │  │
-│  │                                                             │  │
-│  │   Mục đích: Chặn kẻ tấn công gửi lại request cũ            │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ ⭐ Kiểm tra 6: TOTP                                         │  │
-│  │                                                             │  │
-│  │   totpSecret = device.totpSecret (từ DB)                    │  │
-│  │   expected = TOTP.generate(totpSecret) // server tính       │  │
-│  │   received = otp                       // client gửi        │  │
-│  │                                                             │  │
-│  │   So sánh ±2 windows (±60 giây):                            │  │
-│  │     T-2, T-1, T(hiện tại), T+1, T+2                        │  │
-│  │                                                             │  │
-│  │   Nếu mismatch → incrementAttempts()                        │  │
-│  │   Nếu attempts >= 3 → lockUser() (khóa 5 phút)             │  │
-│  │   → ❌ "Mã OTP không đúng. Còn X lần thử"                   │  │
-│  └─────────────────────────┬───────────────────────────────────┘  │
-│                            ▼                                      │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ Kiểm tra 7: TẤT CẢ ĐỀU HỢP LỆ ✅                          │  │
-│  │                                                             │  │
-│  │   → markVerified(sessionId)        // status → VERIFIED     │  │
-│  │   → updateLastUsed(userId, deviceId)                        │  │
-│  │   → return { valid: true, actionData }                      │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-### 5.3.3. Consume Session + Thực thi Fineract
-
-```typescript
-// File: wallets.service.ts
-async confirmTransfer(userId, body) {
-  const { sessionId, otp, signature, deviceId, timestamp } = body;
-
-  // 1. Verify OTP + Signature (7 bước ở trên)
-  const verifyResult = await this.smartOtpService.verifySmartOtp(
-    userId, sessionId, otp, signature, timestamp, deviceId,
-    OtpActionType.TRANSFER,
-  );
-
-  if (!verifyResult.valid) {
-    throw new BadRequestException(verifyResult.message);
-    // "Chữ ký không hợp lệ" hoặc "Mã OTP không đúng"
-  }
-
-  // 2. Consume session (chuyển status VERIFIED → COMPLETED)
-  const session = await this.otpSessionService.consumeSession(
-    userId, sessionId, OtpActionType.TRANSFER,
-  );
-
-  if (!session.valid) throw new BadRequestException(session.message);
-
-  // 3. ⭐ THỰC THI GIAO DỊCH TRÊN FINERACT
-  //    Lấy dữ liệu từ actionData (đã lock từ bước 1)
-  const { fromWalletId, toAccountId, toClientId, amount, description } = session.actionData;
-  //      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  //      Dữ liệu từ lúc KHỞI TẠO, client KHÔNG thay đổi được!
-
-  const result = await this.fineractService.transferFunds(
-    Number(fromUser.fineractClientId),  // fromClientId
-    Number(toClientId),                  // toClientId
-    Number(fromWalletId),                // fromAccountId
-    Number(toAccountId),                 // toAccountId
-    amount,                              // amount
-    description,                         // note
-  );
-
-  return {
-    success: true,
-    message: 'Chuyển khoản thành công',
-    resourceId: result.resourceId,
-  };
-}
-```
-
-## 5.4. Session Lifecycle (Vòng đời Session)
-
-```
-                 ┌──────────┐
-    Khởi tạo ──►│  PENDING  │
-                 └────┬─────┘
-                      │
-         ┌────────────┼────────────┐
-         │            │            │
-    OTP sai      OTP đúng    Hết hạn
-    (< 3 lần)        │       (5 phút)
-         │            │            │
-         │     ┌──────▼──────┐     │
-         │     │  VERIFIED   │     │
-         │     └──────┬──────┘     │
-         │            │            │
-         │     Consume session     │
-         │            │            │
-         │     ┌──────▼──────┐     │
-         │     │  COMPLETED  │     │
-         │     └─────────────┘     │
-         │                         │
-    OTP sai 3 lần            ┌─────▼─────┐
-         │                   │  EXPIRED   │
-    ┌────▼────┐              └───────────┘
-    │ User bị │
-    │ LOCK    │
-    │ (5 phút)│
-    └─────────┘
-```
-
-## 5.5. Log thực tế (Giao dịch thành công)
-
-```
-[12:19:00] POST /api/wallets/transfer/account 201 - 819ms
-           → Session created: ca7d7d7a-f720-404c-80d5-...
-
-[12:19:04] SignatureService: payload=214606:1775323142:TRANSFER
-           SignatureService: Elliptic verify result: true       ← ✅
-
-[12:19:04] SmartOtpService: SMART OTP VERIFICATION
-           Session ID: ca7d7d7a-f720-404c-80d5-c9753e7146e0
-           OTP Code (received): 214606
-           OTP Code (expected): 214606                          ← ✅ Khớp!
-           Server time:  2026-04-04T17:19:04.114Z
-           Client time:  2026-04-04T17:19:02.000Z               ← Lệch 2s, OK
-
-[12:19:04] TotpService: TOTP valid at current step (delta=0)   ← ✅ Đúng window
-
-[12:19:04] SmartOtpService: signatureValid=true, totpValid=true ← ✅ CẢ HAI HỢP LỆ
-
-[12:19:04] WalletsService: Executing transfer amount=50000
-[12:19:04] FineractSavingsService: Transferring 50000 VND
-           from Client 5:Account 1 to Client 6:Account 2
-
-[12:19:04] FineractSavingsService: ✓ Transfer SUCCESS: resourceId=7  ← ✅ THÀNH CÔNG!
-
-[12:19:05] POST /api/wallets/transfer/confirm 201 - 1048ms
-```
-
----
-
-## 5.6. Phân tích tấn công
-
-| Kịch bản tấn công | Lớp chặn | Chi tiết |
-|-------------------|----------|----------|
-| Đánh cắp JWT token | Layer 1 | deviceId không khớp → bị reject |
-| Replay request cũ | Layer 2+3 | timestamp hết hạn + OTP đã thay đổi |
-| MITM sửa số tiền | actionData lock | amount được lock ở bước 1, không đổi được |
-| Brute-force OTP | Rate limit | 3 lần sai → lock 5 phút |
-| Giả mạo thiết bị | Layer 3 | Không có Private Key → không ký được |
-| Đánh cắp OTP qua shoulder surfing | Layer 3 | Có OTP nhưng thiếu signature |
-| Database bị hack | Layer 3 | Có publicKey nhưng thiếu privateKey |
-| Tấn công side-channel | Hardware | SecureStore dùng hardware-backed keychain |
+| Lỗ hổng / Kịch bản | Lá chắn bảo mật (Fix) |
+|-------------------|----------|
+| **Kích trái phép (Man-In-The-Middle)** sửa số tiền chuyển. | **Action Data Lock**: Tham số giao dịch bị khóa ở Server sau khi Initiate. Bước confirm hacker không đụng tới được giá trị giao dịch. |
+| **Bắt gói tin request** lặp lại liên tục nhiều lần (Replay Request). | **Timestamp + Window OTP**: Request chỉ có tuổi thọ 120 giây (timestamp check). Phép thử cũ bị loại bỏ. |
+| **Phá bằng Bruteforce** (quét dải số 000000 -> 999999). | **Rule: Sai quá 3 lần -> Khóa thao tác vĩnh viễn trong 5 phút**. |
+| **Shoulder Surfing** (đứng sau lưng nhìn trộm mã OTP). | Vô dụng! API Confirm đòi hỏi phải có ECDSA Signature từ đúng PrivateKey cài dưới thiết bị thật. Dù có thuộc mã OTP nhưng không có PrivateKey thì không bypass API được. |
+| **Dịch ngược code Source (Decompile)** vọc cấu hình API. | Cặp Key P256 sinh bằng chuỗi ngẫu nhiên phần cứng và ghim cứng vào Hardware Keystore (Android Keystore / iOS Keychain). Không thể đọc hay trích xuất bằng mã máy thông thường. |
 
 ---
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { ActionType } from '@ant-design/pro-components';
 import { Button, Popconfirm, Tooltip, theme, Form } from 'antd';
 import {
-    CheckOutlined, SendOutlined, ReloadOutlined, FilterOutlined, EyeOutlined
+    CheckOutlined, SendOutlined, ReloadOutlined, FilterOutlined, EyeOutlined, ThunderboltOutlined
 } from '@ant-design/icons';
 import { message } from 'antd';
 import { Link } from 'react-router-dom';
@@ -28,6 +28,8 @@ export default function LoanApprovalsPage() {
 
     const [approving, setApproving] = useState<Set<number>>(new Set());
     const [disbursing, setDisbursing] = useState<Set<number>>(new Set());
+    const [scoring, setScoring] = useState<Set<number>>(new Set());
+    const [scoringAll, setScoringAll] = useState(false);
     const [messageApi, contextHolder] = message.useMessage();
     const [viewLoanId, setViewLoanId] = useState<number | null>(null);
     const [showFilters, setShowFilters] = useState(false);
@@ -66,6 +68,34 @@ export default function LoanApprovalsPage() {
             messageApi.error(e?.response?.data?.message || 'Giải ngân thất bại');
         } finally {
             setDisbursing(s => { const n = new Set(s); n.delete(id); return n; });
+        }
+    }, [messageApi]);
+
+    const handleTriggerScore = useCallback(async (loan: LoanTableRow) => {
+        const id = loan.fineractLoanId;
+        if (!id) return;
+        setScoring(s => new Set(s).add(id));
+        try {
+            const result = await adminApi.triggerAIScore(id);
+            messageApi.success(result.message || `Đã tính điểm AI cho khoản vay #${id}`);
+            actionRef.current?.reload?.();
+        } catch (e: any) {
+            messageApi.error(e?.response?.data?.message || 'Tính điểm AI thất bại');
+        } finally {
+            setScoring(s => { const n = new Set(s); n.delete(id); return n; });
+        }
+    }, [messageApi]);
+
+    const handleScoreAll = useCallback(async () => {
+        setScoringAll(true);
+        try {
+            // Reload list first to get fresh data (AI scoring happens server-side in getAllPendingLoans)
+            actionRef.current?.reload?.();
+            messageApi.success('Đã kích hoạt tính điểm AI cho tất cả khoản vay');
+        } catch (e: any) {
+            messageApi.error('Tính điểm hàng loạt thất bại');
+        } finally {
+            setScoringAll(false);
         }
     }, [messageApi]);
 
@@ -146,6 +176,22 @@ export default function LoanApprovalsPage() {
                 <Tooltip title="Xem chi tiết hồ sơ, tài liệu, lịch trả nợ">
                     <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handleViewDetails(id, r.userId)}>
                         Chi tiết
+                    </Button>
+                </Tooltip>
+                <Tooltip title={r.aiScore ? `Tính lại điểm AI (hiện: ${r.aiScore.creditScore}/100, ${r.aiScore.grade})` : 'Tính điểm AI cho khoản vay này'}>
+                    <Button
+                        size="small"
+                        icon={<ThunderboltOutlined />}
+                        loading={scoring.has(id)}
+                        onClick={() => handleTriggerScore(r)}
+                        style={{
+                            background: r.aiScore ? undefined : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            borderColor: r.aiScore ? undefined : '#764ba2',
+                            color: r.aiScore ? undefined : '#fff',
+                            fontSize: 12,
+                        }}
+                    >
+                        {r.aiScore ? 'Tính lại' : 'AI Score'}
                     </Button>
                 </Tooltip>
                 {canApproveAction && (
@@ -259,6 +305,20 @@ export default function LoanApprovalsPage() {
                             onClick={() => actionRef.current?.reload?.()}
                         >
                             Làm mới
+                        </Button>
+                    </Tooltip>,
+                    <Tooltip key="score-all" title="Kích hoạt tính điểm AI cho tất cả khoản vay chưa có điểm">
+                        <Button
+                            icon={<ThunderboltOutlined />}
+                            loading={scoringAll}
+                            onClick={handleScoreAll}
+                            style={{
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                borderColor: '#764ba2',
+                                color: '#fff',
+                            }}
+                        >
+                            AI Score tất cả
                         </Button>
                     </Tooltip>,
                     <Tooltip key="loans" title="Chuyển sang Quản lý khoản vay">

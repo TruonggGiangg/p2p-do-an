@@ -188,6 +188,14 @@ export class MatchingService {
       return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'Không còn node khả dụng' };
     }
 
+    // Guard: nodeMatch không được vượt giới hạn (học từ HD-AMC P2P)
+    const maxAllowedNodeMatch = totalLoanNodes - (loanData.existingInvestedNotes || 0);
+    const pendingNewNodeMatch = (loanData.existingNodeMatch || 0) + nodesToMatch;
+    if (pendingNewNodeMatch > maxAllowedNodeMatch) {
+      this.logger.warn(`nodeMatch (${pendingNewNodeMatch}) exceeds limit (${maxAllowedNodeMatch}) for loan ${loanData.loanId}`);
+      return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'nodeMatch sẽ vượt giới hạn' };
+    }
+
     const newMatchedNodes = order.matchedNodes + nodesToMatch;
     const willBeFull = newMatchedNodes >= order.totalNodes;
 
@@ -228,24 +236,56 @@ export class MatchingService {
 
     const matchedAmount = nodesToMatch * this.baseUnitPrice;
 
-    // ── Cập nhật tracking fields trên loan ──
     const totalLoanNotesForLoan = this.calculateNodes(loanData.capital);
-    const newNodeMatch = (loanData.existingNodeMatch || 0) + nodesToMatch;
-    const newTotalClaimed = newNodeMatch + (loanData.existingInvestedNotes || 0);
-    await this.loanModel.findByIdAndUpdate(loanData.loanId, {
-      $inc: { nodeMatch: nodesToMatch },
-      $set: {
-        totalNotes: totalLoanNotesForLoan,
-        isFullMatch: newTotalClaimed >= totalLoanNotesForLoan,
+    
+    // Atomic update cho loanModel để tránh over-reserving (race condition)
+    const loanUpdateResult = await this.loanModel.findOneAndUpdate(
+      {
+        _id: loanData.loanId,
+        $expr: {
+          $gte: [
+            '$totalNotes',
+            { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }, nodesToMatch] }
+          ]
+        }
       },
-    });
+      {
+        $inc: { nodeMatch: nodesToMatch }
+      },
+      { new: true }
+    );
+
+    if (!loanUpdateResult) {
+      // Revert the order update if loan is full
+      this.logger.warn(`Atomic lock on Loan ${loanData.loanId} failed for order ${order._id} — capacity exceeded. Reverting order.`);
+      await this.investmentOrderModel.findByIdAndUpdate(order._id, {
+         $inc: {
+            matchedNodes: -nodesToMatch,
+            matchedCapital: -(nodesToMatch * this.baseUnitPrice),
+         },
+         $pull: { loans: { loanId: loanData.loanId } },
+         $set: { status: 'open' }
+      });
+      return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'Khoản vay đã đủ người giữ chỗ, thử lại sau' };
+    }
+
+    // Update derived fields after atomic increment
+    const newTotalClaimed = (loanUpdateResult as any).investedNotes + ((loanUpdateResult as any).nodeMatch || 0);
+    const newMatchPercentage = Math.min(100, Math.round((newTotalClaimed / loanUpdateResult.totalNotes) * 100));
+    // CRITICAL: isFullMatch = TRUE CHỈ KHI tiền thật đã thanh toán (investedNotes) >= totalNotes
+    const newIsFullMatch = (loanUpdateResult as any).investedNotes >= loanUpdateResult.totalNotes;
+
+    await this.loanModel.updateOne(
+      { _id: loanData.loanId },
+      { $set: { isFullMatch: newIsFullMatch, matchPercentage: newMatchPercentage } }
+    );
 
     return {
       success: true,
       nodeMatch: nodesToMatch,
       matchedAmount,
-      matchPercentage: Math.min(100, Math.round((nodesToMatch / loanNeedsNodes) * 100)),
-      isFullMatch: matchedAmount >= loanData.capital,
+      matchPercentage: newMatchPercentage,
+      isFullMatch: newIsFullMatch,
       investmentOrderId: String(result._id),
       message: `Ghép ${nodesToMatch} node = ${matchedAmount.toLocaleString()} VND`,
     };

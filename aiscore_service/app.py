@@ -33,7 +33,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from scorer import CreditScorer
 
@@ -73,7 +73,7 @@ class ScoreResponse(BaseModel):
     status: str
 
 class BatchRequest(BaseModel):
-    applicants: list[dict]
+    applicants: List[dict]
 
 class ExchangeRateResponse(BaseModel):
     usd_to_vnd: float
@@ -84,7 +84,7 @@ class ExchangeRateResponse(BaseModel):
 
 _EXCHANGE_RATE_CACHE: dict = {"rate": None, "source": "default"}
 
-async def fetch_exchange_rate() -> tuple[float, str]:
+async def fetch_exchange_rate() -> Tuple[float, str]:
     """
     Lay ty gia USD→VND:
       1. Env var USD_TO_VND

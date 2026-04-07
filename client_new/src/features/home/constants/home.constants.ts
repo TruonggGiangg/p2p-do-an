@@ -26,7 +26,7 @@ export const QUICK_ACTIONS: ShortcutItem[] = [
     { icon: 'ArrowUpRight',   label: 'Gửi',      nav: 'Transfer',  isParent: true },
     { icon: 'ArrowDownLeft',  label: 'Nhận',     nav: 'MyQR',      isParent: false },
     { icon: 'CreditCard',     label: 'Ví của tôi', nav: 'Wallets',   isParent: true },
-    { icon: 'DotsThree',      label: 'Thêm',      nav: '',          isParent: true },
+    { icon: 'FileText',       label: 'Hợp đồng điện tử', nav: 'LoanContractList', isParent: true },
 ];
 
 // ═══════════════════════════════════════════════

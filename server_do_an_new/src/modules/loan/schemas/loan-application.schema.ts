@@ -61,9 +61,13 @@ export class LoanApplication extends Document {
   @Prop({ required: false, default: 0 })
   nodeMatch: number;
 
-  /** true nếu investedNotes >= totalNotes (fully funded) */
+  /** true nếu investedNotes >= totalNotes (fully funded — chỉ tính tiền thật, KHÔNG tính nodeMatch) */
   @Prop({ required: false, default: false })
   isFullMatch: boolean;
+
+  /** % tiến độ ghép vốn = (nodeMatch + investedNotes) / totalNotes * 100 */
+  @Prop({ required: false, default: 0 })
+  matchPercentage: number;
 
   @Prop({ type: [Object], default: [] })
   schedulePreview: ScheduleItem[];

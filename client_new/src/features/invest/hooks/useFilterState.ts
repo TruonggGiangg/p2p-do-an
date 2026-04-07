@@ -47,7 +47,7 @@ const DEFAULT_FILTER: FilterState = {
 export function useFilterState() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTER);
   const [page, setPage] = useState(1);
-  const pageSize = 5;
+  const pageSize = 50;
 
   const setFilter = useCallback(<K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }));

@@ -24,10 +24,20 @@ import {
 import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
+import { authAPI } from '../../auth/api/auth.api';
+import { ActivityIndicator } from 'react-native-paper';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
+
+const FACTOR_META = [
+    { key: 'paymentHistory', label: 'Lịch sử thanh toán', icon: 'calendar-check', color: '#18A058' },
+    { key: 'debtLevel', label: 'Mức dư nợ', icon: 'credit-card-outline', color: '#3B82F6' },
+    { key: 'creditAge', label: 'Thời gian tín dụng', icon: 'clock-outline', color: '#8B5CF6' },
+    { key: 'creditMix', label: 'Loại tín dụng', icon: 'layers-outline', color: '#F59E0B' },
+    { key: 'newCredit', label: 'Tín dụng mới', icon: 'star-four-points-outline', color: '#EC4899' },
+];
 
 const creditScoreBand = (score: number, c: any) => {
     if (score >= 680) return { label: 'Rất tốt', color: c.success, icon: 'shield-check' as const };
@@ -62,6 +72,7 @@ export default function ProfileScreen() {
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [recalculating, setRecalculating] = useState(false);
 
     useEffect(() => {
         const init = async () => {
@@ -85,6 +96,19 @@ export default function ProfileScreen() {
         }
     }, [refreshUser]);
 
+    const handleRecalculate = useCallback(async () => {
+        if (recalculating) return;
+        setRecalculating(true);
+        try {
+            await authAPI.recalculateCreditScore();
+            if (refreshUser) await refreshUser();
+        } catch (error: any) {
+            Alert.alert("Lỗi", "Không thể tính lại điểm tín dụng: " + error.message);
+        } finally {
+            setRecalculating(false);
+        }
+    }, [recalculating, refreshUser]);
+
 
     const displayName = getUserDisplayName(user);
     const initials = getUserInitials(user);
@@ -98,6 +122,42 @@ export default function ProfileScreen() {
     const c = theme.colors;
     const isDark = theme.mode === 'dark';
     const band = creditScoreBand(scoreValue, c);
+
+    const getFactorColor = (val: number) => {
+        if (val >= 80) return '#22C55E';
+        if (val >= 60) return '#84CC16';
+        if (val >= 40) return '#F59E0B';
+        if (val >= 20) return '#F97316';
+        return '#EF4444';
+    };
+
+    const renderFactorBar = (meta: typeof FACTOR_META[0], value: number) => {
+        const pColor = getFactorColor(value);
+        let weight = '10%';
+        if (meta.key === 'paymentHistory') weight = '35%';
+        else if (meta.key === 'debtLevel') weight = '30%';
+        else if (meta.key === 'creditAge') weight = '15%';
+
+        return (
+            <View key={meta.key} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
+                        <Text style={{ fontSize: 13, color: c.textSecondary, fontFamily: 'Poppins_600SemiBold' }}>
+                            {meta.label}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>({weight})</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: pColor }}>
+                        {Math.round(value)}
+                    </Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: isDark ? c.border + '50' : '#F1F5F9', borderRadius: 3 }}>
+                    <View style={{ height: 6, width: `${Math.max(Math.min(value, 100), 2)}%`, backgroundColor: pColor, borderRadius: 3 }} />
+                </View>
+            </View>
+        );
+    };
 
     // ── Setting Item Component ──
     const SettingItem = ({ icon, title, subtitle, onPress, rightElement, color }: any) => (
@@ -196,66 +256,83 @@ export default function ProfileScreen() {
                                     </TouchableOpacity>
                                 </View>
 
-                                <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('CreditScoreDetail')}>
-                                    <View style={[styles.creditCard, {
-                                        backgroundColor: isDark ? c.surface : '#FFFFFF',
-                                        borderColor: c.border,
-                                        borderWidth: 1,
-                                        shadowColor: isDark ? '#000' : '#14342B',
-                                        shadowOffset: { width: 0, height: 8 },
-                                        shadowOpacity: isDark ? 0.3 : 0.04,
-                                        shadowRadius: 20,
-                                        elevation: isDark ? 6 : 3,
-                                    }]}>
-                                        {/* Score + Badge */}
-                                        <View style={styles.creditTopRow}>
-                                            <View style={styles.creditScoreWrap}>
-                                                <View style={[styles.creditIconCircle, { backgroundColor: band.color + '15' }]}>
-                                                    <MaterialCommunityIcons name={band.icon} size={24} color={band.color} />
-                                                </View>
-                                                <View>
-                                                    <Text style={[styles.creditScoreLabel, { color: c.textMuted }]}>Điểm hiện tại</Text>
-                                                    <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
-                                                </View>
+                                <View style={[styles.creditCard, {
+                                    backgroundColor: isDark ? c.surface : '#FFFFFF',
+                                    borderColor: c.border,
+                                    borderWidth: 1,
+                                    shadowColor: isDark ? '#000' : '#14342B',
+                                    shadowOffset: { width: 0, height: 8 },
+                                    shadowOpacity: isDark ? 0.3 : 0.04,
+                                    shadowRadius: 20,
+                                    elevation: isDark ? 6 : 3,
+                                }]}>
+                                    {/* Component Header */}
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <View>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                                {recalculating ? (
+                                                    <ActivityIndicator size="small" color={c.primary} style={{ marginLeft: 4 }} />
+                                                ) : (
+                                                    <TouchableOpacity
+                                                        style={{ padding: 4, backgroundColor: c.primary + '15', borderRadius: 8 }}
+                                                        onPress={handleRecalculate}
+                                                    >
+                                                        <MaterialCommunityIcons name="refresh" size={18} color={c.primary} />
+                                                    </TouchableOpacity>
+                                                )}
                                             </View>
-                                            <View style={[styles.creditBadge, { backgroundColor: band.color + '15' }]}>
-                                                <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
-                                            </View>
+                                            <Text style={[{ color: c.textMuted, fontSize: 12, fontFamily: 'Poppins_400Regular', marginTop: -4 }]}>
+                                                Cập nhật: {formatDateTime(creditScore?.lastUpdated)}
+                                            </Text>
                                         </View>
-
-                                        {/* Progress bar */}
-                                        <View style={[styles.progressTrack, { backgroundColor: isDark ? '#2A2E33' : '#F3F4F6' }]}>
-                                            <LinearGradient
-                                                colors={[band.color + '99', band.color]}
-                                                style={[styles.progressFill, { width: `${Math.max(scoreRatio * 100, 5)}%` }]}
-                                                start={{ x: 0, y: 0 }}
-                                                end={{ x: 1, y: 0 }}
-                                            />
-                                        </View>
-
-                                        {/* Stats row (Pill style) */}
-                                        <View style={styles.creditStats}>
-                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
-                                                    {creditScore?.totalLoans ?? 0}
-                                                </Text>
-                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Khoản vay</Text>
-                                            </View>
-                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]}>
-                                                    {creditScore?.latePayments ?? 0}
-                                                </Text>
-                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Trả trễ</Text>
-                                            </View>
-                                            <View style={[styles.creditStatPill, { backgroundColor: isDark ? c.background : '#F9FAFB' }]}>
-                                                <Text style={[styles.creditStatValue, { color: c.textPrimary }]} numberOfLines={1}>
-                                                    {formatDateTime(creditScore?.lastUpdated).split(' ')[0]}
-                                                </Text>
-                                                <Text style={[styles.creditStatLabel, { color: c.textSecondary }]}>Cập nhật</Text>
-                                            </View>
+                                        <View style={[styles.creditBadge, { backgroundColor: band.color + '15', borderColor: band.color + '30', borderWidth: 1 }]}>
+                                            <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
                                         </View>
                                     </View>
-                                </TouchableOpacity>
+
+                                    {/* Segmented Progress bar */}
+                                    <View style={{ marginTop: 24, marginBottom: 8 }}>
+                                        <View style={{ width: '100%', height: 16, position: 'relative' }}>
+                                            {!recalculating && (
+                                                <View style={{ position: 'absolute', bottom: 0, left: `${scoreRatio * 100}%`, marginLeft: -12, zIndex: 10 }}>
+                                                    <MaterialCommunityIcons name="menu-down" size={24} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                                                </View>
+                                            )}
+                                        </View>
+                                        <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                                            <View style={{ backgroundColor: '#EF4444', flex: 1.72 }} />
+                                            <View style={{ backgroundColor: '#F97316', flex: 1.09 }} />
+                                            <View style={{ backgroundColor: '#F59E0B', flex: 1.39 }} />
+                                            <View style={{ backgroundColor: '#84CC16', flex: 1.10 }} />
+                                            <View style={{ backgroundColor: '#22C55E', flex: 0.70 }} />
+                                        </View>
+                                        <View style={{ height: 16, marginTop: 4, width: '100%', position: 'relative' }}>
+                                            <Text style={{ position: 'absolute', left: '0%', fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>150</Text>
+                                            <Text style={{ position: 'absolute', left: '28.6%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>322</Text>
+                                            <Text style={{ position: 'absolute', left: '46.8%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>431</Text>
+                                            <Text style={{ position: 'absolute', left: '70%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>570</Text>
+                                            <Text style={{ position: 'absolute', left: '88.3%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>680</Text>
+                                            <Text style={{ position: 'absolute', right: '0%', fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>750</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* 5-Factor Breakdown */}
+                                    <View style={{ marginTop: 24, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border + '90' }}>
+                                        <Text style={{ fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.textPrimary, marginBottom: 16 }}>
+                                            Phân tích yếu tố tín dụng
+                                        </Text>
+                                        {creditScore?.factors ? (
+                                            <View>
+                                                {FACTOR_META.map(m => renderFactorBar(m, (creditScore.factors as any)[m.key] ?? 0))}
+                                            </View>
+                                        ) : (
+                                            <Text style={{ color: c.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginVertical: 10 }}>
+                                                Chưa có dữ liệu phân tích chi tiết.
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
 
                                 {/* Credit History */}
                                 {creditHistory.length > 0 && (

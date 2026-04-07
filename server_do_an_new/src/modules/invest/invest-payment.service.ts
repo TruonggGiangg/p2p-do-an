@@ -68,7 +68,9 @@ export class InvestPaymentService {
       throw new BadRequestException('Khoản vay không ở trạng thái cho phép đầu tư');
     }
 
-    // ── 3. Check duplicate investment ──
+    // ── 3. Check duplicate investment (DISABLED BY BUSINESS RULE) ──
+    // Người dùng được quyền phân bổ vốn nhiều lần vào một khoản vay nếu muốn
+    /*
     const existingContract = await this.contractModel
       .findOne({
         lenderId: new Types.ObjectId(lenderId),
@@ -82,20 +84,26 @@ export class InvestPaymentService {
         `Bạn đã đầu tư vào khoản vay này (HĐ: ${existingContract.contractId}). Không thể đầu tư trùng.`,
       );
     }
+    */
 
     // ── 4. Check available notes (must consider BOTH nodeMatch and investedNotes) ──
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
     const investedSoFar = (loan as any).investedNotes || 0;
     const nodeMatchSoFar = (loan as any).nodeMatch || 0;
 
-    // If investing from an order, the matched nodes will be released
     let effectiveNodeMatch = nodeMatchSoFar;
     if (investmentOrderId) {
       const order = await this.orderModel.findById(investmentOrderId);
       if (order) {
         const matchedLoan = (order as any).loans?.find((l: any) => String(l.loanId) === String(loan._id));
         const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
-        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+        
+        // Bắt buộc thanh toán đúng số slot đã giữ của khoản vay này
+        if (numNotes !== orderMatchedNodes) {
+          throw new BadRequestException(`Bạn đã giữ ${orderMatchedNodes} chỗ cho khoản vay này, vui lòng thanh toán đúng số lượng hoặc hủy lệnh.`);
+        }
+        
+        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - orderMatchedNodes);
       }
     }
 
@@ -186,7 +194,39 @@ export class InvestPaymentService {
       this.logger.error(`FD creation failed: ${error.message}. Contract created without FD.`);
     }
 
-    // ── 9. Return updated contract ──
+    // ── 9. Check Full Match & Auto-disbursement ──
+    const isFullMatch = (contract as any)._isFullMatch;
+    const contractLoanId = (contract as any)._loanApplicationId;
+    if (isFullMatch && contractLoanId) {
+      this.logger.log(`🎯 FULL MATCH detected for loan ${contractLoanId}! Checking if borrower signed the contract...`);
+      try {
+        const loanContractModel = this.loanModel.db.model('LoanContract');
+        const borrowerContract = await loanContractModel.findOne({ loanId: contractLoanId });
+        
+        if (borrowerContract?.status === 'signed') {
+           this.logger.log(`Borrower already signed, triggering auto-disbursement...`);
+           this.handleFullMatchDisbursement(contractLoanId, lenderId).catch(err => {
+             this.logger.error(`Auto-disbursement failed (non-blocking): ${err.message}`);
+           });
+        } else {
+           this.logger.log(`Borrower HAS NOT signed yet. Waiting for signature...`);
+           if (borrowerContract) {
+             const notifModel = this.loanModel.db.model('Notification');
+             await notifModel.create({
+                userId: borrowerContract.userId,
+                title: 'Khoản vay đã đủ 100% vốn',
+                message: `Khoản vay của bạn đã được đầu tư đủ vốn. Vui lòng ký chữ ký điện tử để hệ thống giải ngân.`,
+                type: 'loan_fully_funded',
+                data: { loanId: contractLoanId, contractId: borrowerContract.contractId }
+             });
+           }
+        }
+      } catch (err: any) {
+         this.logger.error(`Failed to check borrower signature: ${err.message}`);
+      }
+    }
+
+    // ── 10. Return updated contract ──
     const updatedContract = await this.contractModel
       .findById(contract._id)
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status');
@@ -226,5 +266,139 @@ export class InvestPaymentService {
       totalInvested,
       availableBalance: walletBalance,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  AUTO-DISBURSEMENT (học từ HD-AMC P2P: handleFullMatchDisbursement)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Khi khoản vay đã đủ 100% vốn (investedNotes >= totalNotes):
+   * 1. Approve loan trên Fineract
+   * 2. Disburse loan trên Fineract
+   * 3. Transfer escrow → borrower savings
+   * 4. Update loan status → disbursed
+   * 5. Update tất cả InvestmentContract → active
+   * 
+   * Non-blocking: catch tất cả errors, KHÔNG throw.
+   * Học theo HD-AMC P2P: InvestContractService.handleFullMatchDisbursement()
+   */
+  async handleFullMatchDisbursement(loanApplicationId: string, triggerLenderId?: string): Promise<void> {
+    const logPrefix = '[AutoDisburse]';
+
+    try {
+      const loan = await this.loanModel.findById(loanApplicationId);
+      if (!loan) {
+        this.logger.error(`${logPrefix} Không tìm thấy khoản vay ${loanApplicationId}`);
+        return;
+      }
+
+      const fineractLoanId = loan.fineractLoanId;
+      if (!fineractLoanId) {
+        this.logger.warn(`${logPrefix} Loan ${loanApplicationId} chưa có fineractLoanId, bỏ qua auto-disburse`);
+        return;
+      }
+
+      // ── Step 1: Approve loan trên Fineract ──
+      try {
+        await this.fineractService.approveLoan(fineractLoanId);
+        this.logger.log(`${logPrefix} ✅ Loan ${fineractLoanId} approved trên Fineract`);
+      } catch (approveErr: any) {
+        const errMsg = JSON.stringify(approveErr.response?.data || approveErr.message);
+        const isAlreadyApproved =
+          errMsg.includes('already approved') ||
+          errMsg.includes('not.submitted.and.pending.state');
+        if (isAlreadyApproved) {
+          this.logger.warn(`${logPrefix} Loan ${fineractLoanId} đã được approve trước đó, tiếp tục`);
+        } else {
+          this.logger.error(`${logPrefix} Approve failed: ${errMsg}`);
+          throw approveErr;
+        }
+      }
+
+      // ── Step 2: Disburse loan trên Fineract ──
+      try {
+        await this.fineractService.disburseLoan(fineractLoanId);
+        this.logger.log(`${logPrefix} ✅ Loan ${fineractLoanId} disbursed trên Fineract`);
+      } catch (disburseErr: any) {
+        const errMsg = JSON.stringify(disburseErr.response?.data || disburseErr.message);
+        const isAlreadyDisbursed =
+          errMsg.includes('already disbursed') ||
+          errMsg.includes('not.approved');
+        if (isAlreadyDisbursed) {
+          this.logger.warn(`${logPrefix} Loan ${fineractLoanId} đã disbursed trước đó`);
+        } else {
+          this.logger.error(`${logPrefix} Disburse failed: ${errMsg}`);
+          throw disburseErr;
+        }
+      }
+
+      // ── Step 3: Transfer escrow → borrower savings ──
+      try {
+        const borrower = await this.userModel.findById(loan.userId).select('fineractClientId').lean();
+        const borrowerClientId = borrower?.fineractClientId ? Number(borrower.fineractClientId) : null;
+        
+        //  Validate: borrower ≠ lender trên Fineract
+        if (triggerLenderId) {
+          const triggerLender = await this.userModel.findById(triggerLenderId).select('fineractClientId').lean();
+          if (triggerLender?.fineractClientId && Number(triggerLender.fineractClientId) === borrowerClientId) {
+            this.logger.error(`${logPrefix} CRITICAL: Borrower = Lender trên Fineract (clientId=${borrowerClientId})`);
+            return; // Abort disbursement!
+          }
+        }
+
+        if (borrowerClientId) {
+          const platformClientId = this.configService.get<number>('defaults.platformClientId') || 1;
+          const platformAccount = await this.fineractService.getActiveEWalletAccount(platformClientId);
+          const borrowerAccount = await this.fineractService.getActiveEWalletAccount(borrowerClientId);
+
+          if (platformAccount && borrowerAccount) {
+            await this.fineractService.transferFunds(
+              platformClientId,
+              borrowerClientId,
+              platformAccount.id,
+              borrowerAccount.id,
+              loan.capital,
+              `Giải ngân khoản vay ${loanApplicationId}`,
+            );
+            this.logger.log(`${logPrefix} ✅ Escrow → Borrower: ${loan.capital.toLocaleString()} VND`);
+          } else {
+            this.logger.warn(`${logPrefix} Missing platform/borrower account, skip escrow transfer`);
+          }
+        } else {
+          this.logger.warn(`${logPrefix} Borrower chưa có fineractClientId, skip escrow transfer`);
+        }
+      } catch (transferErr: any) {
+        this.logger.error(`${logPrefix} Escrow transfer failed (non-blocking): ${transferErr.message}`);
+      }
+
+      // ── Step 4: Update loan status → disbursed ──
+      await this.loanModel.findByIdAndUpdate(loanApplicationId, {
+        $set: {
+          status: 'disbursed',
+          fineractStatusString: 'ACTIVE',
+        },
+      });
+      this.logger.log(`${logPrefix} ✅ Loan ${loanApplicationId} status → disbursed`);
+
+      // ── Step 5: Update tất cả InvestmentContract → active ──
+      const updateResult = await this.contractModel.updateMany(
+        {
+          loanApplicationId: new Types.ObjectId(loanApplicationId),
+          status: 'pending',
+        },
+        {
+          $set: { status: 'active' },
+        },
+      );
+      this.logger.log(
+        `${logPrefix} ✅ ${updateResult.modifiedCount} InvestmentContracts → active`,
+      );
+
+      this.logger.log(`${logPrefix} 🎉 Auto-disbursement completed for loan ${loanApplicationId}`);
+    } catch (error: any) {
+      this.logger.error(`${logPrefix} ❌ Auto-disbursement failed for loan ${loanApplicationId}: ${error.message}`);
+      // Non-blocking — investment vẫn thành công, disbursement sẽ retry manual
+    }
   }
 }

@@ -64,7 +64,10 @@ const getStatusInfo = (loan: LoanHistoryItem) => {
         if (sf.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280' };
         if (sf.overpaid) return { text: 'Trả thừa', color: '#10B981' };
         if (sf.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B' };
-        if (sf.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6' };
+        if (sf.waitingForDisbursal) {
+            if (loan.isFullMatch) return { text: 'Chờ ký', color: '#F59E0B' };
+            return { text: 'Đang gọi vốn', color: '#8B5CF6' };
+        }
         if (sf.closed) return { text: 'Đã đóng', color: '#6B7280' };
         if (sf.rejected) return { text: 'Bị từ chối', color: '#EF4444' };
         if (sf.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF' };
@@ -72,7 +75,10 @@ const getStatusInfo = (loan: LoanHistoryItem) => {
     if (loan.status === 'clean' || loan.status === 'closed') return { text: 'Đã tất toán', color: '#10B981' };
     if (loan.status === 'success' || loan.status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6' };
     if (loan.status === 'waiting' || loan.status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B' };
-    if (loan.status === 'approved') return { text: 'Đã duyệt', color: '#8B5CF6' };
+    if (loan.status === 'approved') {
+        if (loan.isFullMatch) return { text: 'Chờ ký', color: '#F59E0B' };
+        return { text: 'Đang gọi vốn', color: '#8B5CF6' };
+    }
     if (loan.status === 'rejected' || loan.status === 'fail') return { text: 'Bị từ chối', color: '#EF4444' };
     if (loan.status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF' };
     if (loan.status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280' };

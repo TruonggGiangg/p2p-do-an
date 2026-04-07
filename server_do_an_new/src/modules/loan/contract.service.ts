@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -27,6 +28,7 @@ export class ContractService {
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(DelinquencyPolicy.name) private delinquencyPolicyModel: Model<DelinquencyPolicy>,
     private readonly fineractLoanService: FineractLoanService,
+    private moduleRef: ModuleRef,
     @Optional() private readonly smartCAService: SmartCAService,
   ) {}
 
@@ -209,6 +211,7 @@ export class ContractService {
         ...query,
         userId: new Types.ObjectId(userId),
       })
+      .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
       .exec();
 
@@ -232,6 +235,7 @@ export class ContractService {
           loanId: new Types.ObjectId(loanId),
           userId: new Types.ObjectId(userId),
         })
+        .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
         .lean()
         .exec();
       if (direct) return direct as LoanContract;
@@ -308,6 +312,11 @@ export class ContractService {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
+    const loan = await this.loanApplicationModel.findById(contract.loanId);
+    if (!loan || !(loan as any).isFullMatch) {
+      throw new BadRequestException('Khoản vay chưa được đầu tư đủ 100% vốn. Đang chờ nhà đầu tư.');
+    }
+
     contract.status = 'signed';
     contract.signedAt = new Date();
     if (signatureData) {
@@ -321,13 +330,26 @@ export class ContractService {
     await this.notificationModel.create({
       userId: new Types.ObjectId(userId),
       title: 'Hợp đồng đã được ký',
-      message: `Hợp đồng ${contractId} đã được ký xác nhận thành công. Khoản vay sẽ được giải ngân trong thời gian sớm nhất.`,
+      message: `Hợp đồng ${contractId} đã được ký xác nhận thành công. Hệ thống đang tiến hành giải ngân.`,
       type: 'contract_signed',
       data: {
         contractId,
         contractObjectId: contract._id?.toString(),
       },
     });
+
+    // Trigger auto-disbursement from InvestPaymentService dynamically to avoid circular dependency
+    try {
+      const investPaymentService = this.moduleRef.get('InvestPaymentService', { strict: false });
+      if (investPaymentService) {
+        this.logger.log(`[signContract] Triggering auto-disbursement for fully funded loan ${loan._id}`);
+        investPaymentService.handleFullMatchDisbursement(loan._id.toString(), userId).catch((e: any) => {
+          this.logger.error(`[signContract] Auto-disbursement failed: ${e.message}`);
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[signContract] InvestPaymentService not found. Cannot trigger auto-disbursement. ${err.message}`);
+    }
 
     return contract;
   }

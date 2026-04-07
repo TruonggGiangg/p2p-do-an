@@ -930,6 +930,17 @@ export const adminApi = {
       .post<{ data: any }>(`/api/admin/loans/${fineractLoanId}/sync`)
       .then((r) => r.data.data),
 
+  triggerAIScore: (fineractLoanId: number) =>
+    api
+      .post<{
+        data: {
+          fineractLoanId: number;
+          aiScore: LoanDto["aiScore"];
+          message: string;
+        };
+      }>(`/api/admin/loans/${fineractLoanId}/trigger-score`)
+      .then((r) => r.data.data),
+
   syncCustomerLoans: (userId: string) =>
     api
       .post<{ data: any }>(`/api/admin/customers/${userId}/sync-loans`)

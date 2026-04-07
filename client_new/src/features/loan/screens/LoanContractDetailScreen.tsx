@@ -205,6 +205,7 @@ export default function LoanContractDetailScreen() {
 
     const statusCfg = getStatusConfig(contract.status);
     const isPending = contract.status === 'pending_signature';
+    const isFullMatch = (contract as any)?.loanId?.isFullMatch === true;
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -426,18 +427,32 @@ export default function LoanContractDetailScreen() {
                         zIndex: 1000,
                     },
                 ]}>
+                    {!isFullMatch && (
+                        <View style={{ marginBottom: 12, padding: 12, backgroundColor: colors.primary + '10', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+                            <MaterialCommunityIcons name="clock-time-four-outline" size={20} color={colors.primary} />
+                            <Text style={{ marginLeft: 8, fontSize: 13, color: colors.primary, flex: 1, fontWeight: '500' }}>
+                                Đang chờ nhà đầu tư (chưa đủ 100% vốn).
+                            </Text>
+                        </View>
+                    )}
                     <TouchableOpacity
-                        style={[styles.signBtn, { backgroundColor: colors.primary }, signing && styles.signBtnDisabled]}
+                        style={[
+                            styles.signBtn, 
+                            { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary }, 
+                            signing && styles.signBtnDisabled
+                        ]}
                         onPress={() => setShowSignConfirm(true)}
-                        disabled={signing}
+                        disabled={signing || !isFullMatch}
                         activeOpacity={0.8}
                     >
                         {signing ? (
                             <ActivityIndicator color={colors.onPrimary} size="small" />
                         ) : (
                             <>
-                                <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary} />
-                                <Text style={[styles.signBtnText, { color: colors.onPrimary }]}>Ký xác nhận hợp đồng</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={20} color={!isFullMatch ? colors.textDim : colors.onPrimary} />
+                                <Text style={[styles.signBtnText, { color: !isFullMatch ? colors.textDim : colors.onPrimary }]}>
+                                    {!isFullMatch ? 'Đang chờ đầu tư...' : 'Ký xác nhận hợp đồng'}
+                                </Text>
                             </>
                         )}
                     </TouchableOpacity>
@@ -475,20 +490,35 @@ export default function LoanContractDetailScreen() {
                     {/* Signature placeholder area */}
                     {isPending && (
                         <View style={[styles.signatureArea, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-                            <View style={[styles.signaturePlaceholder, { borderColor: colors.border }]}>
-                                <MaterialCommunityIcons name="draw-pen" size={32} color={colors.textDim} />
-                                <Text style={[styles.signaturePlaceholderText, { color: colors.textDim }]}>
-                                    Chữ ký điện tử{'\n'}Nhấn nút bên dưới để ký xác nhận
-                                </Text>
-                            </View>
+                            {!isFullMatch ? (
+                                <View style={[styles.signaturePlaceholder, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                                    <MaterialCommunityIcons name="clock-time-four-outline" size={32} color={colors.primary} />
+                                    <Text style={[styles.signaturePlaceholderText, { color: colors.primary, marginTop: 8 }]}>
+                                        Đang chờ nhà đầu tư{'\n'}Cần đủ 100% vốn để ký hợp đồng
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={[styles.signaturePlaceholder, { borderColor: colors.border }]}>
+                                    <MaterialCommunityIcons name="draw-pen" size={32} color={colors.textDim} />
+                                    <Text style={[styles.signaturePlaceholderText, { color: colors.textDim }]}>
+                                        Chữ ký điện tử{'\n'}Nhấn nút bên dưới để ký xác nhận
+                                    </Text>
+                                </View>
+                            )}
                             <TouchableOpacity
-                                style={[styles.signBtn, { backgroundColor: colors.primary, marginTop: 12 }, signing && styles.signBtnDisabled]}
+                                style={[
+                                    styles.signBtn, 
+                                    { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary, marginTop: 12 }, 
+                                    signing && styles.signBtnDisabled
+                                ]}
                                 onPress={() => { setShowContract(false); setShowSignConfirm(true); }}
-                                disabled={signing}
+                                disabled={signing || !isFullMatch}
                                 activeOpacity={0.8}
                             >
-                                <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary} />
-                                <Text style={[styles.signBtnText, { color: colors.onPrimary }]}>Ký xác nhận hợp đồng</Text>
+                                <MaterialCommunityIcons name="draw-pen" size={20} color={!isFullMatch ? colors.textDim : colors.onPrimary} />
+                                <Text style={[styles.signBtnText, { color: !isFullMatch ? colors.textDim : colors.onPrimary }]}>
+                                    {!isFullMatch ? 'Đang chờ đầu tư...' : 'Ký xác nhận hợp đồng'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     )}

@@ -115,21 +115,30 @@ const formatInputVND = (text: string) => {
     return number.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
-const getStatusInfo = (statusObj: any, status: string) => {
+const getStatusInfo = (statusObj: any, status: string, isFullMatch?: boolean) => {
     if (statusObj) {
         if (statusObj.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
         if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
         if (statusObj.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB' };
         if (statusObj.overpaid) return { text: 'Trả thừa', color: '#10B981', bgColor: '#F0FDF4' };
         if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
-        if (statusObj.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', bgColor: '#F5F3FF' };
-        if (statusObj.approved) return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#FFFBEB' };
+        if (statusObj.waitingForDisbursal) {
+            if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
+            return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
+        }
+        if (statusObj.approved) {
+            if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
+            return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
+        }
         if (statusObj.rejected) return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
         if (statusObj.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
     }
     if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
     if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
-    if (status === 'approved') return { text: 'Chờ ký hợp đồng', color: '#F59E0B', bgColor: '#FFFBEB' };
+    if (status === 'approved') {
+        if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
+        return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
+    }
     if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
     if (status === 'rejected') return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
     if (status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
@@ -393,7 +402,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     // ---- Render Tabs ----
     const renderInfoTab = () => {
-        const statusDisplay = getStatusInfo(fineractDetails?.status || rawLoan?.statusInfo, loan.status);
+        const statusDisplay = getStatusInfo(fineractDetails?.status || rawLoan?.statusInfo, loan.status, rawLoan?.isFullMatch);
         const progressPercent = outstanding && loan.capital > 0
             ? Math.min(100, Math.round((totalPaid / (loan.capital + (outstanding.interestOutstanding + totalPaid - loan.capital > 0 ? outstanding.interestOutstanding + totalPaid - loan.capital : 0))) * 100))
             : 0;

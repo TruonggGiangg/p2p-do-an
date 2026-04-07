@@ -12,6 +12,7 @@ import { FineractFDService } from '../fineract/services/fineract-fd.service';
 import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
+import { InvestmentContract } from './schemas/investment-contract.schema';
 
 export interface ProgressCallback {
   (message: string, step: number): void;
@@ -40,6 +41,7 @@ export class InvestService {
     private readonly matchingService: MatchingService,
     private readonly configService: ConfigService,
     private readonly fineractFDService: FineractFDService,
+    @InjectModel(InvestmentContract.name) private readonly contractModel: Model<InvestmentContract>,
   ) {}
 
   // ═══════════════════════════════════════════════════════
@@ -76,21 +78,38 @@ export class InvestService {
     });
 
     sendProgress('Đang tìm khoản vay phù hợp...', 10);
+    this.logger.log(`[InvestService] createOrderWithMatching - Start finding loans for order ${order._id}`);
 
+    const queryFilters: any = {
+      status: 'approved',
+      isFullMatch: { $ne: true },
+      $expr: {
+        $lt: [
+          { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }] },
+          { $max: ['$totalNotes', { $ceil: { $divide: ['$capital', this.matchingService.unitPrice] } }] },
+        ],
+      },
+      monthlyRatePercent: { $gte: interestRange.min, $lte: interestRange.max },
+      periodMonth: { $gte: periodRange.min, $lte: periodRange.max },
+      capital: { $lte: maxCapital },
+    };
+
+    this.logger.log(`[InvestService] Querying available loans with filters: ${JSON.stringify(queryFilters)}`);
+
+    // Query: học từ HD-AMC P2P — thêm $expr guard (investedNotes < totalNotes)
     const availableLoans = await this.loanModel
-      .find({
-        status: 'approved',
-        isFullMatch: { $ne: true },
-        monthlyRatePercent: { $gte: interestRange.min, $lte: interestRange.max },
-        periodMonth: { $gte: periodRange.min, $lte: periodRange.max },
-        capital: { $lte: maxCapital },
-      })
+      .find(queryFilters)
       .select(
-        '_id capital willing periodMonth monthlyRatePercent productId status nodeMatch investedNotes aiScore creditScore',
+        '_id capital willing periodMonth monthlyRatePercent productId status nodeMatch investedNotes totalNotes aiScore creditScore',
       )
       .sort({ createdAt: 1 })
       .lean()
       .exec();
+
+    this.logger.log(`[InvestService] Found ${availableLoans.length} available approved loans for matching.`);
+    if (availableLoans.length > 0) {
+      this.logger.log(`[InvestService] Loan IDs to match: ${availableLoans.map(l => String(l._id)).join(', ')}`);
+    }
 
     sendProgress(`Tìm thấy ${availableLoans.length} khoản vay có thể ghép. Đang kiểm tra...`, 20);
 
@@ -110,11 +129,24 @@ export class InvestService {
         continue;
       }
 
-      const totalLoanNotes = this.matchingService.calculateNodes(loan.capital);
-      const existingClaimed = ((loan as any).nodeMatch || 0) + ((loan as any).investedNotes || 0);
+      const totalLoanNotes = (loan as any).totalNotes > 0
+        ? (loan as any).totalNotes
+        : this.matchingService.calculateNodes(loan.capital);
+      const existingNodeMatch = (loan as any).nodeMatch || 0;
+      const existingInvestedNotes = (loan as any).investedNotes || 0;
+      const existingClaimed = existingNodeMatch + existingInvestedNotes;
       const remainingLoanNodes = Math.max(0, totalLoanNotes - existingClaimed);
       const availableOrderNodes = currentOrder.totalNodes - currentOrder.matchedNodes;
       const nodesToMatch = Math.min(remainingLoanNodes, availableOrderNodes);
+
+      // Guard: nodeMatch không được vượt giới hạn (học từ HD-AMC P2P line 190-193)
+      const maxAllowedNodeMatch = totalLoanNotes - existingInvestedNotes;
+      const newNodeMatch = existingNodeMatch + nodesToMatch;
+      if (newNodeMatch > maxAllowedNodeMatch) {
+        this.logger.warn(`nodeMatch (${newNodeMatch}) exceeds limit (${maxAllowedNodeMatch}) for loan ${loan._id}, skipping`);
+        sendProgress(`Bỏ qua — nodeMatch sẽ vượt giới hạn`, stepPct);
+        continue;
+      }
 
       if (nodesToMatch <= 0) continue;
 
@@ -160,22 +192,32 @@ export class InvestService {
         continue;
       }
 
-      // Cập nhật nodeMatch trên loan (atomic)
-      const newNodeMatch = ((loan as any).nodeMatch || 0) + nodesToMatch;
-      const newTotalClaimed = newNodeMatch + ((loan as any).investedNotes || 0);
+      // Cập nhật nodeMatch trên loan (atomic) — giống HD-AMC P2P
+      const finalNodeMatch = existingNodeMatch + nodesToMatch;
+      const newTotalClaimed = finalNodeMatch + existingInvestedNotes;
+      const newMatchPercentage = Math.min(100, Math.round((newTotalClaimed / totalLoanNotes) * 100));
+      // CRITICAL: isFullMatch = TRUE CHỈ KHI tiền thật đã thanh toán (investedNotes) >= totalNotes
+      const newIsFullMatch = existingInvestedNotes >= totalLoanNotes;
       await this.loanModel.findByIdAndUpdate(loan._id, {
         $inc: { nodeMatch: nodesToMatch },
         $set: {
           totalNotes: totalLoanNotes,
-          isFullMatch: newTotalClaimed >= totalLoanNotes,
+          isFullMatch: newIsFullMatch,
+          matchPercentage: newMatchPercentage,
         },
       });
+
+      this.logger.log(
+        `Loan ${loan._id}: nodeMatch ${existingNodeMatch}→${finalNodeMatch}, ` +
+        `investedNotes=${existingInvestedNotes}, totalClaimed=${newTotalClaimed}/${totalLoanNotes}, ` +
+        `matchPercentage=${newMatchPercentage}%, isFullMatch=${newIsFullMatch}`,
+      );
 
       matchResults.push({
         loanId: String(loan._id),
         nodeMatch: nodesToMatch,
-        matchPercentage: Math.round(Math.min(100, (nodesToMatch / totalLoanNotes) * 100)),
-        isFullMatch: nodesToMatch >= totalLoanNotes,
+        matchPercentage: newMatchPercentage,
+        isFullMatch: newIsFullMatch,
       });
 
       if (updatedOrder.status === 'closed') {
@@ -233,6 +275,13 @@ export class InvestService {
       // Chỉ hiện khoản vay đã phê duyệt, đang chờ giải ngân
       status: 'approved',
       isFullMatch: { $ne: true },
+      // Guard: chỉ hiện khoản vay còn slot khả dụng (nodeMatch + investedNotes < totalNotes)
+      $expr: {
+        $lt: [
+          { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }] },
+          { $max: ['$totalNotes', { $ceil: { $divide: ['$capital', this.matchingService.unitPrice] } }] },
+        ],
+      },
     };
 
     if (query.minRate !== undefined || query.maxRate !== undefined) {
@@ -264,6 +313,8 @@ export class InvestService {
       filters['aiScore.riskLevel'] = query.riskLevel.toUpperCase();
     }
 
+    this.logger.log(`[getAvailableLoans] filter: ${JSON.stringify(filters)}`);
+
     const [totalCount, loans] = await Promise.all([
       this.loanModel.countDocuments(filters),
       this.loanModel
@@ -277,6 +328,15 @@ export class InvestService {
         .lean()
         .exec(),
     ]);
+
+    this.logger.log(`[getAvailableLoans] Lấy được ${loans.length} khoản vay: ` + JSON.stringify(loans.map(l => ({
+      id: l._id,
+      status: l.status,
+      capital: l.capital,
+      totalNotes: l.totalNotes,
+      investedNotes: (l as any).investedNotes,
+      nodeMatch: (l as any).nodeMatch
+    }))));
 
     const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
 
@@ -528,6 +588,8 @@ export class InvestService {
     const order = await this.investmentOrderModel.findById(orderId);
     if (!order) throw new NotFoundException('Không tìm thấy lệnh đầu tư');
     if (String(order.lenderId) !== userId) throw new ForbiddenException('Không có quyền');
+    
+    await this.releaseUnusedNodes(order);
     await this.investmentOrderModel.findByIdAndDelete(orderId);
   }
 
@@ -535,7 +597,53 @@ export class InvestService {
     const order = await this.investmentOrderModel.findById(orderId);
     if (!order) throw new NotFoundException('Không tìm thấy lệnh đầu tư');
     if (String(order.lenderId) !== userId) throw new ForbiddenException('Không có quyền');
+    
+    await this.releaseUnusedNodes(order);
     order.status = 'closed';
     return order.save();
+  }
+
+  /** Giải phóng các node giữ chỗ chưa thanh toán để kho khôi phục lại khả năng huy động */
+  private async releaseUnusedNodes(order: InvestmentOrder) {
+    if (!order.loans || order.loans.length === 0) return;
+    
+    for (const loanInfo of order.loans) {
+      if (!loanInfo.isInvested && loanInfo.nodeMatch > 0) {
+        // Hoàn trả nodeMatch lại cho Khoản Vay
+        const updatedLoan = await this.loanModel.findByIdAndUpdate(
+          loanInfo.loanId,
+          { $inc: { nodeMatch: -loanInfo.nodeMatch } },
+          { new: true }
+        );
+
+        if (updatedLoan) {
+          // Tính toán lại các phần trăm dựa trên capacity thực tế
+          const totalClaimed = (updatedLoan as any).investedNotes + ((updatedLoan as any).nodeMatch || 0);
+          const newMatchPercentage = Math.min(100, Math.round((totalClaimed / updatedLoan.totalNotes) * 100));
+          const isFullMatch = (updatedLoan as any).investedNotes >= updatedLoan.totalNotes;
+
+          await this.loanModel.updateOne(
+            { _id: updatedLoan._id },
+            { $set: { isFullMatch, matchPercentage: newMatchPercentage } }
+          );
+          
+          this.logger.log(`Released ${loanInfo.nodeMatch} nodes from Loan ${loanInfo.loanId} due to Order ${order._id} cancellation`);
+        }
+      }
+    }
+  }
+
+  async fixIsFullMatch() {
+    const loans = await this.loanModel.find({ isFullMatch: true }).lean().exec();
+    let fixCount = 0;
+    for (const loan of loans) {
+      const totalNotes = loan.totalNotes || Math.ceil((loan.capital || 0) / 500000);
+      const investedNotes = (loan as any).investedNotes || 0;
+      if (investedNotes < totalNotes) {
+        await this.loanModel.updateOne({ _id: loan._id }, { $set: { isFullMatch: false } });
+        fixCount++;
+      }
+    }
+    return { success: true, fixed: fixCount };
   }
 }

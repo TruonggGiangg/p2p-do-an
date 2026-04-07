@@ -43,6 +43,7 @@ export type LoanTableRow = {
         riskFactors: any[];
         scoredAt: string;
     } | null;
+    isFullMatch?: boolean;
 };
 
 export type TabKey = 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
@@ -263,10 +264,20 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             render: (_, r) => {
                 const statusObj = r.status;
                 if (statusObj && typeof statusObj === 'object' && 'value' in statusObj) {
+                    if (statusObj.code === 'loanStatusType.approved') {
+                        if (r.isFullMatch) return <Tag color="warning">Chờ ký</Tag>;
+                        return <Tag color="blue">Đang gọi vốn</Tag>;
+                    }
                     return <FineractStatusBadge status={statusObj} />;
                 }
                 const disp = getStatusDisplay(r);
                 if (!disp) return '–';
+                
+                if (disp.code === 'approved') {
+                    if (r.isFullMatch) return <Tag color="warning">Chờ ký</Tag>;
+                    return <Tag color="blue">Đang gọi vốn</Tag>;
+                }
+
                 const color = disp.code === 'overdue' ? 'error' : disp.code === 'pending' ? 'warning' : disp.code === 'closed' ? 'default' : 'success';
                 return <Tag color={color}>{disp.label}</Tag>;
             },

@@ -59,7 +59,7 @@ export default function SchedulePreviewScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
-  const { loanApplicationId, numNotes, loanTitle, readonly } = route.params || {};
+  const { loanApplicationId, numNotes, loanTitle, readonly, investmentOrderId } = route.params || {};
 
   const [data, setData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,7 @@ export default function SchedulePreviewScreen() {
 
   const loadPreview = async () => {
     try {
-      const result = await investService.getSchedulePreview(loanApplicationId, numNotes);
+      const result = await investService.getSchedulePreview(loanApplicationId, numNotes, investmentOrderId);
       setData(result);
     } catch (e: any) {
       Alert.alert('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tải dữ liệu');
@@ -96,6 +96,7 @@ export default function SchedulePreviewScreen() {
               const contract = await investService.createContract({
                 loanApplicationId,
                 numNotes,
+                investmentOrderId,
               });
               Alert.alert('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, [
                 {

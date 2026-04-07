@@ -351,6 +351,100 @@ export class AdminLoanService {
   }
 
   /**
+   * Admin trigger AI Score cho 1 khoản vay cụ thể (dù đã có score hay chưa → rescore).
+   */
+  async triggerAIScoreForLoan(fineractLoanId: number) {
+    this.logger.log(`[triggerAIScore] fineractLoanId=${fineractLoanId}`);
+
+    const aiscoreConfig = this.configService.get('aiscore');
+    if (!aiscoreConfig?.enabled) {
+      throw new BadRequestException('AI Score service chưa được bật (AISCORE_ENABLED=false)');
+    }
+
+    const loan: any = await this.loanApplicationModel.findOne({ fineractLoanId }).lean().exec();
+    if (!loan) throw new NotFoundException(`Khoản vay Fineract #${fineractLoanId} không tồn tại`);
+    if (!loan.capital || loan.capital <= 0) throw new BadRequestException('Khoản vay không hợp lệ (capital=0)');
+
+    // Get user credit score
+    const user = await this.userModel.findById(loan.userId).select('creditProfile').lean().exec();
+    const rawCic = user?.creditProfile?.creditScore ?? 570;
+    const cicScore = Math.max(150, Math.min(750, rawCic));
+
+    // Call AI Score service
+    const { default: axios } = await import('axios');
+    const scoreResponse = await axios.post(
+      `${aiscoreConfig.serviceUrl}/api/score`,
+      {
+        credit_score: cicScore,
+        loanAmount: loan.capital,
+        monthly_income: 10_000_000,
+        monthly_pay: loan.monthlyPay ?? 0,
+        periodMonth: loan.periodMonth ?? 12,
+      },
+      { timeout: aiscoreConfig.timeout || 15000 },
+    );
+
+    const aiRiskScore = scoreResponse.data?.ai_risk_score;
+    const defaultProbability = scoreResponse.data?.default_probability;
+    if (aiRiskScore == null) throw new BadRequestException('AI Score service trả về kết quả không hợp lệ');
+
+    const evaluationScore = Math.max(0, Math.min(100, 100 - aiRiskScore));
+
+    // Grade mapping
+    const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
+    const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
+    const matchedGrade = sortedGrades.find(g => evaluationScore >= g.minScore && evaluationScore <= g.maxScore);
+
+    const aiScore = {
+      pd: defaultProbability,
+      creditScore: evaluationScore,
+      grade: matchedGrade?.grade || 'N/A',
+      subGrade: matchedGrade?.label || 'Chưa xếp hạng',
+      tier: matchedGrade?.grade || 'N/A',
+      decision:
+        evaluationScore < (evalConfig.autoRejectScore ?? 0)
+          ? 'REJECT'
+          : evaluationScore >= (evalConfig.autoApproveScore ?? 100)
+            ? 'APPROVE'
+            : 'REVIEW',
+      riskLevel:
+        matchedGrade?.grade === 'A'
+          ? 'LOW'
+          : matchedGrade?.grade === 'B'
+            ? 'MEDIUM'
+            : matchedGrade?.grade === 'C'
+              ? 'HIGH'
+              : 'VERY_HIGH',
+      riskFactors: [],
+      scoredAt: new Date(),
+    };
+
+    // Save to MongoDB
+    await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { aiScore } });
+
+    // Update user credit profile
+    await this.userModel.findByIdAndUpdate(loan.userId, {
+      $set: {
+        'creditProfile.pd': defaultProbability,
+        'creditProfile.creditScore': evaluationScore,
+        'creditProfile.grade': matchedGrade?.grade,
+        'creditProfile.riskLevel': aiScore.riskLevel,
+        'creditProfile.lastScoredAt': new Date(),
+      },
+    });
+
+    this.logger.log(
+      `[triggerAIScore] Done: fineractLoanId=${fineractLoanId} score=${evaluationScore} grade=${aiScore.grade} decision=${aiScore.decision}`,
+    );
+
+    return {
+      fineractLoanId,
+      aiScore,
+      message: `Tính điểm AI thành công: ${evaluationScore}/100, Hạng ${aiScore.grade}`,
+    };
+  }
+
+  /**
    * Admin approve loan: Fineract approve + update MongoDB status.
    * Yêu cầu: đã duyệt đủ tất cả tài liệu bắt buộc.
    */
@@ -413,7 +507,11 @@ export class AdminLoanService {
     }
 
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
-    await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { status: 'approved' } });
+    const totalNotes = app.totalNotes || Math.ceil((app.capital || 0) / 500000);
+    await this.loanApplicationModel.updateOne(
+      { fineractLoanId },
+      { $set: { status: 'approved', totalNotes } }
+    );
 
     // Táº¡o há»£p Ä‘á»“ng vay + gá»­i thÃ´ng bÃ¡o cho ngÆ°á»i vay
     try {
@@ -1786,6 +1884,7 @@ export class AdminLoanService {
       delinquentDays: number;
       disbursementDate: string | null;
       lastSyncedAt: Date | null;
+      isFullMatch?: boolean;
     }>;
   }> {
     const page = Math.max(1, filters.page ?? 1);
@@ -1826,6 +1925,7 @@ export class AdminLoanService {
         disbursementDate: app.disbursementDate ?? null,
         createdAt: app.createdAt ?? null,
         lastSyncedAt: app.lastSyncedAt ?? null,
+        isFullMatch: app.isFullMatch ?? false,
       };
     };
 
@@ -1916,6 +2016,7 @@ export class AdminLoanService {
           disbursementDate: fl.timeline?.expectedDisbursementDate ?? ll?.disbursementDate ?? null,
           createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
           lastSyncedAt: null,
+          isFullMatch: ll?.isFullMatch ?? false,
         };
       });
       items = applyProductFilter(applyKeywordFilter(items));
@@ -2340,5 +2441,19 @@ export class AdminLoanService {
   async getLoanDocumentStream(fineractLoanId: number, documentId: number) {
     this.logger.log(`[getLoanDocumentStream] fineractLoanId=${fineractLoanId} documentId=${documentId}`);
     return this.fineractLoanService.downloadDocument(fineractLoanId, documentId);
+  }
+
+  async fixIsFullMatch() {
+    const loans = await this.loanApplicationModel.find({ isFullMatch: true }).lean().exec();
+    let fixCount = 0;
+    for (const loan of loans) {
+      const totalNotes = loan.totalNotes || Math.ceil((loan.capital || 0) / 500000);
+      const investedNotes = (loan as any).investedNotes || 0;
+      if (investedNotes < totalNotes) {
+        await this.loanApplicationModel.updateOne({ _id: loan._id }, { $set: { isFullMatch: false } });
+        fixCount++;
+      }
+    }
+    return { success: true, fixed: fixCount };
   }
 }

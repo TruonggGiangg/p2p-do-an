@@ -35,13 +35,98 @@ const TOTP_CONFIG = {
   step: 30, // 30 seconds
 };
 
-// SecureStore keys
-const STORAGE_KEYS = {
+// SecureStore key prefixes — suffixed with userId for multi-account isolation
+const KEY_PREFIXES = {
   DEVICE_BINDING: "smart_otp_device_binding",
   TOTP_SECRET: "smart_otp_totp_secret",
   PRIVATE_KEY: "smart_otp_private_key",
   PUBLIC_KEY: "smart_otp_public_key",
   DEVICE_ID: "smart_otp_device_id",
+};
+
+// Cache current userId to avoid repeated AsyncStorage reads
+let _cachedUserId: string | null = null;
+
+/**
+ * Get current userId from auth storage (for key namespacing)
+ */
+const getCurrentUserId = async (): Promise<string> => {
+  if (_cachedUserId) return _cachedUserId;
+  try {
+    // Import dynamically to avoid circular deps
+    const { authStorage } = await import('../core/storage/auth.storage');
+    const authData = await authStorage.getAuthData();
+    const uid = (authData?.user as any)?._id || (authData?.user as any)?.id || '';
+    if (uid) _cachedUserId = uid;
+    return uid;
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Set userId cache after login (called from AuthContext)
+ */
+export const setSmartOTPUserId = (userId: string) => {
+  _cachedUserId = userId;
+};
+
+/**
+ * Clear userId cache on logout
+ */
+export const clearSmartOTPUserId = () => {
+  _cachedUserId = null;
+};
+
+/**
+ * Get user-scoped storage keys. Falls back to legacy (global) keys
+ * if userId is not available, ensuring backward compatibility.
+ */
+const getStorageKeys = async () => {
+  const userId = await getCurrentUserId();
+  const suffix = userId ? `_${userId}` : '';
+  return {
+    DEVICE_BINDING: `${KEY_PREFIXES.DEVICE_BINDING}${suffix}`,
+    TOTP_SECRET: `${KEY_PREFIXES.TOTP_SECRET}${suffix}`,
+    PRIVATE_KEY: `${KEY_PREFIXES.PRIVATE_KEY}${suffix}`,
+    PUBLIC_KEY: `${KEY_PREFIXES.PUBLIC_KEY}${suffix}`,
+    DEVICE_ID: `${KEY_PREFIXES.DEVICE_ID}${suffix}`,
+  };
+};
+
+/**
+ * Migrate legacy global keys to user-scoped keys (one-time on first use after update)
+ * This ensures existing users don't lose their Smart OTP data.
+ */
+export const migrateFromLegacyKeys = async (): Promise<void> => {
+  const userId = await getCurrentUserId();
+  if (!userId) return; // Can't migrate without userId
+
+  const userKeys = await getStorageKeys();
+  // If user-scoped key already exists, no migration needed
+  const existingSecret = await SecureStore.getItemAsync(userKeys.TOTP_SECRET);
+  if (existingSecret) return;
+
+  // Check if legacy (global) keys exist
+  const legacySecret = await SecureStore.getItemAsync(KEY_PREFIXES.TOTP_SECRET);
+  if (!legacySecret) return;
+
+  console.log('[SmartOTPService] Migrating legacy OTP keys to user-scoped...');
+
+  // Copy legacy → user-scoped
+  for (const keyName of ['TOTP_SECRET', 'PRIVATE_KEY', 'PUBLIC_KEY', 'DEVICE_BINDING', 'DEVICE_ID'] as const) {
+    const legacyValue = await SecureStore.getItemAsync(KEY_PREFIXES[keyName]);
+    if (legacyValue) {
+      await SecureStore.setItemAsync(userKeys[keyName], legacyValue);
+    }
+  }
+
+  // Clean up legacy keys
+  for (const keyName of ['TOTP_SECRET', 'PRIVATE_KEY', 'PUBLIC_KEY', 'DEVICE_BINDING'] as const) {
+    await SecureStore.deleteItemAsync(KEY_PREFIXES[keyName]);
+  }
+
+  console.log('[SmartOTPService] Migration complete.');
 };
 
 const ec = new EC("p256");
@@ -56,8 +141,9 @@ type ApiEnvelope<T> = {
  * Get unique device identifier
  */
 const getDeviceId = async (): Promise<string> => {
+  const KEYS = await getStorageKeys();
   // Try to get stored device ID first
-  let deviceId = await SecureStore.getItemAsync(STORAGE_KEYS.DEVICE_ID);
+  let deviceId = await SecureStore.getItemAsync(KEYS.DEVICE_ID);
 
   if (!deviceId) {
     // Generate new device ID based on device info
@@ -76,7 +162,7 @@ const getDeviceId = async (): Promise<string> => {
     );
 
     // Store for future use
-    await SecureStore.setItemAsync(STORAGE_KEYS.DEVICE_ID, deviceId);
+    await SecureStore.setItemAsync(KEYS.DEVICE_ID, deviceId);
   }
 
   return deviceId;
@@ -109,6 +195,7 @@ const generateKeyPair = async (): Promise<{
   publicKey: string;
 }> => {
   try {
+    const KEYS = await getStorageKeys();
     console.log("[SmartOTPService] Generating ECDSA key pair (P-256)...");
     const randomBytes = await Crypto.getRandomBytesAsync(32);
     const privateKeyHex = Array.from(randomBytes)
@@ -118,8 +205,8 @@ const generateKeyPair = async (): Promise<{
     const privateKey = String(key.getPrivate("hex"));
     const publicKey = String(key.getPublic("hex"));
 
-    await SecureStore.setItemAsync(STORAGE_KEYS.PRIVATE_KEY, privateKey);
-    await SecureStore.setItemAsync(STORAGE_KEYS.PUBLIC_KEY, publicKey);
+    await SecureStore.setItemAsync(KEYS.PRIVATE_KEY, privateKey);
+    await SecureStore.setItemAsync(KEYS.PUBLIC_KEY, publicKey);
 
     console.log(
       "[SmartOTPService] ECDSA key pair generated and stored successfully",
@@ -140,8 +227,9 @@ const signPayload = async (
   timestamp: number,
   actionType: string,
 ): Promise<string> => {
+  const KEYS = await getStorageKeys();
   const privateKeyHex = await SecureStore.getItemAsync(
-    STORAGE_KEYS.PRIVATE_KEY,
+    KEYS.PRIVATE_KEY,
   );
   if (!privateKeyHex) {
     throw new Error("Private key not found. Please register device first.");
@@ -149,7 +237,7 @@ const signPayload = async (
 
   // Verify key integrity: derive public key and compare with stored
   const storedPublicKey = await SecureStore.getItemAsync(
-    STORAGE_KEYS.PUBLIC_KEY,
+    KEYS.PUBLIC_KEY,
   );
   const key = ec.keyFromPrivate(privateKeyHex, "hex");
   const derivedPublicKey = String(key.getPublic("hex"));
@@ -186,7 +274,8 @@ const signPayload = async (
  */
 const generateTOTP = async (): Promise<string> => {
   try {
-    const totpSecret = await SecureStore.getItemAsync(STORAGE_KEYS.TOTP_SECRET);
+    const KEYS = await getStorageKeys();
+    const totpSecret = await SecureStore.getItemAsync(KEYS.TOTP_SECRET);
 
     if (!totpSecret) {
       throw new Error("TOTP secret not found. Please register device first.");
@@ -230,8 +319,9 @@ const getTimeStep = (): number => {
  * Check if device is registered
  */
 const isDeviceRegistered = async (): Promise<boolean> => {
-  const binding = await SecureStore.getItemAsync(STORAGE_KEYS.DEVICE_BINDING);
-  const secret = await SecureStore.getItemAsync(STORAGE_KEYS.TOTP_SECRET);
+  const KEYS = await getStorageKeys();
+  const binding = await SecureStore.getItemAsync(KEYS.DEVICE_BINDING);
+  const secret = await SecureStore.getItemAsync(KEYS.TOTP_SECRET);
   return !!binding && !!secret;
 };
 
@@ -239,8 +329,9 @@ const isDeviceRegistered = async (): Promise<boolean> => {
  * Get stored device binding info
  */
 const getDeviceBinding = async (): Promise<DeviceBindingInfo | null> => {
+  const KEYS = await getStorageKeys();
   const bindingStr = await SecureStore.getItemAsync(
-    STORAGE_KEYS.DEVICE_BINDING,
+    KEYS.DEVICE_BINDING,
   );
   if (!bindingStr) return null;
 
@@ -295,7 +386,8 @@ const registerDevice = async (
       throw new Error("Server không trả về TOTP secret");
     }
 
-    await SecureStore.setItemAsync(STORAGE_KEYS.TOTP_SECRET, totpSecret);
+    const KEYS = await getStorageKeys();
+    await SecureStore.setItemAsync(KEYS.TOTP_SECRET, totpSecret);
 
     const binding: DeviceBindingInfo = {
       deviceId,
@@ -304,7 +396,7 @@ const registerDevice = async (
       fingerprint: deviceFingerprint,
     };
     await SecureStore.setItemAsync(
-      STORAGE_KEYS.DEVICE_BINDING,
+      KEYS.DEVICE_BINDING,
       JSON.stringify(binding),
     );
 
@@ -440,10 +532,11 @@ const getSmartOTPStatus = async (): Promise<SmartOtpStatus> => {
  * Clear device binding (logout/revoke)
  */
 const clearDeviceBinding = async (): Promise<void> => {
-  await SecureStore.deleteItemAsync(STORAGE_KEYS.DEVICE_BINDING);
-  await SecureStore.deleteItemAsync(STORAGE_KEYS.TOTP_SECRET);
-  await SecureStore.deleteItemAsync(STORAGE_KEYS.PRIVATE_KEY);
-  await SecureStore.deleteItemAsync(STORAGE_KEYS.PUBLIC_KEY);
+  const KEYS = await getStorageKeys();
+  await SecureStore.deleteItemAsync(KEYS.DEVICE_BINDING);
+  await SecureStore.deleteItemAsync(KEYS.TOTP_SECRET);
+  await SecureStore.deleteItemAsync(KEYS.PRIVATE_KEY);
+  await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY);
   // Keep DEVICE_ID for consistency
 };
 

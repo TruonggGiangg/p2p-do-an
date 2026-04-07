@@ -841,21 +841,11 @@ export class CreditScoreService implements OnModuleInit {
       0,
     );
 
-    // Get credit limit from evaluation config (grade-based)
-    let totalCreditLimit = 0;
-    try {
-      const evalResult = await this.evaluateLoanByScore(
-        await this.getByUserId(userId).then(s => s?.score || DEFAULT_CREDIT_SCORE),
-      );
-      totalCreditLimit = evalResult.maxLoanAmount || 0;
-    } catch {
-      // Fallback: use sum of all loan capitals as proxy
-      totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
-    }
-    // If no credit limit established, use total capital as denominator
-    if (totalCreditLimit <= 0) {
-      totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
-    }
+    // Calculate credit limit strictly based on the sum of all actually taken loan capitals.
+    // We remove the evaluation config fallback because calculating utilization using the 
+    // user's CURRENT score's maxLoanAmount causes an unstable downward spiral (score drop 
+    // -> limit drop -> utilization spikes -> score drops further).
+    const totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
     const utilizationRatio = totalCreditLimit > 0 ? totalOutstanding / totalCreditLimit : 0;
 
     // ════════════════════════════════════════════════════

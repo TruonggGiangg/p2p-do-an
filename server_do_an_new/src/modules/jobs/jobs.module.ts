@@ -22,11 +22,15 @@ import { SyncLoanProductsJob } from './sync-loan-products.job';
 import { SyncSavingsProductsJob } from './sync-savings-products.job';
 import { SyncFDProductsJob } from './sync-fd-products.job';
 import { DisbursementJob } from './disbursement.job';
+import { CleanupOrdersJob } from './cleanup-orders.job';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
 import { FineractModule } from '../fineract/fineract.module';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
+import { InvestModule } from '../invest/invest.module';
+import { InvestService } from '../invest/invest.service';
+import { InvestmentOrder, InvestmentOrderSchema } from '../invest/schemas/investment-order.schema';
 
 @Module({
   imports: [
@@ -34,8 +38,10 @@ import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-app
       { name: JobConfig.name, schema: JobConfigSchema },
       { name: JobRunHistory.name, schema: JobRunHistorySchema },
       { name: LoanApplication.name, schema: LoanApplicationSchema },
+      { name: InvestmentOrder.name, schema: InvestmentOrderSchema },
     ]),
     forwardRef(() => AdminModule),
+    forwardRef(() => InvestModule),
     FineractModule,
   ],
   controllers: [JobsController],
@@ -98,6 +104,19 @@ import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-app
         return job;
       },
       inject: [getModelToken(LoanApplication.name), FineractLoanService, JobManagerService],
+    },
+    {
+      provide: 'CLEANUP_ORDERS_JOB',
+      useFactory: (
+        investService: InvestService,
+        orderModel: any,
+        jobManager: JobManagerService,
+      ) => {
+        const job = new CleanupOrdersJob(investService, orderModel);
+        jobManager.register(job);
+        return job;
+      },
+      inject: [InvestService, getModelToken(InvestmentOrder.name), JobManagerService],
     },
   ],
   exports: [JobManagerService],

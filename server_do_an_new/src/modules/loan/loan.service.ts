@@ -781,30 +781,8 @@ export class LoanService {
   async getApplicationHistory(userId: string): Promise<LoanHistoryItem[]> {
     const userObjectId = new Types.ObjectId(userId);
 
-    // ── Step 1: Lấy tất cả loan đã có fineractLoanId → sync realtime từ Fineract ──
+    // ── Step 1: Lấy tất cả loan từ MongoDB ──
     const mongoLoans = await this.loanApplicationModel
-      .find({ userId: userObjectId })
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec();
-
-    const fineractLoanIdsToSync = mongoLoans.filter(doc => doc.fineractLoanId).map(doc => doc.fineractLoanId!);
-
-    // Sync song song tất cả khoản vay (cập nhật MongoDB + loan_delinquency từ Fineract)
-    if (fineractLoanIdsToSync.length > 0) {
-      await Promise.allSettled(
-        fineractLoanIdsToSync.map(fid =>
-          this.adminService
-            .syncLoanFromFineract(fid)
-            .catch(err =>
-              this.logger.warn(`[getApplicationHistory] sync fineract loan #${fid} failed: ${err.message}`),
-            ),
-        ),
-      );
-    }
-
-    // ── Step 2: Reload MongoDB sau khi sync xong ──
-    const refreshedLoans = await this.loanApplicationModel
       .find({ userId: userObjectId })
       .sort({ createdAt: -1 })
       .lean()
@@ -816,7 +794,7 @@ export class LoanService {
     const resultMap = new Map<string, LoanHistoryItem>();
     const fineractLoanIds = new Set<number>();
 
-    for (const doc of refreshedLoans) {
+    for (const doc of mongoLoans) {
       if (!doc.fineractLoanId) continue;
       const item: LoanHistoryItem = {
         id: (doc as any)._id.toString(),
@@ -897,7 +875,7 @@ export class LoanService {
     }
 
     // ── Step 4: Nếu có khoản nợ quá hạn → fire-and-forget chấm điểm tín dụng ──
-    const hasDelinquent = refreshedLoans.some(doc => (doc.delinquentDays || 0) > 0 && doc.status === 'disbursed');
+    const hasDelinquent = mongoLoans.some(doc => (doc.delinquentDays || 0) > 0 && doc.status === 'disbursed');
     if (hasDelinquent) {
       this.creditScoreService
         .recalculateScore(userObjectId)

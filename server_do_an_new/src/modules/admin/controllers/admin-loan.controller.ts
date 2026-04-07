@@ -11,6 +11,7 @@ import { Action } from '../../casl/actions.enum';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { UserPayload } from '../../auth/interfaces/auth.interface';
 import { ReminderScheduler } from '../reminder.scheduler';
+import { Public } from '../../../common/decorators/public.decorator';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -21,6 +22,13 @@ export class AdminLoanController {
     private readonly adminService: AdminService,
     private readonly reminderScheduler: ReminderScheduler,
   ) {}
+
+  @Get('fix-is-full-match')
+  @Public()
+  @ApiOperation({ summary: 'Fix bad MongoDB data where isFullMatch was incorrectly set to true based on nodeMatch' })
+  async fixIsFullMatch() {
+    return this.adminService['loanService'].fixIsFullMatch();
+  }
 
   @Get('loans/stats')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
@@ -166,6 +174,15 @@ export class AdminLoanController {
   async syncLoan(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
     const result = await this.adminService.syncLoanFromFineract(fineractLoanId);
     return result ;
+  }
+
+  @Post('loans/:fineractLoanId/trigger-score')
+  @CheckPolicies(ability => ability.can(Action.Approve, 'Loan'))
+  @ApiOperation({ summary: 'Trigger tính điểm AI Score cho khoản vay' })
+  @ApiResponse({ status: 200 })
+  async triggerAIScore(@Param('fineractLoanId', ParseIntPipe) fineractLoanId: number) {
+    const result = await this.adminService.triggerAIScoreForLoan(fineractLoanId);
+    return result;
   }
 
   @Get('loans/:fineractLoanId/documents')

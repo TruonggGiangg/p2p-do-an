@@ -393,11 +393,12 @@ class InvestService {
   async getSchedulePreview(
     loanApplicationId: string,
     numNotes: number,
+    investmentOrderId?: string,
   ): Promise<any> {
     const response = await api.post<{
       statusCode: number;
       data: any;
-    }>("/api/invest/schedule-preview", { loanApplicationId, numNotes });
+    }>("/api/invest/schedule-preview", { loanApplicationId, numNotes, investmentOrderId });
     return response.data.data;
   }
 }
