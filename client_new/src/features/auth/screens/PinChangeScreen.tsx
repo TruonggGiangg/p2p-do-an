@@ -236,9 +236,13 @@ export default function PinChangeScreen() {
         [oldPin, newPin, successScale, successOpacity, resetMode, authByBiometric, toast],
     );
 
-    // Step config
-    const steps = resetMode ? ['newPin', 'confirmPin'] : ['auth', 'newPin', 'confirmPin'];
-    const stepIndex = steps.indexOf(step);
+    // Step config (always render 3 visual steps to keep layout stable)
+    const steps: ReadonlyArray<'auth' | 'newPin' | 'confirmPin' | 'otp'> = resetMode
+        ? ['newPin', 'confirmPin', 'otp']
+        : ['auth', 'newPin', 'confirmPin'];
+    const stepIndex = resetMode
+        ? (otpVisible || submitting ? 2 : step === 'confirmPin' ? 1 : 0)
+        : Math.max(0, steps.indexOf(step as 'auth' | 'newPin' | 'confirmPin'));
 
     const titleByStep: Record<Step, string> = {
         auth: 'Xác thực danh tính',
@@ -341,7 +345,7 @@ export default function PinChangeScreen() {
                     {/* Step indicator */}
                     <View style={styles.stepRow}>
                         {steps.map((s, i) => (
-                            <View key={s} style={styles.stepItemRow}>
+                            <View key={`${s}-${i}`} style={styles.stepItemRow}>
                                 <View
                                     style={[
                                         styles.stepCircle,
@@ -495,17 +499,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingTop: 12,
         paddingBottom: 16,
-        paddingHorizontal: 8,
+        paddingHorizontal: 4,
     },
     stepItemRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
     },
     stepCircle: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -515,9 +518,9 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     stepLine: {
-        flex: 1,
+        width: 46,
         height: 2,
-        marginHorizontal: 6,
+        marginHorizontal: 8,
         borderRadius: 1,
     },
     titleArea: {
