@@ -91,6 +91,10 @@ export interface AvailableLoanItem {
     delinquentDays: number;
     message: string;
   };
+  borrowerContractId?: string;
+  borrowerContractStatus?: string;
+  borrowerSignedVerified?: boolean;
+  borrowerSignedAt?: string;
   createdAt: string;
 }
 
@@ -398,7 +402,11 @@ class InvestService {
     const response = await api.post<{
       statusCode: number;
       data: any;
-    }>("/api/invest/schedule-preview", { loanApplicationId, numNotes, investmentOrderId });
+    }>("/api/invest/schedule-preview", {
+      loanApplicationId,
+      numNotes,
+      investmentOrderId,
+    });
     return response.data.data;
   }
 }

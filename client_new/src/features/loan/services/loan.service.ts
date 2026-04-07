@@ -99,6 +99,9 @@ export interface LoanHistoryItem {
   fineractDetails?: any;
   // Enriched fields from paginated API
   contractId?: string;
+  contractStatus?: string;
+  contractSignedVerified?: boolean;
+  contractSignedAt?: string;
   willing?: string;
   progress?: number;
   paidInstallments?: number;
@@ -244,6 +247,9 @@ export interface LoanContract {
   status: LoanContractStatus;
   signedAt?: string;
   signatureData?: string;
+  smartCASignatureVerified?: boolean;
+  signatureProvider?: string;
+  signatureVerifiedAt?: string;
   legalApprovalAt?: string;
   disbursementDate?: string;
   firstRepaymentDate?: string;

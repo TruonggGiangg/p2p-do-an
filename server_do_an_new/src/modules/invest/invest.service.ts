@@ -129,9 +129,8 @@ export class InvestService {
         continue;
       }
 
-      const totalLoanNotes = (loan as any).totalNotes > 0
-        ? (loan as any).totalNotes
-        : this.matchingService.calculateNodes(loan.capital);
+      const totalLoanNotes =
+        (loan as any).totalNotes > 0 ? (loan as any).totalNotes : this.matchingService.calculateNodes(loan.capital);
       const existingNodeMatch = (loan as any).nodeMatch || 0;
       const existingInvestedNotes = (loan as any).investedNotes || 0;
       const existingClaimed = existingNodeMatch + existingInvestedNotes;
@@ -143,7 +142,9 @@ export class InvestService {
       const maxAllowedNodeMatch = totalLoanNotes - existingInvestedNotes;
       const newNodeMatch = existingNodeMatch + nodesToMatch;
       if (newNodeMatch > maxAllowedNodeMatch) {
-        this.logger.warn(`nodeMatch (${newNodeMatch}) exceeds limit (${maxAllowedNodeMatch}) for loan ${loan._id}, skipping`);
+        this.logger.warn(
+          `nodeMatch (${newNodeMatch}) exceeds limit (${maxAllowedNodeMatch}) for loan ${loan._id}, skipping`,
+        );
         sendProgress(`Bỏ qua — nodeMatch sẽ vượt giới hạn`, stepPct);
         continue;
       }
@@ -209,8 +210,8 @@ export class InvestService {
 
       this.logger.log(
         `Loan ${loan._id}: nodeMatch ${existingNodeMatch}→${finalNodeMatch}, ` +
-        `investedNotes=${existingInvestedNotes}, totalClaimed=${newTotalClaimed}/${totalLoanNotes}, ` +
-        `matchPercentage=${newMatchPercentage}%, isFullMatch=${newIsFullMatch}`,
+          `investedNotes=${existingInvestedNotes}, totalClaimed=${newTotalClaimed}/${totalLoanNotes}, ` +
+          `matchPercentage=${newMatchPercentage}%, isFullMatch=${newIsFullMatch}`,
       );
 
       matchResults.push({
@@ -329,14 +330,19 @@ export class InvestService {
         .exec(),
     ]);
 
-    this.logger.log(`[getAvailableLoans] Lấy được ${loans.length} khoản vay: ` + JSON.stringify(loans.map(l => ({
-      id: l._id,
-      status: l.status,
-      capital: l.capital,
-      totalNotes: l.totalNotes,
-      investedNotes: (l as any).investedNotes,
-      nodeMatch: (l as any).nodeMatch
-    }))));
+    this.logger.log(
+      `[getAvailableLoans] Lấy được ${loans.length} khoản vay: ` +
+        JSON.stringify(
+          loans.map(l => ({
+            id: l._id,
+            status: l.status,
+            capital: l.capital,
+            totalNotes: l.totalNotes,
+            investedNotes: (l as any).investedNotes,
+            nodeMatch: (l as any).nodeMatch,
+          })),
+        ),
+    );
 
     const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
 
@@ -370,9 +376,33 @@ export class InvestService {
     // Build map: loanProductId → FD annual interest rate
     const fdRateMap = await this.buildFDRateMap(loans);
 
+    // ── Borrower contract verification snapshot (SmartCA) ──
+    const loanIds = loans.map(l => l._id).filter(Boolean);
+    const loanContractModel = this.connection.model('LoanContract');
+    const loanContracts = loanIds.length
+      ? await loanContractModel
+          .find({ loanId: { $in: loanIds } })
+          .select('loanId contractId status signedAt smartCASignatureVerified signatureProvider')
+          .lean()
+      : [];
+    const contractByLoanId = new Map<string, any>(loanContracts.map((c: any) => [String(c.loanId), c]));
+
     // Enrich with investment progress (like HD-AMC)
     const safeLoans = loans.map(loan => {
       const obj = { ...loan } as any;
+
+      const loanContract = contractByLoanId.get(String(obj._id));
+      if (loanContract) {
+        const borrowerSignedVerified = Boolean(
+          loanContract.smartCASignatureVerified ||
+          (loanContract.signatureProvider === 'vnpt_smartca' &&
+            ['signed', 'active'].includes(String(loanContract.status || ''))),
+        );
+        (obj as any).borrowerContractId = loanContract.contractId;
+        (obj as any).borrowerContractStatus = loanContract.status;
+        (obj as any).borrowerSignedVerified = borrowerSignedVerified;
+        (obj as any).borrowerSignedAt = loanContract.signedAt || null;
+      }
 
       // ── Cảnh báo nợ xấu cho nhà đầu tư ──
       const borrowerId = (obj as any).userId?.toString();
@@ -588,7 +618,7 @@ export class InvestService {
     const order = await this.investmentOrderModel.findById(orderId);
     if (!order) throw new NotFoundException('Không tìm thấy lệnh đầu tư');
     if (String(order.lenderId) !== userId) throw new ForbiddenException('Không có quyền');
-    
+
     await this.releaseUnusedNodes(order);
     await this.investmentOrderModel.findByIdAndDelete(orderId);
   }
@@ -597,7 +627,7 @@ export class InvestService {
     const order = await this.investmentOrderModel.findById(orderId);
     if (!order) throw new NotFoundException('Không tìm thấy lệnh đầu tư');
     if (String(order.lenderId) !== userId) throw new ForbiddenException('Không có quyền');
-    
+
     await this.releaseUnusedNodes(order);
     order.status = 'closed';
     return order.save();
@@ -606,14 +636,14 @@ export class InvestService {
   /** Giải phóng các node giữ chỗ chưa thanh toán để kho khôi phục lại khả năng huy động */
   private async releaseUnusedNodes(order: InvestmentOrder) {
     if (!order.loans || order.loans.length === 0) return;
-    
+
     for (const loanInfo of order.loans) {
       if (!loanInfo.isInvested && loanInfo.nodeMatch > 0) {
         // Hoàn trả nodeMatch lại cho Khoản Vay
         const updatedLoan = await this.loanModel.findByIdAndUpdate(
           loanInfo.loanId,
           { $inc: { nodeMatch: -loanInfo.nodeMatch } },
-          { new: true }
+          { new: true },
         );
 
         if (updatedLoan) {
@@ -624,10 +654,12 @@ export class InvestService {
 
           await this.loanModel.updateOne(
             { _id: updatedLoan._id },
-            { $set: { isFullMatch, matchPercentage: newMatchPercentage } }
+            { $set: { isFullMatch, matchPercentage: newMatchPercentage } },
           );
-          
-          this.logger.log(`Released ${loanInfo.nodeMatch} nodes from Loan ${loanInfo.loanId} due to Order ${order._id} cancellation`);
+
+          this.logger.log(
+            `Released ${loanInfo.nodeMatch} nodes from Loan ${loanInfo.loanId} due to Order ${order._id} cancellation`,
+          );
         }
       }
     }

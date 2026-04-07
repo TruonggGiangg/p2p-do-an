@@ -4,7 +4,7 @@
  * Handles: Validation → Balance check → Create contract → Transfer funds → Create FD → Update contract
  * Payment method: Fineract e-wallet only (no USDT, no internal wallet, no blockchain).
  */
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -34,6 +34,78 @@ export class InvestPaymentService {
     private readonly configService: ConfigService,
   ) {
     this.baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
+  }
+
+  private async getLoanContractByLoanId(loanApplicationId: string) {
+    const loanContractModel: any = this.loanModel.db.model('LoanContract');
+    const loanId = Types.ObjectId.isValid(loanApplicationId)
+      ? new Types.ObjectId(loanApplicationId)
+      : loanApplicationId;
+
+    const contract = await loanContractModel
+      .findOne({ loanId })
+      .select('_id contractId loanId userId status smartCASignatureVerified signatureProvider signatureVerifiedAt')
+      .lean()
+      .exec();
+    return contract;
+  }
+
+  private async isSmartCASignatureVerified(contract: any): Promise<boolean> {
+    if (!contract) return false;
+    if (contract.smartCASignatureVerified === true) return true;
+
+    try {
+      const signatureModel: any = this.loanModel.db.model('DigitalSignature');
+      const latestSmartCASignature: any = await signatureModel
+        .findOne({
+          provider: 'vnpt_smartca',
+          status: 'signed',
+          $or: [{ contractId: contract._id }, { contractCode: contract.contractId }],
+        })
+        .sort({ completedAt: -1 })
+        .select('_id completedAt')
+        .lean();
+
+      if (!latestSmartCASignature) return false;
+
+      const loanContractModel: any = this.loanModel.db.model('LoanContract');
+      await loanContractModel.updateOne(
+        { _id: contract._id },
+        {
+          $set: {
+            smartCASignatureVerified: true,
+            signatureProvider: 'vnpt_smartca',
+            signatureVerifiedAt: latestSmartCASignature?.completedAt || new Date(),
+          },
+        },
+      );
+
+      return true;
+    } catch (err: any) {
+      this.logger.warn(`[AutoDisburse] SmartCA verification check failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  private async notifyBorrowerToSignSmartCA(contract: any, loanApplicationId: string): Promise<void> {
+    if (!contract?.userId) return;
+
+    try {
+      const notifModel: any = this.loanModel.db.model('Notification');
+      await notifModel.create({
+        userId: contract.userId,
+        title: 'Khoản vay đã đủ 100% vốn',
+        message: 'Khoản vay đã đủ vốn nhưng chưa có chữ ký SmartCA hợp lệ. Vui lòng ký SmartCA để hệ thống giải ngân.',
+        type: 'general',
+        data: {
+          loanId: loanApplicationId,
+          contractId: contract.contractId,
+          requiredSignatureProvider: 'vnpt_smartca',
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[AutoDisburse] Failed to notify borrower for SmartCA signing: ${err.message}`);
+    }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -97,12 +169,14 @@ export class InvestPaymentService {
       if (order) {
         const matchedLoan = (order as any).loans?.find((l: any) => String(l.loanId) === String(loan._id));
         const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
-        
+
         // Bắt buộc thanh toán đúng số slot đã giữ của khoản vay này
         if (numNotes !== orderMatchedNodes) {
-          throw new BadRequestException(`Bạn đã giữ ${orderMatchedNodes} chỗ cho khoản vay này, vui lòng thanh toán đúng số lượng hoặc hủy lệnh.`);
+          throw new BadRequestException(
+            `Bạn đã giữ ${orderMatchedNodes} chỗ cho khoản vay này, vui lòng thanh toán đúng số lượng hoặc hủy lệnh.`,
+          );
         }
-        
+
         effectiveNodeMatch = Math.max(0, nodeMatchSoFar - orderMatchedNodes);
       }
     }
@@ -198,31 +272,33 @@ export class InvestPaymentService {
     const isFullMatch = (contract as any)._isFullMatch;
     const contractLoanId = (contract as any)._loanApplicationId;
     if (isFullMatch && contractLoanId) {
-      this.logger.log(`🎯 FULL MATCH detected for loan ${contractLoanId}! Checking if borrower signed the contract...`);
+      this.logger.log(
+        `🎯 FULL MATCH detected for loan ${contractLoanId}! Checking SmartCA-verified contract signature...`,
+      );
       try {
-        const loanContractModel = this.loanModel.db.model('LoanContract');
-        const borrowerContract = await loanContractModel.findOne({ loanId: contractLoanId });
-        
-        if (borrowerContract?.status === 'signed') {
-           this.logger.log(`Borrower already signed, triggering auto-disbursement...`);
-           this.handleFullMatchDisbursement(contractLoanId, lenderId).catch(err => {
-             this.logger.error(`Auto-disbursement failed (non-blocking): ${err.message}`);
-           });
+        const borrowerContract = await this.getLoanContractByLoanId(String(contractLoanId));
+        if (!borrowerContract) {
+          this.logger.warn(
+            `No loan contract found for fully funded loan ${contractLoanId}. Waiting for contract creation.`,
+          );
         } else {
-           this.logger.log(`Borrower HAS NOT signed yet. Waiting for signature...`);
-           if (borrowerContract) {
-             const notifModel = this.loanModel.db.model('Notification');
-             await notifModel.create({
-                userId: borrowerContract.userId,
-                title: 'Khoản vay đã đủ 100% vốn',
-                message: `Khoản vay của bạn đã được đầu tư đủ vốn. Vui lòng ký chữ ký điện tử để hệ thống giải ngân.`,
-                type: 'loan_fully_funded',
-                data: { loanId: contractLoanId, contractId: borrowerContract.contractId }
-             });
-           }
+          const smartCAVerified = await this.isSmartCASignatureVerified(borrowerContract);
+          const contractSigned = ['signed', 'active'].includes(String(borrowerContract.status || ''));
+
+          if (contractSigned && smartCAVerified) {
+            this.logger.log('Borrower has SmartCA-verified signature. Triggering auto-disbursement...');
+            this.handleFullMatchDisbursement(String(contractLoanId), lenderId).catch(err => {
+              this.logger.error(`Auto-disbursement failed (non-blocking): ${err.message}`);
+            });
+          } else {
+            this.logger.log(
+              `Borrower signature not eligible for disbursement yet. status=${borrowerContract.status} smartCA=${smartCAVerified}`,
+            );
+            await this.notifyBorrowerToSignSmartCA(borrowerContract, String(contractLoanId));
+          }
         }
       } catch (err: any) {
-         this.logger.error(`Failed to check borrower signature: ${err.message}`);
+        this.logger.error(`Failed to check borrower signature: ${err.message}`);
       }
     }
 
@@ -279,7 +355,7 @@ export class InvestPaymentService {
    * 3. Transfer escrow → borrower savings
    * 4. Update loan status → disbursed
    * 5. Update tất cả InvestmentContract → active
-   * 
+   *
    * Non-blocking: catch tất cả errors, KHÔNG throw.
    * Học theo HD-AMC P2P: InvestContractService.handleFullMatchDisbursement()
    */
@@ -299,6 +375,45 @@ export class InvestPaymentService {
         return;
       }
 
+      if (loan.status === 'disbursed') {
+        this.logger.log(`${logPrefix} Loan ${loanApplicationId} đã disbursed trước đó, bỏ qua`);
+        return;
+      }
+
+      const totalNotes = Math.max(
+        1,
+        Number((loan as any).totalNotes || Math.ceil((loan.capital || 0) / this.baseUnitPrice)),
+      );
+      const investedNotes = Number((loan as any).investedNotes || 0);
+      const fullMatchByFunding = investedNotes >= totalNotes;
+      if (!fullMatchByFunding || (loan as any).isFullMatch !== true) {
+        this.logger.warn(
+          `${logPrefix} Loan ${loanApplicationId} chưa đủ điều kiện vốn: investedNotes=${investedNotes}/${totalNotes}, isFullMatch=${(loan as any).isFullMatch}`,
+        );
+        return;
+      }
+
+      const borrowerContract = await this.getLoanContractByLoanId(loanApplicationId);
+      if (!borrowerContract) {
+        this.logger.warn(`${logPrefix} Loan ${loanApplicationId} chưa có hợp đồng vay, không thể giải ngân`);
+        return;
+      }
+
+      if (!['signed', 'active'].includes(String(borrowerContract.status || ''))) {
+        this.logger.warn(
+          `${logPrefix} Loan ${loanApplicationId} chưa đủ điều kiện chữ ký: contractStatus=${borrowerContract.status}`,
+        );
+        await this.notifyBorrowerToSignSmartCA(borrowerContract, loanApplicationId);
+        return;
+      }
+
+      const smartCAVerified = await this.isSmartCASignatureVerified(borrowerContract);
+      if (!smartCAVerified) {
+        this.logger.warn(`${logPrefix} Loan ${loanApplicationId} chưa có chữ ký SmartCA hợp lệ. Không disburse.`);
+        await this.notifyBorrowerToSignSmartCA(borrowerContract, loanApplicationId);
+        return;
+      }
+
       // ── Step 1: Approve loan trên Fineract ──
       try {
         await this.fineractService.approveLoan(fineractLoanId);
@@ -306,8 +421,7 @@ export class InvestPaymentService {
       } catch (approveErr: any) {
         const errMsg = JSON.stringify(approveErr.response?.data || approveErr.message);
         const isAlreadyApproved =
-          errMsg.includes('already approved') ||
-          errMsg.includes('not.submitted.and.pending.state');
+          errMsg.includes('already approved') || errMsg.includes('not.submitted.and.pending.state');
         if (isAlreadyApproved) {
           this.logger.warn(`${logPrefix} Loan ${fineractLoanId} đã được approve trước đó, tiếp tục`);
         } else {
@@ -322,9 +436,7 @@ export class InvestPaymentService {
         this.logger.log(`${logPrefix} ✅ Loan ${fineractLoanId} disbursed trên Fineract`);
       } catch (disburseErr: any) {
         const errMsg = JSON.stringify(disburseErr.response?.data || disburseErr.message);
-        const isAlreadyDisbursed =
-          errMsg.includes('already disbursed') ||
-          errMsg.includes('not.approved');
+        const isAlreadyDisbursed = errMsg.includes('already disbursed') || errMsg.includes('not.approved');
         if (isAlreadyDisbursed) {
           this.logger.warn(`${logPrefix} Loan ${fineractLoanId} đã disbursed trước đó`);
         } else {
@@ -337,7 +449,7 @@ export class InvestPaymentService {
       try {
         const borrower = await this.userModel.findById(loan.userId).select('fineractClientId').lean();
         const borrowerClientId = borrower?.fineractClientId ? Number(borrower.fineractClientId) : null;
-        
+
         //  Validate: borrower ≠ lender trên Fineract
         if (triggerLenderId) {
           const triggerLender = await this.userModel.findById(triggerLenderId).select('fineractClientId').lean();
@@ -381,6 +493,17 @@ export class InvestPaymentService {
       });
       this.logger.log(`${logPrefix} ✅ Loan ${loanApplicationId} status → disbursed`);
 
+      // Keep borrower loan contract in active state after successful disbursement.
+      try {
+        const loanContractModel = this.loanModel.db.model('LoanContract');
+        await loanContractModel.updateOne(
+          { _id: borrowerContract._id, status: 'signed' },
+          { $set: { status: 'active' } },
+        );
+      } catch (err: any) {
+        this.logger.warn(`${logPrefix} Failed to update borrower loan contract status: ${err.message}`);
+      }
+
       // ── Step 5: Update tất cả InvestmentContract → active ──
       const updateResult = await this.contractModel.updateMany(
         {
@@ -391,9 +514,7 @@ export class InvestPaymentService {
           $set: { status: 'active' },
         },
       );
-      this.logger.log(
-        `${logPrefix} ✅ ${updateResult.modifiedCount} InvestmentContracts → active`,
-      );
+      this.logger.log(`${logPrefix} ✅ ${updateResult.modifiedCount} InvestmentContracts → active`);
 
       this.logger.log(`${logPrefix} 🎉 Auto-disbursement completed for loan ${loanApplicationId}`);
     } catch (error: any) {

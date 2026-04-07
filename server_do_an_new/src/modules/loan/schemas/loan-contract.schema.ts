@@ -126,6 +126,20 @@ export class LoanContract extends Document {
   @Prop({ required: false })
   signatureData?: string;
 
+  /**
+   * true khi hợp đồng đã được ký và xác minh qua SmartCA (không phải ký nội bộ/test)
+   */
+  @Prop({ required: false, default: false })
+  smartCASignatureVerified?: boolean;
+
+  /** Nhà cung cấp chữ ký gần nhất: vnpt_smartca | manual */
+  @Prop({ required: false })
+  signatureProvider?: string;
+
+  /** Thời điểm chữ ký SmartCA được xác minh */
+  @Prop({ required: false })
+  signatureVerifiedAt?: Date;
+
   /** Thời điểm phê duyệt pháp lý (admin approve) */
   @Prop({ required: false })
   legalApprovalAt?: Date;

@@ -9,6 +9,7 @@ import { SmartOtpService } from '../smart-otp/services/smart-otp.service';
 import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
 import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
+import { LoanContract } from './schemas/loan-contract.schema';
 import { LoanSupportRequest, SupportRequestType } from './schemas/loan-support-request.schema';
 import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
@@ -22,6 +23,10 @@ export interface LoanHistoryItem {
   source: 'mongo' | 'fineract' | 'merged';
   fineractLoanId?: number;
   status: string;
+  contractId?: string;
+  contractStatus?: string;
+  contractSignedVerified?: boolean;
+  contractSignedAt?: string;
   capital: number;
   periodMonth: number;
   monthlyPay?: number;
@@ -66,6 +71,7 @@ export class LoanService {
     private readonly creditScoreService: CreditScoreService,
     private readonly configService: ConfigService,
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
+    @InjectModel(LoanContract.name) private readonly loanContractModel: Model<LoanContract>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
     @InjectModel(LoanDelinquency.name) private readonly loanDelinquencyModel: Model<LoanDelinquency>,
@@ -788,6 +794,16 @@ export class LoanService {
       .lean()
       .exec();
 
+    const mongoLoanIds = mongoLoans.map(doc => (doc as any)._id).filter(Boolean);
+    const loanContracts = mongoLoanIds.length
+      ? await this.loanContractModel
+          .find({ loanId: { $in: mongoLoanIds } })
+          .select('loanId contractId status signedAt smartCASignatureVerified signatureProvider')
+          .lean()
+          .exec()
+      : [];
+    const contractByLoanId = new Map<string, any>(loanContracts.map(c => [String((c as any).loanId), c]));
+
     const user = await this.userModel.findById(userObjectId).select('fineractClientId').lean().exec();
     const fineractClientId = user?.fineractClientId ? Number(user.fineractClientId) : null;
 
@@ -796,11 +812,21 @@ export class LoanService {
 
     for (const doc of mongoLoans) {
       if (!doc.fineractLoanId) continue;
+      const contractInfo = contractByLoanId.get((doc as any)._id.toString());
+      const contractSignedVerified = Boolean(
+        contractInfo?.smartCASignatureVerified ||
+        (contractInfo?.signatureProvider === 'vnpt_smartca' &&
+          ['signed', 'active'].includes(String(contractInfo?.status || ''))),
+      );
       const item: LoanHistoryItem = {
         id: (doc as any)._id.toString(),
         source: 'mongo',
         fineractLoanId: doc.fineractLoanId,
         status: doc.status,
+        contractId: contractInfo?.contractId,
+        contractStatus: contractInfo?.status,
+        contractSignedVerified,
+        contractSignedAt: contractInfo?.signedAt ? new Date(contractInfo.signedAt).toISOString() : undefined,
         capital: doc.capital,
         periodMonth: doc.periodMonth,
         monthlyPay: doc.monthlyPay,

@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
+import { ModuleRef } from '@nestjs/core';
 import { Model, Types } from 'mongoose';
 import { SmartCAService } from './smartca.service';
 import { DigitalSignature } from './schemas/digital-signature.schema';
@@ -15,11 +16,30 @@ import type { UserPayload } from '../auth/interfaces/auth.interface';
 @UseGuards(JwtAuthGuard)
 @Controller('digital-signature')
 export class DigitalSignatureController {
+  private readonly logger = new Logger(DigitalSignatureController.name);
+
   constructor(
     private readonly smartCAService: SmartCAService,
+    private readonly moduleRef: ModuleRef,
     @InjectModel(DigitalSignature.name) private signatureModel: Model<DigitalSignature>,
     @InjectModel(LoanContract.name) private contractModel: Model<LoanContract>,
   ) {}
+
+  private async triggerAutoDisburseIfEligible(contractMongoId: any, userId: string): Promise<void> {
+    try {
+      const contract = await this.contractModel.findById(contractMongoId).select('loanId').lean();
+      if (!contract?.loanId) return;
+
+      const investPaymentService = this.moduleRef.get('InvestPaymentService', { strict: false }) as any;
+      if (!investPaymentService?.handleFullMatchDisbursement) return;
+
+      investPaymentService.handleFullMatchDisbursement(String(contract.loanId), userId).catch((err: any) => {
+        this.logger.warn(`[triggerAutoDisburseIfEligible] Auto-disburse trigger failed: ${err?.message}`);
+      });
+    } catch (err: any) {
+      this.logger.warn(`[triggerAutoDisburseIfEligible] Failed: ${err?.message}`);
+    }
+  }
 
   @Get('certificates')
   @ApiOperation({ summary: 'Lấy danh sách chứng thư số của user' })
@@ -132,9 +152,13 @@ export class DigitalSignatureController {
           status: 'signed',
           signedAt: new Date(),
           signatureData: result.signatures?.[0]?.signatureValue,
+          smartCASignatureVerified: true,
+          signatureProvider: 'vnpt_smartca',
+          signatureVerifiedAt: new Date(),
         },
       },
     );
+    await this.triggerAutoDisburseIfEligible(contract._id, String(userId));
 
     return {
       signatureId: signatureDoc._id?.toString(),
@@ -175,8 +199,18 @@ export class DigitalSignatureController {
 
       await this.contractModel.updateOne(
         { _id: signature.contractId },
-        { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
+        {
+          $set: {
+            status: 'signed',
+            signedAt: new Date(),
+            signatureData: signature.signatureValue,
+            smartCASignatureVerified: true,
+            signatureProvider: 'vnpt_smartca',
+            signatureVerifiedAt: new Date(),
+          },
+        },
       );
+      await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
 
       return {
         status: 'signed',
@@ -199,8 +233,18 @@ export class DigitalSignatureController {
 
       await this.contractModel.updateOne(
         { _id: signature.contractId },
-        { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
+        {
+          $set: {
+            status: 'signed',
+            signedAt: new Date(),
+            signatureData: signature.signatureValue,
+            smartCASignatureVerified: true,
+            signatureProvider: 'vnpt_smartca',
+            signatureVerifiedAt: new Date(),
+          },
+        },
       );
+      await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
 
       return { status: 'signed', completedAt: signature.completedAt?.toISOString() };
     }
@@ -243,8 +287,18 @@ export class DigitalSignatureController {
 
         await this.contractModel.updateOne(
           { _id: signature.contractId },
-          { $set: { status: 'signed', signedAt: new Date(), signatureData: signature.signatureValue } },
+          {
+            $set: {
+              status: 'signed',
+              signedAt: new Date(),
+              signatureData: signature.signatureValue,
+              smartCASignatureVerified: true,
+              signatureProvider: 'vnpt_smartca',
+              signatureVerifiedAt: new Date(),
+            },
+          },
         );
+        await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
       } else if (liveStatus.status !== 'pending') {
         signature.status = liveStatus.status;
         await signature.save();

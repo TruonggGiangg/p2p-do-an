@@ -133,6 +133,9 @@ export default function AvailableLoansScreen() {
     // Map tier and risk to theme tokens
     const tierColor = { Platinum: theme.colors.textMuted, Gold: theme.colors.warning, Silver: theme.colors.textSecondary, Basic: theme.colors.textDim }[tier] || theme.colors.textMuted;
     const riskColor = { LOW: theme.colors.success, MEDIUM: theme.colors.warning, HIGH: theme.colors.error, VERY_HIGH: theme.colors.error }[riskLevel] || theme.colors.textMuted;
+    const statusLabel = item.status === 'disbursed' ? 'Đang vay' : item.status === 'approved' ? 'Chờ giải ngân' : 'Đang xử lý';
+    const statusAccent = item.status === 'disbursed' ? theme.colors.success : theme.colors.primary;
+    const statusBackground = item.status === 'disbursed' ? theme.colors.successGlass : theme.colors.primaryGlass;
 
     // Compute AI repayment probability display
     const repayProb = item.aiScore?.creditScore ? Math.min(99.9, 80 + (item.aiScore.creditScore / 50)).toFixed(1) : null;
@@ -158,18 +161,24 @@ export default function AvailableLoansScreen() {
               <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>
                 Mã #{item._id?.slice(-4)?.toUpperCase()} • Đã thẩm định
               </Text>
+              {item.borrowerSignedVerified && (
+                <View style={[styles.borrowerVerifiedBadge, { backgroundColor: theme.colors.success + '15' }]}>
+                  <MaterialCommunityIcons name="shield-check" size={12} color={theme.colors.success} />
+                  <Text style={[styles.borrowerVerifiedText, { color: theme.colors.success }]}>Đã ký xác minh</Text>
+                </View>
+              )}
             </View>
           </View>
           <View style={[styles.statusBadge, {
-            backgroundColor: item.status === 'approved' ? theme.colors.successGlass : theme.colors.primaryGlass,
+            backgroundColor: statusBackground,
           }]}>
             <View style={[styles.statusDot, {
-              backgroundColor: item.status === 'approved' ? theme.colors.success : theme.colors.primary,
+              backgroundColor: statusAccent,
             }]} />
             <Text style={[styles.statusText, {
-              color: item.status === 'approved' ? theme.colors.success : theme.colors.primary,
+              color: statusAccent,
             }]}>
-              {item.status === 'approved' ? 'Đã xác minh' : 'Đang giải ngân'}
+              {statusLabel}
             </Text>
           </View>
         </View>
@@ -539,6 +548,21 @@ const styles = StyleSheet.create({
   purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
   cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
+  borrowerVerifiedBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  borrowerVerifiedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },

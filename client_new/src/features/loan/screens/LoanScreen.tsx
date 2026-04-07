@@ -222,6 +222,12 @@ export default function LoanScreen() {
                             <Text style={[styles.activeLoanAmount, { color: c.textSecondary }]}>
                                 Vay: {formatMoney(item.capital)} đ
                             </Text>
+                            {item.contractSignedVerified && (
+                                <View style={[styles.verifiedBadge, { backgroundColor: `${c.success}1A` }]}>
+                                    <MaterialCommunityIcons name="shield-check" size={11} color={c.success} />
+                                    <Text style={[styles.verifiedBadgeText, { color: c.success }]}>Đã ký xác minh</Text>
+                                </View>
+                            )}
                         </View>
                         <View style={[styles.statusChip, { backgroundColor: status.color + '20' }]}>
                             <MaterialCommunityIcons name={status.icon as any} size={12} color={status.color} />
@@ -554,6 +560,20 @@ const styles = StyleSheet.create({
     activeLoanAmount: {
         fontSize: 12,
         fontFamily: 'Poppins_400Regular',
+    },
+    verifiedBadge: {
+        marginTop: 6,
+        alignSelf: 'flex-start',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        borderRadius: 999,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+    },
+    verifiedBadgeText: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
     },
     statusChip: {
         flexDirection: 'row',

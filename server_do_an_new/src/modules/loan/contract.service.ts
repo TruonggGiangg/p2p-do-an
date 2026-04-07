@@ -322,6 +322,10 @@ export class ContractService {
     if (signatureData) {
       contract.signatureData = signatureData;
     }
+    // Legacy/manual sign: not counted as SmartCA-verified signature.
+    contract.smartCASignatureVerified = false;
+    contract.signatureProvider = 'manual';
+    contract.signatureVerifiedAt = undefined;
     await contract.save();
 
     this.logger.log(`[signContract] Contract signed: ${contractId} by userId=${userId}`);
@@ -330,7 +334,7 @@ export class ContractService {
     await this.notificationModel.create({
       userId: new Types.ObjectId(userId),
       title: 'Hợp đồng đã được ký',
-      message: `Hợp đồng ${contractId} đã được ký xác nhận thành công. Hệ thống đang tiến hành giải ngân.`,
+      message: `Hợp đồng ${contractId} đã được ký nội bộ. Vui lòng hoàn tất ký số SmartCA để đủ điều kiện giải ngân.`,
       type: 'contract_signed',
       data: {
         contractId,
@@ -348,7 +352,9 @@ export class ContractService {
         });
       }
     } catch (err: any) {
-      this.logger.warn(`[signContract] InvestPaymentService not found. Cannot trigger auto-disbursement. ${err.message}`);
+      this.logger.warn(
+        `[signContract] InvestPaymentService not found. Cannot trigger auto-disbursement. ${err.message}`,
+      );
     }
 
     return contract;
