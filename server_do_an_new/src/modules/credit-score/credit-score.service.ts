@@ -123,10 +123,88 @@ export interface LoanEvaluationConfigHistoryItem extends LoanEvaluationConfigVal
   _id: string;
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  SCORECARD 2.0 — WOE + Logistic Regression Interfaces
+// ══════════════════════════════════════════════════════════════════
+
+/** Một bin trong WOE binning: [min, max) → woe */
+interface WoeBin {
+  /** Inclusive lower bound (dùng -Infinity cho bin đầu tiên) */
+  min: number;
+  /** Exclusive upper bound (dùng +Infinity cho bin cuối cùng) */
+  max: number;
+  /** Giá trị WOE: dương = an toàn, âm = rủi ro */
+  woe: number;
+  /** Nhãn hiển thị */
+  label?: string;
+}
+
+interface ScorecardCoefficients {
+  paymentHistory: number;
+  debtLevel: number;
+  creditAge: number;
+  creditMix: number;
+  newCredit: number;
+}
+
+/** Tham số Scorecard 2.0 (WOE + Logistic Regression) */
+interface ScorecardParams {
+  /** Points to Double the Odds — số điểm cần thiết để Odds tăng gấp đôi */
+  pdo: number;
+  /** Điểm cơ sở tương ứng với baseOdds */
+  baseScore: number;
+  /** Tỷ lệ Odds tham chiếu tại baseScore */
+  baseOdds: number;
+  /** Hệ số chặn β₀ (logistic regression intercept) */
+  intercept: number;
+  /** Hệ số hồi quy βᵢ cho từng tiêu chí */
+  coefficients: ScorecardCoefficients;
+  /** WOE bin definitions cho từng tiêu chí */
+  woeBins: {
+    paymentHistory: WoeBin[];
+    debtLevel: WoeBin[];
+    creditAge: WoeBin[];
+    creditMix: WoeBin[];
+    newCredit: WoeBin[];
+  };
+}
+
+/** Giá trị thô của 5 tiêu chí, trước khi qua WOE binning */
+interface RawFeatureValues {
+  /** Điểm thanh toán 0-100 (sau penalty + thin-file cap) */
+  paymentScore: number;
+  /** Tỷ lệ sử dụng tín dụng (0-1+) */
+  utilizationRatio: number;
+  /** User có hồ sơ tín dụng (disbursed/closed) hay chưa */
+  hasCreditHistory: boolean;
+  /** Số tháng tín dụng (tính từ khoản vay đầu tiên) */
+  ageMonths: number;
+  /** Số sản phẩm vay duy nhất */
+  uniqueProducts: number;
+  /** Số khoản vay mới trong 90 ngày */
+  recentLoans: number;
+}
+
+/** Kết quả tính điểm Scorecard 2.0 */
+interface ScoringResult {
+  /** Điểm thành phần 0-100 cho hiển thị (backward compatible) */
+  factors: CreditFactorScores;
+  /** Điểm CIC 150-750 từ WOE + Logistic Regression */
+  scorecardScore: number;
+  /** Giá trị thô của 5 tiêu chí */
+  rawFeatures: RawFeatureValues;
+}
+
 /**
  * Service xử lý tính toán và quản lý điểm tín dụng (Credit Score).
- * Mô tả thuật toán chấm điểm nội bộ CIC (150-750) dựa trên 5 yếu tố cốt lõi:
- * Lịch sử thanh toán, dư nợ hiện tại, thời gian tín dụng, đa dạng tín dụng và tín dụng mới.
+ *
+ * Mô hình Scorecard 2.0 (WOE + Logistic Regression):
+ * - Feature Engineering: trích xuất 5 tiêu chí (Payment History, Debt Level,
+ *   Credit Age, Credit Mix, New Credit) từ dữ liệu nền tảng.
+ * - WOE Binning: map raw values → WOE values thông qua các bins đã calibrate.
+ * - Logistic Regression: logit(P) = β₀ + Σ(βᵢ × WOEᵢ) → Odds.
+ * - Scorecard Conversion: Score = Offset - Factor × logit(P).
+ * - Output: Điểm CIC nội bộ 150-750.
  */
 @Injectable()
 export class CreditScoreService implements OnModuleInit {
@@ -137,6 +215,77 @@ export class CreditScoreService implements OnModuleInit {
     creditAge: 15,
     creditMix: 10,
     newCredit: 10,
+  };
+
+  /**
+   * ═══════════════════════════════════════════════════════════════
+   *  SCORECARD 2.0 — WOE Bins + Logistic Regression Coefficients
+   * ═══════════════════════════════════════════════════════════════
+   *
+   * Calibrated để Score range ≈ 150-740 trên thang CIC.
+   * βᵢ (coefficients) < 0: WOE dương → giảm logit(P) → tăng điểm.
+   * Trọng số tương đối: PH(35%), DL(30%), CA(15%), CM(10%), NC(10%).
+   *
+   * Công thức:
+   *   Factor = pdo / ln(2)
+   *   Offset = baseScore - Factor × ln(baseOdds)
+   *   logit(P) = β₀ + Σ(βᵢ × WOEᵢ)
+   *   Score = Offset - Factor × logit(P)
+   */
+  private readonly defaultScorecardParams: ScorecardParams = {
+    pdo: 40,
+    baseScore: 450,
+    baseOdds: 1.0,
+    intercept: 0,
+    coefficients: {
+      paymentHistory: -1.651,
+      debtLevel: -1.415,
+      creditAge: -0.708,
+      creditMix: -0.472,
+      newCredit: -0.472,
+    },
+    woeBins: {
+      // Payment History: rawPaymentScore (0-100), cao = tốt
+      paymentHistory: [
+        { min: 85, max: Infinity, woe: 1.2, label: 'Xuất sắc' },
+        { min: 70, max: 85, woe: 0.7, label: 'Tốt' },
+        { min: 55, max: 70, woe: 0.2, label: 'Khá' },
+        { min: 35, max: 55, woe: -0.3, label: 'Trung bình' },
+        { min: 15, max: 35, woe: -0.8, label: 'Yếu' },
+        { min: -Infinity, max: 15, woe: -1.5, label: 'Rất yếu' },
+      ],
+      // Debt Level: CUR (0-1+), thấp = tốt
+      debtLevel: [
+        { min: -Infinity, max: 0.1, woe: 1.1, label: 'Rất thấp' },
+        { min: 0.1, max: 0.3, woe: 0.6, label: 'Thấp — Lý tưởng' },
+        { min: 0.3, max: 0.5, woe: 0.0, label: 'Trung bình' },
+        { min: 0.5, max: 0.7, woe: -0.5, label: 'Cảnh giác' },
+        { min: 0.7, max: 0.9, woe: -1.0, label: 'Cao' },
+        { min: 0.9, max: Infinity, woe: -1.6, label: 'Khát vốn' },
+      ],
+      // Credit Age: tháng, cao = tốt
+      creditAge: [
+        { min: 36, max: Infinity, woe: 1.0, label: 'Lão làng' },
+        { min: 12, max: 36, woe: 0.5, label: 'Lâu năm' },
+        { min: 6, max: 12, woe: 0.0, label: 'Trung bình' },
+        { min: 3, max: 6, woe: -0.5, label: 'Mới' },
+        { min: -Infinity, max: 3, woe: -1.2, label: 'Tân binh' },
+      ],
+      // Credit Mix: số product duy nhất, cao = tốt
+      creditMix: [
+        { min: 3, max: Infinity, woe: 0.8, label: 'Đa dạng cao' },
+        { min: 2, max: 3, woe: 0.3, label: 'Đa dạng trung bình' },
+        { min: 1, max: 2, woe: -0.3, label: 'Đơn loại' },
+        { min: -Infinity, max: 1, woe: -0.9, label: 'Không có' },
+      ],
+      // New Credit: số khoản vay mới 90 ngày, thấp = tốt
+      newCredit: [
+        { min: -Infinity, max: 1, woe: 0.8, label: 'Ổn định' },
+        { min: 1, max: 2, woe: 0.2, label: 'Bình thường' },
+        { min: 2, max: 3, woe: -0.5, label: 'Cảnh giác' },
+        { min: 3, max: Infinity, woe: -1.2, label: 'Khát vốn' },
+      ],
+    },
   };
 
   private readonly riskTable: CreditRiskClassification[] = [
@@ -650,14 +799,13 @@ export class CreditScoreService implements OnModuleInit {
     const scoreDoc = await this.ensureCreditScoreForUser(uid);
     const beforeScore = scoreDoc.score;
 
-    const factors = await this.buildWeightedFactors(uid, {
+    const { factors, scorecardScore } = await this.buildWeightedFactors(uid, {
       userId: uid,
       isLatePayment: false,
       isPrepayment: false,
       overdueDays: 0,
     });
-    const weights = await this.getWeightConfig();
-    const afterScore = this.calculateCompositeScore(factors, weights);
+    const afterScore = scorecardScore;
 
     scoreDoc.score = afterScore;
     scoreDoc.factors = { ...factors };
@@ -674,7 +822,7 @@ export class CreditScoreService implements OnModuleInit {
       reason: 'system_recalculation',
       trigger: 'loan_disbursed',
       factors: { ...factors },
-      note: `Khoản vay mới giải ngân — cập nhật Dư nợ & Tín dụng mới | ${this.buildFactorNote(factors)}`,
+      note: `Khoản vay mới giải ngân — Scorecard 2.0 (WOE+LR) | ${this.buildFactorNote(factors)}`,
     });
 
     this.logger.log(
@@ -721,20 +869,24 @@ export class CreditScoreService implements OnModuleInit {
 
   /**
    * Dư nợ tín dụng — Credit Utilization Ratio.
-   * U = totalOutstanding / totalCreditLimit
-   * U ≤ 0.1 → 100 | ≤ 0.3 → 80 | ≤ 0.5 → 60 | ≤ 0.8 → 30 | > 0.8 → 10
+   * Giữ lại cho backward compatibility (display tooltips).
+   * Scoring thực tế dùng WOE binning.
    */
-  private scoreFromDebtRatio(debtRatio: number): number {
+  private scoreFromDebtRatio(debtRatio: number, hasCreditHistory: boolean): number {
+    if (!hasCreditHistory) return 55;
+    if (!Number.isFinite(debtRatio) || debtRatio <= 0) return 95;
     if (debtRatio <= 0.1) return 100;
-    if (debtRatio <= 0.3) return 80;
-    if (debtRatio <= 0.5) return 60;
-    if (debtRatio <= 0.8) return 30;
-    return 10;
+    if (debtRatio <= 0.2) return 90;
+    if (debtRatio <= 0.3) return 75;
+    if (debtRatio <= 0.5) return 55;
+    if (debtRatio <= 0.7) return 35;
+    if (debtRatio <= 0.9) return 20;
+    return 5;
   }
 
   /**
    * Tuổi tín dụng — Tiered scoring theo thời gian gắn bó.
-   * < 3 tháng → 10 | 3-6 → 30 | 6-12 → 60 | 12-36 → 85 | ≥ 36 → 100
+   * Giữ lại cho backward compatibility (display tooltips).
    */
   private scoreFromCreditAgeMonths(ageMonths: number): number {
     if (ageMonths >= 36) return 100;
@@ -746,7 +898,7 @@ export class CreditScoreService implements OnModuleInit {
 
   /**
    * Tín dụng mới — Phạt cho sự "khát tiền".
-   * 0 khoản mới → 100 | 1 → 80 | 2 → 40 | ≥ 3 → 10
+   * Giữ lại cho backward compatibility (display tooltips).
    */
   private scoreFromRecentLoanCount(recentLoanCount: number): number {
     if (recentLoanCount <= 0) return 100;
@@ -757,13 +909,123 @@ export class CreditScoreService implements OnModuleInit {
 
   /**
    * Đa dạng tín dụng — Đếm số lượng ProductID duy nhất đã giải ngân.
-   * D = 1 → 40 | D = 2 → 75 | D ≥ 3 → 100
+   * Giữ lại cho backward compatibility (display tooltips).
    */
   private scoreFromCreditMix(uniqueProductCount: number, _hasClosedLoan: boolean): number {
     if (uniqueProductCount >= 3) return 100;
     if (uniqueProductCount === 2) return 75;
     if (uniqueProductCount >= 1) return 40;
     return 20;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  SCORECARD 2.0 — WOE Binning + Logistic Regression Methods
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * WOE Bin Lookup — tìm bin chứa rawValue và trả về giá trị WOE.
+   * Bins phải cover toàn bộ miền giá trị (dùng -Infinity/+Infinity).
+   */
+  private lookupWoe(bins: WoeBin[], rawValue: number): number {
+    for (const bin of bins) {
+      if (rawValue >= bin.min && rawValue < bin.max) return bin.woe;
+    }
+    // Fallback: trả WOE của bin cuối cùng
+    return bins[bins.length - 1].woe;
+  }
+
+  /**
+   * Chuyển đổi giá trị WOE → điểm hiển thị 0-100 (backward compatible).
+   * Map tuyến tính: woeMin → 0, woeMax → 100.
+   */
+  private woeToDisplayScore(woe: number, woeMin: number, woeMax: number): number {
+    if (woeMax === woeMin) return 50;
+    const score = ((woe - woeMin) / (woeMax - woeMin)) * 100;
+    return this.clampPercent(Math.round(score));
+  }
+
+  /**
+   * Tính WOE range (min/max) cho một bộ bins.
+   */
+  private getWoeRange(bins: WoeBin[]): { min: number; max: number } {
+    const woes = bins.map(b => b.woe);
+    return { min: Math.min(...woes), max: Math.max(...woes) };
+  }
+
+  /**
+   * ═══════════════════════════════════════════════════════════
+   *  SCORECARD 2.0 — Tính điểm CIC từ WOE + Logistic Regression
+   * ═══════════════════════════════════════════════════════════
+   *
+   * Pipeline: Raw Features → WOE Binning → Logistic Regression → Scorecard
+   *
+   * logit(P) = β₀ + Σ(βᵢ × WOEᵢ)
+   * Factor = pdo / ln(2)
+   * Offset = baseScore - Factor × ln(baseOdds)
+   * Score = Offset - Factor × logit(P)
+   *
+   * Score_i = -(βᵢ × WOEᵢ + β₀/n) × Factor + Offset/n
+   */
+  private calculateScorecardScore(rawFeatures: RawFeatureValues): number {
+    const params = this.defaultScorecardParams;
+    const { coefficients, intercept, pdo, baseScore, baseOdds } = params;
+    const bins = params.woeBins;
+
+    // Step 1: WOE Binning — map raw features → WOE values
+    const woePayment = this.lookupWoe(bins.paymentHistory, rawFeatures.paymentScore);
+    const woeDebt = rawFeatures.hasCreditHistory ? this.lookupWoe(bins.debtLevel, rawFeatures.utilizationRatio) : 0.1; // Neutral WOE cho user chưa có hồ sơ tín dụng
+    const woeAge = this.lookupWoe(bins.creditAge, rawFeatures.ageMonths);
+    const woeMix = this.lookupWoe(bins.creditMix, rawFeatures.uniqueProducts);
+    const woeNew = this.lookupWoe(bins.newCredit, rawFeatures.recentLoans);
+
+    // Step 2: Logistic Regression — logit(P) = β₀ + Σ(βᵢ × WOEᵢ)
+    const logit =
+      intercept +
+      coefficients.paymentHistory * woePayment +
+      coefficients.debtLevel * woeDebt +
+      coefficients.creditAge * woeAge +
+      coefficients.creditMix * woeMix +
+      coefficients.newCredit * woeNew;
+
+    // Step 3: Scorecard Conversion — Score = Offset - Factor × logit(P)
+    const factor = pdo / Math.log(2);
+    const offset = baseScore - factor * Math.log(Math.max(baseOdds, 1e-15));
+    const score = offset - factor * logit;
+
+    this.logger.debug(
+      `[Scorecard2.0] WOE(PH=${woePayment.toFixed(2)}, DL=${woeDebt.toFixed(2)}, CA=${woeAge.toFixed(2)}, CM=${woeMix.toFixed(2)}, NC=${woeNew.toFixed(2)}) → logit=${logit.toFixed(4)} → score=${score.toFixed(1)}`,
+    );
+
+    return this.clampScore(score);
+  }
+
+  /**
+   * Chuyển đổi rawFeatures → display factors (0-100) thông qua WOE mapping.
+   * Giữ format CreditFactorScores cho backward compatibility với frontend.
+   */
+  private rawFeaturesToDisplayFactors(rawFeatures: RawFeatureValues): CreditFactorScores {
+    const params = this.defaultScorecardParams;
+    const bins = params.woeBins;
+
+    const woePayment = this.lookupWoe(bins.paymentHistory, rawFeatures.paymentScore);
+    const woeDebt = rawFeatures.hasCreditHistory ? this.lookupWoe(bins.debtLevel, rawFeatures.utilizationRatio) : 0.1;
+    const woeAge = this.lookupWoe(bins.creditAge, rawFeatures.ageMonths);
+    const woeMix = this.lookupWoe(bins.creditMix, rawFeatures.uniqueProducts);
+    const woeNew = this.lookupWoe(bins.newCredit, rawFeatures.recentLoans);
+
+    const rangePayment = this.getWoeRange(bins.paymentHistory);
+    const rangeDebt = this.getWoeRange(bins.debtLevel);
+    const rangeAge = this.getWoeRange(bins.creditAge);
+    const rangeMix = this.getWoeRange(bins.creditMix);
+    const rangeNew = this.getWoeRange(bins.newCredit);
+
+    return {
+      paymentHistory: this.woeToDisplayScore(woePayment, rangePayment.min, rangePayment.max),
+      debtLevel: this.woeToDisplayScore(woeDebt, rangeDebt.min, rangeDebt.max),
+      creditAge: this.woeToDisplayScore(woeAge, rangeAge.min, rangeAge.max),
+      creditMix: this.woeToDisplayScore(woeMix, rangeMix.min, rangeMix.max),
+      newCredit: this.woeToDisplayScore(woeNew, rangeNew.min, rangeNew.max),
+    };
   }
 
   private calculateCompositeScore(factors: CreditFactorScores, weights: CreditScoreWeightConfigValue): number {
@@ -783,21 +1045,23 @@ export class CreditScoreService implements OnModuleInit {
 
   /**
    * ═══════════════════════════════════════════════════════════
-   *  CORE 5-FACTOR SCORING — Reward/Penalty System (FICO-style)
+   *  CORE FEATURE ENGINEERING + SCORECARD 2.0
    * ═══════════════════════════════════════════════════════════
    *
-   * 1. Payment History (35%): Penalty deduction — start at 100, subtract per debt group
-   * 2. Debt Level (30%): Credit Utilization Ratio — outstanding / credit limit
-   * 3. Credit Age (15%): Tiered by months since oldest loan
-   * 4. Credit Mix (10%): Distinct product count
-   * 5. New Credit (10%): Recent loan count in 90 days
+   * Trích xuất 5 tiêu chí thô (Feature Engineering):
+   *   1. Payment History: Penalty deduction → rawPaymentScore (0-100)
+   *   2. Debt Level: Credit Utilization Ratio (0-1+)
+   *   3. Credit Age: Months since oldest loan
+   *   4. Credit Mix: Distinct product count
+   *   5. New Credit: Recent loan count in 90 days
    *
-   * Final: Score_CIC = 150 + (Score_total_100 × 6)
+   * Sau đó WOE Binning → Logistic Regression → Scorecard Conversion.
+   * Trả về: { factors (0-100 display), scorecardScore (150-750), rawFeatures }
    */
   private async buildWeightedFactors(
     userId: Types.ObjectId,
     _input: CreditScoreRepaymentEventInput,
-  ): Promise<CreditFactorScores> {
+  ): Promise<ScoringResult> {
     // ── 1. Fetch all loan data + delinquency records ──
     const [loanDocs, delinquencyDocs] = await Promise.all([
       this.loanApplicationModel
@@ -806,63 +1070,97 @@ export class CreditScoreService implements OnModuleInit {
         .lean(),
       this.loanDelinquencyModel
         .find({ borrowerId: userId, isDeleted: { $ne: true } })
-        .select('debtGroup status')
+        .select('debtGroup status lastSyncedAt resolvedAt firstOverdueDate')
         .lean(),
     ]);
 
     const now = Date.now();
 
+    // Chỉ dùng hồ sơ tín dụng đã thực sự phát sinh nghĩa vụ (disbursed/closed)
+    const creditProfileLoans = loanDocs.filter((loan: any) => {
+      const status = String(loan?.status || '').toLowerCase();
+      return status === 'disbursed' || status === 'closed';
+    });
+    const activeExposureLoans = creditProfileLoans.filter(
+      (loan: any) => String(loan?.status || '').toLowerCase() === 'disbursed',
+    );
+    const totalCreditAccounts = creditProfileLoans.length;
+
     // ════════════════════════════════════════════════════
     //  S_payment — Lịch sử thanh toán (Penalty Deduction)
     // ════════════════════════════════════════════════════
-    // Count historical debt group incidents from delinquency records
-    const nGroup1 = delinquencyDocs.filter((d: any) => d.debtGroup === 1).length;
-    const nGroup2 = delinquencyDocs.filter((d: any) => d.debtGroup >= 2).length;
+    // Severity penalty theo nhóm nợ CIC + recency penalty cho các case mới phát sinh.
+    const groupPenaltyMap: Record<number, number> = {
+      1: 8,
+      2: 20,
+      3: 35,
+      4: 50,
+      5: 65,
+    };
 
-    // Base score: 100 - (N_g1 × 10) - (N_g2 × 30)
-    const basePayment = Math.max(0, 100 - nGroup1 * 10 - nGroup2 * 30);
+    const toDaysSince = (value: unknown): number | null => {
+      if (!value) return null;
+      const t = new Date(value as any).getTime();
+      if (!Number.isFinite(t) || t <= 0) return null;
+      return Math.max(0, (now - t) / (24 * 60 * 60 * 1000));
+    };
 
-    // Volume Penalty Factor (Thin Credit File Protection)
-    // Level 1: 1-4 txns → W=0.60 | Level 2: 5-10 → W=0.80 | Level 3: >10 → W=1.00
-    const totalLoans = loanDocs.length;
-    let volumeFactor = 1.0;
-    if (totalLoans <= 4) volumeFactor = 0.6;
-    else if (totalLoans <= 10) volumeFactor = 0.8;
+    let paymentPenalty = 0;
+    for (const d of delinquencyDocs as any[]) {
+      const group = Number(d?.debtGroup || 0);
+      if (group < 1) continue;
 
-    const paymentScore = basePayment * volumeFactor;
+      const basePenalty = groupPenaltyMap[Math.min(5, group)] || 0;
+      if (basePenalty <= 0) continue;
+
+      const status = String(d?.status || '').toLowerCase();
+      const recencyDays = toDaysSince(d?.lastSyncedAt || d?.resolvedAt || d?.firstOverdueDate);
+      let recencyFactor = 1.0;
+      if (status === 'overdue' || status === 'defaulted' || recencyDays == null || recencyDays <= 90) {
+        recencyFactor = 1.25;
+      } else if (recencyDays <= 180) {
+        recencyFactor = 1.1;
+      }
+
+      paymentPenalty += basePenalty * recencyFactor;
+    }
+
+    const rawPaymentScore = Math.max(0, 100 - paymentPenalty);
+
+    // Thin-file cap: hồ sơ ít khoản vay không được full 100 quá sớm.
+    let thinFileCap = 100;
+    if (totalCreditAccounts <= 2) thinFileCap = 55;
+    else if (totalCreditAccounts <= 5) thinFileCap = 70;
+    else if (totalCreditAccounts <= 10) thinFileCap = 85;
+
+    const paymentScore = Math.min(rawPaymentScore, thinFileCap);
 
     // ════════════════════════════════════════════════════
     //  S_debt — Dư nợ tín dụng (Credit Utilization Ratio)
     // ════════════════════════════════════════════════════
     // U = totalOutstanding / totalCreditLimit
-    // Credit limit comes from the Rule Engine grade-based maxLoanAmount
-    const totalOutstanding = loanDocs.reduce(
+    // totalCreditLimit lấy theo tổng hạn mức đã giải ngân của chính user,
+    // tránh dùng ceiling toàn hệ thống làm mẫu số bị phình và score bị inflated.
+    const totalOutstanding = activeExposureLoans.reduce(
       (acc, loan: any) => acc + Number(loan?.principalOutstanding || loan?.totalOutstanding || 0),
       0,
     );
 
-    // ── Credit Limit Calculation (FICO-style) ──
-    // Use the HIGHEST grade's maxLoanAmount from LoanEvaluationConfig as the reference ceiling.
-    // This avoids the circular dependency (score → grade → limit → utilization → score)
-    // and mirrors FICO's approach where utilization = outstanding / total available credit limit.
-    // Fallback: sum of all loan capitals if no config or config limit is too low.
-    const totalCapital = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
-    let maxGradeLimit = 0;
-    try {
-      const evalConfig = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
-      if (evalConfig?.creditGrades?.length) {
-        maxGradeLimit = Math.max(...evalConfig.creditGrades.map((g: any) => Number(g.maxLoanAmount || 0)));
-      }
-    } catch {
-      // Fallback to capital sum if config unavailable
-    }
-    const totalCreditLimit = Math.max(maxGradeLimit, totalCapital, 1);
+    const totalActiveLimit = activeExposureLoans.reduce(
+      (acc, loan: any) => acc + Math.max(Number(loan?.capital || 0), Number(loan?.principalOutstanding || 0), 0),
+      0,
+    );
+    const totalHistoricalLimit = creditProfileLoans.reduce(
+      (acc, loan: any) => acc + Math.max(Number(loan?.capital || 0), 0),
+      0,
+    );
+    const totalCreditLimit = Math.max(totalActiveLimit, totalHistoricalLimit, 1);
     const utilizationRatio = totalOutstanding / totalCreditLimit;
 
     // ════════════════════════════════════════════════════
     //  S_age — Tuổi tín dụng
     // ════════════════════════════════════════════════════
-    const oldestLoanTime = loanDocs
+    const oldestLoanTime = creditProfileLoans
       .map((loan: any) => new Date(loan?.createdAt || 0).getTime())
       .filter((t: number) => t > 0)
       .sort((a: number, b: number) => a - b)[0];
@@ -872,28 +1170,42 @@ export class CreditScoreService implements OnModuleInit {
     //  S_mix — Đa dạng tín dụng
     // ════════════════════════════════════════════════════
     // Count distinct productIds from disbursed/closed loans
-    const disbursedOrClosed = loanDocs.filter((loan: any) =>
+    const disbursedOrClosed = creditProfileLoans.filter((loan: any) =>
       ['disbursed', 'closed'].includes(String(loan?.status || '').toLowerCase()),
     );
     const uniqueProductCount = new Set(disbursedOrClosed.map((loan: any) => String(loan?.productId || ''))).size;
-    const hasClosedLoan = loanDocs.some((loan: any) => String(loan?.status || '').toLowerCase() === 'closed');
+    const _hasClosedLoan = creditProfileLoans.some(
+      (loan: any) => String(loan?.status || '').toLowerCase() === 'closed',
+    );
 
     // ════════════════════════════════════════════════════
     //  S_new — Tín dụng mới (90 ngày)
     // ════════════════════════════════════════════════════
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    const recentLoanCount = loanDocs.filter((loan: any) => {
+    const recentLoanCount = creditProfileLoans.filter((loan: any) => {
       const createdAt = new Date(loan?.createdAt || 0).getTime();
       return createdAt > 0 && now - createdAt <= ninetyDaysMs;
     }).length;
 
-    return {
-      paymentHistory: this.clampPercent(paymentScore),
-      debtLevel: this.scoreFromDebtRatio(utilizationRatio),
-      creditAge: this.scoreFromCreditAgeMonths(ageMonths),
-      creditMix: this.scoreFromCreditMix(uniqueProductCount, hasClosedLoan),
-      newCredit: this.scoreFromRecentLoanCount(recentLoanCount),
+    // ════════════════════════════════════════════════════
+    //  Build raw features + Scorecard 2.0
+    // ════════════════════════════════════════════════════
+    const rawFeatures: RawFeatureValues = {
+      paymentScore: this.clampPercent(paymentScore),
+      utilizationRatio,
+      hasCreditHistory: totalCreditAccounts > 0,
+      ageMonths,
+      uniqueProducts: uniqueProductCount,
+      recentLoans: recentLoanCount,
     };
+
+    // WOE + Logistic Regression → Scorecard Score (150-750)
+    const scorecardScore = this.calculateScorecardScore(rawFeatures);
+
+    // Display factors (0-100) for backward compatibility with frontend
+    const factors = this.rawFeaturesToDisplayFactors(rawFeatures);
+
+    return { factors, scorecardScore, rawFeatures };
   }
 
   classifyRisk(score: number): CreditRiskClassification {
@@ -1000,11 +1312,10 @@ export class CreditScoreService implements OnModuleInit {
     const overdueDays = Math.max(0, Number(input.overdueDays || 0));
     const isLatePayment = !!input.isLatePayment;
     const isPrepayment = !!input.isPrepayment;
-    const factors = await this.buildWeightedFactors(uid, input);
-    const weights = await this.getWeightConfig();
+    const { factors, scorecardScore } = await this.buildWeightedFactors(uid, input);
 
     const beforeScore = scoreDoc.score;
-    let afterScore = this.calculateCompositeScore(factors, weights);
+    let afterScore = scorecardScore;
 
     // ── Directional Enforcement (FICO-style behavioral guardrail) ──
     // Late payment events can NEVER increase the score.
@@ -1087,14 +1398,13 @@ export class CreditScoreService implements OnModuleInit {
     const beforeScore = scoreDoc.score;
 
     // Build factors from current loan data (neutral event — not late, not prepay)
-    const factors = await this.buildWeightedFactors(uid, {
+    const { factors, scorecardScore } = await this.buildWeightedFactors(uid, {
       userId: uid,
       isLatePayment: false,
       isPrepayment: false,
       overdueDays: 0,
     });
-    const weights = await this.getWeightConfig();
-    const afterScore = this.calculateCompositeScore(factors, weights);
+    const afterScore = scorecardScore;
 
     scoreDoc.score = afterScore;
     scoreDoc.factors = { ...factors };
@@ -1112,7 +1422,7 @@ export class CreditScoreService implements OnModuleInit {
         reason: 'system_recalculation',
         trigger: 'recalculate_api',
         factors: { ...factors },
-        note: `Tính lại điểm tín dụng | ${this.buildFactorNote(factors)}`,
+        note: `Tính lại điểm tín dụng — Scorecard 2.0 (WOE+LR) | ${this.buildFactorNote(factors)}`,
       });
     }
 
