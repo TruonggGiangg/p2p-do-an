@@ -1,6 +1,6 @@
 # Cơ Chế Chấm Điểm Tín Dụng Hiện Tại Của Hệ Thống
 
-Ngày cập nhật: 2026-03-27
+Ngày cập nhật: 2026-06-04
 
 ## 1. Mục tiêu
 
@@ -145,13 +145,22 @@ $$S_{payment} = S_{base\_payment} \times V_{factor}$$
 
 ### 5.2. Dư nợ tín dụng ($S_{debt}$) — Trọng số 30%
 
-Sử dụng **Tỷ lệ sử dụng tín dụng (Credit Utilization Ratio)** — chỉ số chuẩn quốc tế.
+Sử dụng **Tỷ lệ sử dụng tín dụng (Credit Utilization Ratio)** — chỉ số chuẩn quốc tế (tham khảo FICO).
+
+**Hạn mức tín dụng (Credit Ceiling):**
+
+Hệ thống xác định hạn mức tối đa bằng cách lấy `maxLoanAmount` của **grade cao nhất** trong `LoanEvaluationConfig.creditGrades`. Đây là tổng hạn mức tín dụng mà hệ thống có thể cấp cho người vay, tương tự cách FICO dùng tổng credit limit của các thẻ tín dụng.
+
+```
+maxGradeLimit = max(creditGrades[].maxLoanAmount)  // ví dụ: grade A → 50.000.000 VNĐ
+totalCreditLimit = max(maxGradeLimit, tổng capital các khoản vay, 1)
+```
+
+Fallback: Nếu không có `LoanEvaluationConfig` → dùng tổng capital các khoản vay đã giải ngân.
 
 **Công thức:**
 
-$$U = \frac{\sum \text{Dư nợ gốc hiện tại (principalOutstanding)}}{\text{Hạn mức tín dụng (maxLoanAmount từ Rule Engine)}}$$
-
-Hạn mức tín dụng lấy từ `LoanEvaluationConfig.creditGrades` dựa trên grade hiện tại của user. Nếu chưa có → dùng tổng capital các khoản vay làm fallback.
+$$U = \frac{\sum \text{Dư nợ gốc hiện tại (principalOutstanding)}}{\text{totalCreditLimit}}$$
 
 **Quy đổi ra điểm:**
 
@@ -215,6 +224,24 @@ Kết quả được bọc bằng `Math.round()` và clamp trong `[150, 750]`.
 - Min: 150
 - Max: 750
 
+### 5.8. Cơ chế đảm bảo hướng điểm (Directional Enforcement)
+
+Khi hệ thống tính lại điểm cho **sự kiện thanh toán** (`applyRepaymentEvent`), có thể xảy ra nghịch lý: sự kiện trễ hạn nhưng tổng điểm tăng (do các yếu tố khác cải thiện từ lần tính trước). Điều này gây nhầm lẫn cho người dùng.
+
+**Quy tắc:**
+
+- **Thanh toán trễ hạn (`isLatePayment = true`):** Nếu điểm tính được > điểm cũ → giữ nguyên điểm cũ (không cho tăng):
+  $$\text{afterScore} = \min(\text{calculated}, \text{beforeScore})$$
+
+- **Thanh toán đúng hạn (`isLatePayment = false`):** Nếu điểm tính được < điểm cũ → giữ nguyên điểm cũ (không cho giảm):
+  $$\text{afterScore} = \max(\text{calculated}, \text{beforeScore})$$
+
+**Phạm vi áp dụng:**
+
+- Chỉ áp dụng cho `applyRepaymentEvent` (Event 1) và `handleDelinquencyBatchJob` (Event 2).
+- **KHÔNG áp dụng** cho `recalculateScore()` (Event 0 — đăng nhập) và tính lại thủ công. Các trường hợp này luôn dùng điểm tính thô (raw calculated) để đồng bộ lại ground truth.
+- **KHÔNG áp dụng** cho `applyDisbursementEvent` (Event 3 — giải ngân), vì giải ngân là sự kiện trung lập.
+
 ## 6. Các trường dữ liệu được cập nhật
 
 Khi có sự kiện scoring:
@@ -255,6 +282,9 @@ Loan Repayment / Prepayment success (Fineract)
   → CreditScoreService.applyRepaymentEvent(...)
     → compute 5 factor scores (with Volume Penalty)
     → weighted score 0..100 → clamp 150..750
+    → Directional Enforcement:
+      - Nếu isLatePayment && afterScore > beforeScore → afterScore = beforeScore
+      - Nếu !isLatePayment && afterScore < beforeScore → afterScore = beforeScore
     → update credit_score
     → insert credit_score_history
 

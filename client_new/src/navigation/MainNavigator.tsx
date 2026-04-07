@@ -43,6 +43,7 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
                     dismissable={true}
                     onSuccess={markPinVerified}
                     onCancel={() => (navigation as any).navigate('Home')}
+                    onForgotPin={() => (navigation as any).getParent()?.navigate('PinChange', { resetMode: true })}
                     title="Xác thực mã PIN"
                     subtitle="Nhập mã PIN để truy cập tính năng này"
                 />

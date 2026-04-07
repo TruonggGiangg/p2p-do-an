@@ -8,6 +8,7 @@ import { usePushNotifications } from './src/shared/hooks/usePushNotifications';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { PinProvider } from './src/contexts/PinContext';
 import { ThemeTransitionStyles } from './src/components/ThemeTransitionStyles';
+import { ToastProvider } from './src/components';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function AppContent() {
@@ -41,7 +42,9 @@ export default function App() {
         <ThemeProvider>
           <AuthProvider>
             <PinProvider>
-              <AppContent />
+              <ToastProvider>
+                <AppContent />
+              </ToastProvider>
             </PinProvider>
           </AuthProvider>
         </ThemeProvider>

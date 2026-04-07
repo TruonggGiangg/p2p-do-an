@@ -49,3 +49,19 @@ export class ChangePinDto {
   @IsNotEmpty()
   sessionId: string;
 }
+
+export class ResetPinDto {
+  @ApiProperty({ example: '654321', description: 'Mã PIN mới' })
+  @IsString()
+  @Length(6, 6, { message: 'Mã PIN phải đúng 6 chữ số' })
+  @Matches(/^\d{6}$/, { message: 'Mã PIN chỉ gồm 6 chữ số' })
+  newPin: string;
+
+  @ApiProperty({
+    example: 'uuid-session-id',
+    description: 'Smart OTP session ID đã xác thực',
+  })
+  @IsString()
+  @IsNotEmpty()
+  sessionId: string;
+}

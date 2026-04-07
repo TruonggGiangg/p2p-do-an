@@ -110,4 +110,32 @@ export class PinService {
 
     this.logger.log(`[PIN] User ${userId} changed PIN successfully`);
   }
+
+  /**
+   * Reset mã PIN (quên PIN — chỉ cần Smart OTP, không cần PIN cũ)
+   */
+  async resetPin(userId: string, newPin: string, sessionId: string): Promise<void> {
+    // 1. Consume verified OTP session (PIN_RESET action)
+    const result = await this.smartOtpService.consumeVerifiedSession(userId, sessionId, OtpActionType.PIN_RESET);
+    if (!result.valid) {
+      throw new BadRequestException(result.message || 'Xác thực Smart OTP thất bại');
+    }
+
+    // 2. Hash new PIN
+    const hash = await bcrypt.hash(newPin, this.BCRYPT_ROUNDS);
+
+    // 3. Save
+    const updatedUser = await this.userModel.findByIdAndUpdate(userId, {
+      $set: {
+        'pin.hash': hash,
+        'pin.setAt': new Date(),
+      },
+    });
+
+    if (!updatedUser) {
+      throw new UnauthorizedException('User account not found');
+    }
+
+    this.logger.log(`[PIN] User ${userId} reset PIN successfully (forgot PIN flow)`);
+  }
 }

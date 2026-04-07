@@ -271,6 +271,7 @@ export default function PrepaymentConfirmScreen() {
                 dismissable
                 onCancel={() => setShowPinVerify(false)}
                 onSuccess={() => { setShowPinVerify(false); setTimeout(() => otpTriggerRef.current?.(), 300); }}
+                onForgotPin={() => { setShowPinVerify(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
                 title="Xác thực mã PIN"
                 subtitle="Nhập mã PIN để tiếp tục tất toán"
             />

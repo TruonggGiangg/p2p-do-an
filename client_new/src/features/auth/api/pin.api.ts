@@ -16,6 +16,11 @@ export interface ChangePinRequest {
   sessionId: string;
 }
 
+export interface ResetPinRequest {
+  newPin: string;
+  sessionId: string;
+}
+
 function unwrapData(payload: any): any {
   let current = payload;
   for (let i = 0; i < 4; i++) {
@@ -103,6 +108,21 @@ export const pinAPI = {
       success: result?.success !== false,
       message:
         result?.message || response.data?.message || "Đổi mã PIN thành công",
+    };
+  },
+
+  /** Reset mã PIN (quên PIN — chỉ cần Smart OTP, không cần PIN cũ) */
+  resetPin: async (
+    data: ResetPinRequest,
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post("/api/auth/pin/reset", data);
+    const result = unwrapData(response.data);
+    return {
+      success: result?.success !== false,
+      message:
+        result?.message ||
+        response.data?.message ||
+        "Đặt lại mã PIN thành công",
     };
   },
 };

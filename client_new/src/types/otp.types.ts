@@ -17,6 +17,7 @@ export enum OtpActionType {
   PREPAY = "PREPAY",
   PIN_SETUP = "PIN_SETUP",
   PIN_CHANGE = "PIN_CHANGE",
+  PIN_RESET = "PIN_RESET",
   OTHER = "OTHER",
 }
 

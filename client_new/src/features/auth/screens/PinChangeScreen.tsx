@@ -1,8 +1,10 @@
 /**
- * PinChangeScreen
- * Đổi mã PIN: Nhập PIN cũ → Nhập PIN mới → Xác nhận PIN mới → Smart OTP → Lưu
+ * PinChangeScreen — native keyboard
+ * 2 modes:
+ *   - change (default): Xác thực danh tính (PIN cũ HOẶC vân tay) → PIN mới → Xác nhận → OTP → Lưu
+ *   - reset  (route param resetMode=true): Bỏ qua xác thực cũ → PIN mới → Xác nhận → OTP → Lưu (dùng resetPin API)
  */
-import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,65 +12,39 @@ import {
     TouchableOpacity,
     Animated,
     ActivityIndicator,
-    Alert,
     Platform,
     StatusBar,
     Vibration,
+    KeyboardAvoidingView,
+    Keyboard,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { OTPVerifyModal } from '../../../components';
+import { OTPVerifyModal, useToast } from '../../../components';
+import { PinCodeInput, PinCodeInputRef } from '../../../components/common/PinCodeInput';
 import { pinAPI } from '../api/pin.api';
 import { OtpActionType } from '../../../types/otp.types';
 
-const NUMPAD_KEYS = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['', '0', '⌫'],
-];
-
 const PIN_LENGTH = 6;
 
-type Step = 'oldPin' | 'newPin' | 'confirmPin' | 'otp' | 'success';
-
-function PinDot({ filled, shake, theme }: { filled: boolean; shake: Animated.Value; theme: any }) {
-    return (
-        <Animated.View
-            style={[
-                styles.dot,
-                {
-                    borderColor: filled ? theme.colors.primary : theme.colors.border,
-                    backgroundColor: filled ? theme.colors.primary : 'transparent',
-                    transform: [{ translateX: shake }],
-                },
-            ]}
-        />
-    );
-}
+type Step = 'auth' | 'newPin' | 'confirmPin' | 'otp' | 'success';
 
 export default function PinChangeScreen() {
     const navigation = useNavigation();
+    const route = useRoute<RouteProp<{ PinChange: { resetMode?: boolean } }, 'PinChange'>>();
+    const resetMode = route.params?.resetMode === true;
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
+    const toast = useToast();
     const c = theme.colors;
+    const isDark = theme.mode === 'dark';
 
-    // Cached Safe Area
-    const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
-    const cachedTopInset = useRef<number>(FALLBACK_TOP);
-    const [ready, setReady] = useState(false);
-    useLayoutEffect(() => {
-        if (insets.top > 0 && !ready) {
-            cachedTopInset.current = insets.top;
-            setReady(true);
-        }
-    }, [insets.top, ready]);
-    const stableTop = cachedTopInset.current;
-
-    const [step, setStep] = useState<Step>('oldPin');
+    // In resetMode, skip the auth step entirely — go to newPin
+    const [step, setStep] = useState<Step>(resetMode ? 'newPin' : 'auth');
     const [oldPin, setOldPin] = useState('');
     const [newPin, setNewPin] = useState('');
     const [confirmPin, setConfirmPin] = useState('');
@@ -77,15 +53,58 @@ export default function PinChangeScreen() {
     const [verifyingOld, setVerifyingOld] = useState(false);
     const [error, setError] = useState('');
 
+    // Biometric state
+    const [biometricAvailable, setBiometricAvailable] = useState(false);
+    const [biometricType, setBiometricType] = useState<'fingerprint' | 'facial'>('fingerprint');
+    const [authByBiometric, setAuthByBiometric] = useState(false);
+
     const shakeAnim = useRef(new Animated.Value(0)).current;
     const successScale = useRef(new Animated.Value(0)).current;
     const successOpacity = useRef(new Animated.Value(0)).current;
     const otpSuccessHandledRef = useRef(false);
+    const pinInputRef = useRef<PinCodeInputRef>(null);
 
     const currentPin =
-        step === 'oldPin' ? oldPin :
+        step === 'auth' ? oldPin :
             step === 'newPin' ? newPin :
                 confirmPin;
+
+    const setCurrentPin =
+        step === 'auth' ? setOldPin :
+            step === 'newPin' ? setNewPin :
+                setConfirmPin;
+
+    const isInputStep = step === 'auth' || step === 'newPin' || step === 'confirmPin';
+
+    const focusPinInput = useCallback(() => {
+        if (!isInputStep || verifyingOld || submitting) return;
+        pinInputRef.current?.focus();
+    }, [isInputStep, verifyingOld, submitting]);
+
+    // Check biometric availability
+    useEffect(() => {
+        if (resetMode) return; // no biometric needed for reset — OTP is the auth
+        (async () => {
+            try {
+                const compatible = await LocalAuthentication.hasHardwareAsync();
+                const enrolled = await LocalAuthentication.isEnrolledAsync();
+                if (compatible && enrolled) {
+                    setBiometricAvailable(true);
+                    const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+                    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                        setBiometricType('facial');
+                    }
+                }
+            } catch { }
+        })();
+    }, [resetMode]);
+
+    // Auto-focus the hidden input when step changes
+    useEffect(() => {
+        if (isInputStep) {
+            setTimeout(() => focusPinInput(), 150);
+        }
+    }, [isInputStep, focusPinInput]);
 
     const triggerShake = useCallback(() => {
         Vibration.vibrate(400);
@@ -97,6 +116,24 @@ export default function PinChangeScreen() {
             Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
         ]).start();
     }, [shakeAnim]);
+
+    const handleBiometricAuth = useCallback(async () => {
+        try {
+            const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Xác thực để đổi mã PIN',
+                cancelLabel: 'Huỷ',
+                disableDeviceFallback: true,
+            });
+            if (result.success) {
+                setAuthByBiometric(true);
+                setError('');
+                setStep('newPin');
+            }
+        } catch { }
+        finally {
+            setTimeout(() => focusPinInput(), 120);
+        }
+    }, [focusPinInput]);
 
     const verifyOldPin = useCallback(async (pin: string) => {
         setVerifyingOld(true);
@@ -120,64 +157,47 @@ export default function PinChangeScreen() {
         }
     }, [triggerShake]);
 
-    const handleKeyPress = useCallback(
-        (key: string) => {
-            if (step === 'otp' || step === 'success' || verifyingOld) return;
-            setError('');
+    const handlePinChange = useCallback((text: string) => {
+        // Only allow digits, max PIN_LENGTH
+        const cleaned = text.replace(/\D/g, '').slice(0, PIN_LENGTH);
+        setError('');
+        setCurrentPin(cleaned);
 
-            if (key === '⌫') {
-                if (step === 'oldPin') setOldPin((p) => p.slice(0, -1));
-                else if (step === 'newPin') setNewPin((p) => p.slice(0, -1));
-                else setConfirmPin((p) => p.slice(0, -1));
-                return;
-            }
-            if (!key) return;
-
-            if (step === 'oldPin') {
-                if (oldPin.length >= PIN_LENGTH) return;
-                const next = oldPin + key;
-                setOldPin(next);
-                if (next.length === PIN_LENGTH) {
-                    verifyOldPin(next);
-                }
+        if (cleaned.length === PIN_LENGTH) {
+            Keyboard.dismiss();
+            if (step === 'auth') {
+                verifyOldPin(cleaned);
             } else if (step === 'newPin') {
-                if (newPin.length >= PIN_LENGTH) return;
-                const next = newPin + key;
-                setNewPin(next);
-                if (next.length === PIN_LENGTH) {
-                    setTimeout(() => setStep('confirmPin'), 200);
-                }
+                setTimeout(() => {
+                    setStep('confirmPin');
+                }, 200);
             } else if (step === 'confirmPin') {
-                if (confirmPin.length >= PIN_LENGTH) return;
-                const next = confirmPin + key;
-                setConfirmPin(next);
-                if (next.length === PIN_LENGTH) {
-                    if (next !== newPin) {
-                        triggerShake();
-                        setError('Mã PIN không khớp');
-                        setTimeout(() => setConfirmPin(''), 300);
-                    } else {
-                        setTimeout(() => setOtpVisible(true), 200);
-                    }
+                if (cleaned !== newPin) {
+                    triggerShake();
+                    setError('Mã PIN không khớp');
+                    setTimeout(() => setConfirmPin(''), 300);
+                } else {
+                    setTimeout(() => setOtpVisible(true), 200);
                 }
             }
-        },
-        [step, oldPin, newPin, confirmPin, triggerShake, verifyOldPin, verifyingOld],
-    );
+        }
+    }, [step, newPin, verifyOldPin, triggerShake, setCurrentPin]);
 
     const handleBack = useCallback(() => {
         setError('');
-        if (step === 'newPin') {
-            setStep('oldPin');
+        if (step === 'newPin' && !resetMode) {
+            setStep('auth');
             setOldPin('');
             setNewPin('');
+            setAuthByBiometric(false);
         } else if (step === 'confirmPin') {
             setStep('newPin');
+            setNewPin('');
             setConfirmPin('');
         } else {
             navigation.goBack();
         }
-    }, [step, navigation]);
+    }, [step, navigation, resetMode]);
 
     const handleOtpCancel = useCallback(() => {
         setOtpVisible(false);
@@ -187,14 +207,18 @@ export default function PinChangeScreen() {
 
     const handleOtpSuccess = useCallback(
         async ({ sessionId }: { sessionId: string }) => {
-            if (otpSuccessHandledRef.current) {
-                return;
-            }
+            if (otpSuccessHandledRef.current) return;
             otpSuccessHandledRef.current = true;
             setOtpVisible(false);
             setSubmitting(true);
             try {
-                await pinAPI.changePin({ oldPin, newPin, sessionId });
+                if (resetMode || authByBiometric) {
+                    // Reset flow — no old PIN, use resetPin API
+                    await pinAPI.resetPin({ newPin, sessionId });
+                } else {
+                    // Normal change flow — verify old PIN server-side too
+                    await pinAPI.changePin({ oldPin, newPin, sessionId });
+                }
                 setStep('success');
                 Animated.parallel([
                     Animated.spring(successScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }),
@@ -202,19 +226,22 @@ export default function PinChangeScreen() {
                 ]).start();
             } catch (err: any) {
                 const message = err?.response?.data?.message || err?.message || 'Đã có lỗi xảy ra';
-                Alert.alert('Lỗi', message);
+                toast.show({ type: 'error', title: 'Lỗi', message });
                 setConfirmPin('');
                 otpSuccessHandledRef.current = false;
             } finally {
                 setSubmitting(false);
             }
         },
-        [oldPin, newPin, successScale, successOpacity],
+        [oldPin, newPin, successScale, successOpacity, resetMode, authByBiometric, toast],
     );
 
-    // ── Render ──
+    // Step config
+    const steps = resetMode ? ['newPin', 'confirmPin'] : ['auth', 'newPin', 'confirmPin'];
+    const stepIndex = steps.indexOf(step);
+
     const titleByStep: Record<Step, string> = {
-        oldPin: 'Nhập mã PIN hiện tại',
+        auth: 'Xác thực danh tính',
         newPin: 'Tạo mã PIN mới',
         confirmPin: 'Xác nhận mã PIN mới',
         otp: 'Xác thực Smart OTP',
@@ -222,19 +249,21 @@ export default function PinChangeScreen() {
     };
 
     const subtitleByStep: Record<Step, string> = {
-        oldPin: 'Nhập mã PIN hiện tại để xác minh',
+        auth: biometricAvailable ? 'Nhập mã PIN hiện tại hoặc dùng sinh trắc học' : 'Nhập mã PIN hiện tại để xác minh',
         newPin: 'Nhập mã PIN mới 6 chữ số',
         confirmPin: 'Nhập lại mã PIN mới để xác nhận',
         otp: '',
         success: '',
     };
 
-    const stepIndex = step === 'oldPin' ? 0 : step === 'newPin' ? 1 : 2;
+    // Colors
+    const bgColor = c.background;
+    const accentColor = c.primary;
 
     if (step === 'success') {
         return (
             <View style={[styles.container, { backgroundColor: c.background }]}>
-                <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
+                <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
                 <Animated.View
                     style={[styles.successWrapper, { opacity: successOpacity, transform: [{ scale: successScale }] }]}
                 >
@@ -244,135 +273,210 @@ export default function PinChangeScreen() {
                     >
                         <MaterialCommunityIcons name="shield-check" size={72} color={c.success} />
                     </LinearGradient>
-                    <Text style={[styles.successTitle, { color: c.textPrimary }]}>Đổi mã PIN thành công!</Text>
+                    <Text style={[styles.successTitle, { color: c.textPrimary }]}>
+                        {resetMode ? 'Đặt lại mã PIN thành công!' : 'Đổi mã PIN thành công!'}
+                    </Text>
                     <Text style={[styles.successSub, { color: c.textSecondary }]}>
-                        Mã PIN mới của bạn đã được cập nhật. Hãy nhớ mã PIN mới để sử dụng cho các lần xác thực tiếp theo.
+                        Mã PIN mới đã được cập nhật. Hãy nhớ mã PIN mới cho lần xác thực tiếp theo.
                     </Text>
                     <TouchableOpacity
                         onPress={() => navigation.goBack()}
                         style={[styles.doneBtn, { backgroundColor: c.success }]}
                         activeOpacity={0.85}
                     >
-                        <Text style={styles.doneBtnText}>Quay lại</Text>
+                        <Text style={[styles.doneBtnText, { color: c.onPrimary }]}>Quay lại</Text>
                     </TouchableOpacity>
                 </Animated.View>
             </View>
         );
     }
 
+    const otpActionType = (resetMode || authByBiometric) ? OtpActionType.PIN_RESET : OtpActionType.PIN_CHANGE;
+    const modeColor = resetMode ? c.warning : c.primary;
+    const modeBorderColor = resetMode ? c.warningBorder : c.primaryBorder;
+    const modeBgColor = resetMode ? c.warningGlass : c.primaryGlass;
+
     return (
-        <View style={[styles.container, { backgroundColor: c.background }]}>
-            <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
+        <KeyboardAvoidingView
+            style={[styles.container, { backgroundColor: bgColor }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-            {/* Header */}
-            <LinearGradient
-                colors={[c.primary, c.primaryDark ?? c.primary]}
-                style={[styles.header, { paddingTop: stableTop + 10 }]}
-            >
-                <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={handleBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                        <MaterialCommunityIcons name="arrow-left" size={24} color={c.onPrimary} />
-                    </TouchableOpacity>
-                    <View style={styles.headerCenter}>
-                        <MaterialCommunityIcons name="shield-lock" size={32} color={c.onPrimary} />
+            <View style={[styles.mainWrap, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+                {/* Header */}
+                <View style={[styles.header, { paddingTop: Math.max(insets.top, 44) }]}>
+                    <View style={styles.headerRow}>
+                        <TouchableOpacity
+                            onPress={handleBack}
+                            style={styles.backBtn}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <MaterialCommunityIcons name="arrow-left" size={24} color={c.textPrimary} />
+                        </TouchableOpacity>
+                        <Text style={[styles.headerTitle, { color: c.textPrimary }]}>
+                            {resetMode ? 'Đặt lại mã PIN' : 'Đổi mã PIN'}
+                        </Text>
+                        <View style={{ width: 40 }} />
                     </View>
-                    <View style={styles.backBtn} />
-                </View>
-                <Text style={[styles.headerTitle, { color: c.onPrimary }]}>{titleByStep[step]}</Text>
-                <Text style={[styles.headerSub, { color: c.onPrimary + 'B0' }]}>{subtitleByStep[step]}</Text>
-            </LinearGradient>
-
-            {/* PIN dots */}
-            <View style={styles.pinArea}>
-                {/* Step indicator */}
-                <View style={styles.stepRow}>
-                    {['oldPin', 'newPin', 'confirmPin'].map((s, i) => (
-                        <View
-                            key={s}
-                            style={[
-                                styles.stepDot,
-                                {
-                                    backgroundColor: i <= stepIndex ? c.primary : c.border,
-                                    width: step === s ? 24 : 8,
-                                },
-                            ]}
-                        />
-                    ))}
                 </View>
 
-                <View style={styles.dotsRow}>
-                    {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-                        <PinDot key={i} filled={i < currentPin.length} shake={shakeAnim} theme={theme} />
-                    ))}
+                <View
+                    style={[
+                        styles.modeBadge,
+                        { borderColor: modeBorderColor, backgroundColor: modeBgColor },
+                    ]}
+                >
+                    <MaterialCommunityIcons
+                        name={resetMode ? 'lock-reset' : 'shield-edit-outline'}
+                        size={15}
+                        color={modeColor}
+                    />
+                    <Text style={[styles.modeBadgeText, { color: modeColor }]}>
+                        {resetMode ? 'Quên mã PIN' : 'Bảo mật tài khoản'}
+                    </Text>
                 </View>
-                {error ? <Text style={[styles.errorText, { color: c.error }]}>{error}</Text> : null}
-                {verifyingOld ? <ActivityIndicator color={c.primary} style={{ marginTop: 16 }} /> : null}
-            </View>
 
-            {/* Numpad */}
-            <View style={[styles.numpad, { backgroundColor: c.backgroundSecondary }]}>
-                {NUMPAD_KEYS.map((row, rowIdx) => (
-                    <View key={rowIdx} style={styles.numpadRow}>
-                        {row.map((key, colIdx) => {
-                            const isBackspace = key === '⌫';
-                            const isEmpty = key === '';
-                            return (
-                                <TouchableOpacity
-                                    key={colIdx}
+                <View style={[styles.card, { backgroundColor: c.backgroundSecondary, borderColor: c.border }]}>
+                    {/* Step indicator */}
+                    <View style={styles.stepRow}>
+                        {steps.map((s, i) => (
+                            <View key={s} style={styles.stepItemRow}>
+                                <View
                                     style={[
-                                        styles.numpadKey,
+                                        styles.stepCircle,
                                         {
-                                            backgroundColor: isEmpty
-                                                ? 'transparent'
-                                                : isBackspace
-                                                    ? c.backgroundTertiary
-                                                    : c.surface,
-                                            borderColor: isEmpty ? 'transparent' : c.border,
+                                            backgroundColor: i <= stepIndex ? accentColor : c.backgroundTertiary,
                                         },
                                     ]}
-                                    onPress={() => handleKeyPress(key)}
-                                    disabled={isEmpty || submitting || verifyingOld}
-                                    activeOpacity={0.6}
                                 >
-                                    {isBackspace ? (
-                                        <MaterialCommunityIcons name="backspace-outline" size={22} color={c.textSecondary} />
+                                    {i < stepIndex ? (
+                                        <MaterialCommunityIcons name="check" size={12} color={c.onPrimary} />
                                     ) : (
-                                        <Text style={[styles.numpadKeyText, { color: c.textPrimary }]}>{key}</Text>
+                                        <Text style={[styles.stepCircleText, { color: i <= stepIndex ? c.onPrimary : c.textSecondary }]}>{i + 1}</Text>
                                     )}
-                                </TouchableOpacity>
-                            );
-                        })}
+                                </View>
+                                {i < steps.length - 1 && (
+                                    <View
+                                        style={[
+                                            styles.stepLine,
+                                            { backgroundColor: i < stepIndex ? accentColor : c.backgroundTertiary },
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        ))}
                     </View>
-                ))}
+
+                    {/* Title */}
+                    <View style={styles.titleArea}>
+                        <Text style={[styles.stepTitle, { color: c.textPrimary }]}>{titleByStep[step]}</Text>
+                        <Text style={[styles.stepSubtitle, { color: c.textSecondary }]}>{subtitleByStep[step]}</Text>
+                    </View>
+
+                    {/* PIN input */}
+                    <Animated.View
+                        style={[
+                            styles.pinInputWrap,
+                            { transform: [{ translateX: shakeAnim }] },
+                        ]}
+                    >
+                        <PinCodeInput
+                            ref={pinInputRef}
+                            value={currentPin}
+                            onChange={handlePinChange}
+                            length={PIN_LENGTH}
+                            editable={!verifyingOld && !submitting && isInputStep}
+                            autoFocus
+                            hasError={Boolean(error)}
+                            masked
+                            containerStyle={styles.pinRow}
+                            cellStyle={styles.pinCell}
+                        />
+                    </Animated.View>
+
+                    {/* Error / Loading */}
+                    {error ? <Text style={[styles.errorText, { color: c.error }]}>{error}</Text> : null}
+                    {verifyingOld ? <ActivityIndicator color={accentColor} style={{ marginTop: 12 }} /> : null}
+
+                    {/* Biometric button — only shown on auth step when biometric available */}
+                    {step === 'auth' && biometricAvailable && (
+                        <TouchableOpacity
+                            onPress={handleBiometricAuth}
+                            style={[
+                                styles.biometricBtn,
+                                { borderColor: c.primaryBorder, backgroundColor: c.primaryGlass },
+                            ]}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialCommunityIcons
+                                name={biometricType === 'facial' ? 'face-recognition' : 'fingerprint'}
+                                size={24}
+                                color={accentColor}
+                            />
+                            <Text style={[styles.biometricText, { color: accentColor }]}>
+                                {biometricType === 'facial' ? 'Dùng Face ID' : 'Dùng vân tay'}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+
+                    <Text style={[styles.hintText, { color: c.textSecondary }]}>
+                        Nhấn trực tiếp vào từng ô để mở bàn phím số và nhập mã PIN.
+                    </Text>
+                </View>
             </View>
 
             {/* Smart OTP Modal */}
             <OTPVerifyModal
                 visible={otpVisible}
-                actionType={OtpActionType.PIN_CHANGE}
+                actionType={otpActionType}
                 actionData={{}}
                 title="Xác thực Smart OTP"
-                description="Nhập mã OTP để xác nhận đổi mã PIN"
+                description={resetMode ? 'Nhập mã OTP để đặt lại mã PIN' : 'Nhập mã OTP để xác nhận đổi mã PIN'}
                 onSuccess={handleOtpSuccess}
                 onCancel={handleOtpCancel}
             />
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    mainWrap: {
+        flex: 1,
+        paddingHorizontal: 16,
+    },
     header: {
-        paddingBottom: 24,
-        paddingHorizontal: 24,
-        alignItems: 'center',
+        paddingHorizontal: 0,
+        paddingBottom: 8,
     },
     headerRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        width: '100%',
-        marginBottom: 12,
+        justifyContent: 'space-between',
+    },
+    modeBadge: {
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        borderWidth: 1,
+        borderRadius: 999,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        marginTop: 6,
+        marginBottom: 14,
+    },
+    modeBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    card: {
+        borderRadius: 24,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 18,
     },
     backBtn: {
         width: 40,
@@ -380,73 +484,93 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    headerCenter: { alignItems: 'center' },
     headerTitle: {
-        fontSize: 22,
+        fontSize: 17,
         fontWeight: '700',
-        marginTop: 4,
-        letterSpacing: 0.3,
-    },
-    headerSub: {
-        fontSize: 13,
-        marginTop: 6,
         textAlign: 'center',
-        paddingHorizontal: 16,
     },
     stepRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        marginBottom: 32,
-    },
-    stepDot: {
-        height: 8,
-        borderRadius: 4,
-    },
-    pinArea: {
-        flex: 1,
         justifyContent: 'center',
+        paddingTop: 12,
+        paddingBottom: 16,
+        paddingHorizontal: 8,
+    },
+    stepItemRow: {
+        flexDirection: 'row',
         alignItems: 'center',
-    },
-    dotsRow: {
-        flexDirection: 'row',
-        gap: 16,
-    },
-    dot: {
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        borderWidth: 2,
-    },
-    errorText: {
-        marginTop: 16,
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    numpad: {
-        paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-        paddingTop: 16,
-        paddingHorizontal: 16,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-    },
-    numpadRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-        gap: 12,
-    },
-    numpadKey: {
         flex: 1,
-        aspectRatio: 1.6,
+    },
+    stepCircle: {
+        width: 24,
+        height: 24,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        maxHeight: 60,
     },
-    numpadKeyText: {
-        fontSize: 22,
+    stepCircleText: {
+        color: '#FFF',
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    stepLine: {
+        flex: 1,
+        height: 2,
+        marginHorizontal: 6,
+        borderRadius: 1,
+    },
+    titleArea: {
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        marginBottom: 18,
+    },
+    stepTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    stepSubtitle: {
+        fontSize: 13,
+        textAlign: 'center',
+    },
+    pinInputWrap: {
+        marginBottom: 8,
+        alignItems: 'center',
+    },
+    pinRow: {
+        gap: 10,
+    },
+    pinCell: {
+        width: 46,
+        height: 56,
+        borderRadius: 16,
+    },
+    errorText: {
+        color: '#EB5757',
+        fontSize: 13,
+        fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    biometricBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        marginTop: 20,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    hintText: {
+        marginTop: 12,
+        textAlign: 'center',
+        fontSize: 12,
+    },
+    biometricText: {
+        fontSize: 15,
         fontWeight: '600',
     },
     successWrapper: {
@@ -481,8 +605,8 @@ const styles = StyleSheet.create({
         borderRadius: 14,
     },
     doneBtnText: {
-        color: '#000',
         fontSize: 16,
         fontWeight: '700',
     },
 });
+

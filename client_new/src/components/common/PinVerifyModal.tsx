@@ -1,10 +1,10 @@
 /**
- * PinVerifyModal
+ * PinVerifyModal — bottom sheet PIN verification with native keyboard
  * Modal xác thực mã PIN 6 chữ số — dùng cho:
  *  - Gate khi vào tab BNPL / Loan (1 lần/phiên)
  *  - Xác thực trước Smart OTP khi tạo khoản vay
  */
-import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     View,
     Text,
@@ -16,85 +16,58 @@ import {
     StatusBar,
     Vibration,
     ActivityIndicator,
-    Alert,
+    Keyboard,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { pinAPI } from '../../features/auth/api/pin.api';
+import { PinCodeInput, PinCodeInputRef } from './PinCodeInput';
 import * as LocalAuthentication from 'expo-local-authentication';
-
-const NUMPAD_KEYS = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['', '0', '⌫'],
-];
 
 const PIN_LENGTH = 6;
 
 interface PinVerifyModalProps {
     visible: boolean;
-    /** Gọi khi xác thực thành công */
     onSuccess: () => void;
-    /** Gọi khi huỷ (nếu cho phép huỷ) */
     onCancel?: () => void;
-    /** Cho phép nút đóng? (false cho gate bắt buộc) */
+    onForgotPin?: () => void;
     dismissable?: boolean;
     title?: string;
     subtitle?: string;
-}
-
-function PinDot({ filled, shake, theme }: { filled: boolean; shake: Animated.Value; theme: any }) {
-    return (
-        <Animated.View
-            style={[
-                styles.dot,
-                {
-                    borderColor: filled ? theme.colors.primary : theme.colors.border,
-                    backgroundColor: filled ? theme.colors.primary : 'transparent',
-                    transform: [{ translateX: shake }],
-                },
-            ]}
-        />
-    );
 }
 
 export function PinVerifyModal({
     visible,
     onSuccess,
     onCancel,
+    onForgotPin,
     dismissable = true,
-    title = 'Nhập mã PIN',
-    subtitle = 'Nhập mã PIN 6 chữ số để tiếp tục',
+    title = 'Nhập mã PIN xác thực',
+    subtitle,
 }: PinVerifyModalProps) {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
     const c = theme.colors;
+    const isDark = theme.mode === 'dark';
 
     const [pin, setPin] = useState('');
     const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState('');
+    const [biometricLoading, setBiometricLoading] = useState(false);
     const shakeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(0)).current;
+    const pinInputRef = useRef<PinCodeInputRef>(null);
 
-    const FALLBACK_TOP = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
-    const cachedTopInset = useRef<number>(FALLBACK_TOP);
-    const [ready, setReady] = useState(false);
-
-    useLayoutEffect(() => {
-        if (insets.top > 0 && !ready) {
-            cachedTopInset.current = insets.top;
-            setReady(true);
-        }
-    }, [insets.top, ready]);
-
-    const stableTop = cachedTopInset.current;
+    const focusPinInput = useCallback(() => {
+        if (!visible || verifying) return;
+        pinInputRef.current?.focus();
+    }, [visible, verifying]);
 
     // ── Biometric ──
     const [biometricAvailable, setBiometricAvailable] = useState(false);
     const [biometricType, setBiometricType] = useState<'fingerprint' | 'facial'>('fingerprint');
-    const biometricPrompted = useRef(false);
     const onSuccessRef = useRef(onSuccess);
     onSuccessRef.current = onSuccess;
 
@@ -114,7 +87,25 @@ export function PinVerifyModal({
         })();
     }, []);
 
+    // Slide-in animation
+    useEffect(() => {
+        if (visible) {
+            Animated.spring(slideAnim, {
+                toValue: 1,
+                useNativeDriver: true,
+                damping: 20,
+                stiffness: 200,
+            }).start();
+            // Focus the input when modal opens
+            setTimeout(() => focusPinInput(), 300);
+        } else {
+            slideAnim.setValue(0);
+        }
+    }, [visible, slideAnim, focusPinInput]);
+
     const handleBiometricAuth = useCallback(async () => {
+        if (biometricLoading) return;
+        setBiometricLoading(true);
         try {
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: 'Xác thực để tiếp tục',
@@ -126,28 +117,13 @@ export function PinVerifyModal({
                 setError('');
                 onSuccessRef.current();
             }
-            // Nếu người dùng huỷ hoặc lỗi → im lặng và để người dùng nhập PIN
         } catch {
-            // Bỏ qua lỗi thiếu quyền (thường xảy ra trên Expo Go)
-            // Khi build native (EAS/expo run:ios) với app.json đúng thì sẽ hoạt động
             setBiometricAvailable(false);
+        } finally {
+            setBiometricLoading(false);
+            setTimeout(() => focusPinInput(), 120);
         }
-    }, []);
-
-    useEffect(() => {
-        let timeout: NodeJS.Timeout;
-        if (visible && biometricAvailable && !biometricPrompted.current) {
-            biometricPrompted.current = true;
-            // On iOS, we want it to be immediate but after the modal slide animation starts to feel native
-            timeout = setTimeout(() => {
-                handleBiometricAuth();
-            }, Platform.OS === 'ios' ? 250 : 500);
-        }
-        if (!visible) {
-            biometricPrompted.current = false;
-        }
-        return () => timeout && clearTimeout(timeout);
-    }, [visible, biometricAvailable, handleBiometricAuth]);
+    }, [biometricLoading, focusPinInput]);
 
     const triggerShake = useCallback(() => {
         Vibration.vibrate(400);
@@ -167,7 +143,7 @@ export function PinVerifyModal({
             const status = await pinAPI.getStatus();
             if (!status.hasPin) {
                 triggerShake();
-                setError('Bạn chưa thiết lập mã PIN. Vui lòng thiết lập mã PIN trước.');
+                setError('Bạn chưa thiết lập mã PIN');
                 setTimeout(() => setPin(''), 300);
                 return;
             }
@@ -190,218 +166,278 @@ export function PinVerifyModal({
         }
     }, [onSuccess, triggerShake]);
 
-    const handleKeyPress = useCallback(
-        (key: string) => {
-            if (verifying) return;
+    const handlePinChange = useCallback((text: string) => {
+        if (verifying) return;
+        const cleaned = text.replace(/\D/g, '').slice(0, PIN_LENGTH);
+        setPin(cleaned);
+        setError('');
 
-            if (key === '⌫') {
-                setPin((prev) => prev.slice(0, -1));
-                setError('');
-                return;
-            }
-            if (!key) return;
-            if (pin.length >= PIN_LENGTH) return;
-
-            const next = pin + key;
-            setPin(next);
-            setError('');
-
-            if (next.length === PIN_LENGTH) {
-                handleVerify(next);
-            }
-        },
-        [pin, verifying, handleVerify],
-    );
+        if (cleaned.length === PIN_LENGTH) {
+            Keyboard.dismiss();
+            handleVerify(cleaned);
+        }
+    }, [verifying, handleVerify]);
 
     const handleClose = useCallback(() => {
         setPin('');
         setError('');
+        Keyboard.dismiss();
         onCancel?.();
     }, [onCancel]);
 
+    const handleForgotPin = useCallback(() => {
+        setPin('');
+        setError('');
+        Keyboard.dismiss();
+        onForgotPin?.();
+    }, [onForgotPin]);
+
+    // Colors for the modal sheet
+    const sheetBg = c.backgroundSecondary;
+    const accentColor = c.primary;
+    const linkColor = c.tertiary;
+
     return (
-        <Modal visible={visible} animationType="slide" transparent={false}>
-            <View style={[styles.container, { backgroundColor: c.background }]}>
-                <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
+        <Modal visible={visible} animationType="slide" transparent>
+            <KeyboardAvoidingView
+                style={styles.overlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-                {/* Header */}
-                <LinearGradient
-                    colors={[c.primary, c.primaryDark ?? c.primary]}
-                    style={[styles.header, { paddingTop: stableTop + 10 }]}
+                {/* Tap outside to dismiss */}
+                <TouchableOpacity
+                    style={styles.overlayTouchable}
+                    activeOpacity={1}
+                    onPress={dismissable ? handleClose : undefined}
+                />
+
+                {/* Bottom Sheet */}
+                <Animated.View
+                    style={[
+                        styles.sheet,
+                        {
+                            backgroundColor: sheetBg,
+                            paddingBottom: Math.max(insets.bottom, 16),
+                            transform: [{
+                                translateY: slideAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [600, 0],
+                                }),
+                            }],
+                        },
+                    ]}
                 >
-                    <View style={styles.headerRow}>
-                        <TouchableOpacity onPress={handleClose} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFF" />
-                        </TouchableOpacity>
-                        <View style={styles.headerCenter}>
-                            <MaterialCommunityIcons name="shield-lock" size={32} color="#FFF" />
-                        </View>
-                        <View style={styles.backBtn} />
+                    {/* Handle bar */}
+                    <View style={styles.handleBarWrap}>
+                        <View style={[styles.handleBar, { backgroundColor: isDark ? '#444' : '#D0D0D0' }]} />
                     </View>
-                    <Text style={styles.headerTitle}>{title}</Text>
-                    <Text style={styles.headerSub}>{subtitle}</Text>
-                </LinearGradient>
 
-                {/* PIN dots */}
-                <View style={styles.pinArea}>
-                    <View style={styles.dotsRow}>
-                        {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-                            <PinDot key={i} filled={i < pin.length} shake={shakeAnim} theme={theme} />
-                        ))}
+                    {/* Header row: title + close */}
+                    <View style={styles.sheetHeader}>
+                        <View style={{ width: 36 }} />
+                        <Text style={[styles.sheetTitle, { color: c.textPrimary }]}>
+                            {title}
+                        </Text>
+                        {dismissable ? (
+                            <TouchableOpacity
+                                onPress={handleClose}
+                                style={styles.closeBtn}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <MaterialCommunityIcons
+                                    name="close"
+                                    size={22}
+                                    color={c.textSecondary}
+                                />
+                            </TouchableOpacity>
+                        ) : (
+                            <View style={{ width: 36 }} />
+                        )}
                     </View>
-                    {error ? <Text style={[styles.errorText, { color: c.error }]}>{error}</Text> : null}
-                    {verifying ? <ActivityIndicator color={c.primary} style={{ marginTop: 16 }} /> : null}
-                    {biometricAvailable && (
-                        <TouchableOpacity onPress={handleBiometricAuth} style={styles.biometricBtn} activeOpacity={0.7}>
-                            <MaterialCommunityIcons
-                                name={biometricType === 'facial' ? 'face-recognition' : 'fingerprint'}
-                                size={36}
-                                color={c.primary}
-                            />
-                            <Text style={[styles.biometricText, { color: c.primary }]}>
-                                {biometricType === 'facial' ? 'Xác thực bằng Face ID' : 'Xác thực bằng vân tay'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
 
-                {/* Numpad */}
-                <View style={[styles.numpad, { backgroundColor: c.backgroundSecondary }]}>
-                    {NUMPAD_KEYS.map((row, rowIdx) => (
-                        <View key={rowIdx} style={styles.numpadRow}>
-                            {row.map((key, colIdx) => {
-                                const isBackspace = key === '⌫';
-                                const isEmpty = key === '';
-                                return (
-                                    <TouchableOpacity
-                                        key={colIdx}
-                                        style={[
-                                            styles.numpadKey,
-                                            {
-                                                backgroundColor: isEmpty
-                                                    ? 'transparent'
-                                                    : isBackspace
-                                                        ? c.backgroundTertiary
-                                                        : c.surface,
-                                                borderColor: isEmpty ? 'transparent' : c.border,
-                                            },
-                                        ]}
-                                        onPress={() => handleKeyPress(key)}
-                                        disabled={isEmpty || verifying}
-                                        activeOpacity={0.6}
-                                    >
-                                        {isBackspace ? (
-                                            <MaterialCommunityIcons
-                                                name="backspace-outline"
-                                                size={22}
-                                                color={c.textSecondary}
-                                            />
-                                        ) : (
-                                            <Text style={[styles.numpadKeyText, { color: c.textPrimary }]}>
-                                                {key}
-                                            </Text>
-                                        )}
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-                    ))}
-                </View>
-            </View>
+                    {subtitle ? (
+                        <Text style={[styles.subtitle, { color: c.textSecondary }]}>{subtitle}</Text>
+                    ) : null}
+
+                    <View style={[styles.heroIconWrap, { backgroundColor: c.primaryGlass, borderColor: c.primaryBorder }]}>
+                        <MaterialCommunityIcons name="shield-lock-outline" size={22} color={accentColor} />
+                    </View>
+
+                    {/* PIN input */}
+                    <Animated.View
+                        style={[
+                            styles.pinInputWrap,
+                            { transform: [{ translateX: shakeAnim }] },
+                        ]}
+                    >
+                        <PinCodeInput
+                            ref={pinInputRef}
+                            value={pin}
+                            onChange={handlePinChange}
+                            length={PIN_LENGTH}
+                            editable={!verifying && !biometricLoading}
+                            autoFocus={visible}
+                            hasError={Boolean(error)}
+                            masked
+                            containerStyle={styles.pinRow}
+                            cellStyle={styles.pinCell}
+                        />
+                    </Animated.View>
+
+                    {/* Error text */}
+                    {error ? (
+                        <Text style={[styles.errorText, { color: c.error }]}>{error}</Text>
+                    ) : null}
+                    {(verifying || biometricLoading) ? <ActivityIndicator color={accentColor} style={{ marginTop: 12 }} /> : null}
+
+                    {/* Biometric + Forgot PIN links */}
+                    <View style={styles.actionLinks}>
+                        {biometricAvailable && (
+                            <TouchableOpacity
+                                onPress={handleBiometricAuth}
+                                style={[
+                                    styles.biometricBtn,
+                                    { backgroundColor: c.primaryGlass, borderColor: c.primaryBorder },
+                                ]}
+                                activeOpacity={0.7}
+                                disabled={biometricLoading}
+                            >
+                                <MaterialCommunityIcons
+                                    name={biometricType === 'facial' ? 'face-recognition' : 'fingerprint'}
+                                    size={22}
+                                    color={accentColor}
+                                />
+                                <Text style={[styles.biometricText, { color: accentColor }]}>
+                                    {biometricType === 'facial' ? 'Xác thực bằng Face ID' : 'Xác thực bằng vân tay'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                        {onForgotPin && (
+                            <TouchableOpacity activeOpacity={0.7} style={styles.forgotBtn} onPress={handleForgotPin}>
+                                <Text style={[styles.forgotText, { color: linkColor }]}>
+                                    Quên mã PIN?
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    <Text style={[styles.inputHint, { color: c.textSecondary }]}>Nhấn vào ô bất kỳ để mở bàn phím số</Text>
+                </Animated.View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    header: {
-        paddingBottom: 24,
-        paddingHorizontal: 24,
-        alignItems: 'center',
-    },
-    headerRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-        marginBottom: 12,
-    },
-    backBtn: {
-        width: 40,
-        height: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    headerCenter: { alignItems: 'center' },
-    headerTitle: {
-        fontSize: 22,
-        fontWeight: '700',
-        color: '#FFF',
-        marginTop: 4,
-        letterSpacing: 0.3,
-    },
-    headerSub: {
-        fontSize: 13,
-        color: 'rgba(255,255,255,0.75)',
-        marginTop: 6,
-        textAlign: 'center',
-        paddingHorizontal: 16,
-    },
-    pinArea: {
+    overlay: {
         flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    overlayTouchable: {
+        flex: 1,
+    },
+    sheet: {
+        borderTopLeftRadius: 26,
+        borderTopRightRadius: 26,
+        overflow: 'hidden',
+    },
+    handleBarWrap: {
+        alignItems: 'center',
+        paddingTop: 10,
+        paddingBottom: 4,
+    },
+    handleBar: {
+        width: 40,
+        height: 5,
+        borderRadius: 3,
+    },
+    sheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingTop: 10,
+        paddingBottom: 8,
+    },
+    sheetTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        textAlign: 'center',
+        flex: 1,
+    },
+    closeBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    dotsRow: {
-        flexDirection: 'row',
-        gap: 16,
+    pinInputWrap: {
+        marginBottom: 8,
     },
-    dot: {
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        borderWidth: 2,
+    pinRow: {
+        gap: 10,
+    },
+    pinCell: {
+        width: 46,
+        height: 56,
+        borderRadius: 16,
+    },
+    heroIconWrap: {
+        width: 46,
+        height: 46,
+        borderRadius: 23,
+        borderWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'center',
+        marginBottom: 14,
+    },
+    subtitle: {
+        fontSize: 13,
+        textAlign: 'center',
+        paddingHorizontal: 24,
+        marginBottom: 10,
     },
     errorText: {
-        marginTop: 16,
-        fontSize: 14,
+        color: '#EB5757',
+        fontSize: 13,
         fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    actionLinks: {
+        alignItems: 'center',
+        paddingTop: 12,
+        paddingBottom: 8,
+        gap: 6,
     },
     biometricBtn: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 28,
-        paddingVertical: 8,
+        gap: 6,
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
     },
     biometricText: {
         fontSize: 14,
-        fontWeight: '500',
-        marginTop: 8,
-    },
-    numpad: {
-        paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-        paddingTop: 16,
-        paddingHorizontal: 16,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-    },
-    numpadRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-        gap: 12,
-    },
-    numpadKey: {
-        flex: 1,
-        aspectRatio: 1.6,
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        maxHeight: 60,
-    },
-    numpadKeyText: {
-        fontSize: 22,
         fontWeight: '600',
+    },
+    forgotBtn: {
+        paddingVertical: 4,
+    },
+    forgotText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    inputHint: {
+        textAlign: 'center',
+        fontSize: 12,
+        marginBottom: 14,
     },
 });
 

@@ -623,6 +623,7 @@ export default function InvestmentFlowScreen() {
         visible={showPinModal}
         onSuccess={() => { setShowPinModal(false); setShowOTPModal(true); }}
         onCancel={() => setShowPinModal(false)}
+        onForgotPin={() => { setShowPinModal(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
         dismissable
         title="Xác thực mã PIN"
         subtitle="Nhập mã PIN để xác nhận đầu tư"

@@ -841,12 +841,23 @@ export class CreditScoreService implements OnModuleInit {
       0,
     );
 
-    // Calculate credit limit strictly based on the sum of all actually taken loan capitals.
-    // We remove the evaluation config fallback because calculating utilization using the 
-    // user's CURRENT score's maxLoanAmount causes an unstable downward spiral (score drop 
-    // -> limit drop -> utilization spikes -> score drops further).
-    const totalCreditLimit = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
-    const utilizationRatio = totalCreditLimit > 0 ? totalOutstanding / totalCreditLimit : 0;
+    // ── Credit Limit Calculation (FICO-style) ──
+    // Use the HIGHEST grade's maxLoanAmount from LoanEvaluationConfig as the reference ceiling.
+    // This avoids the circular dependency (score → grade → limit → utilization → score)
+    // and mirrors FICO's approach where utilization = outstanding / total available credit limit.
+    // Fallback: sum of all loan capitals if no config or config limit is too low.
+    const totalCapital = loanDocs.reduce((acc, loan: any) => acc + Number(loan?.capital || 0), 0);
+    let maxGradeLimit = 0;
+    try {
+      const evalConfig = await this.loanEvaluationConfigModel.findOne().sort({ version: -1 }).lean();
+      if (evalConfig?.creditGrades?.length) {
+        maxGradeLimit = Math.max(...evalConfig.creditGrades.map((g: any) => Number(g.maxLoanAmount || 0)));
+      }
+    } catch {
+      // Fallback to capital sum if config unavailable
+    }
+    const totalCreditLimit = Math.max(maxGradeLimit, totalCapital, 1);
+    const utilizationRatio = totalOutstanding / totalCreditLimit;
 
     // ════════════════════════════════════════════════════
     //  S_age — Tuổi tín dụng
@@ -993,7 +1004,24 @@ export class CreditScoreService implements OnModuleInit {
     const weights = await this.getWeightConfig();
 
     const beforeScore = scoreDoc.score;
-    const afterScore = this.calculateCompositeScore(factors, weights);
+    let afterScore = this.calculateCompositeScore(factors, weights);
+
+    // ── Directional Enforcement (FICO-style behavioral guardrail) ──
+    // Late payment events can NEVER increase the score.
+    // On-time repayment/prepayment events can NEVER decrease the score.
+    // This prevents confusing scenarios like "Chậm thanh toán +86".
+    // Full recalculation (login, manual recalc) still uses raw calculated score.
+    if (isLatePayment && afterScore > beforeScore) {
+      this.logger.log(
+        `[applyRepaymentEvent] Directional cap: late_payment would increase ${beforeScore}→${afterScore}, capping at ${beforeScore}`,
+      );
+      afterScore = beforeScore;
+    } else if (!isLatePayment && afterScore < beforeScore) {
+      this.logger.log(
+        `[applyRepaymentEvent] Directional floor: repayment would decrease ${beforeScore}→${afterScore}, flooring at ${beforeScore}`,
+      );
+      afterScore = beforeScore;
+    }
 
     const reason: CreditScoreHistory['reason'] = isLatePayment
       ? 'late_payment'

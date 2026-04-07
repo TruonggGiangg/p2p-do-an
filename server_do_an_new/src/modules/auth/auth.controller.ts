@@ -24,7 +24,7 @@ import { TwoFactorService } from '../two-factor/two-factor.service';
 import { CreditScoreService } from '../credit-score/credit-score.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { SetupPinDto, VerifyPinDto, ChangePinDto } from './dto/pin.dto';
+import { SetupPinDto, VerifyPinDto, ChangePinDto, ResetPinDto } from './dto/pin.dto';
 import { RefreshTokenDto } from './dto/register.dto';
 import { KeycloakUser } from './interfaces/auth.interface';
 import type { UserPayload } from './interfaces/auth.interface';
@@ -280,6 +280,19 @@ export class AuthController {
     if (!userId) throw new UnauthorizedException();
     await this.pinService.changePin(userId, body.oldPin, body.newPin, body.sessionId);
     return { message: 'Đổi mã PIN thành công' };
+  }
+
+  @Post('pin/reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Reset mã PIN (quên PIN — chỉ cần Smart OTP)' })
+  @ApiResponse({ status: 200, description: 'Reset mã PIN thành công' })
+  @ApiResponse({ status: 400, description: 'OTP không hợp lệ' })
+  async resetPin(@CurrentUser('id') userId: string, @Body() body: ResetPinDto) {
+    if (!userId) throw new UnauthorizedException();
+    await this.pinService.resetPin(userId, body.newPin, body.sessionId);
+    return { message: 'Đặt lại mã PIN thành công' };
   }
 
   @Public()
