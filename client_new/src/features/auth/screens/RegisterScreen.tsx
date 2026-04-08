@@ -8,7 +8,6 @@ import {
     ScrollView,
     TouchableOpacity,
     Animated,
-    Alert,
     Keyboard,
     TouchableWithoutFeedback,
 } from 'react-native';
@@ -20,12 +19,14 @@ import {
     CommonButton,
     CommonInput,
     BinanceHeader,
+    useConfirmModal,
 } from '../../../components';
 
 export default function RegisterScreen() {
     const navigation = useNavigation();
     const { register, isLoading } = useAuth();
     const { theme } = useTheme();
+    const modal = useConfirmModal();
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -92,18 +93,13 @@ export default function RegisterScreen() {
                 userType: formData.userType,
             });
 
-            Alert.alert(
+            modal.success(
                 'Đăng ký thành công',
                 'Tài khoản của bạn đã được tạo. Vui lòng đăng nhập.',
-                [
-                    {
-                        text: 'Đăng nhập',
-                        onPress: () => (navigation as any).navigate('Login'),
-                    },
-                ]
+                () => (navigation as any).navigate('Login'),
             );
         } catch (error: any) {
-            Alert.alert('Đăng ký thất bại', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+            modal.error('Đăng ký thất bại', error.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
         }
     };
 

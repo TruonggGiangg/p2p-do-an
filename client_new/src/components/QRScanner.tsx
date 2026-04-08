@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     ActivityIndicator,
     Modal,
     Animated,
@@ -14,6 +13,7 @@ import {
 import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { useConfirmModal } from './common/ConfirmModal';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import VentoUltimateLoading from './common/VentoSVGLoading';
@@ -29,6 +29,7 @@ interface QRScannerProps {
 
 export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }) => {
     const { theme } = useTheme();
+    const modal = useConfirmModal();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const [torch, setTorch] = useState(false);
@@ -101,7 +102,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ visible, onClose, onScan }
             onScan(scannedValue);
             onClose();
         } else {
-            Alert.alert('Lỗi', 'Mã QR không hợp lệ.', [{ text: 'OK', onPress: () => setScanned(false) }]);
+            modal.error('Lỗi', 'Mã QR không hợp lệ.', () => setScanned(false));
         }
     };
 

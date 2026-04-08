@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useSmartOTP } from '../../../shared/hooks';
 import { CommonButton, CommonCard } from '../../../components';
 import TwoFactorService from '../../../services/two-factor.service';
 import type { DeviceBindingInfo } from '../../../types/otp.types';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 
 export const SmartOTPSection: React.FC = () => {
   const { theme } = useTheme();
@@ -20,6 +21,7 @@ export const SmartOTPSection: React.FC = () => {
     revokeDevice,
     fetchDevices,
   } = useSmartOTP();
+  const modal = useConfirmModal();
 
   const [expanded, setExpanded] = useState(false);
   const [devicesExpanded, setDevicesExpanded] = useState(false);
@@ -50,73 +52,50 @@ export const SmartOTPSection: React.FC = () => {
       const freshStatus = await TwoFactorService.getStatus();
       currentlyEnabled = freshStatus.enabled;
       setIs2FAEnabled(currentlyEnabled);
-    } catch {}
+    } catch { }
 
     const registerWithToken = async (token?: string) => {
       const success = await registerDevice(token);
       if (success) {
-        Alert.alert('Thành công', 'Thiết bị đã được đăng ký thành công!');
+        modal.success('Thành công', 'Thiết bị đã được đăng ký thành công!');
         await fetchDevices();
         setShowAuthModal(false);
         setAuthCode('');
       } else {
-        Alert.alert('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
+        modal.error('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
       }
     };
 
     if (currentlyEnabled) {
-      if (Platform.OS === 'ios') {
-        Alert.prompt(
-          'Xác thực 2FA',
-          'Vui lòng nhập mã từ ứng dụng Authenticator để đăng ký thiết bị này.',
-          [
-            { text: 'Hủy', style: 'cancel' },
-            {
-              text: 'Xác nhận',
-              onPress: (token?: string) => registerWithToken(token),
-            },
-          ],
-          'plain-text',
-        );
-      } else {
-        setShowAuthModal(true);
-      }
+      setShowAuthModal(true);
     } else {
-      Alert.alert(
-        'Đăng ký thiết bị',
-        'Bạn có muốn đăng ký thiết bị này cho Smart OTP?',
-        [
-          { text: 'Hủy', style: 'cancel' },
-          {
-            text: 'Đăng ký',
-            onPress: () => registerWithToken(),
-          },
-        ],
-      );
+      modal.confirm({
+        title: 'Đăng ký thiết bị',
+        message: 'Bạn có muốn đăng ký thiết bị này cho Smart OTP?',
+        cancelText: 'Hủy',
+        confirmText: 'Đăng ký',
+        onConfirm: () => registerWithToken(),
+      });
     }
   };
 
   const handleRevoke = (deviceId: string, deviceName: string) => {
-    Alert.alert(
-      'Xóa thiết bị',
-      `Bạn có chắc chắn muốn xóa thiết bị "${deviceName}"?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await revokeDevice(deviceId);
-            if (success) {
-              Alert.alert('Thành công', 'Thiết bị đã được xóa');
-              await fetchDevices();
-            } else {
-              Alert.alert('Lỗi', error || 'Không thể xóa thiết bị');
-            }
-          },
-        },
-      ],
-    );
+    modal.confirm({
+      title: 'Xóa thiết bị',
+      message: `Bạn có chắc chắn muốn xóa thiết bị "${deviceName}"?`,
+      cancelText: 'Hủy',
+      confirmText: 'Xóa',
+      variant: 'danger',
+      onConfirm: async () => {
+        const success = await revokeDevice(deviceId);
+        if (success) {
+          modal.success('Thành công', 'Thiết bị đã được xóa');
+          await fetchDevices();
+        } else {
+          modal.error('Lỗi', error || 'Không thể xóa thiết bị');
+        }
+      },
+    });
   };
 
   return (
@@ -202,46 +181,46 @@ export const SmartOTPSection: React.FC = () => {
                     </View>
                   </TouchableOpacity>
                   {devicesExpanded && (
-                  <ScrollView style={styles.devicesList}>
-                    {devices.map((device: DeviceBindingInfo) => (
-                      <View
-                        key={device.deviceId}
-                        style={[styles.deviceItem, { borderBottomColor: theme.colors.border + '20' }]}
-                      >
-                        <View style={styles.deviceInfo}>
-                          <View style={[styles.deviceIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
-                            <MaterialCommunityIcons
-                              name="cellphone"
-                              size={20}
-                              color={theme.colors.primary}
-                            />
-                          </View>
-                          <View style={styles.deviceDetails}>
-                            <Text style={[styles.deviceName, { color: theme.colors.textPrimary }]}>
-                              {device.deviceName || 'Thiết bị không xác định'}
-                            </Text>
-                            <Text
-                              style={[styles.deviceMeta, { color: theme.colors.textMuted }]}
-                            >
-                              {device.fingerprint?.os || 'Hệ điều hành không xác định'} • {device.registeredAt
-                                ? new Date(device.registeredAt).toLocaleDateString('vi-VN')
-                                : '—'}
-                            </Text>
-                          </View>
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => handleRevoke(device.deviceId, device.deviceName || '')}
-                          style={styles.revokeButton}
+                    <ScrollView style={styles.devicesList}>
+                      {devices.map((device: DeviceBindingInfo) => (
+                        <View
+                          key={device.deviceId}
+                          style={[styles.deviceItem, { borderBottomColor: theme.colors.border + '20' }]}
                         >
-                          <MaterialCommunityIcons
-                            name="delete-outline"
-                            size={20}
-                            color={theme.colors.textDim}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </ScrollView>
+                          <View style={styles.deviceInfo}>
+                            <View style={[styles.deviceIconContainer, { backgroundColor: theme.colors.primary + '10' }]}>
+                              <MaterialCommunityIcons
+                                name="cellphone"
+                                size={20}
+                                color={theme.colors.primary}
+                              />
+                            </View>
+                            <View style={styles.deviceDetails}>
+                              <Text style={[styles.deviceName, { color: theme.colors.textPrimary }]}>
+                                {device.deviceName || 'Thiết bị không xác định'}
+                              </Text>
+                              <Text
+                                style={[styles.deviceMeta, { color: theme.colors.textMuted }]}
+                              >
+                                {device.fingerprint?.os || 'Hệ điều hành không xác định'} • {device.registeredAt
+                                  ? new Date(device.registeredAt).toLocaleDateString('vi-VN')
+                                  : '—'}
+                              </Text>
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => handleRevoke(device.deviceId, device.deviceName || '')}
+                            style={styles.revokeButton}
+                          >
+                            <MaterialCommunityIcons
+                              name="delete-outline"
+                              size={20}
+                              color={theme.colors.textDim}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
                   )}
                 </View>
               </>
@@ -329,12 +308,12 @@ export const SmartOTPSection: React.FC = () => {
                     const registerWithToken = async (token?: string) => {
                       const success = await registerDevice(token);
                       if (success) {
-                        Alert.alert('Thành công', 'Thiết bị đã được đăng ký thành công!');
+                        modal.success('Thành công', 'Thiết bị đã được đăng ký thành công!');
                         await fetchDevices();
                         setShowAuthModal(false);
                         setAuthCode('');
                       } else {
-                        Alert.alert('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
+                        modal.error('Lỗi', error || 'Không thể đăng ký thiết bị. Vui lòng kiểm tra mã 2FA.');
                       }
                     };
                     registerWithToken(authCode);

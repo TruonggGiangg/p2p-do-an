@@ -5,13 +5,13 @@ import {
     StyleSheet,
     TouchableOpacity,
     FlatList,
-    Alert,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { BinanceHeader, CommonCard, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
 import { loanService, LoanProduct, LoanHistoryItem } from '../services/loan.service';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
@@ -63,6 +63,7 @@ export default function LoanScreen() {
     const navigation = useNavigation<LoanScreenNav>();
     const c = theme.colors;
     const isDark = theme.mode === 'dark';
+    const modal = useConfirmModal();
     const [products, setProducts] = useState<LoanProduct[]>([]);
     const [activeLoans, setActiveLoans] = useState<LoanHistoryItem[]>([]);
     const [pendingLoans, setPendingLoans] = useState<LoanHistoryItem[]>([]);
@@ -125,7 +126,7 @@ export default function LoanScreen() {
             console.error('Failed to fetch loan data:', error);
             setActiveLoans([]);
             setPendingLoans([]);
-            Alert.alert('Lỗi', 'Không thể tải danh sách sản phẩm vay');
+            modal.error('Lỗi', 'Không thể tải danh sách sản phẩm vay');
         } finally {
             setLoading(false);
             setRefreshing(false);

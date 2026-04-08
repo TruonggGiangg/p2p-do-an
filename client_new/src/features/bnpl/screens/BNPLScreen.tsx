@@ -5,7 +5,6 @@ import {
     TouchableOpacity,
     StyleSheet,
     ScrollView,
-    Alert,
     ActivityIndicator,
     RefreshControl,
     Modal,
@@ -22,7 +21,7 @@ import { bnplAPI } from '../api/bnpl.api';
 import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem, DelinquencyPolicyItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
+import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, FintechScreenSkeleton, useConfirmModal } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
@@ -65,6 +64,7 @@ export default function BNPLScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<any>();
     const { user } = useAuth();
+    const modal = useConfirmModal();
     const [wallet, setWallet] = useState<BnplWalletInfo | null>(null);
     const [loans, setLoans] = useState<BnplLoan[]>([]);
     const [schedule, setSchedule] = useState<ConsolidatedScheduleItem[]>([]);
@@ -150,7 +150,7 @@ export default function BNPLScreen() {
                 // No wallet found → show registration flow
                 setBnplStatus('no_wallet');
             } else if (error.response?.status >= 500) {
-                Alert.alert('Lỗi', 'Không thể tải dữ liệu. Vui lòng thử lại sau.');
+                modal.error('Lỗi', 'Không thể tải dữ liệu. Vui lòng thử lại sau.');
                 setBnplStatus('no_wallet');
             } else {
                 setBnplStatus('no_wallet');
@@ -170,11 +170,11 @@ export default function BNPLScreen() {
     const handleMockCreateLoan = useCallback(() => {
         const amount = parseInt(amountRaw) || 0;
         if (!amount || amount < 500_000) {
-            Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
+            modal.error('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
             return;
         }
         if (amount > (wallet?.availableCredit ?? 50_000_000)) {
-            Alert.alert('Vượt hạn mức', `Số tiền vay vượt hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet?.availableCredit ?? 0)}`);
+            modal.error('Vượt hạn mức', `Số tiền vay vượt hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet?.availableCredit ?? 0)}`);
             return;
         }
         const monthlyRate = 0.018;
@@ -235,18 +235,18 @@ export default function BNPLScreen() {
 
         // Client-side validation (server will also validate)
         if (!amount || amount < 500000) {
-            Alert.alert('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
+            modal.error('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
             return;
         }
 
         if (amount > 50000000) {
-            Alert.alert('Lỗi', 'Số tiền vay tối đa là 50,000,000 đ');
+            modal.error('Lỗi', 'Số tiền vay tối đa là 50,000,000 đ');
             return;
         }
 
         // Check available credit before preview (business logic validation)
         if (wallet && amount > wallet.availableCredit) {
-            Alert.alert(
+            modal.error(
                 'Vượt hạn mức',
                 `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}`
             );
@@ -269,7 +269,7 @@ export default function BNPLScreen() {
             }).start();
         } catch (error: any) {
             const errorMessage = error.response?.data?.message || 'Không thể xem trước khoản vay';
-            Alert.alert('Lỗi', errorMessage);
+            modal.error('Lỗi', errorMessage);
             setPreview(null);
         } finally {
             setLoadingPreview(false);
@@ -279,7 +279,7 @@ export default function BNPLScreen() {
     // ==================== CREATE HANDLER ====================
     const handleCreateLoan = useCallback(async () => {
         if (!preview) {
-            Alert.alert('Lỗi', 'Vui lòng xem trước khoản vay trước khi tạo');
+            modal.error('Lỗi', 'Vui lòng xem trước khoản vay trước khi tạo');
             return;
         }
 
@@ -288,7 +288,7 @@ export default function BNPLScreen() {
         // Re-validate credit limit (may have changed since preview)
         // Server will also validate, but this provides immediate feedback
         if (wallet && amount > wallet.availableCredit) {
-            Alert.alert(
+            modal.error(
                 'Vượt hạn mức',
                 `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}\n\nVui lòng làm mới dữ liệu để kiểm tra lại.`
             );
@@ -305,28 +305,25 @@ export default function BNPLScreen() {
                 numberOfRepayments,
             });
 
-            Alert.alert(
-                ' Thành công',
-                `Đã tạo khoản vay ${formatCurrency(loan.principal)}\nTổng phải trả: ${formatCurrency(loan.totalRepayment)}`,
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            setCreateModalVisible(false);
-                            setAmountRaw('5000000');
-                            setLoanDescription('');
-                            setNumberOfRepayments(3);
-                            setPreview(null);
-                        },
-                    },
-                ]
-            );
+            modal.show({
+                title: 'Thành công',
+                message: `Đã tạo khoản vay ${formatCurrency(loan.principal)}\nTổng phải trả: ${formatCurrency(loan.totalRepayment)}`,
+                variant: 'success',
+                confirmText: 'OK',
+                onConfirm: () => {
+                    setCreateModalVisible(false);
+                    setAmountRaw('5000000');
+                    setLoanDescription('');
+                    setNumberOfRepayments(3);
+                    setPreview(null);
+                },
+            });
 
             // Refresh all data after successful creation
             await fetchData();
         } catch (error: any) {
             const errorMessage = error.response?.data?.message || error.message || 'Không thể tạo khoản vay';
-            Alert.alert('❌ Lỗi', errorMessage);
+            modal.error('Lỗi', errorMessage);
 
             // If credit limit error, refresh wallet data
             if (error.response?.status === 400 && errorMessage.includes('hạn mức')) {
@@ -374,7 +371,7 @@ export default function BNPLScreen() {
     // ── Registration form submit
     const handleSubmitRegistration = async () => {
         if (!regForm.fullName.trim() || !regForm.cccd.trim() || !regForm.address.trim()) {
-            Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin bắt buộc.');
+            modal.error('Thiếu thông tin', 'Vui lòng điền đầy đủ thông tin bắt buộc.');
             return;
         }
         setSubmittingReg(true);
@@ -387,7 +384,7 @@ export default function BNPLScreen() {
     // ── Signature submit
     const handleSignAndActivate = () => {
         if (!termsAccepted || !signatureChecked) {
-            Alert.alert('Chưa xác nhận', 'Vui lòng đọc điều khoản và xác nhận chữ ký số.');
+            modal.error('Chưa xác nhận', 'Vui lòng đọc điều khoản và xác nhận chữ ký số.');
             return;
         }
         // Simulate wallet activation with mock data
@@ -621,7 +618,7 @@ export default function BNPLScreen() {
                 </Text>
                 <TouchableOpacity
                     style={[{ flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 10, borderRadius: 8, backgroundColor: c.primaryGlass }]}
-                    onPress={() => Alert.alert('PDF', 'Mở file PDF hợp đồng...')}
+                    onPress={() => modal.alert('PDF', 'Mở file PDF hợp đồng...')}
                 >
                     <MaterialCommunityIcons name="file-pdf-box" size={20} color={c.primary} />
                     <Text style={[{ marginLeft: 8, color: c.primary, fontWeight: '600', fontSize: 13 }]}>Xem hợp đồng đầy đủ (PDF)</Text>

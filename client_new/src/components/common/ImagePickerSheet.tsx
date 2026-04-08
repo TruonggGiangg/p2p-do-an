@@ -15,7 +15,6 @@ import {
     ActivityIndicator,
     Animated,
     Platform,
-    Alert,
     StatusBar,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -24,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useConfirmModal } from './ConfirmModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const NUM_COLUMNS = 3;
@@ -67,6 +67,7 @@ export default function ImagePickerSheet({
     allowsEditing = false,
 }: Props) {
     const { theme } = useTheme();
+    const modal = useConfirmModal();
     const insets = useSafeAreaInsets();
     const c = theme.colors;
 
@@ -246,7 +247,7 @@ export default function ImagePickerSheet({
     const handleCamera = useCallback(async () => {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert('Cần quyền Camera', 'Vui lòng cấp quyền Camera trong Cài đặt');
+            modal.error('Cần quyền Camera', 'Vui lòng cấp quyền Camera trong Cài đặt');
             return;
         }
         const result = await ImagePicker.launchCameraAsync({

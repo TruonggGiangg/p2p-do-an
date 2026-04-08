@@ -5,19 +5,19 @@ import {
     StyleSheet,
     ActivityIndicator,
     TouchableOpacity,
-    Alert,
     Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { walletAPI } from '../api/wallet.api';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
+import { BinanceHeader, WalletCard, CommonCard, CommonButton, FintechPullToRefresh, FintechScreenSkeleton, useConfirmModal } from '../../../components';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Wallet } from '../../../types/auth.types';
 
 export const WalletsScreen = () => {
     const navigation = useNavigation();
     const { theme } = useTheme();
+    const modal = useConfirmModal();
     const [wallets, setWallets] = useState<Wallet[]>([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -54,24 +54,19 @@ export const WalletsScreen = () => {
         const walletId = wallet.id || wallet._id;
         if (!walletId) return;
 
-        Alert.alert(
-            'Ví mặc định',
-            `Bạn có muốn đặt ví ${wallet.productName || 'này'} làm ví mặc định không?`,
-            [
-                { text: 'Hủy', style: 'cancel' },
-                {
-                    text: 'Đồng ý',
-                    onPress: async () => {
-                        try {
-                            await walletAPI.setDefaultWallet(walletId);
-                            fetchWallets();
-                        } catch (error) {
-                            Alert.alert('Lỗi', 'Không thể đặt ví làm mặc định');
-                        }
-                    }
+        modal.confirm({
+            title: 'Ví mặc định',
+            message: `Bạn có muốn đặt ví ${wallet.productName || 'này'} làm ví mặc định không?`,
+            confirmText: 'Đồng ý',
+            onConfirm: async () => {
+                try {
+                    await walletAPI.setDefaultWallet(walletId);
+                    fetchWallets();
+                } catch (error) {
+                    modal.error('Lỗi', 'Không thể đặt ví làm mặc định');
                 }
-            ]
-        );
+            },
+        });
     };
 
     const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);

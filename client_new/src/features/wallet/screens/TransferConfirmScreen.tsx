@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     ActivityIndicator,
     Keyboard,
     TextInput,
@@ -12,7 +11,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { CommonButton, CommonCard, BinanceHeader } from '../../../components';
+import { CommonButton, CommonCard, BinanceHeader, useConfirmModal } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI } from '../api/wallet.api';
 import SmartOTPService from '../../../services/smart-otp.service';
@@ -26,6 +25,7 @@ export default function TransferConfirmScreen() {
     const insets = useSafeAreaInsets();
     const isDark = theme.mode === 'dark';
     const c = theme.colors;
+    const modal = useConfirmModal();
 
     const { sessionId, transactionData } = (route.params as any) || {};
 
@@ -37,7 +37,7 @@ export default function TransferConfirmScreen() {
         const interval = setInterval(() => {
             const remaining = SmartOTPService.getRemainingSeconds();
             setTimer(remaining);
-            
+
             // Auto generate OTP for demo/convenience if wanted, 
             // but usually user sees it in a separate floating widget or app
             // For now, let's just keep the timer updated
@@ -52,13 +52,13 @@ export default function TransferConfirmScreen() {
             const code = await SmartOTPService.generateTOTP();
             setOtp(code);
         } catch (error: any) {
-            Alert.alert('Lỗi', error.message || 'Không thể tạo mã OTP');
+            modal.error('Lỗi', error.message || 'Không thể tạo mã OTP');
         }
     };
 
     const handleConfirm = async () => {
         if (!otp || otp.length < 6) {
-            Alert.alert('Lỗi', 'Vui lòng nhập mã OTP 6 chữ số');
+            modal.error('Lỗi', 'Vui lòng nhập mã OTP 6 chữ số');
             return;
         }
 
@@ -66,7 +66,7 @@ export default function TransferConfirmScreen() {
         try {
             const deviceId = await SmartOTPService.getDeviceId();
             const timestamp = Math.floor(Date.now() / 1000);
-            
+
             // Create signature using the same logic as server expects: otp:timestamp:actionType
             const signature = await SmartOTPService.signPayload(otp, timestamp, 'TRANSFER');
 
@@ -79,29 +79,22 @@ export default function TransferConfirmScreen() {
             });
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            
-            Alert.alert('Thành công', 'Giao dịch chuyển tiền đã được thực hiện thành công', [
-                { 
-                    text: 'Về trang chủ', 
-                    onPress: () => navigation.navigate('Main' as never) 
-                }
-            ]);
+
+            modal.success('Thành công', 'Giao dịch chuyển tiền đã được thực hiện thành công', () => {
+                navigation.navigate('Main' as never);
+            });
         } catch (error: any) {
             console.error('[TransferConfirm] Error:', error);
             const msg = error?.response?.data?.message || error?.message || 'Xác thực OTP thất bại';
-            
+
             // Nếu lỗi OTP sai → cho phép thử lại
             if (msg.includes('OTP') || msg.includes('lần thử') || msg.includes('Chữ ký')) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                Alert.alert('OTP không đúng', msg, [
-                    { text: 'Thử lại', onPress: () => setOtp('') },
-                ]);
+                modal.error('OTP không đúng', msg, () => setOtp(''));
             } else if (msg.includes('Session') || msg.includes('hết hạn')) {
-                Alert.alert('Phiên hết hạn', msg, [
-                    { text: 'Quay lại', onPress: () => navigation.goBack() },
-                ]);
+                modal.error('Phiên hết hạn', msg, () => navigation.goBack());
             } else {
-                Alert.alert('Thất bại', msg);
+                modal.error('Thất bại', msg);
             }
         } finally {
             setLoading(false);
@@ -120,19 +113,19 @@ export default function TransferConfirmScreen() {
                 <CommonCard style={[styles.summaryCard, { backgroundColor: isDark ? c.surface : '#fff' }]}>
                     <Text style={[styles.summaryLabel, { color: c.textDim }]}>Số tiền chuyển</Text>
                     <Text style={[styles.amountText, { color: c.primary }]}>{formatCurrency(transactionData?.amount || 0)}</Text>
-                    
+
                     <View style={[styles.divider, { backgroundColor: c.border }]} />
-                    
+
                     <View style={styles.infoRow}>
                         <Text style={[styles.infoLabel, { color: c.textDim }]}>Từ ví</Text>
                         <Text style={[styles.infoValue, { color: c.textPrimary }]}>{transactionData?.fromWalletName}</Text>
                     </View>
-                    
+
                     <View style={styles.infoRow}>
                         <Text style={[styles.infoLabel, { color: c.textDim }]}>Đến tài khoản</Text>
                         <Text style={[styles.infoValue, { color: c.textPrimary }]}>{transactionData?.recipientAccountNo}</Text>
                     </View>
-                    
+
                     {transactionData?.description && (
                         <View style={styles.infoRow}>
                             <Text style={[styles.infoLabel, { color: c.textDim }]}>Nội dung</Text>
@@ -166,7 +159,7 @@ export default function TransferConfirmScreen() {
                                 <Text style={styles.otpAutoBtnText}>Lấy mã</Text>
                             </TouchableOpacity>
                         </View>
-                        
+
                         <View style={styles.timerContainer}>
                             <Ionicons name="time-outline" size={16} color={timer < 10 ? c.error : c.textDim} />
                             <Text style={[styles.timerText, { color: timer < 10 ? c.error : c.textDim }]}>
@@ -191,7 +184,7 @@ export default function TransferConfirmScreen() {
                     variant="primary"
                     disabled={loading || !otp}
                 />
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.cancelButton}
                     onPress={() => navigation.goBack()}
                     disabled={loading}

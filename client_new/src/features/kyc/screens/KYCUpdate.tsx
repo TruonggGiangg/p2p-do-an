@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     Image,
     ScrollView,
     ActivityIndicator,
@@ -22,6 +21,7 @@ import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft } from 'react-nat
 import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { kycService } from '../services/kyc.service';
 import { KYCStepIndicator } from '../components/KYCStepIndicator';
 import { KYCInfoCard } from '../components/KYCInfoCard';
@@ -42,6 +42,7 @@ enum KYCStep {
 
 const KYCUpdate: React.FC = () => {
     const { theme, themeMode } = useTheme();
+    const modal = useConfirmModal();
     const c = theme.colors;
     const isDark = themeMode === 'dark';
     const navigation = useNavigation<any>();
@@ -65,24 +66,24 @@ const KYCUpdate: React.FC = () => {
                 ImagePicker.requestMediaLibraryPermissionsAsync(),
             ]);
             if (cam.status !== 'granted' && !cam.canAskAgain) {
-                Alert.alert(
-                    'Cần quyền Camera',
-                    'Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
-                    [
-                        { text: 'Để sau', style: 'cancel' },
-                        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-                    ],
-                );
+                modal.show({
+                    title: 'Cần quyền Camera',
+                    message: 'Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
+                    variant: 'warning',
+                    cancelText: 'Để sau',
+                    confirmText: 'Mở Cài đặt',
+                    onConfirm: () => Linking.openSettings(),
+                });
             }
             if (lib.status !== 'granted' && !lib.canAskAgain) {
-                Alert.alert(
-                    'Cần quyền Thư viện ảnh',
-                    'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
-                    [
-                        { text: 'Để sau', style: 'cancel' },
-                        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-                    ],
-                );
+                modal.show({
+                    title: 'Cần quyền Thư viện ảnh',
+                    message: 'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
+                    variant: 'warning',
+                    cancelText: 'Để sau',
+                    confirmText: 'Mở Cài đặt',
+                    onConfirm: () => Linking.openSettings(),
+                });
             }
         })();
     }, []);
@@ -119,16 +120,16 @@ const KYCUpdate: React.FC = () => {
                 if (status !== 'granted') {
                     if (!canAskAgain) {
                         // Quyền bị từ chối vĩnh viễn → hướng dẫn mở cài đặt
-                        Alert.alert(
-                            'Cần quyền Camera',
-                            'Bạn đã từ chối quyền camera. Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
-                            [
-                                { text: 'Hủy', style: 'cancel' },
-                                { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-                            ]
-                        );
+                        modal.show({
+                            title: 'Cần quyền Camera',
+                            message: 'Bạn đã từ chối quyền camera. Vui lòng vào Cài đặt để bật quyền camera cho ứng dụng.',
+                            variant: 'warning',
+                            cancelText: 'Hủy',
+                            confirmText: 'Mở Cài đặt',
+                            onConfirm: () => Linking.openSettings(),
+                        });
                     } else {
-                        Alert.alert('Thất bại', 'Cần quyền camera để chụp ảnh CCCD');
+                        modal.error('Thất bại', 'Cần quyền camera để chụp ảnh CCCD');
                     }
                     return;
                 }
@@ -142,16 +143,16 @@ const KYCUpdate: React.FC = () => {
                 const { status, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
                 if (status !== 'granted') {
                     if (!canAskAgain) {
-                        Alert.alert(
-                            'Cần quyền Thư viện ảnh',
-                            'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
-                            [
-                                { text: 'Hủy', style: 'cancel' },
-                                { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-                            ]
-                        );
+                        modal.show({
+                            title: 'Cần quyền Thư viện ảnh',
+                            message: 'Vui lòng vào Cài đặt để bật quyền truy cập thư viện ảnh.',
+                            variant: 'warning',
+                            cancelText: 'Hủy',
+                            confirmText: 'Mở Cài đặt',
+                            onConfirm: () => Linking.openSettings(),
+                        });
                     } else {
-                        Alert.alert('Thất bại', 'Cần quyền truy cập thư viện ảnh');
+                        modal.error('Thất bại', 'Cần quyền truy cập thư viện ảnh');
                     }
                     return;
                 }
@@ -232,11 +233,11 @@ const KYCUpdate: React.FC = () => {
     const handleNext = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (currentStep === KYCStep.FRONT_ID && !frontImage) {
-            Alert.alert('Chưa có ảnh', 'Vui lòng cung cấp mặt trước CCCD');
+            modal.error('Chưa có ảnh', 'Vui lòng cung cấp mặt trước CCCD');
             return;
         }
         if (currentStep === KYCStep.BACK_ID && !backImage) {
-            Alert.alert('Chưa có ảnh', 'Vui lòng cung cấp mặt sau CCCD');
+            modal.error('Chưa có ảnh', 'Vui lòng cung cấp mặt sau CCCD');
             return;
         }
         if (currentStep === KYCStep.FACE_MATCHING && !isFaceVerified) {
@@ -272,14 +273,12 @@ const KYCUpdate: React.FC = () => {
             });
             if (res?.success) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert('Hoàn tất', 'Hồ sơ đã được gửi và đang chờ phê duyệt.', [
-                    { text: 'Xong', onPress: () => navigation.goBack() }
-                ]);
+                modal.success('Hoàn tất', 'Hồ sơ đã được gửi và đang chờ phê duyệt.', () => navigation.goBack());
             } else {
-                Alert.alert('Lỗi', res?.message || 'Không thể gửi hồ sơ');
+                modal.error('Lỗi', res?.message || 'Không thể gửi hồ sơ');
             }
         } catch (err) {
-            Alert.alert('Lỗi', 'Kết nối máy chủ thất bại');
+            modal.error('Lỗi', 'Kết nối máy chủ thất bại');
         } finally {
             setLoading(false);
         }

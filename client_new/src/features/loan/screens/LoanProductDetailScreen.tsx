@@ -5,7 +5,6 @@ import {
     StyleSheet,
     ActivityIndicator,
     TouchableOpacity,
-    Alert,
     Animated,
     StatusBar,
 } from 'react-native';
@@ -17,6 +16,7 @@ import { FintechPullToRefresh, BinanceHeader } from '../../../components';
 import { loanService, LoanProduct, LoanDocumentType, LoanProductConfig } from '../services/loan.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 
 type RouteParams = { product: LoanProduct };
 type LoanProductDetailNav = NativeStackNavigationProp<RootStackParamList, 'LoanProductDetail'>;
@@ -33,6 +33,7 @@ export default function LoanProductDetailScreen() {
         textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
     };
     const styles = React.useMemo(() => getStyles(EMERALD_THEME), [EMERALD_THEME]);
+    const modal = useConfirmModal();
 
     const route = useRoute();
     const navigation = useNavigation<LoanProductDetailNav>();
@@ -55,7 +56,7 @@ export default function LoanProductDetailScreen() {
             setDocumentTypes(list);
             setConfig(cfg ?? null);
         } catch (e) {
-            Alert.alert('Lỗi', 'Không thể tải danh sách tài liệu');
+            modal.error('Lỗi', 'Không thể tải danh sách tài liệu');
         } finally {
             setLoading(false);
         }

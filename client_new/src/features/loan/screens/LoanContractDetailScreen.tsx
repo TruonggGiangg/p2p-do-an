@@ -5,7 +5,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Dimensions,
     Modal,
@@ -22,6 +21,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { BinanceHeader } from '../../../components';
 import {
     loanService,
@@ -71,6 +71,7 @@ export default function LoanContractDetailScreen() {
     const { theme } = useTheme();
     const colors = theme.colors;
     const insets = useSafeAreaInsets();
+    const modal = useConfirmModal();
 
     const contractIdParam: string = route.params?.contractId;
     const loanIdParam: string | undefined = route.params?.loanId;
@@ -116,7 +117,7 @@ export default function LoanContractDetailScreen() {
             }
         } catch (err) {
             console.error('[ContractDetail] Error:', err);
-            Alert.alert('Lỗi', 'Không thể tải hợp đồng');
+            modal.error('Lỗi', 'Không thể tải hợp đồng');
         } finally {
             setLoading(false);
         }
@@ -150,7 +151,7 @@ export default function LoanContractDetailScreen() {
                 tenure: contract.tenure,
             });
         } catch (err: any) {
-            Alert.alert('Lỗi', err?.response?.data?.message || err?.message || 'Không thể ký hợp đồng');
+            modal.error('Lỗi', err?.response?.data?.message || err?.message || 'Không thể ký hợp đồng');
         } finally {
             setSigning(false);
         }
@@ -173,7 +174,7 @@ export default function LoanContractDetailScreen() {
                 ]),
             ]).start();
         } else if (status === 'rejected') {
-            Alert.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng. Bạn có thể ký lại bất kỳ lúc nào.');
+            modal.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng. Bạn có thể ký lại bất kỳ lúc nào.');
         }
         // 'failed' — Error already shown in modal
     };
@@ -437,8 +438,8 @@ export default function LoanContractDetailScreen() {
                     )}
                     <TouchableOpacity
                         style={[
-                            styles.signBtn, 
-                            { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary }, 
+                            styles.signBtn,
+                            { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary },
                             signing && styles.signBtnDisabled
                         ]}
                         onPress={() => setShowSignConfirm(true)}
@@ -507,8 +508,8 @@ export default function LoanContractDetailScreen() {
                             )}
                             <TouchableOpacity
                                 style={[
-                                    styles.signBtn, 
-                                    { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary, marginTop: 12 }, 
+                                    styles.signBtn,
+                                    { backgroundColor: (!isFullMatch || signing) ? colors.border : colors.primary, marginTop: 12 },
                                     signing && styles.signBtnDisabled
                                 ]}
                                 onPress={() => { setShowContract(false); setShowSignConfirm(true); }}

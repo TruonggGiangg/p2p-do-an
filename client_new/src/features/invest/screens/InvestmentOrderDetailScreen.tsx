@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  Alert, StyleSheet, StatusBar, Platform,
+  StyleSheet, StatusBar, Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, useConfirmModal } from '../../../components';
 import investService, { InvestmentOrderItem } from '../services/invest.service';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -39,6 +39,7 @@ function CircularProgress({ pct, size, color, bgColor, textColor }: {
 export default function InvestmentOrderDetailScreen() {
   const { theme } = useTheme();
   const c = theme.colors;
+  const modal = useConfirmModal();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const orderId: string = route.params?.orderId;
@@ -52,7 +53,7 @@ export default function InvestmentOrderDetailScreen() {
       const data = await investService.getInvestmentOrderById(orderId);
       setOrder(data);
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.message || 'Không tải được chi tiết');
+      modal.error('Lỗi', e?.message || 'Không tải được chi tiết');
     } finally { setLoading(false); }
   }, [orderId]);
 
@@ -63,29 +64,31 @@ export default function InvestmentOrderDetailScreen() {
   );
 
   const handleClose = () => {
-    Alert.alert('Đóng lệnh đầu tư', 'Hệ thống sẽ không ghép thêm khoản vay mới.', [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Đóng', style: 'destructive', onPress: async () => {
-          setClosing(true);
-          try { await investService.closeInvestmentOrder(orderId); fetchOrder(); }
-          catch (e: any) { Alert.alert('Lỗi', e?.message || 'Không thể đóng'); }
-          finally { setClosing(false); }
-        },
+    modal.confirm({
+      title: 'Đóng lệnh đầu tư',
+      message: 'Hệ thống sẽ không ghép thêm khoản vay mới.',
+      confirmText: 'Đóng',
+      variant: 'danger',
+      onConfirm: async () => {
+        setClosing(true);
+        try { await investService.closeInvestmentOrder(orderId); fetchOrder(); }
+        catch (e: any) { modal.error('Lỗi', e?.message || 'Không thể đóng'); }
+        finally { setClosing(false); }
       },
-    ]);
+    });
   };
 
   const handleDelete = () => {
-    Alert.alert('Xóa lệnh đầu tư', 'Bạn chắc chắn muốn xóa?', [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Xóa', style: 'destructive', onPress: async () => {
-          try { await investService.deleteInvestmentOrder(orderId); navigation.goBack(); }
-          catch (e: any) { Alert.alert('Lỗi', e?.message || 'Không thể xóa'); }
-        },
+    modal.confirm({
+      title: 'Xóa lệnh đầu tư',
+      message: 'Bạn chắc chắn muốn xóa?',
+      confirmText: 'Xóa',
+      variant: 'danger',
+      onConfirm: async () => {
+        try { await investService.deleteInvestmentOrder(orderId); navigation.goBack(); }
+        catch (e: any) { modal.error('Lỗi', e?.message || 'Không thể xóa'); }
       },
-    ]);
+    });
   };
 
   const handleLoanPress = async (item: any) => {
@@ -93,9 +96,9 @@ export default function InvestmentOrderDetailScreen() {
       try {
         const contract = await investService.getContractByLoanId(item.loanId);
         if (contract) navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
-        else Alert.alert('Chưa sẵn sàng', 'Hợp đồng đang được tạo, vui lòng thử lại sau.');
+        else modal.alert('Chưa sẵn sàng', 'Hợp đồng đang được tạo, vui lòng thử lại sau.');
       } catch (e: any) {
-        Alert.alert('Lỗi', e?.message || 'Không thể mở chi tiết hợp đồng.');
+        modal.error('Lỗi', e?.message || 'Không thể mở chi tiết hợp đồng.');
       }
     } else {
       navigation.navigate('SchedulePreview', { loanApplicationId: item.loanId, numNotes: item.nodeMatch, readonly: false, investmentOrderId: orderId });
@@ -170,16 +173,16 @@ export default function InvestmentOrderDetailScreen() {
             {/* Info grid */}
             <View style={[s.infoGrid, { backgroundColor: c.backgroundSecondary }]}>
               <View style={s.gridRow}>
-                <InfoItem label="💵 Vốn đầu tư" value={`${order.capital.toLocaleString('vi-VN')} đ`} c={c} />
-                <InfoItem label="📈 Max/khoản" value={`${order.maxCapital.toLocaleString('vi-VN')} đ`} c={c} />
+                <InfoItem icon="cash-multiple" label="Vốn đầu tư" value={`${order.capital.toLocaleString('vi-VN')} đ`} c={c} />
+                <InfoItem icon="chart-line-variant" label="Max/khoản" value={`${order.maxCapital.toLocaleString('vi-VN')} đ`} c={c} />
               </View>
               <View style={s.gridRow}>
-                <InfoItem label="🧮 Lãi suất" value={`${order.interestRange.min}% — ${order.interestRange.max}%`} c={c} />
-                <InfoItem label="📅 Kỳ hạn" value={`${order.periodRange.min} — ${order.periodRange.max} tháng`} c={c} />
+                <InfoItem icon="percent-outline" label="Lãi suất" value={`${order.interestRange.min}% — ${order.interestRange.max}%`} c={c} />
+                <InfoItem icon="calendar-range" label="Kỳ hạn" value={`${order.periodRange.min} — ${order.periodRange.max} tháng`} c={c} />
               </View>
               <View style={s.gridRow}>
-                <InfoItem label="🔖 Mục đích" value={order.purpose.join(', ')} c={c} />
-                <InfoItem label="🔠 Nodes" value={`${order.matchedNodes} / ${order.totalNodes}`} c={c} />
+                <InfoItem icon="tag-outline" label="Mục đích" value={order.purpose.join(', ')} c={c} />
+                <InfoItem icon="lan" label="Nodes" value={`${order.matchedNodes} / ${order.totalNodes}`} c={c} />
               </View>
             </View>
 
@@ -215,7 +218,7 @@ export default function InvestmentOrderDetailScreen() {
           >
             <View style={s.loanHeader}>
               <View style={s.loanIdRow}>
-                <Text style={{ fontSize: 16 }}>📄</Text>
+                <MaterialCommunityIcons name="file-document-outline" size={18} color={c.textSecondary} />
                 <Text style={[s.loanId, { color: c.text }]} numberOfLines={1}>
                   #{item.loanId.slice(-8)}
                 </Text>
@@ -229,7 +232,11 @@ export default function InvestmentOrderDetailScreen() {
             <View style={s.loanInfoRow}>
               <Text style={[s.loanLabel, { color: c.textSecondary }]}>Trạng thái</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 12 }}>{item.isInvested ? '✅' : '⏳'}</Text>
+                <MaterialCommunityIcons
+                  name={item.isInvested ? 'check-circle' : 'clock-outline'}
+                  size={16}
+                  color={item.isInvested ? '#2C5D53' : '#F59E0B'}
+                />
                 <Text style={{ fontSize: 14, fontWeight: '600', color: item.isInvested ? '#2C5D53' : '#F59E0B' }}>
                   {item.isInvested ? 'Đã đầu tư' : 'Chờ xử lý'}
                 </Text>
@@ -250,10 +257,13 @@ export default function InvestmentOrderDetailScreen() {
 }
 
 /* ── InfoItem ── */
-function InfoItem({ label, value, c }: { label: string; value: string; c: any }) {
+function InfoItem({ icon, label, value, c }: { icon?: string; label: string; value: string; c: any }) {
   return (
     <View style={s.infoItem}>
-      <Text style={[s.infoLabel, { color: c.textSecondary }]}>{label}</Text>
+      <View style={s.infoLabelRow}>
+        {icon && <MaterialCommunityIcons name={icon as any} size={15} color={c.textSecondary} style={{ marginRight: 4 }} />}
+        <Text style={[s.infoLabel, { color: c.textSecondary }]}>{label}</Text>
+      </View>
       <Text style={[s.infoValue, { color: c.text }]} numberOfLines={1}>{value}</Text>
     </View>
   );
@@ -277,6 +287,7 @@ const s = StyleSheet.create({
   infoGrid: { borderRadius: 24, padding: 24, gap: 24, marginBottom: 24 },
   gridRow: { flexDirection: 'row', gap: 16, justifyContent: 'space-between' },
   infoItem: { flex: 1, flexDirection: 'column', gap: 4 },
+  infoLabelRow: { flexDirection: 'row', alignItems: 'center' },
   infoLabel: { fontSize: 13, fontWeight: '400' },
   infoValue: { fontSize: 15, fontWeight: '600' },
 

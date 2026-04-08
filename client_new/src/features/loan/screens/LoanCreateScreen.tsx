@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    ActivityIndicator, Alert, TextInput, KeyboardAvoidingView,
+    ActivityIndicator, TextInput, KeyboardAvoidingView,
     Platform, Dimensions, StatusBar
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -18,6 +18,7 @@ import { loanService, LoanProduct, LoanProductConfig, LoanScheduleResult, Delinq
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -97,6 +98,7 @@ export default function LoanCreateScreen() {
     const route = useRoute();
     const navigation = useNavigation<LoanCreateNav>();
     const insets = useSafeAreaInsets();
+    const modal = useConfirmModal();
     const { product, willing: initialWilling } = (route.params || {}) as RouteParams;
 
     const [config, setConfig] = useState<LoanProductConfig | null>(null);
@@ -126,7 +128,7 @@ export default function LoanCreateScreen() {
             const maxR = cfg?.maxNumberOfRepayments ?? 360;
             setPeriodMonth(prev => (prev >= minR && prev <= maxR ? prev : Math.max(minR, Math.min(maxR, 12))));
         } catch {
-            Alert.alert('Lỗi', 'Không thể tải cấu hình sản phẩm');
+            modal.error('Lỗi', 'Không thể tải cấu hình sản phẩm');
         } finally {
             setLoadingConfig(false);
         }
@@ -162,11 +164,11 @@ export default function LoanCreateScreen() {
 
     const handleNext = () => {
         if (!product || capitalNum < 100000 || periodMonth < 1) {
-            Alert.alert('Lỗi', 'Vui lòng nhập số tiền và kỳ hạn hợp lệ');
+            modal.error('Lỗi', 'Vui lòng nhập số tiền và kỳ hạn hợp lệ');
             return;
         }
         if (!schedule) {
-            Alert.alert('Lỗi', 'Đang tính toán lịch trả nợ, vui lòng đợi');
+            modal.error('Lỗi', 'Đang tính toán lịch trả nợ, vui lòng đợi');
             return;
         }
         navigation.navigate('LoanConfirm', {

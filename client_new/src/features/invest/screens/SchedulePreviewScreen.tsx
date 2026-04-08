@@ -6,13 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, ActivityIndicator, TouchableOpacity,
-  StyleSheet, Alert,
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, useConfirmModal } from '../../../components';
 import investService from '../services/invest.service';
 
 interface ScheduleItem {
@@ -56,6 +56,7 @@ const HERO_ACCENT = '#CDEA2D';
 
 export default function SchedulePreviewScreen() {
   const { theme } = useTheme();
+  const modal = useConfirmModal();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -74,8 +75,7 @@ export default function SchedulePreviewScreen() {
       const result = await investService.getSchedulePreview(loanApplicationId, numNotes, investmentOrderId);
       setData(result);
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tải dữ liệu');
-      navigation.goBack();
+      modal.error('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tải dữ liệu', () => navigation.goBack());
     } finally {
       setLoading(false);
     }
@@ -83,37 +83,29 @@ export default function SchedulePreviewScreen() {
 
   const handleInvest = () => {
     if (!data) return;
-    Alert.alert(
-      'Xác nhận đầu tư',
-      `Bạn muốn đầu tư ${fmt(data.capital)} vào khoản vay này?\n\nLợi nhuận kỳ vọng: ${fmt(data.entirelyProfit)}`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Đầu tư',
-          onPress: async () => {
-            setInvesting(true);
-            try {
-              const contract = await investService.createContract({
-                loanApplicationId,
-                numNotes,
-                investmentOrderId,
-              });
-              Alert.alert('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, [
-                {
-                  text: 'Xem chi tiết',
-                  onPress: () => navigation.navigate('InvestmentContractDetail', { contractId: contract._id }),
-                },
-                { text: 'OK', onPress: () => navigation.goBack() },
-              ]);
-            } catch (e: any) {
-              Alert.alert('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo hợp đồng');
-            } finally {
-              setInvesting(false);
-            }
-          },
-        },
-      ],
-    );
+    modal.confirm({
+      title: 'Xác nhận đầu tư',
+      message: `Bạn muốn đầu tư ${fmt(data.capital)} vào khoản vay này?\n\nLợi nhuận kỳ vọng: ${fmt(data.entirelyProfit)}`,
+      confirmText: 'Đầu tư',
+      variant: 'default',
+      onConfirm: async () => {
+        setInvesting(true);
+        try {
+          const contract = await investService.createContract({
+            loanApplicationId,
+            numNotes,
+            investmentOrderId,
+          });
+          modal.success('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, () => {
+            navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
+          });
+        } catch (e: any) {
+          modal.error('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo hợp đồng');
+        } finally {
+          setInvesting(false);
+        }
+      },
+    });
   };
 
   if (loading) {

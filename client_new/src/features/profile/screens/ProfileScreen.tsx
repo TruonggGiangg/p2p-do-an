@@ -5,7 +5,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     Platform,
-    Alert,
     Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +13,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import {
     BinanceHeader,
     RoleBadges,
@@ -68,6 +68,7 @@ const formatDateTime = (value?: string) => {
 export default function ProfileScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, logout, refreshUser } = useAuth();
+    const modal = useConfirmModal();
     const { theme } = useTheme();
 
     const [loading, setLoading] = useState(true);
@@ -103,7 +104,7 @@ export default function ProfileScreen() {
             await authAPI.recalculateCreditScore();
             if (refreshUser) await refreshUser();
         } catch (error: any) {
-            Alert.alert("Lỗi", "Không thể tính lại điểm tín dụng: " + error.message);
+            modal.error('Lỗi', 'Không thể tính lại điểm tín dụng: ' + error.message);
         } finally {
             setRecalculating(false);
         }
@@ -414,8 +415,8 @@ export default function ProfileScreen() {
                                     }
                                     onPress={() => {
                                         const status = (user as any)?.kycStatus;
-                                        if (status === 'PENDING') { Alert.alert('Đang chờ phê duyệt', 'Hồ sơ xác minh danh tính của bạn đang được xử lý.', [{ text: 'Đã hiểu' }]); return; }
-                                        if (status === 'VERIFIED') { Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.'); return; }
+                                        if (status === 'PENDING') { modal.alert('Đang chờ phê duyệt', 'Hồ sơ xác minh danh tính của bạn đang được xử lý.'); return; }
+                                        if (status === 'VERIFIED') { modal.success('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.'); return; }
                                         (navigation as any).getParent()?.navigate('KYCIntro');
                                     }}
                                     color={(user as any)?.kycStatus === 'VERIFIED' ? c.success : (user as any)?.kycStatus === 'PENDING' ? c.primary : c.warning}

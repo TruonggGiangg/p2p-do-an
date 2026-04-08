@@ -18,6 +18,8 @@ export { OTPVerifyModal } from "./common/OTPVerifyModal";
 export { OTPProtectedAction } from "./common/OTPProtectedAction";
 export { PinVerifyModal } from "./common/PinVerifyModal";
 export { ToastProvider, useToast } from "./common/Toast";
+export { ConfirmModalProvider, useConfirmModal } from "./common/ConfirmModal";
+export type { ConfirmModalConfig } from "./common/ConfirmModal";
 export { default as VentoUltimateLoading } from "./common/VentoSVGLoading";
 export { default as FintechScreenSkeleton } from "./common/FintechScreenSkeleton";
 export { default as Pagination } from "./common/Pagination";
