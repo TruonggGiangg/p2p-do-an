@@ -11,7 +11,9 @@ import { ConfigService } from '@nestjs/config';
 import { InvestmentContract, LenderScheduleItem } from './schemas/investment-contract.schema';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
 import { InvestmentOrder } from './schemas/investment-order.schema';
+import { User } from '../users/schemas/user.schema';
 import { FineractFDService } from '../fineract/services/fineract-fd.service';
+import { generateInvestmentContractHTML } from './templates/investment-contract.template';
 
 @Injectable()
 export class InvestmentContractService {
@@ -22,6 +24,7 @@ export class InvestmentContractService {
     @InjectModel(InvestmentContract.name) private readonly contractModel: Model<InvestmentContract>,
     @InjectModel(LoanApplication.name) private readonly loanModel: Model<LoanApplication>,
     @InjectModel(InvestmentOrder.name) private readonly orderModel: Model<InvestmentOrder>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly fineractFDService: FineractFDService,
     private readonly configService: ConfigService,
   ) {
@@ -47,7 +50,10 @@ export class InvestmentContractService {
   private calculateLenderSchedule(
     loan: any,
     investCapital: number,
-  ): { schedule: LenderScheduleItem[]; summary: { totalPrincipal: number; totalInterest: number; totalIncome: number; periodCount: number } } {
+  ): {
+    schedule: LenderScheduleItem[];
+    summary: { totalPrincipal: number; totalInterest: number; totalIncome: number; periodCount: number };
+  } {
     let borrowerSchedule: any[] = loan.schedulePreview || [];
     const loanCapital = loan.capital || 1;
     const investmentRatio = investCapital / loanCapital;
@@ -61,7 +67,7 @@ export class InvestmentContractService {
 
       if (monthlyRate > 0) {
         const factor = Math.pow(1 + monthlyRate, periods);
-        const monthlyPay = cap * (monthlyRate * factor) / (factor - 1);
+        const monthlyPay = (cap * (monthlyRate * factor)) / (factor - 1);
         let remaining = cap;
         const generated: any[] = [];
 
@@ -183,16 +189,18 @@ export class InvestmentContractService {
     // nên không cần trừ nodeMatch cho phần đang invest
     let effectiveNodeMatch = nodeMatchSoFar;
     let orderMatchedNodes = 0;
-    
+
     if (investmentOrderId) {
       // Tìm order để biết bao nhiêu node match trên loan này thuộc order đó
       const order = await this.orderModel.findById(investmentOrderId);
       if (order) {
         const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
         orderMatchedNodes = matchedLoan?.nodeMatch || 0;
-        
+
         if (numNotes !== orderMatchedNodes) {
-          throw new BadRequestException(`Yêu cầu số lượng (${numNotes}) phải bằng đúng số lượng đã giữ (${orderMatchedNodes}).`);
+          throw new BadRequestException(
+            `Yêu cầu số lượng (${numNotes}) phải bằng đúng số lượng đã giữ (${orderMatchedNodes}).`,
+          );
         }
 
         // Trừ bớt toàn bộ nodeMatch thuộc order này
@@ -213,7 +221,7 @@ export class InvestmentContractService {
       if (shortName) {
         const fdRate = await this.fineractFDService.getFDProductAnnualRate(shortName);
         if (fdRate !== null) {
-           annualRatePercent = fdRate;
+          annualRatePercent = fdRate;
         }
       }
     } catch (err: any) {
@@ -222,7 +230,7 @@ export class InvestmentContractService {
 
     // Fallback to loan rate if FD rate not found
     if (!annualRatePercent) {
-       annualRatePercent = loan.monthlyRatePercent * 12;
+      annualRatePercent = loan.monthlyRatePercent * 12;
     }
     const monthlyRatePercent = +(annualRatePercent / 12).toFixed(2);
 
@@ -235,7 +243,7 @@ export class InvestmentContractService {
     let entirelyPay = 0;
     if (monthlyRate > 0 && periodMonth > 0) {
       const factor = Math.pow(1 + monthlyRate, periodMonth);
-      const monthlyPay = capital * (monthlyRate * factor) / (factor - 1);
+      const monthlyPay = (capital * (monthlyRate * factor)) / (factor - 1);
       entirelyPay = this.roundToCurrency(monthlyPay * periodMonth, loan.inMultiplesOf || 1000);
     } else {
       entirelyPay = capital;
@@ -264,7 +272,7 @@ export class InvestmentContractService {
       entirelyProfit,
       entirelyPay,
       serviceFee: 0,
-      status: 'active',
+      status: 'pending_signature',
       // Lender schedule
       lenderSchedule: schedule,
       scheduleTotalPrincipal: summary.totalPrincipal,
@@ -280,19 +288,16 @@ export class InvestmentContractService {
       {
         _id: loanApplicationId,
         $expr: {
-          $gte: [
-            '$totalNotes',
-            { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }
-          ]
-        }
+          $gte: ['$totalNotes', { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }],
+        },
       },
       {
         $inc: {
           investedNotes: numNotes,
           ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
-        }
+        },
       },
-      { new: true }
+      { new: true },
     );
 
     if (!updateResult) {
@@ -306,13 +311,13 @@ export class InvestmentContractService {
 
     await this.loanModel.updateOne(
       { _id: loanApplicationId },
-      { $set: { isFullMatch, matchPercentage: newMatchPercentage } }
+      { $set: { isFullMatch, matchPercentage: newMatchPercentage } },
     );
 
     this.logger.log(
       `Loan ${loanApplicationId} (Atomic Update): investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
-      `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
-      `${isFullMatch ? ' (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
+        `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
+        `${isFullMatch ? ' (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
     );
 
     // Save contract
@@ -337,10 +342,7 @@ export class InvestmentContractService {
   //  QUERY CONTRACTS
   // ═══════════════════════════════════════════════════════
 
-  async getContractsByLender(
-    lenderId: string,
-    query: { page?: number; pageSize?: number; status?: string } = {},
-  ) {
+  async getContractsByLender(lenderId: string, query: { page?: number; pageSize?: number; status?: string } = {}) {
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
@@ -371,10 +373,7 @@ export class InvestmentContractService {
   async getContractById(contractId: string, lenderId: string): Promise<InvestmentContract> {
     const contract = await this.contractModel
       .findOne({
-        $or: [
-          { _id: contractId },
-          { contractId: contractId },
-        ],
+        $or: [{ _id: contractId }, { contractId: contractId }],
         lenderId: new Types.ObjectId(lenderId),
       })
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status disbursementDate')
@@ -446,8 +445,10 @@ export class InvestmentContractService {
         effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
       }
     }
-    
-    console.log(`[getSchedulePreview calc] invOrdId=${investmentOrderId}, nodeMatchSoFar=${nodeMatchSoFar}, effectiveNodeMatch=${effectiveNodeMatch}, availableNotes=${totalLoanNotes - investedSoFar - effectiveNodeMatch}, numNotes=${numNotes}`);
+
+    console.log(
+      `[getSchedulePreview calc] invOrdId=${investmentOrderId}, nodeMatchSoFar=${nodeMatchSoFar}, effectiveNodeMatch=${effectiveNodeMatch}, availableNotes=${totalLoanNotes - investedSoFar - effectiveNodeMatch}, numNotes=${numNotes}`,
+    );
 
     const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
     if (numNotes > availableNotes) {
@@ -502,10 +503,10 @@ export class InvestmentContractService {
         const monthDate = new Date(baseDate);
         monthDate.setMonth(monthDate.getMonth() + i);
         const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 0).getDate();
-        periodInterest = compoundedBalance * (annualRatePercent / 100) / daysInYear * daysInMonth;
+        periodInterest = ((compoundedBalance * (annualRatePercent / 100)) / daysInYear) * daysInMonth;
       } else {
         // Monthly compounding: interest = balance × (annualRate / 100 / 12)
-        periodInterest = compoundedBalance * (annualRatePercent / 100) / 12;
+        periodInterest = (compoundedBalance * (annualRatePercent / 100)) / 12;
       }
 
       periodInterest = this.roundToCurrency(periodInterest, inMultiplesOf);
@@ -545,9 +546,13 @@ export class InvestmentContractService {
 
     // ── DEBUG LOG ──
     this.logger.log(`[getSchedulePreview] FD Compound Interest calculation`);
-    this.logger.log(`[DEBUG] capital=${capital}, rate=${annualRatePercent}%, period=${periodMonth}m, compounding=${compounding}`);
+    this.logger.log(
+      `[DEBUG] capital=${capital}, rate=${annualRatePercent}%, period=${periodMonth}m, compounding=${compounding}`,
+    );
     this.logger.log(`[DEBUG] daysInYear=${daysInYear}, inMultiplesOf=${inMultiplesOf}`);
-    this.logger.log(`[DEBUG] entirelyPay=${entirelyPay}, entirelyProfit=${entirelyProfit}, monthlyIncome=${monthlyIncome}`);
+    this.logger.log(
+      `[DEBUG] entirelyPay=${entirelyPay}, entirelyProfit=${entirelyProfit}, monthlyIncome=${monthlyIncome}`,
+    );
     this.logger.log(`[DEBUG] schedule length=${schedule.length}, summary=${JSON.stringify(summary)}`);
     // ── END DEBUG ──
 
@@ -564,5 +569,44 @@ export class InvestmentContractService {
       summary,
       fdConfig,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  CONTRACT HTML (render hợp đồng dạng HTML)
+  // ═══════════════════════════════════════════════════════
+
+  async getContractHTML(contractId: string, lenderId: string): Promise<string> {
+    const contract = await this.getContractById(contractId, lenderId);
+
+    // Fetch investor user info
+    const user = await this.userModel.findById(contract.lenderId).lean().exec();
+    const kyc = (user as any)?.kycData || {};
+    const profile = (user as any)?.profile || {};
+
+    const investorInfo = {
+      fullName: kyc.fullName || `${profile.lastName || ''} ${profile.firstName || ''}`.trim() || undefined,
+      idNumber: kyc.idNumber || kyc.cccd || undefined,
+      phone: (user as any)?.username || (user as any)?.phoneNumber || undefined,
+      email: (user as any)?.email || undefined,
+      address: kyc.address || kyc.permanentAddress || undefined,
+      dateOfBirth: kyc.dateOfBirth || kyc.dob || undefined,
+    };
+
+    // Fetch loan info for borrower summary
+    const loan = await this.loanModel.findById(contract.loanApplicationId).lean().exec();
+    const borrowerSummary = loan
+      ? {
+          creditScore: (loan as any).creditScore || undefined,
+          creditGrade: (loan as any).creditGrade || undefined,
+          loanPurpose: (loan as any).willing || undefined,
+          loanProductName: (loan as any).productName || undefined,
+        }
+      : {};
+
+    return generateInvestmentContractHTML({
+      contract: contract.toJSON ? contract.toJSON() : contract,
+      investorInfo,
+      borrowerSummary,
+    });
   }
 }

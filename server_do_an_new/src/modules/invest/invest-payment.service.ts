@@ -333,7 +333,7 @@ export class InvestPaymentService {
     // Total invested = sum of active contract capitals
     const activeContracts = await this.contractModel.find({
       lenderId: new Types.ObjectId(lenderId),
-      status: { $in: ['pending', 'active'] },
+      status: { $in: ['pending', 'pending_signature', 'active'] },
     });
     const totalInvested = activeContracts.reduce((sum, c) => sum + c.capital, 0);
 

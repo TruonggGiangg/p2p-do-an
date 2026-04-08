@@ -7,7 +7,9 @@ import { Model, Types } from 'mongoose';
 import { SmartCAService } from './smartca.service';
 import { DigitalSignature } from './schemas/digital-signature.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
+import { InvestmentContract } from '../invest/schemas/investment-contract.schema';
 import { generateLoanContractHTML } from '../loan/templates/loan-contract.template';
+import { generateInvestmentContractHTML } from '../invest/templates/investment-contract.template';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
 
@@ -23,6 +25,7 @@ export class DigitalSignatureController {
     private readonly moduleRef: ModuleRef,
     @InjectModel(DigitalSignature.name) private signatureModel: Model<DigitalSignature>,
     @InjectModel(LoanContract.name) private contractModel: Model<LoanContract>,
+    @InjectModel(InvestmentContract.name) private investContractModel: Model<InvestmentContract>,
   ) {}
 
   private async triggerAutoDisburseIfEligible(contractMongoId: any, userId: string): Promise<void> {
@@ -74,7 +77,7 @@ export class DigitalSignatureController {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
-    const contractHTML = generateLoanContractHTML({ contract });
+    const contractHTML = this.generateContractHTML(contract);
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
     const session = await this.smartCAService.initiateSigningSession({
@@ -121,7 +124,7 @@ export class DigitalSignatureController {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
 
-    const contractHTML = generateLoanContractHTML({ contract });
+    const contractHTML = this.generateContractHTML(contract);
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
     const result = await this.smartCAService.signDocumentV2({
@@ -145,20 +148,7 @@ export class DigitalSignatureController {
       idempotencyKey: `sign:${contract.contractId}:${Math.floor(Date.now() / 60000)}`,
     });
 
-    await this.contractModel.updateOne(
-      { _id: contract._id },
-      {
-        $set: {
-          status: 'signed',
-          signedAt: new Date(),
-          signatureData: result.signatures?.[0]?.signatureValue,
-          smartCASignatureVerified: true,
-          signatureProvider: 'vnpt_smartca',
-          signatureVerifiedAt: new Date(),
-        },
-      },
-    );
-    await this.triggerAutoDisburseIfEligible(contract._id, String(userId));
+    await this.updateContractSigned(contract, result.signatures?.[0]?.signatureValue);
 
     return {
       signatureId: signatureDoc._id?.toString(),
@@ -197,20 +187,11 @@ export class DigitalSignatureController {
       signature.completedAt = new Date();
       await signature.save();
 
-      await this.contractModel.updateOne(
-        { _id: signature.contractId },
-        {
-          $set: {
-            status: 'signed',
-            signedAt: new Date(),
-            signatureData: signature.signatureValue,
-            smartCASignatureVerified: true,
-            signatureProvider: 'vnpt_smartca',
-            signatureVerifiedAt: new Date(),
-          },
-        },
-      );
-      await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
+      // Find the contract to determine type and update
+      const confirmContract = await this.findContractByMongoId(signature.contractId);
+      if (confirmContract) {
+        await this.updateContractSigned(confirmContract, signature.signatureValue);
+      }
 
       return {
         status: 'signed',
@@ -231,20 +212,11 @@ export class DigitalSignatureController {
       }
       await signature.save();
 
-      await this.contractModel.updateOne(
-        { _id: signature.contractId },
-        {
-          $set: {
-            status: 'signed',
-            signedAt: new Date(),
-            signatureData: signature.signatureValue,
-            smartCASignatureVerified: true,
-            signatureProvider: 'vnpt_smartca',
-            signatureVerifiedAt: new Date(),
-          },
-        },
-      );
-      await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
+      // Find the contract to determine type and update
+      const successContract = await this.findContractByMongoId(signature.contractId);
+      if (successContract) {
+        await this.updateContractSigned(successContract, signature.signatureValue);
+      }
 
       return { status: 'signed', completedAt: signature.completedAt?.toISOString() };
     }
@@ -285,20 +257,10 @@ export class DigitalSignatureController {
         signature.completedAt = new Date();
         await signature.save();
 
-        await this.contractModel.updateOne(
-          { _id: signature.contractId },
-          {
-            $set: {
-              status: 'signed',
-              signedAt: new Date(),
-              signatureData: signature.signatureValue,
-              smartCASignatureVerified: true,
-              signatureProvider: 'vnpt_smartca',
-              signatureVerifiedAt: new Date(),
-            },
-          },
-        );
-        await this.triggerAutoDisburseIfEligible(signature.contractId, String(userId));
+        const statusContract = await this.findContractByMongoId(signature.contractId);
+        if (statusContract) {
+          await this.updateContractSigned(statusContract, signature.signatureValue);
+        }
       } else if (liveStatus.status !== 'pending') {
         signature.status = liveStatus.status;
         await signature.save();
@@ -327,7 +289,13 @@ export class DigitalSignatureController {
 
     if (!oldSignature) throw new BadRequestException('Không tìm thấy phiên ký');
 
-    const contract = await this.contractModel.findById(oldSignature.contractId);
+    // Try finding contract in both models
+    let contract: any = await this.contractModel.findById(oldSignature.contractId);
+    let retryContractType: 'loan' | 'invest' = 'loan';
+    if (!contract) {
+      contract = await this.investContractModel.findById(oldSignature.contractId);
+      retryContractType = 'invest';
+    }
     if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
     if (contract.status !== 'pending_signature') {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
@@ -336,7 +304,9 @@ export class DigitalSignatureController {
     oldSignature.status = 'cancelled';
     await oldSignature.save();
 
-    const contractHTML = generateLoanContractHTML({ contract });
+    const contractObj = contract.toJSON ? contract.toJSON() : contract;
+    (contractObj as any).__contractType = retryContractType;
+    const contractHTML = this.generateContractHTML(contractObj);
     const documentHash = this.smartCAService.hashDocument(contractHTML);
 
     const session = await this.smartCAService.initiateSigningSession({
@@ -396,10 +366,10 @@ export class DigitalSignatureController {
 
     if (!signature) throw new BadRequestException('Không tìm thấy chữ ký');
 
-    const contract = await this.contractModel.findById(signature.contractId);
-    if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
+    const verifyContract = await this.findContractByMongoId(signature.contractId);
+    if (!verifyContract) throw new BadRequestException('Không tìm thấy hợp đồng');
 
-    const contractHTML = generateLoanContractHTML({ contract });
+    const contractHTML = this.generateContractHTML(verifyContract);
     const currentHash = this.smartCAService.hashDocument(contractHTML);
 
     const valid = currentHash === signature.documentHash;
@@ -419,16 +389,84 @@ export class DigitalSignatureController {
     return kycData.idNumber || kycData.cccd || this.smartCAService['config'].defaultUserId || '';
   }
 
+  private async findContractByMongoId(contractMongoId: any): Promise<any | null> {
+    let contract = await this.contractModel.findById(contractMongoId).lean();
+    if (contract) {
+      (contract as any).__contractType = 'loan';
+      return contract;
+    }
+    const investContract = await this.investContractModel.findById(contractMongoId).lean();
+    if (investContract) {
+      (investContract as any).__contractType = 'invest';
+      return investContract;
+    }
+    return null;
+  }
+
   private async findContract(contractId: string, userId: string): Promise<any> {
     const query = Types.ObjectId.isValid(contractId) ? { $or: [{ _id: contractId }, { contractId }] } : { contractId };
 
+    // Search LoanContract first
     let contract = await this.contractModel.findOne({ ...query, userId: new Types.ObjectId(userId) }).lean();
-
     if (!contract) {
       contract = await this.contractModel.findOne(query).lean();
     }
+    if (contract) {
+      (contract as any).__contractType = 'loan';
+      return contract;
+    }
 
-    if (!contract) throw new BadRequestException('Không tìm thấy hợp đồng');
-    return contract;
+    // Search InvestmentContract (lenderId instead of userId)
+    let investContract = await this.investContractModel
+      .findOne({ ...query, lenderId: new Types.ObjectId(userId) })
+      .lean();
+    if (!investContract) {
+      investContract = await this.investContractModel.findOne(query).lean();
+    }
+    if (investContract) {
+      (investContract as any).__contractType = 'invest';
+      return investContract;
+    }
+
+    throw new BadRequestException('Không tìm thấy hợp đồng');
+  }
+
+  private getContractType(contract: any): 'loan' | 'invest' {
+    return contract.__contractType || (contract.lenderId ? 'invest' : 'loan');
+  }
+
+  private generateContractHTML(contract: any): string {
+    if (this.getContractType(contract) === 'invest') {
+      return generateInvestmentContractHTML({ contract });
+    }
+    return generateLoanContractHTML({ contract });
+  }
+
+  private getContractModel(contract: any): Model<any> {
+    return this.getContractType(contract) === 'invest' ? this.investContractModel : this.contractModel;
+  }
+
+  private async updateContractSigned(contract: any, signatureValue?: string): Promise<void> {
+    const model = this.getContractModel(contract);
+    const isInvest = this.getContractType(contract) === 'invest';
+
+    await model.updateOne(
+      { _id: contract._id },
+      {
+        $set: {
+          status: isInvest ? 'active' : 'signed',
+          signedAt: new Date(),
+          signatureData: signatureValue,
+          smartCASignatureVerified: true,
+          signatureProvider: 'vnpt_smartca',
+          signatureVerifiedAt: new Date(),
+        },
+      },
+    );
+
+    // Only trigger auto-disburse for loan contracts
+    if (!isInvest) {
+      await this.triggerAutoDisburseIfEligible(contract._id, String(contract.userId));
+    }
   }
 }

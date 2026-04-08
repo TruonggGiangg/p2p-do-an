@@ -21,7 +21,7 @@ export interface RepaymentHistoryItem {
   fineractTransactionId?: number;
 }
 
-export type InvestmentContractStatus = 'pending' | 'active' | 'matured' | 'closed';
+export type InvestmentContractStatus = 'pending' | 'pending_signature' | 'active' | 'matured' | 'closed';
 export type FDStatus = 'pending' | 'active' | 'matured' | 'closed' | 'premature_closed';
 
 // ── Main Schema ───────────────────────────────────────────
@@ -81,8 +81,32 @@ export class InvestmentContract extends Document {
   serviceFee: number;
 
   // ── Status ──
-  @Prop({ type: String, enum: ['pending', 'active', 'matured', 'closed'], default: 'pending', index: true })
+  @Prop({
+    type: String,
+    enum: ['pending', 'pending_signature', 'active', 'matured', 'closed'],
+    default: 'pending',
+    index: true,
+  })
   status: InvestmentContractStatus;
+
+  // ── Digital Signature ──
+  @Prop({ required: false, default: null })
+  signedAt: Date;
+
+  @Prop({ required: false, default: null })
+  signatureData: string;
+
+  @Prop({ required: false, default: false })
+  smartCASignatureVerified: boolean;
+
+  @Prop({ required: false, default: null })
+  signatureProvider: string;
+
+  @Prop({ required: false, default: null })
+  signatureVerifiedAt: Date;
+
+  @Prop({ required: false, default: null })
+  legalApprovalAt: Date;
 
   // ── Fineract Fixed Deposit ──
   @Prop({ required: false, default: null })
@@ -111,16 +135,18 @@ export class InvestmentContract extends Document {
 
   // ── Lender Schedule (lịch nhận tiền) ──
   @Prop({
-    type: [{
-      period: { type: Number, required: true },
-      dueDate: { type: String, required: true },
-      principal: { type: Number, required: true },
-      interest: { type: Number, required: true },
-      total: { type: Number, required: true },
-      status: { type: String, enum: ['pending', 'paid', 'partial', 'overdue'], default: 'pending' },
-      paidDate: { type: Date },
-      paidAmount: { type: Number },
-    }],
+    type: [
+      {
+        period: { type: Number, required: true },
+        dueDate: { type: String, required: true },
+        principal: { type: Number, required: true },
+        interest: { type: Number, required: true },
+        total: { type: Number, required: true },
+        status: { type: String, enum: ['pending', 'paid', 'partial', 'overdue'], default: 'pending' },
+        paidDate: { type: Date },
+        paidAmount: { type: Number },
+      },
+    ],
     default: [],
     _id: false,
   })
@@ -144,13 +170,15 @@ export class InvestmentContract extends Document {
 
   // ── Repayment History ──
   @Prop({
-    type: [{
-      date: { type: Date },
-      amount: { type: Number },
-      principal: { type: Number },
-      interest: { type: Number },
-      fineractTransactionId: { type: Number },
-    }],
+    type: [
+      {
+        date: { type: Date },
+        amount: { type: Number },
+        principal: { type: Number },
+        interest: { type: Number },
+        fineractTransactionId: { type: Number },
+      },
+    ],
     default: [],
     _id: false,
   })

@@ -1,18 +1,50 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * InvestmentContractDetailScreen.tsx
+ * Chi tiết hợp đồng đầu tư — WebView hợp đồng HTML + ký SmartCA
+ */
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, ScrollView, ActivityIndicator, StyleSheet, StatusBar,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import investService, { InvestmentContractItem, LenderScheduleItem } from '../services/invest.service';
+import SmartCASigningModal from '../../loan/components/SmartCASigningModal';
 
-const STATUS_MAP: Record<string, { label: string; color: string; icon: string }> = {
-  pending: { label: 'Chờ xử lý', color: '#F59E0B', icon: 'time-outline' },
-  active: { label: 'Đang hoạt động', color: '#10B981', icon: 'checkmark-circle-outline' },
-  matured: { label: 'Đáo hạn', color: '#3B82F6', icon: 'flag-outline' },
-  closed: { label: 'Đã đóng', color: '#6B7280', icon: 'close-circle-outline' },
+const { width } = Dimensions.get('window');
+
+// ── Helpers ──
+const formatMoney = (amount?: number | null) => {
+  if (amount == null || isNaN(amount)) return '0';
+  return Math.round(amount).toLocaleString('vi-VN');
+};
+
+const formatDate = (dateStr?: string | null) => {
+  if (!dateStr) return 'N/A';
+  return new Date(dateStr).toLocaleDateString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+};
+
+const STATUS_MAP: Record<string, { text: string; color: string; bg: string; icon: string }> = {
+  pending: { text: 'Chờ xử lý', color: '#F59E0B', bg: '#F59E0B15', icon: 'time-outline' },
+  pending_signature: { text: 'Chờ ký số', color: '#8B5CF6', bg: '#8B5CF615', icon: 'create-outline' },
+  active: { text: 'Đang hoạt động', color: '#10B981', bg: '#10B98115', icon: 'checkmark-circle-outline' },
+  matured: { text: 'Đáo hạn', color: '#3B82F6', bg: '#3B82F615', icon: 'flag-outline' },
+  closed: { text: 'Đã đóng', color: '#6B7280', bg: '#6B728015', icon: 'close-circle-outline' },
 };
 
 const SCHEDULE_STATUS: Record<string, { label: string; color: string }> = {
@@ -22,64 +54,110 @@ const SCHEDULE_STATUS: Record<string, { label: string; color: string }> = {
   overdue: { label: 'Quá hạn', color: '#EF4444' },
 };
 
-function formatCurrency(n: number): string {
-  return n.toLocaleString('vi-VN') + ' ₫';
-}
-
 export default function InvestmentContractDetailScreen() {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const insets = useSafeAreaInsets();
+  const modal = useConfirmModal();
+
   const contractId = route.params?.contractId;
 
   const [contract, setContract] = useState<InvestmentContractItem | null>(null);
+  const [contractHTML, setContractHTML] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showContract, setShowContract] = useState(false);
+  const [showSignConfirm, setShowSignConfirm] = useState(false);
+  const [showSmartCA, setShowSmartCA] = useState(false);
+  const [showSignSuccess, setShowSignSuccess] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await investService.getContractById(contractId);
-        setContract(data);
-      } catch (e: any) {
-        console.error('Failed to load contract:', e?.message);
-      } finally {
-        setLoading(false);
+  // Success animations
+  const successPageAnim = useRef(new Animated.Value(0)).current;
+  const successCheckAnim = useRef(new Animated.Value(0)).current;
+  const successSlideAnim = useRef(new Animated.Value(40)).current;
+
+  const fetchContract = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await investService.getContractById(contractId);
+      setContract(data);
+
+      // Fetch HTML
+      if (data) {
+        try {
+          const html = await investService.getContractHTML(data.contractId || data._id);
+          setContractHTML(html);
+        } catch {
+          console.warn('[InvestContractDetail] Cannot load HTML');
+        }
       }
-    })();
+    } catch (err: any) {
+      console.error('[InvestContractDetail] Error:', err);
+      modal.error('Lỗi', 'Không thể tải hợp đồng đầu tư');
+    } finally {
+      setLoading(false);
+    }
   }, [contractId]);
+
+  useEffect(() => { fetchContract(); }, [fetchContract]);
+
+  // SmartCA complete callback
+  const handleSmartCAComplete = (status: 'signed' | 'failed' | 'rejected') => {
+    setShowSmartCA(false);
+    if (status === 'signed') {
+      fetchContract();
+      successPageAnim.setValue(0);
+      successCheckAnim.setValue(0);
+      successSlideAnim.setValue(40);
+      setShowSignSuccess(true);
+      Animated.sequence([
+        Animated.timing(successPageAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.parallel([
+          Animated.spring(successCheckAnim, { toValue: 1, friction: 5, tension: 60, useNativeDriver: true }),
+          Animated.timing(successSlideAnim, { toValue: 0, duration: 350, useNativeDriver: true }),
+        ]),
+      ]).start();
+    } else if (status === 'rejected') {
+      modal.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng.');
+    }
+  };
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Header colors={colors} onBack={() => navigation.goBack()} />
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
       </View>
     );
   }
 
   if (!contract) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: theme.colors.background }]}>
-        <Ionicons name="alert-circle-outline" size={64} color={theme.colors.textSecondary} />
-        <Text style={[styles.errorText, { color: theme.colors.text }]}>Không tìm thấy hợp đồng</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Header colors={colors} onBack={() => navigation.goBack()} />
+        <View style={styles.emptyContainer}>
+          <MaterialCommunityIcons name="file-document-remove-outline" size={64} color={colors.textSecondary} />
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy hợp đồng</Text>
+        </View>
       </View>
     );
   }
 
-  const statusInfo = STATUS_MAP[contract.status] || STATUS_MAP.pending;
+  const statusCfg = STATUS_MAP[contract.status] || STATUS_MAP.pending;
+  const isPendingSign = contract.status === 'pending_signature';
   const loanInfo = contract.loanApplicationId;
   const loanPurpose = typeof loanInfo === 'object' ? loanInfo?.willing : '';
 
   const renderScheduleRow = (item: LenderScheduleItem, index: number) => {
     const s = SCHEDULE_STATUS[item.status] || SCHEDULE_STATUS.pending;
     return (
-      <View key={index} style={[styles.scheduleRow, { borderBottomColor: theme.colors.border || '#E5E7EB' }]}>
-        <Text style={[styles.scheduleCell, styles.schedulePeriod, { color: theme.colors.text }]}>
-          {item.period}
-        </Text>
-        <Text style={[styles.scheduleCell, styles.scheduleDate, { color: theme.colors.textSecondary }]}>
-          {item.dueDate}
-        </Text>
-        <Text style={[styles.scheduleCell, styles.scheduleAmount, { color: theme.colors.text }]}>
+      <View key={index} style={[styles.scheduleRow, { borderBottomColor: colors.border || '#E5E7EB' }]}>
+        <Text style={[styles.scheduleCell, styles.schedulePeriod, { color: colors.text }]}>{item.period}</Text>
+        <Text style={[styles.scheduleCell, styles.scheduleDate, { color: colors.textSecondary }]}>{item.dueDate}</Text>
+        <Text style={[styles.scheduleCell, styles.scheduleAmount, { color: colors.text }]}>
           {(item.total / 1000).toFixed(0)}k
         </Text>
         <View style={[styles.scheduleStatusBadge, { backgroundColor: s.color + '20' }]}>
@@ -90,83 +168,287 @@ export default function InvestmentContractDetailScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Header colors={colors} onBack={() => navigation.goBack()} />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Chi tiết hợp đồng</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Status card */}
-        <View style={[styles.section, { backgroundColor: theme.colors.backgroundSecondary }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: isPendingSign ? 100 + (Platform.OS === 'ios' ? insets.bottom : 0) : 32 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Status + Contract ID Card */}
+        <View style={[styles.section, { backgroundColor: colors.backgroundSecondary || colors.surface }]}>
           <View style={styles.statusRow}>
-            <View style={[styles.bigStatusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-              <Ionicons name={statusInfo.icon as any} size={20} color={statusInfo.color} />
-              <Text style={[styles.bigStatusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            <View style={[styles.bigStatusBadge, { backgroundColor: statusCfg.bg }]}>
+              <Ionicons name={statusCfg.icon as any} size={20} color={statusCfg.color} />
+              <Text style={[styles.bigStatusText, { color: statusCfg.color }]}>{statusCfg.text}</Text>
             </View>
-            <Text style={[styles.contractIdLabel, { color: theme.colors.textSecondary }]}>{contract.contractId}</Text>
+            <Text style={[styles.contractIdLabel, { color: colors.textSecondary }]}>{contract.contractId}</Text>
           </View>
           {loanPurpose ? (
-            <Text style={[styles.purpose, { color: theme.colors.text }]}>Mục đích: {loanPurpose}</Text>
+            <Text style={[styles.purpose, { color: colors.text }]}>Mục đích: {loanPurpose}</Text>
           ) : null}
         </View>
 
-        {/* Financial info */}
-        <View style={[styles.section, { backgroundColor: theme.colors.backgroundSecondary }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Thông tin tài chính</Text>
+        {/* Financial Info Card */}
+        <View style={[styles.section, { backgroundColor: colors.backgroundSecondary || colors.surface }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            <MaterialCommunityIcons name="cash-multiple" size={14} /> Thông tin đầu tư
+          </Text>
+
+          <View style={[styles.amountBox, { backgroundColor: (colors.primary || '#14342B') + '10' }]}>
+            <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Vốn đầu tư</Text>
+            <Text style={[styles.amountValue, { color: colors.primary }]}>
+              {formatMoney(contract.capital)} đ
+            </Text>
+          </View>
+
           <View style={styles.infoGrid}>
-            <InfoItem label="Vốn đầu tư" value={formatCurrency(contract.capital)} color={theme.colors.text} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Số notes" value={`${contract.numNotes}`} color={theme.colors.text} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Kỳ hạn" value={`${contract.periodMonth} tháng`} color={theme.colors.text} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Lãi suất" value={`${contract.annualRatePercent.toFixed(1)}%/năm`} color={theme.colors.primary} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Thu nhập/tháng" value={formatCurrency(contract.monthlyIncome)} color={theme.colors.text} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Tổng lợi nhuận" value={formatCurrency(contract.entirelyProfit)} color="#10B981" labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Tổng nhận" value={formatCurrency(contract.entirelyPay)} color={theme.colors.text} labelColor={theme.colors.textSecondary} />
-            <InfoItem label="Đã nhận" value={formatCurrency(contract.totalReceived)} color={theme.colors.primary} labelColor={theme.colors.textSecondary} />
+            <InfoItem label="Số notes" value={`${contract.numNotes}`} color={colors.text} labelColor={colors.textSecondary} />
+            <InfoItem label="Kỳ hạn" value={`${contract.periodMonth} tháng`} color={colors.text} labelColor={colors.textSecondary} />
+            <InfoItem label="Lãi suất" value={`${contract.annualRatePercent?.toFixed(1) || '0'}%/năm`} color={colors.primary} labelColor={colors.textSecondary} />
+            <InfoItem label="Thu nhập/tháng" value={`${formatMoney(contract.monthlyIncome)} đ`} color={colors.text} labelColor={colors.textSecondary} />
+            <InfoItem label="Tổng lợi nhuận" value={`${formatMoney(contract.entirelyProfit)} đ`} color="#10B981" labelColor={colors.textSecondary} />
+            <InfoItem label="Tổng nhận" value={`${formatMoney(contract.entirelyPay)} đ`} color={colors.text} labelColor={colors.textSecondary} />
+            <InfoItem label="Đã nhận" value={`${formatMoney(contract.totalReceived)} đ`} color={colors.primary} labelColor={colors.textSecondary} />
+            <InfoItem label="Phí dịch vụ" value={`${formatMoney(contract.serviceFee)} đ`} color={colors.textSecondary} labelColor={colors.textSecondary} />
           </View>
         </View>
 
         {/* Lender Schedule */}
         {contract.lenderSchedule && contract.lenderSchedule.length > 0 && (
-          <View style={[styles.section, { backgroundColor: theme.colors.backgroundSecondary }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-              Lịch nhận tiền ({contract.schedulePeriodCount} kỳ)
+          <View style={[styles.section, { backgroundColor: colors.backgroundSecondary || colors.surface }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              <MaterialCommunityIcons name="calendar-clock" size={14} /> Lịch nhận tiền ({contract.schedulePeriodCount} kỳ)
             </Text>
 
             {/* Summary */}
-            <View style={[styles.scheduleSummary, { backgroundColor: theme.colors.primary + '08' }]}>
+            <View style={[styles.scheduleSummary, { backgroundColor: (colors.primary || '#14342B') + '08' }]}>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Tổng gốc</Text>
-                <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{formatCurrency(contract.scheduleTotalPrincipal)}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Tổng gốc</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{formatMoney(contract.scheduleTotalPrincipal)} đ</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Tổng lãi</Text>
-                <Text style={[styles.summaryValue, { color: '#10B981' }]}>{formatCurrency(contract.scheduleTotalInterest)}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Tổng lãi</Text>
+                <Text style={[styles.summaryValue, { color: '#10B981' }]}>{formatMoney(contract.scheduleTotalInterest)} đ</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Tổng thu nhập</Text>
-                <Text style={[styles.summaryValue, { color: theme.colors.primary }]}>{formatCurrency(contract.scheduleTotalIncome)}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Tổng thu nhập</Text>
+                <Text style={[styles.summaryValue, { color: colors.primary }]}>{formatMoney(contract.scheduleTotalIncome)} đ</Text>
               </View>
             </View>
 
             {/* Header row */}
-            <View style={[styles.scheduleHeaderRow, { borderBottomColor: theme.colors.border || '#E5E7EB' }]}>
-              <Text style={[styles.scheduleHeaderCell, styles.schedulePeriod, { color: theme.colors.textSecondary }]}>Kỳ</Text>
-              <Text style={[styles.scheduleHeaderCell, styles.scheduleDate, { color: theme.colors.textSecondary }]}>Ngày</Text>
-              <Text style={[styles.scheduleHeaderCell, styles.scheduleAmount, { color: theme.colors.textSecondary }]}>Số tiền</Text>
-              <Text style={[styles.scheduleHeaderCell, { color: theme.colors.textSecondary }]}>TT</Text>
+            <View style={[styles.scheduleHeaderRow, { borderBottomColor: colors.border || '#E5E7EB' }]}>
+              <Text style={[styles.scheduleHeaderCell, styles.schedulePeriod, { color: colors.textSecondary }]}>Kỳ</Text>
+              <Text style={[styles.scheduleHeaderCell, styles.scheduleDate, { color: colors.textSecondary }]}>Ngày</Text>
+              <Text style={[styles.scheduleHeaderCell, styles.scheduleAmount, { color: colors.textSecondary }]}>Số tiền</Text>
+              <Text style={[styles.scheduleHeaderCell, { color: colors.textSecondary }]}>TT</Text>
             </View>
 
             {contract.lenderSchedule.map(renderScheduleRow)}
           </View>
         )}
+
+        {/* View Full Contract Button */}
+        {contractHTML ? (
+          <TouchableOpacity
+            style={[styles.viewContractBtn, { backgroundColor: colors.backgroundSecondary || colors.surface, borderColor: colors.primary }]}
+            onPress={() => setShowContract(true)}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="file-eye-outline" size={20} color={colors.primary} />
+            <Text style={[styles.viewContractBtnText, { color: colors.primary }]}>
+              Xem hợp đồng đầy đủ (PDF)
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
+
+      {/* Bottom Sign Button */}
+      {isPendingSign && (
+        <View style={[
+          styles.bottomBar,
+          {
+            paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) + 12 : insets.bottom + 12,
+            backgroundColor: colors.background,
+            borderTopColor: colors.border,
+          },
+        ]}>
+          <TouchableOpacity
+            style={[styles.signBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setShowSignConfirm(true)}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary || '#fff'} />
+            <Text style={[styles.signBtnText, { color: colors.onPrimary || '#fff' }]}>
+              Ký xác nhận hợp đồng đầu tư
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Full Contract WebView Modal */}
+      <Modal visible={showContract} animationType="slide" presentationStyle="fullScreen">
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[
+            styles.modalHeader,
+            { backgroundColor: colors.backgroundSecondary || colors.surface, borderBottomColor: colors.border, paddingTop: insets.top + 12 },
+          ]}>
+            <TouchableOpacity onPress={() => setShowContract(false)} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Hợp đồng đầu tư</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <WebView
+            source={{
+              html: `<style>
+                body { background: ${colors.background}; color: ${colors.text}; }
+                table { border-color: ${colors.border} !important; }
+                th { background-color: ${colors.primary}15 !important; color: ${colors.text} !important; }
+                td { color: ${colors.text} !important; }
+                .highlight { background-color: ${colors.primary}08 !important; border-color: ${colors.primary}30 !important; }
+                h1, h2, h3, h4 { color: ${colors.text} !important; }
+              </style>${contractHTML}`
+            }}
+            style={styles.webView}
+            originWhitelist={['*']}
+            scalesPageToFit={Platform.OS === 'android'}
+            javaScriptEnabled={false}
+            showsVerticalScrollIndicator={true}
+          />
+
+          {isPendingSign && (
+            <View style={[styles.signatureArea, { backgroundColor: colors.backgroundSecondary || colors.surface, borderTopColor: colors.border }]}>
+              <View style={[styles.signaturePlaceholder, { borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="draw-pen" size={32} color={colors.textSecondary} />
+                <Text style={[styles.signaturePlaceholderText, { color: colors.textSecondary }]}>
+                  Chữ ký điện tử{'\n'}Nhấn nút bên dưới để ký xác nhận
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.signBtn, { backgroundColor: colors.primary, marginTop: 12 }]}
+                onPress={() => { setShowContract(false); setShowSignConfirm(true); }}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="draw-pen" size={20} color={colors.onPrimary || '#fff'} />
+                <Text style={[styles.signBtnText, { color: colors.onPrimary || '#fff' }]}>
+                  Ký xác nhận hợp đồng
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Sign Confirmation Modal */}
+      <Modal visible={showSignConfirm} transparent animationType="fade">
+        <View style={styles.confirmOverlay}>
+          <View style={[styles.confirmCard, { backgroundColor: colors.backgroundSecondary || colors.surface }]}>
+            <View style={[styles.confirmIconWrap, { backgroundColor: (colors.primary || '#14342B') + '15' }]}>
+              <MaterialCommunityIcons name="shield-check" size={48} color={colors.primary} />
+            </View>
+            <Text style={[styles.confirmTitle, { color: colors.text }]}>
+              Xác nhận ký hợp đồng đầu tư
+            </Text>
+            <Text style={[styles.confirmDesc, { color: colors.textSecondary }]}>
+              Bạn xác nhận đã đọc và đồng ý với toàn bộ nội dung hợp đồng đầu tư số{' '}
+              <Text style={{ fontWeight: '700', color: colors.text }}>{contract.contractId}</Text>
+              . Vốn đầu tư{' '}
+              <Text style={{ fontWeight: '700', color: colors.primary }}>{formatMoney(contract.capital)} đ</Text>
+              , kỳ hạn{' '}
+              <Text style={{ fontWeight: '700' }}>{contract.periodMonth} tháng</Text>.
+            </Text>
+
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={[styles.confirmCancelBtn, { borderColor: colors.border }]}
+                onPress={() => setShowSignConfirm(false)}
+              >
+                <Text style={[styles.confirmCancelBtnText, { color: colors.textSecondary }]}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmSignBtn, { backgroundColor: colors.primary }]}
+                onPress={() => { setShowSignConfirm(false); setShowSmartCA(true); }}
+              >
+                <MaterialCommunityIcons name="draw-pen" size={18} color={colors.onPrimary || '#fff'} />
+                <Text style={[styles.confirmSignBtnText, { color: colors.onPrimary || '#fff' }]}>Ký xác nhận</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* SmartCA Digital Signing Modal */}
+      <SmartCASigningModal
+        visible={showSmartCA}
+        contractId={contract.contractId || contract._id}
+        onClose={() => setShowSmartCA(false)}
+        onSigningComplete={handleSmartCAComplete}
+      />
+
+      {/* Signing Success Overlay */}
+      <Modal visible={showSignSuccess} transparent animationType="none" statusBarTranslucent>
+        <Animated.View style={[styles.successPage, { opacity: successPageAnim, backgroundColor: colors.background }]}>
+          <View style={[styles.successBgCircle1, { backgroundColor: (colors.primary || '#14342B') + '18' }]} />
+          <View style={[styles.successBgCircle2, { backgroundColor: (colors.primary || '#14342B') + '12' }]} />
+
+          <Animated.View style={[styles.successBody, { transform: [{ translateY: successSlideAnim }], opacity: successPageAnim }]}>
+            <Animated.View style={[styles.successCheckWrap, { transform: [{ scale: successCheckAnim }] }]}>
+              <View style={[styles.successCheckRing, { borderColor: (colors.primary || '#14342B') + '40' }]} />
+              <View style={[styles.successCheckCircle, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
+                <Ionicons name="checkmark" size={52} color={colors.onPrimary || '#fff'} />
+              </View>
+            </Animated.View>
+
+            <Text style={[styles.successTitle, { color: colors.text }]}>Ký số thành công!</Text>
+            <Text style={[styles.successDesc, { color: colors.textSecondary }]}>
+              Hợp đồng đầu tư đã được ký số bằng chứng thư VNPT SmartCA. Hợp đồng giờ đang hoạt động.
+            </Text>
+
+            <View style={[styles.successInfoCard, { backgroundColor: (colors.primary || '#14342B') + '10', borderColor: (colors.primary || '#14342B') + '30' }]}>
+              <View style={styles.successInfoRow}>
+                <Text style={[styles.successInfoLabel, { color: colors.textSecondary }]}>Mã hợp đồng</Text>
+                <Text style={[styles.successInfoValue, { color: colors.text }]}>{contract.contractId}</Text>
+              </View>
+              <View style={styles.successInfoRow}>
+                <Text style={[styles.successInfoLabel, { color: colors.textSecondary }]}>Vốn đầu tư</Text>
+                <Text style={[styles.successInfoValue, { color: colors.primary }]}>{formatMoney(contract.capital)} đ</Text>
+              </View>
+              <View style={styles.successInfoRow}>
+                <Text style={[styles.successInfoLabel, { color: colors.textSecondary }]}>Kỳ hạn</Text>
+                <Text style={[styles.successInfoValue, { color: colors.text }]}>{contract.periodMonth} tháng</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.successBtn, { backgroundColor: colors.primary }]}
+              onPress={() => { setShowSignSuccess(false); }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.successBtnText, { color: colors.onPrimary || '#fff' }]}>Xem hợp đồng</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    </View>
+  );
+}
+
+// ── Sub-components ──
+
+function Header({ colors, onBack }: { colors: any; onBack: () => void }) {
+  return (
+    <View style={[styles.header, { backgroundColor: colors.backgroundSecondary || colors.surface }]}>
+      <TouchableOpacity onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <Ionicons name="arrow-back" size={24} color={colors.text} />
+      </TouchableOpacity>
+      <Text style={[styles.headerTitle, { color: colors.text }]}>Chi tiết hợp đồng đầu tư</Text>
+      <View style={{ width: 24 }} />
     </View>
   );
 }
@@ -180,35 +462,54 @@ function InfoItem({ label, value, color, labelColor }: { label: string; value: s
   );
 }
 
+// ── Styles ──
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  errorText: { fontSize: 14, marginTop: 12 },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  emptyText: { fontSize: 14, marginTop: 8 },
+
+  // Header
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16,
   },
   headerTitle: { fontSize: 15, fontWeight: '700' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
+
+  scrollContent: { padding: 16 },
+
+  // Sections
   section: {
     borderRadius: 16, padding: 16, marginBottom: 12,
     elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08, shadowRadius: 4,
   },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bigStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   bigStatusText: { fontSize: 14, fontWeight: '600' },
   contractIdLabel: { fontSize: 11, fontWeight: '500' },
   purpose: { fontSize: 14, marginTop: 8, fontWeight: '500' },
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+
+  // Amount Box
+  amountBox: {
+    borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 12,
+  },
+  amountLabel: { fontSize: 12, marginBottom: 4 },
+  amountValue: { fontSize: 22, fontWeight: '800' },
+
+  // Info Grid
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 0 },
   infoItem: { width: '50%', marginBottom: 10 },
   infoLabel: { fontSize: 12 },
   infoValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
+
+  // Schedule
   scheduleSummary: { flexDirection: 'row', borderRadius: 12, padding: 12, marginBottom: 12, gap: 4 },
   summaryItem: { flex: 1, alignItems: 'center' },
   summaryLabel: { fontSize: 11 },
-  summaryValue: { fontSize: 13, fontWeight: '700', marginTop: 2 },
+  summaryValue: { fontSize: 12, fontWeight: '700', marginTop: 2 },
   scheduleHeaderRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, marginBottom: 4 },
   scheduleHeaderCell: { fontSize: 11, fontWeight: '600' },
   scheduleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
@@ -218,4 +519,73 @@ const styles = StyleSheet.create({
   scheduleAmount: { width: 60, textAlign: 'right', marginRight: 8 },
   scheduleStatusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
   scheduleStatusText: { fontSize: 10, fontWeight: '600' },
+
+  // View Contract
+  viewContractBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderRadius: 14, padding: 14,
+    marginBottom: 8,
+  },
+  viewContractBtnText: { flex: 1, fontSize: 14, fontWeight: '600' },
+
+  // Bottom Bar
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingTop: 12, paddingHorizontal: 16,
+    borderTopWidth: 1,
+  },
+  signBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: 14,
+  },
+  signBtnText: { fontSize: 16, fontWeight: '700' },
+
+  // Contract WebView Modal
+  modalContainer: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1,
+  },
+  modalCloseBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: 16, fontWeight: '700' },
+  webView: { flex: 1 },
+  signatureArea: { padding: 16, borderTopWidth: 1 },
+  signaturePlaceholder: {
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderStyle: 'dashed', borderRadius: 12,
+    paddingVertical: 20,
+  },
+  signaturePlaceholderText: { textAlign: 'center', fontSize: 13, marginTop: 8 },
+
+  // Confirm Modal
+  confirmOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 24 },
+  confirmCard: { borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center' },
+  confirmIconWrap: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  confirmTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  confirmDesc: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  confirmBtns: { flexDirection: 'row', gap: 12, marginTop: 20, width: '100%' },
+  confirmCancelBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  confirmCancelBtnText: { fontSize: 15, fontWeight: '600' },
+  confirmSignBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  confirmSignBtnText: { fontSize: 15, fontWeight: '700' },
+
+  // Success overlay
+  successPage: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  successBgCircle1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, top: -50, right: -80 },
+  successBgCircle2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, bottom: -30, left: -50 },
+  successBody: { alignItems: 'center', paddingHorizontal: 32 },
+  successCheckWrap: { width: 120, height: 120, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  successCheckRing: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
+  successCheckCircle: {
+    width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center',
+    elevation: 12, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12,
+  },
+  successTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  successDesc: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
+  successInfoCard: { borderWidth: 1, borderRadius: 16, padding: 16, width: '100%', marginBottom: 24 },
+  successInfoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  successInfoLabel: { fontSize: 13 },
+  successInfoValue: { fontSize: 14, fontWeight: '700' },
+  successBtn: { paddingVertical: 14, paddingHorizontal: 36, borderRadius: 14 },
+  successBtnText: { fontSize: 16, fontWeight: '700' },
 });

@@ -163,7 +163,7 @@ export function ConfirmModalProvider({ children }: { children: React.ReactNode }
                             },
                         ]}
                     >
-                        <Pressable>
+                        <Pressable style={{ width: '100%', alignItems: 'center' }}>
                             {/* Icon */}
                             <View style={[styles.iconWrap, { backgroundColor: accentColor + '15' }]}>
                                 <MaterialCommunityIcons name={iconName as any} size={32} color={accentColor} />
@@ -182,7 +182,7 @@ export function ConfirmModalProvider({ children }: { children: React.ReactNode }
                             ) : null}
 
                             {/* Actions */}
-                            <View style={[styles.actions, hasTwoButtons && styles.actionsRow]}>
+                            <View style={[styles.actions, hasTwoButtons ? styles.actionsRow : styles.actionsCentered]}>
                                 {hasTwoButtons && (
                                     <TouchableOpacity
                                         style={[
@@ -203,6 +203,7 @@ export function ConfirmModalProvider({ children }: { children: React.ReactNode }
                                         styles.button,
                                         styles.confirmButton,
                                         { backgroundColor: accentColor, flex: hasTwoButtons ? 1 : undefined },
+                                        !hasTwoButtons && { minWidth: 140 },
                                     ]}
                                     onPress={handleConfirm}
                                     activeOpacity={0.7}
@@ -266,6 +267,9 @@ const styles = StyleSheet.create({
     actionsRow: {
         flexDirection: 'row',
         gap: 12,
+    },
+    actionsCentered: {
+        alignItems: 'center',
     },
     button: {
         height: 48,

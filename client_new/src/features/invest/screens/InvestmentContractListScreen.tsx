@@ -11,6 +11,7 @@ import investService, { InvestmentContractItem } from '../services/invest.servic
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   pending: { label: 'Chờ xử lý', color: '#F59E0B' },
+  pending_signature: { label: 'Chờ ký số', color: '#8B5CF6' },
   active: { label: 'Đang hoạt động', color: '#10B981' },
   matured: { label: 'Đáo hạn', color: '#3B82F6' },
   closed: { label: 'Đã đóng', color: '#6B7280' },
