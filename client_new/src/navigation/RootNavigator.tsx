@@ -44,7 +44,7 @@ export type RootStackParamList = {
     Main: undefined;
     Home: undefined;
     PinSetup: undefined;
-    PinChange: undefined;
+    PinChange: { resetMode?: boolean } | undefined;
     CreditScoreDetail: undefined;
     Transfer: undefined;
     TransferConfirm: {

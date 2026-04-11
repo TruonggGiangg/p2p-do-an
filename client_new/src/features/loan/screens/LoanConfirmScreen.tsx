@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    ActivityIndicator, Alert, LayoutAnimation, Platform, UIManager,
+    ActivityIndicator, LayoutAnimation, Platform, UIManager,
     Image, StatusBar,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +25,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { OtpActionType } from '../../../types/otp.types';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -101,6 +102,7 @@ export default function LoanConfirmScreen() {
     const route = useRoute();
     const navigation = useNavigation<LoanConfirmNav>();
     const insets = useSafeAreaInsets();
+    const modal = useConfirmModal();
     const params = (route.params || {}) as RouteParams;
     const { product, config, capital, periodMonth, willing, monthlyRatePercent, schedule } = params;
 
@@ -137,7 +139,7 @@ export default function LoanConfirmScreen() {
             const defaultWallet = wList.find((w) => w.isDefault) ?? wList[0];
             setSelectedWallet(defaultWallet ?? null);
         } catch (e) {
-            Alert.alert('Lỗi', 'Không thể tải dữ liệu');
+            modal.error('Lỗi', 'Không thể tải dữ liệu');
         } finally {
             setLoading(false);
         }
@@ -147,17 +149,17 @@ export default function LoanConfirmScreen() {
 
     const handleApply = async (payload?: { otpSessionId?: string }) => {
         if (!selectedWallet) {
-            Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
+            modal.error('Lỗi', 'Vui lòng chọn ví nhận giải ngân');
             return;
         }
         const walletId = selectedWallet.id ?? selectedWallet._id;
         if (!walletId) {
-            Alert.alert('Lỗi', 'Ví không hợp lệ');
+            modal.error('Lỗi', 'Ví không hợp lệ');
             return;
         }
         const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
         if (requiredMissing.length > 0) {
-            Alert.alert('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
+            modal.error('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
             return;
         }
         setSubmitting(true);
@@ -583,11 +585,11 @@ export default function LoanConfirmScreen() {
                         {({ trigger, isLoading, isInitialized }) => {
                             otpTriggerRef.current = trigger;
                             const handlePress = () => {
-                                if (!selectedWallet) { Alert.alert('Lỗi', 'Vui lòng chọn ví nhận giải ngân'); return; }
-                                if (policies.length > 0 && !policyAgreed) { Alert.alert('Lỗi', 'Vui lòng đọc và đồng ý điều khoản xử lý nợ quá hạn'); return; }
+                                if (!selectedWallet) { modal.error('Lỗi', 'Vui lòng chọn ví nhận giải ngân'); return; }
+                                if (policies.length > 0 && !policyAgreed) { modal.error('Lỗi', 'Vui lòng đọc và đồng ý điều khoản xử lý nợ quá hạn'); return; }
                                 const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
                                 if (requiredMissing.length > 0) {
-                                    Alert.alert('Lỗi', `Thiếu tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
+                                    modal.error('Lỗi', `Thiếu tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
                                     return;
                                 }
                                 setShowPinVerify(true);
@@ -642,6 +644,7 @@ export default function LoanConfirmScreen() {
                         setShowPinVerify(false);
                         setTimeout(() => otpTriggerRef.current?.(), 300);
                     }}
+                    onForgotPin={() => { setShowPinVerify(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
                     title="Xác thực mã PIN"
                     subtitle="Nhập mã PIN để tiếp tục giao dịch an toàn"
                 />

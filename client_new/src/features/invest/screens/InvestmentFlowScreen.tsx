@@ -10,14 +10,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, Animated, Dimensions,
+  ActivityIndicator, Animated, Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader } from '../../../components';
+import { BinanceHeader, useConfirmModal } from '../../../components';
 import { PinVerifyModal } from '../../../components/common/PinVerifyModal';
 import { OTPVerifyModal } from '../../../components/common/OTPVerifyModal';
 import { CommonButton } from '../../../components/common/CommonButton';
@@ -37,6 +37,7 @@ function fmt(n: number): string { return n.toLocaleString('vi-VN') + ' ₫'; }
 
 export default function InvestmentFlowScreen() {
   const { theme } = useTheme();
+  const modal = useConfirmModal();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const loan: AvailableLoanItem = route.params?.loan;
@@ -81,7 +82,7 @@ export default function InvestmentFlowScreen() {
       setSchedule(res.schedule || []);
       setScheduleSummary(res);
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.response?.data?.message || 'Không thể tải lịch trình');
+      modal.error('Lỗi', e?.response?.data?.message || 'Không thể tải lịch trình');
     } finally {
       setScheduleLoading(false);
     }
@@ -110,7 +111,7 @@ export default function InvestmentFlowScreen() {
   // ══════════════════════════════════════════
   const handleSubmit = async (otpSessionId?: string) => {
     if (!agreed) {
-      Alert.alert('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
+      modal.error('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
       return;
     }
     try {
@@ -138,17 +139,17 @@ export default function InvestmentFlowScreen() {
       fetchWallets();
     } else if (step === 3) {
       if (!selectedWallet) {
-        Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví thanh toán');
+        modal.error('Chưa chọn ví', 'Vui lòng chọn ví thanh toán');
         return;
       }
       if (selectedWallet.balance < investCapital) {
-        Alert.alert('Số dư không đủ', `Cần ${fmt(investCapital)}, hiện có ${fmt(selectedWallet.balance)}`);
+        modal.error('Số dư không đủ', `Cần ${fmt(investCapital)}, hiện có ${fmt(selectedWallet.balance)}`);
         return;
       }
       setStep(4);
     } else if (step === 4) {
       if (!agreed) {
-        Alert.alert('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
+        modal.error('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
         return;
       }
       setShowPinModal(true);
@@ -624,6 +625,7 @@ export default function InvestmentFlowScreen() {
         visible={showPinModal}
         onSuccess={() => { setShowPinModal(false); setShowOTPModal(true); }}
         onCancel={() => setShowPinModal(false)}
+        onForgotPin={() => { setShowPinModal(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
         dismissable
         title="Xác thực mã PIN"
         subtitle="Nhập mã PIN để xác nhận đầu tư"

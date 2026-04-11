@@ -206,7 +206,18 @@ export default function LoanBlockedScreen() {
                         variant="primary"
                         size="lg"
                         fullWidth
-                        onPress={() => navigation.navigate('LoanDetail', { loanId: undefined, fineractLoanId })}
+                        onPress={() => navigation.navigate('LoanDetail', {
+                            loan: {
+                                id: String(fineractLoanId),
+                                source: 'fineract' as const,
+                                fineractLoanId,
+                                status: 'success',
+                                capital: 0,
+                                periodMonth: 0,
+                                createdAt: new Date().toISOString(),
+                            },
+                            autoOpenRepay: true,
+                        })}
                     />
                 ) : (
                     <CommonButton

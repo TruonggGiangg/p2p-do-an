@@ -5,7 +5,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -21,7 +20,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, CommonInput, CommonButton } from '../../../components';
+import { BinanceHeader, CommonInput, CommonButton, useConfirmModal } from '../../../components';
 import { loanService, LoanHistoryItem } from '../services/loan.service';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
@@ -169,6 +168,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { theme } = useTheme();
     const colors = theme.colors;
+    const modal = useConfirmModal();
 
     const loan = useMemo(() => ({
         id: rawLoan?.id,
@@ -339,11 +339,11 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const processRepayment = async () => {
         const amount = parseFloat(repaymentAmount.replace(/[^0-9]/g, ''));
         if (!amount || amount <= 0) {
-            Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+            modal.error('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
         }
         if (outstanding && amount > outstanding.totalOutstanding) {
-            Alert.alert('Lỗi', `Số tiền không được vượt quá dư nợ: ${formatMoney(outstanding.totalOutstanding)} đ`);
+            modal.error('Lỗi', `Số tiền không được vượt quá dư nợ: ${formatMoney(outstanding.totalOutstanding)} đ`);
             return;
         }
         setShowRepayModal(false);
@@ -359,7 +359,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     // Prepayment handler — navigate to dedicated PrepaymentConfirmScreen
     const handlePrepayment = () => {
         if (!isActive || !prepayAmount) {
-            Alert.alert('Thông báo', 'Dữ liệu tất toán chưa sẵn sàng.');
+            modal.alert('Thông báo', 'Dữ liệu tất toán chưa sẵn sàng.');
             return;
         }
         navigation.navigate('PrepaymentConfirm', {
@@ -373,11 +373,11 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const handleSupportSubmit = async () => {
         if (!supportType) return;
         if (!supportReason.trim()) {
-            Alert.alert('Chưa nhập lý do', 'Vui lòng nhập lý do/yêu cầu của bạn');
+            modal.error('Chưa nhập lý do', 'Vui lòng nhập lý do/yêu cầu của bạn');
             return;
         }
         if (supportType === 'RESCHEDULE' && !rescheduleDate.trim()) {
-            Alert.alert('Chưa nhập ngày', 'Vui lòng nhập ngày bạn muốn dời lịch trả nợ (VD: YYYY-MM-DD)');
+            modal.error('Chưa nhập ngày', 'Vui lòng nhập ngày bạn muốn dời lịch trả nợ (VD: YYYY-MM-DD)');
             return;
         }
         try {
@@ -389,12 +389,12 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                 proposedRescheduleDate: supportType === 'RESCHEDULE' ? rescheduleDate : undefined
             });
             if (res.success) {
-                Alert.alert('Gửi yêu cầu thành công', 'Chúng tôi sẽ xem xét và phản hồi sớm nhất.', [{ text: 'OK', onPress: () => setShowSupportModal(false) }]);
+                modal.success('Gửi yêu cầu thành công', 'Chúng tôi sẽ xem xét và phản hồi sớm nhất.', () => setShowSupportModal(false));
             } else {
-                Alert.alert('Gửi thất bại', res.message || 'Đã có lỗi xảy ra');
+                modal.error('Gửi thất bại', res.message || 'Đã có lỗi xảy ra');
             }
         } catch (error: any) {
-            Alert.alert('Lỗi', extractErrorMessage(error, 'Đã có lỗi hệ thống xảy ra'));
+            modal.error('Lỗi', extractErrorMessage(error, 'Đã có lỗi hệ thống xảy ra'));
         } finally {
             setSubmittingSupport(false);
         }
@@ -794,27 +794,23 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     <TouchableOpacity
                         style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
                         onPress={() => {
-                            Alert.alert(
-                                'Hủy đơn vay',
-                                'Bạn chắc chắn muốn hủy đơn vay này?',
-                                [
-                                    { text: 'Không', style: 'cancel' },
-                                    {
-                                        text: 'Xác nhận hủy', style: 'destructive', onPress: async () => {
-                                            try {
-                                                setPaymentLoading(true);
-                                                await loanService.withdrawLoan(loan.id);
-                                                Alert.alert('Thành công', 'Đơn vay đã được hủy.');
-                                                navigation.goBack();
-                                            } catch (err: any) {
-                                                Alert.alert('Lỗi', extractErrorMessage(err, 'Không thể hủy đơn vay'));
-                                            } finally {
-                                                setPaymentLoading(false);
-                                            }
-                                        },
-                                    },
-                                ],
-                            );
+                            modal.confirm({
+                                title: 'Hủy đơn vay',
+                                message: 'Bạn chắc chắn muốn hủy đơn vay này?',
+                                confirmText: 'Xác nhận hủy',
+                                variant: 'danger',
+                                onConfirm: async () => {
+                                    try {
+                                        setPaymentLoading(true);
+                                        await loanService.withdrawLoan(loan.id);
+                                        modal.success('Thành công', 'Đơn vay đã được hủy.', () => navigation.goBack());
+                                    } catch (err: any) {
+                                        modal.error('Lỗi', extractErrorMessage(err, 'Không thể hủy đơn vay'));
+                                    } finally {
+                                        setPaymentLoading(false);
+                                    }
+                                },
+                            });
                         }}
                         disabled={paymentLoading}
                     >

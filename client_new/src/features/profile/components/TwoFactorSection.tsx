@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Platform, Linking, ScrollView, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, Platform, Linking, ScrollView, KeyboardAvoidingView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { useTwoFactor } from '../../../shared/hooks';
 import { CommonButton, CommonCard, BinanceHeader } from '../../../components';
 
 export const TwoFactorSection: React.FC = () => {
   const { theme } = useTheme();
+  const modal = useConfirmModal();
   const {
     isEnabled,
     secret,
@@ -41,7 +43,7 @@ export const TwoFactorSection: React.FC = () => {
     if (result) {
       setShowQRModal(true);
     } else {
-      Alert.alert('Lỗi', error || 'Không thể tạo secret');
+      modal.error('Lỗi', error || 'Không thể tạo secret');
     }
   };
 
@@ -51,12 +53,12 @@ export const TwoFactorSection: React.FC = () => {
 
   const handleConfirmEnable = async () => {
     if (!otpCode || otpCode.length !== 6) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mã OTP 6 số');
+      modal.error('Lỗi', 'Vui lòng nhập mã OTP 6 số');
       return;
     }
 
     if (!secret) {
-      Alert.alert('Lỗi', 'Secret không tồn tại');
+      modal.error('Lỗi', 'Secret không tồn tại');
       return;
     }
 
@@ -65,42 +67,38 @@ export const TwoFactorSection: React.FC = () => {
       // Force refresh status to ensure UI updates
       const refreshedEnabled = await refreshStatus();
       console.log('[TwoFactorSection] 2FA enabled successfully, refreshed status enabled:', refreshedEnabled);
-      Alert.alert('Thành công', '2FA đã được kích hoạt!');
+      modal.success('Thành công', '2FA đã được kích hoạt!');
       setShowQRModal(false);
       setOtpCode('');
       setOpenedGA(false);
     } else {
-      Alert.alert('Lỗi', error || 'Mã OTP không đúng');
+      modal.error('Lỗi', error || 'Mã OTP không đúng');
     }
   };
 
   const handleDisable = () => {
-    Alert.alert(
-      'Tắt 2FA',
-      'Bạn có chắc muốn tắt xác thực 2 yếu tố? Tài khoản sẽ kém an toàn hơn.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Tắt',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await disable2FA();
-            if (success) {
-              Alert.alert('Thành công', '2FA đã được tắt');
-            } else {
-              Alert.alert('Lỗi', error || 'Không thể tắt 2FA');
-            }
-          },
-        },
-      ],
-    );
+    modal.confirm({
+      title: 'Tắt 2FA',
+      message: 'Bạn có chắc muốn tắt xác thực 2 yếu tố? Tài khoản sẽ kém an toàn hơn.',
+      variant: 'danger',
+      cancelText: 'Hủy',
+      confirmText: 'Tắt',
+      onConfirm: async () => {
+        const success = await disable2FA();
+        if (success) {
+          modal.success('Thành công', '2FA đã được tắt');
+        } else {
+          modal.error('Lỗi', error || 'Không thể tắt 2FA');
+        }
+      },
+    });
   };
 
   const openGoogleAuthenticator = async () => {
     console.log('[DEBUG] Bắt đầu mở Google Authenticator...');
     if (!secret) {
       console.error('[DEBUG] Lỗi: Không có thông tin secret');
-      Alert.alert('Lỗi', 'Chưa có thông tin bí mật. Vui lòng tạo lại.');
+      modal.error('Lỗi', 'Chưa có thông tin bí mật. Vui lòng tạo lại.');
       return;
     }
 
@@ -131,14 +129,13 @@ export const TwoFactorSection: React.FC = () => {
           } catch (otpErr: any) {
             console.error('[DEBUG] iOS: Mở otpauthUrl thất bại:', otpErr.message);
             // Cuối cùng nếu vẫn lỗi, gợi ý tải từ App Store
-            Alert.alert(
-              'Thông báo',
-              'Không thể mở ứng dụng. Bạn có muốn tải Google Authenticator từ App Store không?',
-              [
-                { text: 'Hủy', style: 'cancel' },
-                { text: 'Tải về', onPress: () => Linking.openURL('https://apps.apple.com/us/app/google-authenticator/id388497605') }
-              ]
-            );
+            modal.show({
+              title: 'Thông báo',
+              message: 'Không thể mở ứng dụng. Bạn có muốn tải Google Authenticator từ App Store không?',
+              cancelText: 'Hủy',
+              confirmText: 'Tải về',
+              onConfirm: () => Linking.openURL('https://apps.apple.com/us/app/google-authenticator/id388497605'),
+            });
           }
         }
       } else {
@@ -151,19 +148,18 @@ export const TwoFactorSection: React.FC = () => {
         } catch (err: any) {
           console.error('[DEBUG] Android: Mở otpauthUrl thất bại:', err.message);
           // Trên Android nếu otpauth:// không được xử lý, gợi ý mở Play Store
-          Alert.alert(
-            'Thông báo',
-            'Không thể mở Google Authenticator. Bạn có muốn tải về từ Play Store không?',
-            [
-              { text: 'Hủy', style: 'cancel' },
-              { text: 'Tải về', onPress: () => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2') }
-            ]
-          );
+          modal.show({
+            title: 'Thông báo',
+            message: 'Không thể mở Google Authenticator. Bạn có muốn tải về từ Play Store không?',
+            cancelText: 'Hủy',
+            confirmText: 'Tải về',
+            onConfirm: () => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2'),
+          });
         }
       }
     } catch (error: any) {
       console.error('[DEBUG] Lỗi ngoại lệ hệ thống:', error);
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi cố gắng kết nối với ứng dụng xác thực.');
+      modal.error('Lỗi', 'Có lỗi xảy ra khi cố gắng kết nối với ứng dụng xác thực.');
     }
   };
 
@@ -549,29 +545,26 @@ export const TwoFactorSection: React.FC = () => {
                     title="Xác minh"
                     onPress={async () => {
                       if (!testOtpCode || testOtpCode.length !== 6) {
-                        Alert.alert('Lỗi', 'Vui lòng nhập mã OTP 6 số');
+                        modal.error('Lỗi', 'Vui lòng nhập mã OTP 6 số');
                         return;
                       }
 
                       clearError();
                       const isValid = await verifyToken(testOtpCode);
                       if (isValid) {
-                        Alert.alert(
-                          'Thành công',
-                          '2FA hoạt động chính xác!',
-                          [
-                            {
-                              text: 'OK',
-                              onPress: () => {
-                                setShowTestModal(false);
-                                setTestOtpCode('');
-                                clearError();
-                              },
-                            },
-                          ],
-                        );
+                        modal.show({
+                          title: 'Thành công',
+                          message: '2FA hoạt động chính xác!',
+                          variant: 'success',
+                          confirmText: 'OK',
+                          onConfirm: () => {
+                            setShowTestModal(false);
+                            setTestOtpCode('');
+                            clearError();
+                          },
+                        });
                       } else {
-                        Alert.alert('Lỗi', error || 'Mã OTP không hợp lệ.');
+                        modal.error('Lỗi', error || 'Mã OTP không hợp lệ.');
                         setTestOtpCode('');
                       }
                     }}

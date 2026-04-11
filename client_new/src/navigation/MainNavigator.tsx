@@ -39,16 +39,15 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
 
         if (!pinVerified) {
             return (
-                <View style={{ flex: 1 }}>
-                    <PinVerifyModal
-                        visible={isFocused}
-                        dismissable={true}
-                        onSuccess={markPinVerified}
-                        onCancel={() => (navigation as any).navigate('Home')}
-                        title="Xác thực mã PIN"
-                        subtitle="Nhập mã PIN để truy cập tính năng này"
-                    />
-                </View>
+                <PinVerifyModal
+                    visible={isFocused}
+                    dismissable={true}
+                    onSuccess={markPinVerified}
+                    onCancel={() => (navigation as any).navigate('Home')}
+                    onForgotPin={() => (navigation as any).getParent()?.navigate('PinChange', { resetMode: true })}
+                    title="Xác thực mã PIN"
+                    subtitle="Nhập mã PIN để truy cập tính năng này"
+                />
             );
         }
 

@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    ActivityIndicator, Alert, StatusBar, TextInput,
+    ActivityIndicator, StatusBar, TextInput,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -18,6 +18,7 @@ import { walletAPI } from '../../wallet/api/wallet.api';
 import { formatCurrency } from '../../../shared/utils';
 import { WalletSelectorModal } from '../../wallet/components/WalletSelectorModal';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { OtpActionType } from '../../../types/otp.types';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import type { Wallet } from '../../../types/auth.types';
@@ -32,6 +33,7 @@ export default function RepaymentConfirmScreen() {
     const route = useRoute();
     const navigation = useNavigation<Nav>();
     const insets = useSafeAreaInsets();
+    const modal = useConfirmModal();
     const params = (route.params || {}) as {
         loanId: string;
         loan: any;
@@ -70,11 +72,11 @@ export default function RepaymentConfirmScreen() {
     const handleRepay = useCallback(async (payload?: { otpSessionId?: string }) => {
         const numAmount = rawAmount;
         if (!numAmount || numAmount <= 0) {
-            Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+            modal.error('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
         }
         if (!selectedWallet) {
-            Alert.alert('Lỗi', 'Vui lòng chọn ví thanh toán');
+            modal.error('Lỗi', 'Vui lòng chọn ví thanh toán');
             return;
         }
 
@@ -102,7 +104,7 @@ export default function RepaymentConfirmScreen() {
             }
         } catch (err: any) {
             const msg = err?.response?.data?.message || err?.message || 'Không thể trả nợ';
-            Alert.alert('Lỗi thanh toán', msg);
+            modal.error('Lỗi thanh toán', msg);
         } finally {
             setSubmitting(false);
         }
@@ -310,6 +312,7 @@ export default function RepaymentConfirmScreen() {
                 dismissable
                 onCancel={() => setShowPinVerify(false)}
                 onSuccess={() => { setShowPinVerify(false); setTimeout(() => otpTriggerRef.current?.(), 300); }}
+                onForgotPin={() => { setShowPinVerify(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
                 title="Xác thực mã PIN"
                 subtitle="Nhập mã PIN để tiếp tục thanh toán"
             />

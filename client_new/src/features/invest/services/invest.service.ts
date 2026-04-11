@@ -91,6 +91,10 @@ export interface AvailableLoanItem {
     delinquentDays: number;
     message: string;
   };
+  borrowerContractId?: string;
+  borrowerContractStatus?: string;
+  borrowerSignedVerified?: boolean;
+  borrowerSignedAt?: string;
   createdAt: string;
 }
 
@@ -130,7 +134,7 @@ export interface InvestmentContractItem {
   entirelyProfit: number;
   entirelyPay: number;
   serviceFee: number;
-  status: "pending" | "active" | "matured" | "closed";
+  status: "pending" | "pending_signature" | "active" | "matured" | "closed";
   fineractFDAccountId?: number;
   fdInterestRate?: number;
   fdMaturityDate?: string;
@@ -398,8 +402,76 @@ class InvestService {
     const response = await api.post<{
       statusCode: number;
       data: any;
-    }>("/api/invest/schedule-preview", { loanApplicationId, numNotes, investmentOrderId });
+    }>("/api/invest/schedule-preview", {
+      loanApplicationId,
+      numNotes,
+      investmentOrderId,
+    });
     return response.data.data;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  CONTRACT HTML & DIGITAL SIGNATURE
+  // ═══════════════════════════════════════════════════════
+
+  async getContractHTML(contractId: string): Promise<string> {
+    const response = await api.get<{
+      statusCode: number;
+      data: { html: string };
+    }>(`/api/invest/contract/${contractId}/html`);
+    return response.data.data.html;
+  }
+
+  async initiateSmartCaSigning(contractId: string): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      data: any;
+    }>("/api/digital-signature/initiate", { contractId });
+    return response.data.data;
+  }
+
+  async signWithPasswordOTP(
+    contractId: string,
+    password: string,
+    otp: string,
+  ): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      data: any;
+    }>("/api/digital-signature/sign-v2", { contractId, password, otp });
+    return response.data.data;
+  }
+
+  async confirmSmartCaSigning(signatureId: string, result: any): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      data: any;
+    }>("/api/digital-signature/confirm", { signatureId, result });
+    return response.data.data;
+  }
+
+  async checkSigningStatus(signatureId: string): Promise<any> {
+    const response = await api.get<{
+      success: boolean;
+      data: any;
+    }>(`/api/digital-signature/${signatureId}/status`);
+    return response.data.data;
+  }
+
+  async retrySmartCaSigning(signatureId: string): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      data: any;
+    }>(`/api/digital-signature/retry/${signatureId}`);
+    return response.data.data;
+  }
+
+  async getCertificates(): Promise<any[]> {
+    const response = await api.get<{
+      success: boolean;
+      data: { certificates: any[]; selectedSerial?: string };
+    }>("/api/digital-signature/certificates");
+    return response.data.data.certificates ?? [];
   }
 }
 

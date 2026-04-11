@@ -18,7 +18,6 @@ import {
   TextInput,
   ActivityIndicator,
   Keyboard,
-  Alert,
   Platform,
   KeyboardAvoidingView,
   Animated,
@@ -26,6 +25,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useConfirmModal } from './ConfirmModal';
 import { useSmartOTP } from '../../shared/hooks';
 import type { OtpActionType } from '../../types/otp.types';
 
@@ -61,6 +61,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
   onCancel,
 }) => {
   const { theme } = useTheme();
+  const modal = useConfirmModal();
   const {
     otp: generatedOTP,
     timeRemaining,
@@ -199,9 +200,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
         setTimeout(() => inputRefs.current[0]?.focus(), 100);
 
         if (result.message.includes('khóa')) {
-          Alert.alert('Tài khoản bị khóa', result.message, [
-            { text: 'OK', onPress: onCancel },
-          ]);
+          modal.error('Tài khoản bị khóa', result.message, () => onCancel());
         }
       }
     } catch (err: any) {

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Platform,
     StyleSheet,
@@ -11,7 +10,9 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { BinanceHeader, CommonCard } from '../../../components';
+import { useToast } from '../../../components';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { authAPI } from '../../auth/api/auth.api';
@@ -21,12 +22,12 @@ const SCORE_MIN = 150;
 const SCORE_MAX = 750;
 const PAGE_LIMIT = 15;
 
-const FACTOR_META: { key: keyof CreditScoreFactors; label: string; icon: string; color: string }[] = [
-    { key: 'paymentHistory', label: 'Lịch sử thanh toán', icon: 'calendar-check', color: '#18A058' },
-    { key: 'debtLevel', label: 'Dư nợ tín dụng', icon: 'cash-minus', color: '#2F80ED' },
-    { key: 'creditAge', label: 'Tuổi tín dụng', icon: 'clock-outline', color: '#9B59B6' },
-    { key: 'creditMix', label: 'Đa dạng tín dụng', icon: 'chart-pie', color: '#F2994A' },
-    { key: 'newCredit', label: 'Tín dụng mới', icon: 'plus-circle-outline', color: '#EB5757' },
+const FACTOR_META: { key: keyof CreditScoreFactors; label: string; short: string; icon: string; color: string }[] = [
+    { key: 'paymentHistory', label: 'Lịch sử thanh toán', short: 'Thanh toán', icon: 'calendar-check', color: '#18A058' },
+    { key: 'debtLevel', label: 'Dư nợ tín dụng', short: 'Dư nợ', icon: 'cash-minus', color: '#F2994A' },
+    { key: 'creditAge', label: 'Tuổi tín dụng', short: 'Tuổi TD', icon: 'clock-outline', color: '#2F80ED' },
+    { key: 'creditMix', label: 'Đa dạng tín dụng', short: 'Đa dạng', icon: 'chart-pie', color: '#9B51E0' },
+    { key: 'newCredit', label: 'Tín dụng mới', short: 'TD mới', icon: 'plus-circle-outline', color: '#EB5757' },
 ];
 
 const creditScoreBand = (score: number) => {
@@ -69,7 +70,9 @@ const formatDateTime = (value?: string) => {
 export default function CreditScoreDetailScreen() {
     const { user, refreshUser } = useAuth();
     const { theme } = useTheme();
+    const toast = useToast();
     const c = theme.colors;
+    const isDark = theme.mode === 'dark';
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -139,16 +142,21 @@ export default function CreditScoreDetailScreen() {
             await refreshUser();
             await fetchHistory(1, false);
             setFactors(result.factors);
-            Alert.alert(
-                'Tính lại thành công',
-                `Điểm mới: ${result.score}\nMức rủi ro: ${result.risk?.label ?? '--'}`,
-            );
+            toast.show({
+                type: 'success',
+                title: 'Tính lại thành công',
+                message: `Điểm mới: ${result.score} — ${result.risk?.label ?? '--'}`,
+            });
         } catch (err: any) {
-            Alert.alert('Lỗi', err?.message || 'Không thể tính lại điểm tín dụng');
+            toast.show({
+                type: 'error',
+                title: 'Lỗi',
+                message: err?.message || 'Không thể tính lại điểm tín dụng',
+            });
         } finally {
             setRecalculating(false);
         }
-    }, [recalculating, refreshUser, fetchHistory]);
+    }, [recalculating, refreshUser, fetchHistory, toast]);
 
     const onLoadMore = useCallback(async () => {
         if (loadingMoreRef.current || !hasNextPage || loading || refreshing) return;
@@ -184,52 +192,97 @@ export default function CreditScoreDetailScreen() {
         </View>
     );
 
+    const reasonIcon = (reason?: string): { name: string; color: string; bg: string } => {
+        switch (reason) {
+            case 'late_payment':
+                return { name: 'clock-alert-outline', color: '#EB5757', bg: '#EB575715' };
+            case 'loan_repayment':
+                return { name: 'check-circle-outline', color: '#18A058', bg: '#18A05815' };
+            case 'loan_prepayment':
+                return { name: 'lightning-bolt', color: '#2F80ED', bg: '#2F80ED15' };
+            case 'system_recalculation':
+                return { name: 'sync', color: '#9B59B6', bg: '#9B59B615' };
+            case 'manual_adjustment':
+                return { name: 'pencil-outline', color: '#F2994A', bg: '#F2994A15' };
+            case 'initial_account_creation':
+                return { name: 'account-plus-outline', color: '#2F80ED', bg: '#2F80ED15' };
+            default:
+                return { name: 'information-outline', color: c.textMuted, bg: c.border + '20' };
+        }
+    };
+
     const renderHistoryItem = ({ item, index }: { item: UserCreditScoreHistoryItem; index: number }) => {
         const change = Number(item?.changeAmount || 0);
         const isUp = change > 0;
         const isDown = change < 0;
         const changeColor = isUp ? '#18A058' : isDown ? '#EB5757' : c.textMuted;
+        const icon = reasonIcon(item.reason);
 
         return (
             <View
                 style={[
-                    styles.historyItem,
-                    { borderBottomColor: c.border + '30' },
-                    index === items.length - 1 ? { borderBottomWidth: 0 } : null,
+                    styles.historyCard,
+                    {
+                        backgroundColor: isDark ? c.backgroundSecondary : c.surface,
+                        borderColor: isDark ? c.border + '30' : '#F0F0F0',
+                    },
                 ]}
             >
-                <View style={styles.historyLeft}>
-                    <Text style={[styles.historyReason, { color: c.textPrimary }]}>
-                        {formatHistoryReason(item.reason)}
-                    </Text>
-                    <Text style={[styles.historyDate, { color: c.textMuted }]}>
-                        {formatDateTime(item.createdAt)}
-                    </Text>
-                    {item.factors && (
-                        <View style={styles.historyFactorsRow}>
-                            {FACTOR_META.map(m => (
-                                <View key={m.key} style={[styles.historyFactorPill, { backgroundColor: m.color + '18' }]}>
-                                    <Text style={[styles.historyFactorText, { color: m.color }]}>
-                                        {m.label.substring(0, 2)}: {Math.round((item.factors as any)[m.key])}
+                {/* Top row: icon + title + score change */}
+                <View style={styles.historyTopRow}>
+                    <View style={[styles.historyIconWrap, { backgroundColor: icon.bg }]}>
+                        <MaterialCommunityIcons name={icon.name as any} size={20} color={icon.color} />
+                    </View>
+                    <View style={styles.historyTitleArea}>
+                        <Text style={[styles.historyReason, { color: c.textPrimary }]} numberOfLines={1}>
+                            {formatHistoryReason(item.reason)}
+                        </Text>
+                        <Text style={[styles.historyDate, { color: c.textMuted }]}>
+                            {formatDateTime(item.createdAt)}
+                        </Text>
+                    </View>
+                    <View style={styles.historyScoreArea}>
+                        <Text style={[styles.historyScoreRange, { color: c.textSecondary }]}>
+                            {item.beforeScore ?? '--'} → {item.afterScore ?? '--'}
+                        </Text>
+                        <View style={[styles.historyDeltaBadge, {
+                            backgroundColor: isUp ? '#18A05818' : isDown ? '#EB575718' : c.border + '30',
+                        }]}>
+                            <Text style={[styles.historyDelta, { color: changeColor }]}>
+                                {isUp ? `+${change}` : `${change}`}
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Factor pills row */}
+                {item.factors && (
+                    <View style={styles.historyFactorsRow}>
+                        {FACTOR_META.map(m => {
+                            const val = Math.round((item.factors as any)[m.key]);
+                            return (
+                                <View
+                                    key={m.key}
+                                    style={[styles.historyFactorPill, { backgroundColor: m.color + '1A' }]}
+                                >
+                                    <Text style={[styles.historyFactorPillLabel, { color: m.color }]}>
+                                        {m.short}:
+                                    </Text>
+                                    <Text style={[styles.historyFactorPillValue, { color: m.color }]}>
+                                        {val}
                                     </Text>
                                 </View>
-                            ))}
-                        </View>
-                    )}
-                    {item.note ? (
-                        <Text style={[styles.historyNote, { color: c.textMuted }]} numberOfLines={2}>
-                            {item.note}
-                        </Text>
-                    ) : null}
-                </View>
-                <View style={styles.historyRight}>
-                    <Text style={[styles.historyScoreRange, { color: c.textMuted }]}>
-                        {item.beforeScore ?? '--'} → {item.afterScore ?? '--'}
+                            );
+                        })}
+                    </View>
+                )}
+
+                {/* Note */}
+                {item.note ? (
+                    <Text style={[styles.historyNote, { color: c.textMuted }]} numberOfLines={2}>
+                        {item.note}
                     </Text>
-                    <Text style={[styles.historyDelta, { color: changeColor }]}>
-                        {isUp ? `+${change}` : `${change}`}
-                    </Text>
-                </View>
+                ) : null}
             </View>
         );
     };
@@ -249,96 +302,117 @@ export default function CreditScoreDetailScreen() {
                 contentContainerStyle={styles.contentContainer}
                 ListHeaderComponent={
                     <>
-                        {/* ── Hero Score Card ── */}
-                        <CommonCard
-                            style={[
-                                styles.heroCard,
-                                {
-                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : c.surface,
-                                    borderColor: c.border + '40',
-                                },
-                            ]}
-                        >
-                            <Text style={[styles.heroCaption, { color: c.textMuted }]}>Điểm tín dụng hiện tại</Text>
-                            <Text style={[styles.heroScore, { color: c.textPrimary }]}>{scoreValue}</Text>
-
-                            <View style={[styles.bandPill, { backgroundColor: band.color + '22' }]}>
-                                <Text style={[styles.bandPillText, { color: band.color }]}>{band.label}</Text>
-                            </View>
-
-                            <View style={[styles.scoreProgressTrack, { backgroundColor: c.border + '45' }]}>
-                                <View
-                                    style={[
-                                        styles.scoreProgressFill,
-                                        {
-                                            width: `${Math.max(scoreRatio * 100, 5)}%`,
-                                            backgroundColor: band.color,
-                                        },
-                                    ]}
-                                />
-                            </View>
-
-                            <View style={styles.scaleLabels}>
-                                <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MIN}</Text>
-                                <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MAX}</Text>
-                            </View>
-
-                            <View style={styles.metaRow}>
-                                <View style={styles.metaItem}>
-                                    <Text style={[styles.metaLabel, { color: c.textMuted }]}>Tổng khoản vay</Text>
-                                    <Text style={[styles.metaValue, { color: c.textPrimary }]}>{creditScore?.totalLoans ?? 0}</Text>
-                                </View>
-                                <View style={styles.metaItem}>
-                                    <Text style={[styles.metaLabel, { color: c.textMuted }]}>Trả trễ hạn</Text>
-                                    <Text style={[styles.metaValue, { color: c.textPrimary }]}>{creditScore?.latePayments ?? 0}</Text>
-                                </View>
-                                <View style={styles.metaItem}>
-                                    <Text style={[styles.metaLabel, { color: c.textMuted }]}>Cập nhật cuối</Text>
-                                    <Text style={[styles.metaValue, { color: c.textPrimary }]}>
-                                        {formatDateTime(creditScore?.lastUpdated)}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* ── Recalculate Button ── */}
-                            <TouchableOpacity
+                        {/* ── Hero Score Card with Gradient ── */}
+                        <View style={styles.heroCardWrap}>
+                            <LinearGradient
+                                colors={isDark
+                                    ? [c.backgroundSecondary, c.backgroundTertiary]
+                                    : ['#FFFFFF', '#F8FAF9']}
                                 style={[
-                                    styles.recalcBtn,
-                                    {
-                                        backgroundColor: band.color + '18',
-                                        borderColor: band.color + '40',
-                                    },
-                                    recalculating && { opacity: 0.6 },
+                                    styles.heroCard,
+                                    { borderColor: isDark ? c.border + '30' : '#E8E8E8' },
                                 ]}
-                                activeOpacity={0.7}
-                                onPress={handleRecalculate}
-                                disabled={recalculating}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
                             >
-                                {recalculating ? (
-                                    <ActivityIndicator size="small" color={band.color} />
-                                ) : (
-                                    <MaterialCommunityIcons name="refresh" size={16} color={band.color} />
-                                )}
-                                <Text style={[styles.recalcBtnText, { color: band.color }]}>
-                                    {recalculating ? 'Đang tính lại...' : 'Tính lại điểm'}
-                                </Text>
-                            </TouchableOpacity>
-                        </CommonCard>
+                                {/* Score header */}
+                                <View style={styles.heroTopRow}>
+                                    <View>
+                                        <Text style={[styles.heroCaption, { color: c.textMuted }]}>Điểm tín dụng hiện tại</Text>
+                                        <Text style={[styles.heroScore, { color: c.textPrimary }]}>{scoreValue}</Text>
+                                    </View>
+                                    <View style={[styles.bandPill, { backgroundColor: band.color + '22' }]}>
+                                        <View style={[styles.bandDot, { backgroundColor: band.color }]} />
+                                        <Text style={[styles.bandPillText, { color: band.color }]}>{band.label}</Text>
+                                    </View>
+                                </View>
+
+                                {/* Progress bar */}
+                                <View style={[styles.scoreProgressTrack, { backgroundColor: isDark ? c.border + '60' : '#E8ECE9' }]}>
+                                    <LinearGradient
+                                        colors={[band.color + 'CC', band.color]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={[
+                                            styles.scoreProgressFill,
+                                            { width: `${Math.max(scoreRatio * 100, 5)}%` },
+                                        ]}
+                                    />
+                                </View>
+
+                                <View style={styles.scaleLabels}>
+                                    <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MIN}</Text>
+                                    <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MAX}</Text>
+                                </View>
+
+                                {/* Meta stats */}
+                                <View style={styles.metaRow}>
+                                    <View style={[styles.metaItem, { backgroundColor: isDark ? c.backgroundTertiary : '#F4F6F5', borderRadius: 12, padding: 10 }]}>
+                                        <MaterialCommunityIcons name="file-document-outline" size={16} color={c.textMuted} style={{ marginBottom: 4 }} />
+                                        <Text style={[styles.metaLabel, { color: c.textMuted }]}>Khoản vay</Text>
+                                        <Text style={[styles.metaValue, { color: c.textPrimary }]}>{creditScore?.totalLoans ?? 0}</Text>
+                                    </View>
+                                    <View style={[styles.metaItem, { backgroundColor: isDark ? c.backgroundTertiary : '#F4F6F5', borderRadius: 12, padding: 10 }]}>
+                                        <MaterialCommunityIcons name="alert-circle-outline" size={16} color="#EB5757" style={{ marginBottom: 4 }} />
+                                        <Text style={[styles.metaLabel, { color: c.textMuted }]}>Trả trễ</Text>
+                                        <Text style={[styles.metaValue, { color: (creditScore?.latePayments ?? 0) > 0 ? '#EB5757' : c.textPrimary }]}>
+                                            {creditScore?.latePayments ?? 0}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.metaItem, { backgroundColor: isDark ? c.backgroundTertiary : '#F4F6F5', borderRadius: 12, padding: 10 }]}>
+                                        <MaterialCommunityIcons name="update" size={16} color={c.textMuted} style={{ marginBottom: 4 }} />
+                                        <Text style={[styles.metaLabel, { color: c.textMuted }]}>Cập nhật</Text>
+                                        <Text style={[styles.metaValue, { color: c.textPrimary }]} numberOfLines={1}>
+                                            {formatDateTime(creditScore?.lastUpdated)}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {/* Recalculate Button */}
+                                <TouchableOpacity
+                                    style={[
+                                        styles.recalcBtn,
+                                        {
+                                            backgroundColor: band.color + '18',
+                                            borderColor: band.color + '40',
+                                        },
+                                        recalculating && { opacity: 0.6 },
+                                    ]}
+                                    activeOpacity={0.7}
+                                    onPress={handleRecalculate}
+                                    disabled={recalculating}
+                                >
+                                    {recalculating ? (
+                                        <ActivityIndicator size="small" color={band.color} />
+                                    ) : (
+                                        <MaterialCommunityIcons name="refresh" size={16} color={band.color} />
+                                    )}
+                                    <Text style={[styles.recalcBtnText, { color: band.color }]}>
+                                        {recalculating ? 'Đang tính lại...' : 'Tính lại điểm'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </LinearGradient>
+                        </View>
 
                         {/* ── 5-Factor Breakdown Card ── */}
                         <CommonCard
                             style={[
                                 styles.factorCard,
                                 {
-                                    backgroundColor: theme.mode === 'dark' ? c.backgroundSecondary : c.surface,
-                                    borderColor: c.border + '40',
+                                    backgroundColor: isDark ? c.backgroundSecondary : c.surface,
+                                    borderColor: isDark ? c.border + '30' : '#E8E8E8',
                                 },
                             ]}
                         >
                             <View style={styles.factorHeader}>
-                                <View>
-                                    <Text style={[styles.factorTitle, { color: c.textPrimary }]}>5 Yếu tố tín dụng</Text>
-                                    <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm · Cập nhật theo sự kiện</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <View style={[styles.factorIconWrap, { backgroundColor: isDark ? c.backgroundTertiary : '#F0F4F2' }]}>
+                                        <MaterialCommunityIcons name="chart-bar" size={16} color={c.textSecondary} />
+                                    </View>
+                                    <View>
+                                        <Text style={[styles.factorTitle, { color: c.textPrimary }]}>5 Yếu tố tín dụng</Text>
+                                        <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm</Text>
+                                    </View>
                                 </View>
                             </View>
 
@@ -357,8 +431,15 @@ export default function CreditScoreDetailScreen() {
                         </CommonCard>
 
                         <View style={styles.historyHeader}>
-                            <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử cập nhật điểm tín dụng</Text>
-                            <Text style={[styles.historySubtitle, { color: c.textMuted }]}>Vuốt xuống để làm mới, kéo xuống cuối để tải thêm</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={[styles.historyHeaderIcon, { backgroundColor: isDark ? c.backgroundTertiary : '#F0F4F2' }]}>
+                                    <MaterialCommunityIcons name="history" size={16} color={c.textSecondary} />
+                                </View>
+                                <View>
+                                    <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử cập nhật</Text>
+                                    <Text style={[styles.historySubtitle, { color: c.textMuted }]}>Vuốt xuống để làm mới, kéo xuống cuối để tải thêm</Text>
+                                </View>
+                            </View>
                         </View>
                     </>
                 }
@@ -401,29 +482,45 @@ const styles = StyleSheet.create({
         paddingBottom: Platform.OS === 'ios' ? 120 : 100,
         paddingTop: 16,
     },
+    // ── Hero Card ──
+    heroCardWrap: {
+        marginBottom: 12,
+    },
     heroCard: {
-        borderRadius: 18,
+        borderRadius: 20,
         padding: 20,
         borderWidth: 1,
         borderColor: 'transparent',
-        marginBottom: 12,
+    },
+    heroTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
     },
     heroCaption: {
-        fontSize: 13,
+        fontSize: 12,
         fontFamily: 'Poppins_500Medium',
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
     },
     heroScore: {
         fontSize: 48,
         lineHeight: 56,
         fontFamily: 'Poppins_700Bold',
-        marginTop: 4,
+        marginTop: 2,
     },
     bandPill: {
-        alignSelf: 'flex-start',
-        marginTop: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         borderRadius: 999,
         paddingHorizontal: 12,
         paddingVertical: 6,
+    },
+    bandDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
     },
     bandPillText: {
         fontSize: 12,
@@ -433,7 +530,7 @@ const styles = StyleSheet.create({
         height: 10,
         borderRadius: 999,
         overflow: 'hidden',
-        marginTop: 16,
+        marginTop: 18,
     },
     scoreProgressFill: {
         height: '100%',
@@ -454,15 +551,18 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         gap: 8,
     },
-    metaItem: { flex: 1 },
+    metaItem: {
+        flex: 1,
+        alignItems: 'center',
+    },
     metaLabel: {
-        fontSize: 11,
+        fontSize: 10,
         fontFamily: 'Poppins_500Medium',
-        marginBottom: 4,
+        marginBottom: 2,
     },
     metaValue: {
         fontSize: 13,
-        fontFamily: 'Poppins_600SemiBold',
+        fontFamily: 'Poppins_700Bold',
     },
     // ── Recalculate Button ──
     recalcBtn: {
@@ -481,7 +581,7 @@ const styles = StyleSheet.create({
     },
     // ── Factor Card ──
     factorCard: {
-        borderRadius: 18,
+        borderRadius: 20,
         padding: 20,
         borderWidth: 1,
         borderColor: 'transparent',
@@ -493,6 +593,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16,
     },
+    factorIconWrap: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     factorTitle: {
         fontSize: 15,
         fontFamily: 'Poppins_600SemiBold',
@@ -503,7 +610,7 @@ const styles = StyleSheet.create({
         marginTop: 1,
     },
     factorsContainer: {
-        gap: 12,
+        gap: 14,
     },
     factorRow: {
         gap: 6,
@@ -543,73 +650,99 @@ const styles = StyleSheet.create({
     },
     // ── History ──
     historyHeader: {
-        marginBottom: 8,
+        marginBottom: 12,
+    },
+    historyHeaderIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     historyTitle: {
         fontSize: 15,
         fontFamily: 'Poppins_600SemiBold',
-        marginBottom: 2,
+        marginBottom: 1,
     },
     historySubtitle: {
-        fontSize: 11,
+        fontSize: 10,
         fontFamily: 'Poppins_400Regular',
     },
-    historyItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        paddingVertical: 12,
+    historyCard: {
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 10,
+        borderWidth: 1,
     },
-    historyLeft: {
+    historyTopRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    historyIconWrap: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    historyTitleArea: {
         flex: 1,
         paddingRight: 8,
     },
     historyReason: {
         fontSize: 13,
-        fontFamily: 'Poppins_500Medium',
+        fontFamily: 'Poppins_600SemiBold',
     },
     historyDate: {
-        marginTop: 2,
+        marginTop: 1,
         fontSize: 11,
         fontFamily: 'Poppins_400Regular',
     },
-    historyFactorsRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 4,
-        marginTop: 6,
-    },
-    historyFactorPill: {
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-    },
-    historyFactorText: {
-        fontSize: 9,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    historyRight: {
+    historyScoreArea: {
         alignItems: 'flex-end',
-    },
-    historyAfter: {
-        fontSize: 16,
-        fontFamily: 'Poppins_700Bold',
     },
     historyScoreRange: {
         fontSize: 12,
         fontFamily: 'Poppins_500Medium',
     },
-    historyNote: {
+    historyDeltaBadge: {
+        borderRadius: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
         marginTop: 4,
+    },
+    historyDelta: {
+        fontSize: 13,
+        fontFamily: 'Poppins_700Bold',
+    },
+    historyFactorsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 5,
+        marginTop: 10,
+    },
+    historyFactorPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        borderRadius: 6,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+    },
+    historyFactorPillLabel: {
+        fontSize: 10,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    historyFactorPillValue: {
+        fontSize: 10,
+        fontFamily: 'Poppins_700Bold',
+    },
+    historyNote: {
+        marginTop: 8,
         fontSize: 11,
         fontFamily: 'Poppins_400Regular',
         lineHeight: 15,
-    },
-    historyDelta: {
-        marginTop: 1,
-        fontSize: 12,
-        fontFamily: 'Poppins_600SemiBold',
     },
     loadingWrap: {
         paddingVertical: 40,
@@ -632,8 +765,8 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         borderWidth: 1,
         borderRadius: 999,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
     },
     loadMoreText: {
         fontSize: 12,

@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    Alert,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -15,7 +14,7 @@ import {
 import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { CommonButton, CommonInput, CommonCard, BinanceHeader } from '../../../components';
+import { CommonButton, CommonInput, CommonCard, BinanceHeader, useConfirmModal } from '../../../components';
 import { QRScanner } from '../../../components/QRScanner';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI } from '../api/wallet.api';
@@ -33,6 +32,7 @@ export default function TransferScreen() {
     const insets = useSafeAreaInsets();
     const isDark = theme.mode === 'dark';
     const c = theme.colors;
+    const modal = useConfirmModal();
 
     const { initialRecipientAccountNo, initialWallet } = (route.params as any) || {};
 
@@ -72,18 +72,18 @@ export default function TransferScreen() {
 
     const handleTransfer = async () => {
         if (!recipientAccountNo || !amount || !selectedWallet) {
-            Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+            modal.error('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
             return;
         }
 
         const amountNum = parseInt(amount.replace(/,/g, ''), 10);
         if (isNaN(amountNum) || amountNum < 1000) {
-            Alert.alert('Lỗi', 'Số tiền không hợp lệ (tối thiểu 1,000 đ)');
+            modal.error('Lỗi', 'Số tiền không hợp lệ (tối thiểu 1,000 đ)');
             return;
         }
 
         if (amountNum > (selectedWallet.balance || 0)) {
-            Alert.alert('Lỗi', 'Số dư không đủ');
+            modal.error('Lỗi', 'Số dư không đủ');
             return;
         }
 
@@ -115,19 +115,16 @@ export default function TransferScreen() {
         } catch (error: any) {
             const msg = error?.response?.data?.message || error?.message || '';
             if (msg.includes('chưa được đăng ký Smart OTP') || msg.includes('Smart OTP')) {
-                Alert.alert(
-                    'Chưa đăng ký Smart OTP',
-                    'Bạn cần đăng ký thiết bị với Smart OTP trước khi thực hiện chuyển tiền.\n\nVào Tài khoản → Mã OTP thông minh → Đăng ký thiết bị.',
-                    [
-                        { text: 'Để sau', style: 'cancel' },
-                        {
-                            text: 'Đi đăng ký',
-                            onPress: () => navigation.navigate('Main' as any, { screen: 'Profile' }),
-                        },
-                    ],
-                );
+                modal.show({
+                    title: 'Chưa đăng ký Smart OTP',
+                    message: 'Bạn cần đăng ký thiết bị với Smart OTP trước khi thực hiện chuyển tiền.\n\nVào Tài khoản → Mã OTP thông minh → Đăng ký thiết bị.',
+                    variant: 'warning',
+                    cancelText: 'Để sau',
+                    confirmText: 'Đi đăng ký',
+                    onConfirm: () => navigation.navigate('Main' as any, { screen: 'Profile' }),
+                });
             } else {
-                Alert.alert('Thất bại', msg || 'Có lỗi xảy ra khi chuyển tiền');
+                modal.error('Thất bại', msg || 'Có lỗi xảy ra khi chuyển tiền');
             }
         } finally {
             setLoading(false);
@@ -269,8 +266,15 @@ export default function TransferScreen() {
                                     value={description}
                                     onChangeText={setDescription}
                                     multiline
-                                    containerStyle={styles.input}
+                                    numberOfLines={3}
+                                    textAlignVertical="top"
+                                    maxLength={140}
+                                    containerStyle={styles.descInput}
+                                    inputStyle={styles.descTextStyle}
                                 />
+                                <Text style={[styles.charCount, { color: c.textMuted }]}>
+                                    {description.length}/140
+                                </Text>
                             </View>
                         </View>
                     </ScrollView>
@@ -417,5 +421,21 @@ const styles = StyleSheet.create({
     footer: {
         paddingHorizontal: 20,
         backgroundColor: 'transparent',
+    },
+    descInput: {
+        marginBottom: 0,
+        minHeight: 80,
+    },
+    descTextStyle: {
+        fontSize: 14,
+        fontWeight: '500',
+        lineHeight: 20,
+        paddingTop: 12,
+        paddingBottom: 12,
+    },
+    charCount: {
+        fontSize: 11,
+        textAlign: 'right',
+        marginTop: 6,
     },
 });

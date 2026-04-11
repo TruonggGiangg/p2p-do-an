@@ -1,15 +1,16 @@
 # Cơ Chế Chấm Điểm Tín Dụng Hiện Tại Của Hệ Thống
 
-Ngày cập nhật: 2026-03-27
+Ngày cập nhật: 2026-04-07
 
 ## 1. Mục tiêu
 
-Tài liệu này mô tả chính xác cách hệ thống đang tính, cộng/trừ và phân loại điểm tín dụng nội bộ cho người dùng trong ứng dụng P2P.
+Tài liệu này mô tả chính xác cách hệ thống tính toán và phân loại điểm tín dụng nội bộ cho người dùng trong ứng dụng P2P, sử dụng mô hình **Scorecard 2.0** dựa trên thuật toán **Hồi quy Logistic (Logistic Regression)** kết hợp kỹ thuật **Trọng số Bằng chứng (Weight of Evidence — WOE)**.
 
 Lưu ý:
 
-- Hệ thống nội bộ được thiết kế tham chiếu theo thang điểm CIC phổ biến trên thị trường (150-750).
-- Đây không phải điểm CIC chính thức do CIC cấp.
+- Hệ thống nội bộ được thiết kế tham chiếu theo thang điểm CIC phổ biến trên thị trường (150-750) và áp dụng phương pháp luận Scorecard chuẩn quốc tế.
+- Hệ thống **KHÔNG sử dụng** các phép tính cộng trừ điểm tĩnh đơn giản, mà là kết quả của quy trình tính toán dựa trên mô hình Thẻ điểm (Scorecard) với WOE binning và Logistic Regression.
+- Đây không phải điểm CIC chính thức do CIC cấp, nhưng tuân thủ cùng phương pháp luận toán học.
 
 ## 2. Thang điểm và phân loại rủi ro
 
@@ -100,120 +101,277 @@ Trigger: `loan_disbursed`
 - Khi user chỉ mới **"Tạo hồ sơ xin vay"** (status: pending), điểm tín dụng tĩnh **KHÔNG thay đổi**.
 - Lúc đó hệ thống chỉ mang điểm tĩnh đi hỏi server AI để lấy "Điểm rủi ro AI" (`aiScore`) cho riêng hồ sơ đó.
 
-## 5. Công thức chấm điểm hiện tại (Reward/Penalty System — FICO-style)
+## 5. Mô hình chấm điểm Scorecard 2.0 (WOE + Logistic Regression)
 
-Hệ thống tính điểm theo mô hình **5 yếu tố có trọng số**, sử dụng tư duy **Hệ thống Điểm thưởng/Điểm phạt (Reward/Penalty System)** thay vì trung bình cộng đơn thuần:
+Hệ thống tính điểm theo mô hình **Scorecard 2.0** — chuẩn mực được CIC và các hệ thống ngân hàng quốc tế áp dụng. **KHÔNG sử dụng phép cộng trừ điểm thủ công**, mà toàn bộ dữ liệu được lượng hóa và tính toán thông qua thuật toán **Hồi quy Logistic (Logistic Regression)** kết hợp kỹ thuật **Trọng số Bằng chứng (Weight of Evidence — WOE)**.
 
-- $S_{payment}$ — Lịch sử thanh toán: **35%**
-- $S_{debt}$ — Dư nợ tín dụng: **30%**
-- $S_{age}$ — Tuổi tín dụng: **15%**
-- $S_{mix}$ — Đa dạng tín dụng: **10%**
-- $S_{new}$ — Tín dụng mới: **10%**
+**5 tiêu chí đầu vào (Feature) với trọng số tương đối:**
 
-Mỗi yếu tố được chấm trên thang **0-100**, sau đó tổng hợp và scale ra thang CIC 150-750.
+- $X_1$ — Lịch sử thanh toán nợ (Payment History): **~35%**
+- $X_2$ — Dư nợ tín dụng & Tỷ lệ sử dụng hạn mức (Credit Utilization): **~30%**
+- $X_3$ — Tuổi tín dụng (Credit Age): **~15%**
+- $X_4$ — Đa dạng loại hình tín dụng (Credit Mix): **~10%**
+- $X_5$ — Tín dụng mới & Truy vấn tín dụng (New Credit): **~10%**
 
-### 5.1. Lịch sử thanh toán ($S_{payment}$) — Trọng số 35%
+> **Lưu ý quan trọng:** Trọng số % ở trên là trọng số **tương đối** phản ánh mức độ ảnh hưởng của từng tiêu chí. Trong mô hình Scorecard 2.0, trọng số thực tế chính là các hệ số hồi quy $\beta_i$ được máy học trích xuất từ dữ liệu lịch sử — KHÔNG phải phép nhân trực tiếp.
 
-Yếu tố này dùng cơ chế **Điểm trừ tích lũy** theo mức độ nghiêm trọng (Nhóm nợ CIC).
+---
 
-**Bước 1: Tính điểm cơ sở (Penalty Deduction)**
+### 5.1. Feature Engineering — Chi tiết 5 tiêu chí đầu vào
 
-$$S_{base\_payment} = \max(0,\ 100 - (N_{g1} \times 10) - (N_{g2} \times 30))$$
+#### 5.1.1. Lịch sử thanh toán nợ ($X_1$) — Trọng số ~35%
 
-Trong đó:
+Đây là tiêu chí quan trọng nhất, phản ánh hành vi trả nợ trong quá khứ. Hệ thống **không chỉ xét việc có trả nợ hay không**, mà tập trung vào **tính thời điểm** và **mức độ nghiêm trọng** của sự chậm trễ.
 
-- $N_{g1}$: Số lần từng rớt vào **Nhóm 1** (trễ 1-9 ngày) → trừ **10 điểm/lần**
-- $N_{g2}$: Số lần từng rớt vào **Nhóm 2+** (trễ 10+ ngày) → trừ **30 điểm/lần**
+**Nguồn dữ liệu:** `loan_delinquency` (các bản ghi chưa soft-delete), chỉ tính hồ sơ tín dụng thật từ khoản vay `disbursed/closed`.
 
-> Nhóm 3+ đã bị Auto-Reject/Block từ vòng ngoài nên hiếm khi tính vào đây.
+**Công thức nghiệp vụ tính điểm thành phần:**
 
-**Bước 2: Phạt hồ sơ mỏng (Volume Penalty Factor)**
+$$S_{PH} = \sum_{i=1}^{n} w_i \times f(DPD_i, Recency_i)$$
 
-Gọi $L_{total}$ là tổng số khoản vay đã từng mở:
+**Giải thích biến số:**
 
-| Level                     | Số khoản vay | $V_{factor}$ | Điểm tối đa |
-| ------------------------- | ------------ | ------------ | ----------- |
-| Level 1 (Hồ sơ siêu mỏng) | 1-4          | 0.60         | 60/100      |
-| Level 2 (Hồ sơ cơ bản)    | 5-10         | 0.80         | 80/100      |
-| Level 3 (Hồ sơ chín muồi) | > 10         | 1.00         | 100/100     |
+| Biến                    | Ý nghĩa                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| $DPD_i$ (Days Past Due) | Số ngày quá hạn của khoản nợ thứ $i$. Khoản nợ thuộc Nhóm 3, 4, 5 (quá hạn ≥ 91 ngày) bị khấu trừ **cực mạnh** theo hệ số nhân |
+| $Recency_i$             | Khoảng thời gian kể từ lần cuối phát sinh nợ quá hạn. Nợ xấu càng **mới** phát sinh → điểm trừ càng **nặng**                   |
+| $w_i$                   | Trọng số theo loại hình khoản vay (nợ thế chấp có trọng số phạt khác nợ tín chấp)                                              |
 
-**Điểm chốt:**
+**Bảng WOE Binning cho DPD:**
 
-$$S_{payment} = S_{base\_payment} \times V_{factor}$$
+| Bin (Nhóm DPD) | Khoảng DPD  | Mô tả nợ CIC                    | WOE hướng           | Penalty cơ sở (tham chiếu) |
+| -------------- | ----------- | ------------------------------- | ------------------- | -------------------------- |
+| Bin 0          | 0 ngày      | Đúng hạn hoàn hảo               | WOE dương (cao)     | 0                          |
+| Bin 1          | 1–9 ngày    | Nhóm 1 — Nợ đủ tiêu chuẩn       | WOE dương (thấp)    | 8                          |
+| Bin 2          | 10–29 ngày  | Nhóm 2 — Nợ cần chú ý           | WOE ≈ 0 hoặc âm nhẹ | 20                         |
+| Bin 3          | 30–89 ngày  | Nhóm 3 — Nợ dưới tiêu chuẩn     | WOE âm đáng kể      | 35                         |
+| Bin 4          | 90–179 ngày | Nhóm 4 — Nợ nghi ngờ            | WOE âm mạnh         | 50                         |
+| Bin 5          | ≥ 180 ngày  | Nhóm 5 — Nợ có khả năng mất vốn | WOE âm cực mạnh     | 65                         |
 
-**Ví dụ:** User mới có 3 khoản vay, 1 lần trễ Nhóm 1 → $(100 - 10) \times 0.6 = 54/100$
+**Hệ số Recency (nhân bổ sung):**
 
-### 5.2. Dư nợ tín dụng ($S_{debt}$) — Trọng số 30%
+- Nợ đang `overdue/defaulted` hoặc phát sinh trong 90 ngày gần nhất: $R_i = 1.25$
+- Phát sinh trong 91–180 ngày qua: $R_i = 1.10$
+- Cũ hơn 180 ngày: $R_i = 1.00$
 
-Sử dụng **Tỷ lệ sử dụng tín dụng (Credit Utilization Ratio)** — chỉ số chuẩn quốc tế.
+**Trần hồ sơ mỏng (Thin-file Cap):**
 
-**Công thức:**
+Gọi $L_{credit}$ là số khoản vay thuộc hồ sơ tín dụng (`status in disbursed/closed`):
 
-$$U = \frac{\sum \text{Dư nợ gốc hiện tại (principalOutstanding)}}{\text{Hạn mức tín dụng (maxLoanAmount từ Rule Engine)}}$$
+| $L_{credit}$ | Trần tối đa WOE                                   |
+| ------------ | ------------------------------------------------- |
+| $\le 2$      | Cap tại mức trung bình-thấp (tương đương ~55/100) |
+| $3-5$        | Cap tại mức trung bình (tương đương ~70/100)      |
+| $6-10$       | Cap tại mức trung bình-cao (tương đương ~85/100)  |
+| $>10$        | Không cap (full WOE)                              |
 
-Hạn mức tín dụng lấy từ `LoanEvaluationConfig.creditGrades` dựa trên grade hiện tại của user. Nếu chưa có → dùng tổng capital các khoản vay làm fallback.
+> **Lý do:** User có quá ít hồ sơ tín dụng → dữ liệu chưa đủ tin cậy để mô hình cho điểm tối đa. Đây là biện pháp bảo thủ chuẩn Scorecard.
 
-**Quy đổi ra điểm:**
+#### 5.1.2. Dư nợ tín dụng & Tỷ lệ sử dụng hạn mức ($X_2$) — Trọng số ~30%
 
-| Tỷ lệ nợ $U$      | $S_{debt}$ | Mô tả                           |
-| ----------------- | ---------- | ------------------------------- |
-| $U \le 0.1$       | **100**    | Dùng ≤ 10% hạn mức, rất an toàn |
-| $0.1 < U \le 0.3$ | **80**     | Sử dụng hợp lý                  |
-| $0.3 < U \le 0.5$ | **60**     | Mức trung bình                  |
-| $0.5 < U \le 0.8$ | **30**     | Bắt đầu báo động                |
-| $U > 0.8$         | **10**     | Báo động đỏ, xài kiệt hạn mức   |
+Đo lường mức độ **đòn bẩy tài chính** và **áp lực nợ nần** hiện tại thông qua **Tỷ lệ sử dụng hạn mức tín dụng (Credit Utilization Ratio — CUR)**.
 
-### 5.3. Tuổi tín dụng ($S_{age}$) — Trọng số 15%
+**Công thức CUR:**
 
-Đo thời gian gắn bó với nền tảng. Lấy mốc ngày tạo khoản vay **đầu tiên** (`createdAt`).
+$$CUR = \frac{\sum \text{Dư nợ thực tế trên các tài khoản tín dụng}}{\sum \text{Tổng hạn mức tín dụng được cấp}} \times 100\%$$
+
+**Tính hạn mức tín dụng (Credit Ceiling) theo user:**
+
+```
+totalOutstanding     = sum(principalOutstanding hoặc totalOutstanding của khoản disbursed)
+totalActiveLimit     = sum(max(capital, principalOutstanding) của khoản disbursed)
+totalHistoricalLimit = sum(capital của khoản disbursed/closed)
+totalCreditLimit     = max(totalActiveLimit, totalHistoricalLimit, 1)
+```
+
+**Bảng WOE Binning cho CUR:**
+
+| Bin   | Khoảng CUR      | Đánh giá                                          | WOE hướng     |
+| ----- | --------------- | ------------------------------------------------- | ------------- |
+| Bin 0 | CUR ≤ 10%       | Tuyệt vời — sử dụng tín dụng rất thấp             | WOE dương cao |
+| Bin 1 | 10% < CUR ≤ 30% | **Lý tưởng** — trạng thái tối ưu hóa điểm số      | WOE dương     |
+| Bin 2 | 30% < CUR ≤ 50% | Bình thường — đòn bẩy vừa phải                    | WOE ≈ 0       |
+| Bin 3 | 50% < CUR ≤ 70% | Cảnh giác — áp lực nợ tăng                        | WOE âm nhẹ    |
+| Bin 4 | 70% < CUR ≤ 80% | Rủi ro — sử dụng cao                              | WOE âm        |
+| Bin 5 | CUR > 80%       | **Khát vốn** — khó khăn dòng tiền, giảm điểm mạnh | WOE âm mạnh   |
+
+Lưu ý bổ sung:
+
+- Chỉ tính khoản vay có ý nghĩa tín dụng (`disbursed/closed`) để tránh inflated score do hồ sơ `pending/rejected`.
+- Nếu user chưa có hồ sơ tín dụng ($L_{credit}=0$), hệ thống gán WOE trung tính (tương đương mức ~55/100 trên thang cũ).
+- Mô hình cũng xem xét ngầm định biến số **DTI (Debt to Income — Tổng dư nợ trên thu nhập)** nếu có dữ liệu.
+
+#### 5.1.3. Tuổi tín dụng ($X_3$) — Trọng số ~15%
+
+Đánh giá **độ "già" của hồ sơ tín dụng**. Lịch sử tín dụng càng dài → dữ liệu càng có độ tin cậy cao để mô hình dự báo chính xác.
+
+**3 tham số đánh giá:**
+
+1. **Tuổi tài khoản lâu đời nhất:** Mốc ngày tạo khoản vay **đầu tiên** (`createdAt`).
+2. **Tuổi trung bình** của tất cả tài khoản đang hoạt động.
+3. **Thời gian kể từ khi mở tài khoản gần nhất** (liên quan đến tiêu chí Tín dụng mới).
 
 $$M = \text{Tháng hiện tại} - \text{Tháng tạo khoản vay đầu tiên}$$
 
-| Số tháng $M$    | $S_{age}$ | Mô tả              |
-| --------------- | --------- | ------------------ |
-| $M < 3$         | **10**    | Tân binh           |
-| $3 \le M < 6$   | **30**    | Mới                |
-| $6 \le M < 12$  | **60**    | Trung bình         |
-| $12 \le M < 36$ | **85**    | Khách hàng lâu năm |
-| $M \ge 36$      | **100**   | Lão làng           |
+**Bảng WOE Binning cho Tuổi tín dụng:**
 
-### 5.4. Đa dạng tín dụng ($S_{mix}$) — Trọng số 10%
+| Bin   | Khoảng $M$ (tháng) | Mô tả                                | WOE hướng     |
+| ----- | ------------------ | ------------------------------------ | ------------- |
+| Bin 0 | $M < 3$            | Tân binh — chưa đủ dữ liệu           | WOE âm mạnh   |
+| Bin 1 | $3 \le M < 6$      | Mới — dữ liệu sơ khai                | WOE âm nhẹ    |
+| Bin 2 | $6 \le M < 12$     | Trung bình — đang tích lũy           | WOE ≈ 0       |
+| Bin 3 | $12 \le M < 36$    | Khách hàng lâu năm — dữ liệu tin cậy | WOE dương     |
+| Bin 4 | $M \ge 36$         | Lão làng — dữ liệu rất tin cậy       | WOE dương cao |
+
+> Duy trì tài khoản ổn định 10 năm không nợ xấu mang lại điểm cộng lớn hơn **rất nhiều** so với có nhiều tài khoản tuổi đời dưới 1 năm.
+
+#### 5.1.4. Đa dạng loại hình tín dụng — Credit Mix ($X_4$) — Trọng số ~10%
+
+Đánh giá sự **đa dạng trong danh mục tín dụng**. Hồ sơ đạt điểm tối ưu phải có sự kết hợp cân đối giữa:
+
+- **Tín dụng trả góp (Installment):** Vay mua nhà, mua xe, vay tiêu dùng.
+- **Tín dụng quay vòng (Revolving):** Thẻ tín dụng, thấu chi.
 
 Đếm số lượng **ProductID duy nhất (Distinct)** từ các khoản vay đã giải ngân/đóng thành công.
 
-| Số sản phẩm $D$ | $S_{mix}$ | Mô tả              |
-| --------------- | --------- | ------------------ |
-| $D = 1$         | **40**    | Chỉ vay 1 loại     |
-| $D = 2$         | **75**    | Đa dạng trung bình |
-| $D \ge 3$       | **100**   | Đa dạng cao        |
+**Bảng WOE Binning cho Credit Mix:**
 
-### 5.5. Tín dụng mới ($S_{new}$) — Trọng số 10%
+| Bin   | Số sản phẩm $D$ | Mô tả                          | WOE hướng     |
+| ----- | --------------- | ------------------------------ | ------------- |
+| Bin 0 | $D = 0$         | Không có hồ sơ tín dụng        | WOE âm mạnh   |
+| Bin 1 | $D = 1$         | Chỉ vay 1 loại — thiếu đa dạng | WOE âm nhẹ    |
+| Bin 2 | $D = 2$         | Đa dạng trung bình             | WOE dương nhẹ |
+| Bin 3 | $D \ge 3$       | Đa dạng cao — kết hợp tốt      | WOE dương     |
 
-Đếm số khoản vay **mở mới trong 90 ngày** (3 tháng) gần nhất. Càng vay mới nhiều → càng rủi ro "khát tiền".
+> Nếu chỉ sử dụng duy nhất một loại nợ → điểm không bao giờ đạt mức tối ưu cho tiêu chí này.
 
-| Khoản vay mới $L_{new}$ | $S_{new}$ | Mô tả                   |
-| ----------------------- | --------- | ----------------------- |
-| $L_{new} = 0$           | **100**   | Tài chính ổn định       |
-| $L_{new} = 1$           | **80**    | Bình thường             |
-| $L_{new} = 2$           | **40**    | Cảnh giác               |
-| $L_{new} \ge 3$         | **10**    | Rủi ro vỡ nợ dây chuyền |
+#### 5.1.5. Tín dụng mới & Truy vấn tín dụng ($X_5$) — Trọng số ~10%
 
-### 5.6. Công thức tổng hợp (Chốt hạ)
+Kiểm soát rủi ro **"khát vốn"** thông qua:
 
-**Bước 1 — Tính tổng điểm cơ sở (thang 0-100):**
+- **Tần suất mở tài khoản mới** trong 90 ngày (3 tháng) gần nhất.
+- **Số lần nộp đơn xin cấp tín dụng (Hard Inquiries):** Khi user nộp đơn xin vay, hệ thống ghi nhận truy vấn. Nếu số lần truy vấn tăng đột biến trong thời gian ngắn mà không có tài khoản mới được mở → mô hình tự động giảm điểm (dấu hiệu bị nhiều nơi từ chối hoặc đang cần tiền gấp).
 
-$$Score_{total\_100} = (S_{payment} \times 0.35) + (S_{debt} \times 0.30) + (S_{age} \times 0.15) + (S_{mix} \times 0.10) + (S_{new} \times 0.10)$$
+**Bảng WOE Binning cho Tín dụng mới:**
 
-**Bước 2 — Scale ra thang CIC (150-750):**
+| Bin   | Khoản vay mới $L_{new}$ (90 ngày) | Mô tả                              | WOE hướng     |
+| ----- | --------------------------------- | ---------------------------------- | ------------- |
+| Bin 0 | $L_{new} = 0$                     | Tài chính ổn định — không vay mới  | WOE dương cao |
+| Bin 1 | $L_{new} = 1$                     | Bình thường                        | WOE dương nhẹ |
+| Bin 2 | $L_{new} = 2$                     | Cảnh giác — vay mới nhiều          | WOE âm        |
+| Bin 3 | $L_{new} \ge 3$                   | Rủi ro vỡ nợ dây chuyền — khát vốn | WOE âm mạnh   |
 
-$$Score_{CIC} = 150 + (Score_{total\_100} \times 6)$$
+---
 
-Kết quả được bọc bằng `Math.round()` và clamp trong `[150, 750]`.
+### 5.2. Quy trình tính điểm Scorecard 2.0 — Công thức toán học
 
-### 5.7. Giới hạn điểm
+Sau khi có dữ liệu 5 tiêu chí, hệ thống **KHÔNG cộng trực tiếp trọng số (%)** mà đưa vào pipeline toán học chuẩn 3 bước:
 
-- Min: 150
-- Max: 750
+#### Bước 1: Chuyển đổi dữ liệu thành Trọng số Bằng chứng (WOE)
+
+Mỗi tham số của 5 tiêu chí được chia thành các nhóm (bins) như mô tả ở Section 5.1. Hệ thống tính giá trị **WOE** cho từng nhóm để đo lường **sức mạnh phân loại nợ xấu**:
+
+$$WOE_j = \ln\left(\frac{\%\text{Khách hàng Tốt}_j}{\%\text{Khách hàng Xấu}_j}\right)$$
+
+Trong đó:
+
+- $\%\text{Khách hàng Tốt}_j$ = Tỷ lệ khách hàng **không vỡ nợ** nằm trong bin $j$ so với tổng khách hàng tốt.
+- $\%\text{Khách hàng Xấu}_j$ = Tỷ lệ khách hàng **vỡ nợ** nằm trong bin $j$ so với tổng khách hàng xấu.
+- **WOE dương (lớn)** → nhóm khách hàng đó **an toàn** (nhiều khách tốt hơn xấu).
+- **WOE âm (nhỏ)** → nhóm khách hàng đó **rủi ro** (nhiều khách xấu hơn tốt).
+
+> **Ý nghĩa:** WOE cho phép chuyển đổi dữ liệu phi tuyến tính (như DPD theo nhóm, CUR theo khoảng) thành giá trị liên tục có ý nghĩa thống kê, giúp Logistic Regression hoạt động chính xác hơn.
+
+Kèm theo WOE, hệ thống tính **Information Value (IV)** để đánh giá sức mạnh phân loại của từng tiêu chí:
+
+$$IV = \sum_j (\%\text{Tốt}_j - \%\text{Xấu}_j) \times WOE_j$$
+
+| IV         | Sức mạnh phân loại                  |
+| ---------- | ----------------------------------- |
+| < 0.02     | Không có ý nghĩa                    |
+| 0.02 – 0.1 | Yếu                                 |
+| 0.1 – 0.3  | Trung bình                          |
+| 0.3 – 0.5  | Mạnh                                |
+| > 0.5      | Rất mạnh (cần kiểm tra overfitting) |
+
+#### Bước 2: Tính Xác suất vỡ nợ (Probability of Default — PD) bằng Hồi quy Logistic
+
+Dữ liệu WOE được đưa vào phương trình **Hồi quy Logistic** để xác định **xác suất khách hàng vỡ nợ ($P$) trong 12 tháng tới**:
+
+$$\text{logit}(P) = \ln\left(\frac{P}{1-P}\right) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_3 + \beta_4 X_4 + \beta_5 X_5$$
+
+Trong đó:
+
+| Ký hiệu         | Ý nghĩa                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| $P$             | Xác suất vỡ nợ (Probability of Default)                                                                                         |
+| $X_i$           | Biến đặc trưng đại diện cho 5 tiêu chí (đã quy đổi sang giá trị WOE)                                                            |
+| $\beta_i$       | Hệ số tương quan (trọng số) được **máy học trích xuất** từ dữ liệu lịch sử. Đây chính là trọng số thực tế, KHÔNG phải % cố định |
+| $\beta_0$       | Hệ số chặn (intercept)                                                                                                          |
+| $\frac{P}{1-P}$ | **Tỷ lệ Odds** — tỷ lệ giữa xác suất vỡ nợ và không vỡ nợ                                                                       |
+
+Từ đó suy ra **Odds**:
+
+$$Odds = \frac{P}{1-P} = e^{\beta_0 + \sum_{i=1}^{5} \beta_i X_i}$$
+
+#### Bước 3: Quy đổi ra Thang điểm chuẩn (Credit Score 150–750)
+
+Để người dùng và hệ thống dễ đọc, tỷ lệ Odds phức tạp được **tuyến tính hóa** và quy đổi về thang điểm chuẩn thông qua 2 hằng số điều chỉnh: **Factor** và **Offset**.
+
+**Tính hằng số:**
+
+$$Factor = \frac{pdo}{\ln(2)}$$
+
+$$Offset = Base\_Score - (Factor \times \ln(Odds_{base}))$$
+
+Trong đó:
+
+| Tham số                           | Ý nghĩa                                          | Giá trị hệ thống                         |
+| --------------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| $pdo$ (Points to Double the Odds) | Số điểm cần thiết để tỷ lệ Odds tăng gấp đôi     | Cấu hình trong `loan_evaluation_configs` |
+| $Base\_Score$                     | Điểm cơ sở tương ứng với $Odds_{base}$           | Cấu hình trong `loan_evaluation_configs` |
+| $Odds_{base}$                     | Tỷ lệ Odds tham chiếu (ví dụ: odds tại điểm 450) | Cấu hình trong `loan_evaluation_configs` |
+
+**CÔNG THỨC CHỐT ĐIỂM TỔNG QUÁT:**
+
+$$\boxed{Score = Offset + Factor \times \ln(Odds)}$$
+
+**Công thức tính điểm rã cho từng tiêu chí riêng lẻ:**
+
+$$Score_i = \left(\beta_i \times WOE_i + \frac{\alpha}{n}\right) \times Factor + \frac{Offset}{n}$$
+
+Trong đó:
+
+- $\alpha = \beta_0$ (hệ số chặn / intercept)
+- $n$ = tổng số lượng tiêu chí được đưa vào mô hình (= 5)
+- Tổng các $Score_i$ = $Score$ tổng quát
+
+Kết quả cuối cùng được `Math.round()` và **clamp trong $[150, 750]$**.
+
+---
+
+### 5.3. Giới hạn điểm
+
+- Min: **150**
+- Max: **750**
+
+### 5.4. Cơ chế đảm bảo hướng điểm (Directional Enforcement)
+
+Khi hệ thống tính lại điểm cho **sự kiện thanh toán** (`applyRepaymentEvent`), có thể xảy ra nghịch lý: sự kiện trễ hạn nhưng tổng điểm tăng (do các yếu tố khác cải thiện từ lần tính trước). Điều này gây nhầm lẫn cho người dùng.
+
+**Quy tắc:**
+
+- **Thanh toán trễ hạn (`isLatePayment = true`):** Nếu điểm tính được > điểm cũ → giữ nguyên điểm cũ (không cho tăng):
+  $$\text{afterScore} = \min(\text{calculated}, \text{beforeScore})$$
+
+- **Thanh toán đúng hạn (`isLatePayment = false`):** Nếu điểm tính được < điểm cũ → giữ nguyên điểm cũ (không cho giảm):
+  $$\text{afterScore} = \max(\text{calculated}, \text{beforeScore})$$
+
+**Phạm vi áp dụng:**
+
+- Chỉ áp dụng cho `applyRepaymentEvent` (Event 1) và `handleDelinquencyBatchJob` (Event 2).
+- **KHÔNG áp dụng** cho `recalculateScore()` (Event 0 — đăng nhập) và tính lại thủ công. Các trường hợp này luôn dùng điểm tính thô (raw calculated) để đồng bộ lại ground truth.
+- **KHÔNG áp dụng** cho `applyDisbursementEvent` (Event 3 — giải ngân), vì giải ngân là sự kiện trung lập.
 
 ## 6. Các trường dữ liệu được cập nhật
 
@@ -244,8 +402,11 @@ Bảng credit_score_history:
 ── Event 0: Đăng nhập ──
 AuthController.login() success
   → CreditScoreService.recalculateScore(userId)  [fire-and-forget]
-    → compute 5 factor scores (with Volume Penalty)
-    → weighted score 0..100 → clamp 150..750
+    → Feature Engineering: extract 5 features (DPD+Recency, CUR, CreditAge, CreditMix, NewCredit)
+    → WOE Binning: map each feature value → corresponding bin → WOE value
+    → Logistic Regression: logit(P) = β₀ + Σ(βᵢ × WOEᵢ) → compute Odds
+    → Scorecard Conversion: Score = Offset + Factor × ln(Odds)
+    → clamp [150, 750], Math.round()
     → update credit_score
     → insert credit_score_history (trigger: recalculate_api)
 
@@ -253,8 +414,11 @@ AuthController.login() success
 Loan Repayment / Prepayment success (Fineract)
   → RepaymentService estimate overdueDays
   → CreditScoreService.applyRepaymentEvent(...)
-    → compute 5 factor scores (with Volume Penalty)
-    → weighted score 0..100 → clamp 150..750
+    → Feature Engineering → WOE Binning → Logistic Regression → Scorecard Conversion
+    → clamp [150, 750]
+    → Directional Enforcement:
+      - Nếu isLatePayment && afterScore > beforeScore → afterScore = beforeScore
+      - Nếu !isLatePayment && afterScore < beforeScore → afterScore = beforeScore
     → update credit_score
     → insert credit_score_history
 
@@ -264,7 +428,8 @@ Loan Repayment / Prepayment success (Fineract)
   → for each overdue loan:
     → classifyDebtGroup(overdueDays) → nhóm 1-5
     → upsert LoanDelinquency record
-    → applyRepaymentEvent(isLatePayment=true, overdueDays) (nếu chưa trừ trong 24h)
+    → Feature Engineering → WOE Binning → Logistic Regression → Scorecard Conversion
+    → Directional Enforcement (isLatePayment=true)
     → Nhóm 4+: set user.metadata.accountFrozen = true
     → Nhóm 5: set user.metadata.permanentBan = true
 
@@ -273,15 +438,19 @@ AdminLoanService.disburseLoan()
   → Fineract disburse
   → update MongoDB status='disbursed'
   → CreditScoreService.applyDisbursementEvent(userId)
-    → compute 5 factor scores (Debt Level & New Credit thay đổi)
-    → weighted score 0..100 → clamp 150..750
+    → Feature Engineering (Debt Level & New Credit thay đổi)
+    → WOE Binning → Logistic Regression → Scorecard Conversion
+    → clamp [150, 750]
     → update credit_score
     → insert credit_score_history
 ```
 
 ## 8. Mapping tham chiếu thị trường
 
-Thiết kế phân hạng rủi ro (150-750) được tham chiếu theo bài viết tổng quan điểm tín dụng từ Techcombank và thông lệ CIC phổ biến trên thị trường Việt Nam.
+- Thiết kế phân hạng rủi ro (150-750) được tham chiếu theo bài viết tổng quan điểm tín dụng từ Techcombank và thông lệ CIC phổ biến trên thị trường Việt Nam.
+- Mô hình Scorecard 2.0 (WOE + Logistic Regression) là phương pháp luận chuẩn mực được CIC Việt Nam và các hệ thống chấm điểm tín dụng quốc tế (FICO, Experian, TransUnion) áp dụng.
+- Các hệ số $\beta_i$ và giá trị WOE binning cụ thể được calibrate từ dữ liệu lịch sử nội bộ của hệ thống P2P, KHÔNG sao chép trực tiếp từ CIC.
+- Tham số quy đổi (Factor, Offset, pdo, Base_Score, Odds_base) được cấu hình trong `loan_evaluation_configs` và có thể điều chỉnh theo đặc thù nền tảng.
 
 ## 9. Phân loại Nhóm Nợ (Debt Group Classification)
 
@@ -359,6 +528,9 @@ Hệ thống phân loại nợ xấu theo 5 nhóm tham chiếu chuẩn CIC Việ
 
 ## 10. Hướng mở rộng (đề xuất)
 
-- Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả để tăng độ chính xác cho yếu tố debt level.
+- Bổ sung thêm data nguồn thu nhập ổn định/khả năng chi trả (DTI — Debt to Income) để tăng độ chính xác cho feature Debt Level.
 - Tích hợp Blockchain để ghi lại audit trail cho mỗi lần thay đổi điểm.
-- Mở rộng Volume Penalty Factor cho các yếu tố khác (credit age, credit mix) nếu cần.
+- Thu thập thêm dữ liệu Hard Inquiries (số lần user nộp đơn xin vay) để nâng cao chất lượng feature Tín dụng mới ($X_5$).
+- Re-calibrate định kỳ: Khi có đủ dữ liệu lịch sử (>1000 khoản vay closed), re-train mô hình Logistic Regression để cập nhật $\beta_i$ và WOE bins cho chính xác hơn.
+- Monitoring mô hình: Theo dõi PSI (Population Stability Index) để phát hiện data drift và quyết định thời điểm re-calibrate.
+- Bổ sung biến số hành vi (behavioral scoring): tần suất đăng nhập, thời gian dùng app, pattern chuyển tiền — nhưng cần đánh giá IV trước khi đưa vào mô hình.

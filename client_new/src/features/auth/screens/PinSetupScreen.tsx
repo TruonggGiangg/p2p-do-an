@@ -15,7 +15,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     Animated,
-    Alert,
     Platform,
     StatusBar,
     Vibration,
@@ -29,7 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { OTPVerifyModal } from '../../../components';
+import { OTPVerifyModal, useConfirmModal } from '../../../components';
 import { pinAPI } from '../api/pin.api';
 import TwoFactorService from '../../../services/two-factor.service';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -72,6 +71,7 @@ export default function PinSetupScreen() {
     const navigation = useNavigation<PinSetupNav>();
     const { theme } = useTheme();
     const { refreshUser } = useAuth();
+    const modal = useConfirmModal();
     const insets = useSafeAreaInsets();
     const c = theme.colors;
 
@@ -163,10 +163,9 @@ export default function PinSetupScreen() {
                         triggerShake();
                         setTimeout(() => {
                             setConfirmPin('');
-                            Alert.alert(
+                            modal.error(
                                 'Mã PIN không khớp',
                                 'Mã PIN xác nhận không đúng. Vui lòng nhập lại.',
-                                [{ text: 'Thử lại' }],
                             );
                         }, 300);
                     } else {
@@ -222,7 +221,7 @@ export default function PinSetupScreen() {
                 ]).start();
             } catch (err: any) {
                 const message = err?.response?.data?.message || err?.message || 'Đã có lỗi xảy ra';
-                Alert.alert('Lỗi', message);
+                modal.error('Lỗi', message);
                 setConfirmPin('');
                 otpSuccessHandledRef.current = false;
             } finally {
@@ -257,18 +256,17 @@ export default function PinSetupScreen() {
                 disableDeviceFallback: true,
             });
             if (result.success) {
-                Alert.alert('Thành công', 'Đã kích hoạt xác thực sinh trắc học.');
-                handleSuccessDone();
+                modal.success('Thành công', 'Đã kích hoạt xác thực sinh trắc học.', handleSuccessDone);
             }
             // Trường hợp người dùng huỷ hoặc lỗi → im lặng
         } catch {
-            // Expo Go không hỗ trợ FaceID do thiếu quyền NSFaceIDUsageDescription
-            // Khi build native với EAS Build hoặc expo run:ios sẽ hoạt động bình thường
-            Alert.alert(
-                'Không thể kích hoạt FaceID',
-                'Tính năng này cần build native (không phải Expo Go). Bạn có thể bỏ qua và vẫn dùng mã PIN bình thường.',
-                [{ text: 'Tiếp tục', onPress: handleSuccessDone }]
-            );
+            modal.show({
+                title: 'Không thể kích hoạt FaceID',
+                message: 'Tính năng này cần build native (không phải Expo Go). Bạn có thể bỏ qua và vẫn dùng mã PIN bình thường.',
+                variant: 'warning',
+                confirmText: 'Tiếp tục',
+                onConfirm: handleSuccessDone,
+            });
         }
     };
 

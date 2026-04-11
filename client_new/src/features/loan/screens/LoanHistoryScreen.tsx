@@ -161,6 +161,12 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                     <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 6 }}>
                         {formatMoney(loan.capital)} <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>đ</Text>
                     </Text>
+                    {loan.contractSignedVerified && (
+                        <View style={{ backgroundColor: colors.success + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100, marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <MaterialCommunityIcons name="shield-check" size={12} color={colors.success} />
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.success }}>Đã ký xác minh</Text>
+                        </View>
+                    )}
                     <View style={{ backgroundColor: statusInfo.color + '10', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 }}>
                         <Text style={{ fontSize: 11, fontWeight: '600', color: statusInfo.color }}>{statusInfo.text}</Text>
                     </View>

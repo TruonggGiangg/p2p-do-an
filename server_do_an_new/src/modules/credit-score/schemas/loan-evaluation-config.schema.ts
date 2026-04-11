@@ -67,6 +67,43 @@ export class LoanEvaluationConfig extends Document {
   })
   scoreWeights: ScoreWeights;
 
+  // ── Block 3.5: Scorecard 2.0 Parameters (Optional) ───────────
+  /**
+   * Tham số Scorecard 2.0 (WOE + Logistic Regression).
+   * Nếu không set, hệ thống dùng defaultScorecardParams trong CreditScoreService.
+   */
+  @Prop({
+    type: {
+      pdo: { type: Number },
+      baseScore: { type: Number },
+      baseOdds: { type: Number },
+      intercept: { type: Number },
+      coefficients: {
+        type: {
+          paymentHistory: Number,
+          debtLevel: Number,
+          creditAge: Number,
+          creditMix: Number,
+          newCredit: Number,
+        },
+      },
+    },
+    required: false,
+  })
+  scorecardParams?: {
+    pdo: number;
+    baseScore: number;
+    baseOdds: number;
+    intercept: number;
+    coefficients: {
+      paymentHistory: number;
+      debtLevel: number;
+      creditAge: number;
+      creditMix: number;
+      newCredit: number;
+    };
+  };
+
   // ── Block 4: Audit & Integrity ────────────────────────────────
   /** SHA-256 hash toàn bộ payload config (dùng để verify trên blockchain) */
   @Prop({ type: String, required: true })

@@ -5,13 +5,12 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    Alert,
     Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BinanceHeader, CommonCard } from '../../../components';
+import { BinanceHeader, CommonCard, useConfirmModal } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { formatCurrency } from '../../../shared/utils';
 import type { BnplLoan } from '../api/bnpl.api';
@@ -26,6 +25,7 @@ export default function BNPLLoanDetailScreen() {
     const navigation = useNavigation<any>();
     const route = useRoute();
     const insets = useSafeAreaInsets();
+    const modal = useConfirmModal();
     const { loan } = (route.params || {}) as RouteParams;
     const c = theme.colors;
     const [menuVisible, setMenuVisible] = useState(false);
@@ -91,7 +91,7 @@ export default function BNPLLoanDetailScreen() {
                                 <Text style={[styles.menuItemText, { color: c.textPrimary }]}>Trả nợ trước hạn</Text>
                             </TouchableOpacity>
                         )}
-                        <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); Alert.alert('Thông tin', `Mã: #${loan.fineractLoanId}\nTrạng thái: ${statusLabel(loan.status)}`); }}>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); modal.alert('Thông tin', `Mã: #${loan.fineractLoanId}\nTrạng thái: ${statusLabel(loan.status)}`); }}>
                             <MaterialCommunityIcons name="information-outline" size={18} color={c.textSecondary} />
                             <Text style={[styles.menuItemText, { color: c.textPrimary }]}>Thông tin chi tiết</Text>
                         </TouchableOpacity>

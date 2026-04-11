@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert, StyleSheet, StatusBar,
+  ActivityIndicator, StyleSheet, StatusBar,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { BinanceHeader, CommonInput } from '../../../components';
 import investService, { CreateInvestmentOrderPayload, CreateOrderResult } from '../services/invest.service';
 import { loanService, LoanProduct } from '../../loan/services/loan.service';
 import RangeSlider from '../components/RangeSlider';
+import { useConfirmModal } from '../../../components/common/ConfirmModal';
 
 const CAPITAL_PRESETS = [5_000_000, 10_000_000, 20_000_000, 50_000_000];
 
@@ -20,6 +21,7 @@ export default function InvestmentOrderCreateScreen() {
   const { theme } = useTheme();
   const c = theme.colors;
   const nav = useNavigation<any>();
+  const modal = useConfirmModal();
 
   // Form state
   const [name, setName] = useState('');
@@ -66,10 +68,14 @@ export default function InvestmentOrderCreateScreen() {
 
   const handleSubmit = () => {
     const err = validate();
-    if (err) { Alert.alert('Thông tin chưa đầy đủ', err); return; }
-    Alert.alert('Xác nhận', `Tạo lệnh đầu tư với vốn ${capitalStr} ₫?`, [
-      { text: 'Huỷ', style: 'cancel' }, { text: 'Xác nhận', onPress: doCreate },
-    ]);
+    if (err) { modal.alert('Thông tin chưa đầy đủ', err); return; }
+    modal.confirm({
+      title: 'Xác nhận',
+      message: `Tạo lệnh đầu tư với vốn ${capitalStr} ₫?`,
+      cancelText: 'Huỷ',
+      confirmText: 'Xác nhận',
+      onConfirm: doCreate,
+    });
   };
 
   const doCreate = async () => {
@@ -86,7 +92,7 @@ export default function InvestmentOrderCreateScreen() {
       const res = await investService.createInvestmentOrder(payload);
       setResult(res);
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo lệnh');
+      modal.error('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo lệnh');
     } finally { setSaving(false); }
   };
 

@@ -16,9 +16,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Keyboard } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { OTPVerifyModal } from './OTPVerifyModal';
+import { useConfirmModal } from './ConfirmModal';
 import SmartOTPService from '../../services/smart-otp.service';
 import type { OtpActionType } from '../../types/otp.types';
 
@@ -56,6 +57,7 @@ export const OTPProtectedAction: React.FC<OTPProtectedActionProps> = ({
   children,
 }) => {
   const navigation = useNavigation();
+  const modal = useConfirmModal();
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [isOTPEnabled, setIsOTPEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,16 +91,18 @@ export const OTPProtectedAction: React.FC<OTPProtectedActionProps> = ({
       Keyboard.dismiss();
       setShowOTPModal(true);
     } else if (requireOTP && !isOTPEnabled) {
-      Alert.alert(
+      modal.error(
         'Cần đăng ký Smart OTP',
         'Bạn cần đăng ký Smart OTP trong mục Profile trước khi tạo khoản vay.',
-        [{ text: 'Đã hiểu' }],
       );
     } else if (showConfirmIfNoOTP) {
-      Alert.alert(confirmTitle, confirmMessage, [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xác nhận', onPress: () => executeAction(null) },
-      ]);
+      modal.confirm({
+        title: confirmTitle,
+        message: confirmMessage,
+        cancelText: 'Hủy',
+        confirmText: 'Xác nhận',
+        onConfirm: () => executeAction(null),
+      });
     } else {
       executeAction(null);
     }
@@ -114,7 +118,7 @@ export const OTPProtectedAction: React.FC<OTPProtectedActionProps> = ({
         };
         await onExecute(payload);
       } catch (error: any) {
-        Alert.alert('Lỗi', error?.message || 'Không thể thực hiện thao tác');
+        modal.error('Lỗi', error?.message || 'Không thể thực hiện thao tác');
       } finally {
         setIsLoading(false);
       }

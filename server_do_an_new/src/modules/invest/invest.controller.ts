@@ -1,6 +1,15 @@
 import {
-  Controller, Get, Post, Put, Delete, Param, Body, Query,
-  HttpStatus, UseGuards, UnauthorizedException,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  HttpStatus,
+  UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { InvestService } from './invest.service';
@@ -42,16 +51,11 @@ export class InvestController {
   @Post('investment-order/with-progress')
   @ApiOperation({ summary: 'Tạo lệnh đầu tư + auto-match (JSON, progress logs)' })
   async createOrderWithProgress(@CurrentUser('id') userId: string, @Body() dto: CreateInvestmentOrderDto) {
-
     const progressLogs: Array<{ message: string; step: number }> = [];
 
-    const result = await this.investService.createOrderWithMatching(
-      userId,
-      dto,
-      (message, step) => {
-        progressLogs.push({ message, step });
-      },
-    );
+    const result = await this.investService.createOrderWithMatching(userId, dto, (message, step) => {
+      progressLogs.push({ message, step });
+    });
 
     return {
       ...result,
@@ -74,7 +78,11 @@ export class InvestController {
   @ApiOperation({ summary: 'Danh sách khoản vay đang cho phép đầu tư' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth', 'entirelyPay'] })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['createdAt', 'capital', 'monthlyRatePercent', 'periodMonth', 'entirelyPay'],
+  })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'minRate', required: false, type: Number })
   @ApiQuery({ name: 'maxRate', required: false, type: Number })
@@ -133,7 +141,6 @@ export class InvestController {
     @Query('sortOrder') sortOrder?: string,
     @Query('status') status?: string,
   ) {
-
     return this.investService.getOrdersByLender(userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
@@ -160,10 +167,7 @@ export class InvestController {
     @CurrentUser('id') userId: string,
     @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
   ) {
-
-    return this.paymentService.processInvestment(
-      userId, body.loanApplicationId, body.numNotes, body.investmentOrderId,
-    );
+    return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes, body.investmentOrderId);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -172,13 +176,9 @@ export class InvestController {
 
   @Post('schedule-preview')
   @ApiOperation({ summary: 'Preview lịch nhận tiền trước khi đầu tư' })
-  async schedulePreview(
-    @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
-  ) {
+  async schedulePreview(@Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string }) {
     console.log(`[schedulePreview API] body=`, body);
-    return this.contractService.getSchedulePreview(
-      body.loanApplicationId, body.numNotes, body.investmentOrderId
-    );
+    return this.contractService.getSchedulePreview(body.loanApplicationId, body.numNotes, body.investmentOrderId);
   }
 
   @Get('stats')
@@ -197,19 +197,26 @@ export class InvestController {
   @ApiOperation({ summary: 'Danh sách hợp đồng ký quỹ của lender' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'active', 'matured', 'closed'] })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'pending_signature', 'active', 'matured', 'closed'] })
   async listContracts(
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
   ) {
-
     return this.contractService.getContractsByLender(userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       status,
     });
+  }
+
+  @Get('contract/:id/html')
+  @ApiOperation({ summary: 'Lấy nội dung HTML hợp đồng đầu tư (render PDF trên client)' })
+  @ApiResponse({ status: 200, description: 'HTML hợp đồng đầu tư' })
+  async getContractHTML(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    const html = await this.contractService.getContractHTML(id, userId);
+    return { html };
   }
 
   @Get('contract/:id')

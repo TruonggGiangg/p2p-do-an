@@ -14,5 +14,6 @@ export enum OtpActionType {
   PREPAY = 'PREPAY', // Tất toán sớm
   PIN_SETUP = 'PIN_SETUP', // Thiết lập mã PIN
   PIN_CHANGE = 'PIN_CHANGE', // Đổi mã PIN
+  PIN_RESET = 'PIN_RESET', // Reset mã PIN (quên PIN, xác thực qua OTP/biometric)
   OTHER = 'OTHER', // Khác
 }
