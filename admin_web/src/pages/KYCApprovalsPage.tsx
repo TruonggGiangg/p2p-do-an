@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import PageHeader from '../components/PageHeader';
 import {
   Card, Table, Button, Space, Tag, Typography, Descriptions, Drawer, Empty,
-  Skeleton, message, Popconfirm, theme, Row, Col, Avatar, Divider, Badge,
+  Skeleton, message, Popconfirm, theme, Row, Col, Avatar, Divider, Badge, Modal, Input,
 } from 'antd';
 import {
   FileTextOutlined, CheckOutlined, CloseOutlined, EyeOutlined, UserOutlined,
-  IdcardOutlined, ReloadOutlined,
+  IdcardOutlined, ReloadOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { adminApi, KycPendingUserDto, KycDetailDto } from '../api/admin';
 import { SimplePageSkeleton } from '../components/PageSkeleton';
@@ -27,6 +27,9 @@ export default function KYCApprovalsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [approving, setApproving] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<Set<string>>(new Set());
+  const [requesting, setRequesting] = useState<Set<string>>(new Set());
+  const [reasonModal, setReasonModal] = useState<{ type: 'reject' | 'request-update'; userId: string } | null>(null);
+  const [reasonText, setReasonText] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
 
   const loadPending = useCallback(async () => {
@@ -75,18 +78,37 @@ export default function KYCApprovalsPage() {
     }
   }, [messageApi, loadPending]);
 
-  const handleReject = useCallback(async (userId: string) => {
+  const handleReject = useCallback(async (userId: string, reason?: string) => {
     setRejecting(s => new Set(s).add(userId));
     try {
-      await adminApi.rejectKyc(userId);
+      await adminApi.rejectKyc(userId, reason);
       messageApi.success('Đã từ chối kích hoạt');
       setViewUserId(null);
       setDetail(null);
+      setReasonModal(null);
+      setReasonText('');
       loadPending();
     } catch (e: any) {
       messageApi.error(e?.response?.data?.message || 'Từ chối kích hoạt thất bại');
     } finally {
       setRejecting(s => { const n = new Set(s); n.delete(userId); return n; });
+    }
+  }, [messageApi, loadPending]);
+
+  const handleRequestUpdate = useCallback(async (userId: string, reason: string) => {
+    setRequesting(s => new Set(s).add(userId));
+    try {
+      await adminApi.requestUpdateKyc(userId, reason);
+      messageApi.success('Đã gửi yêu cầu bổ sung hồ sơ');
+      setViewUserId(null);
+      setDetail(null);
+      setReasonModal(null);
+      setReasonText('');
+      loadPending();
+    } catch (e: any) {
+      messageApi.error(e?.response?.data?.message || 'Yêu cầu bổ sung thất bại');
+    } finally {
+      setRequesting(s => { const n = new Set(s); n.delete(userId); return n; });
     }
   }, [messageApi, loadPending]);
 
@@ -149,6 +171,16 @@ export default function KYCApprovalsPage() {
     };
   }, [viewUserId, detail?.documents]);
 
+  const kycStatusTag = (status: string) => {
+    switch (status) {
+      case 'PENDING': return <Tag color="processing">Chờ duyệt</Tag>;
+      case 'UPDATE_REQUESTED': return <Tag color="warning" icon={<ExclamationCircleOutlined />}>Cần bổ sung</Tag>;
+      case 'VERIFIED': return <Tag color="success">Đã duyệt</Tag>;
+      case 'REJECTED': return <Tag color="error">Từ chối</Tag>;
+      default: return <Tag>{status}</Tag>;
+    }
+  };
+
   const columns = [
     {
       title: 'Người dùng',
@@ -165,6 +197,13 @@ export default function KYCApprovalsPage() {
       ),
     },
     { title: 'Email', dataIndex: 'email', key: 'email', render: (v: string) => v || '–' },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'kycStatus',
+      key: 'kycStatus',
+      width: 130,
+      render: (v: string) => kycStatusTag(v),
+    },
     {
       title: 'Fineract ID',
       dataIndex: 'fineractClientId',
@@ -212,7 +251,7 @@ export default function KYCApprovalsPage() {
       />
       {contextHolder}
       <Card
-        bordered={false}
+        variant="borderless"
         style={{ borderRadius: 12, marginBottom: 16 }}
         styles={{ body: { padding: '16px 24px' } }}
       >
@@ -252,6 +291,7 @@ export default function KYCApprovalsPage() {
         }
         open={!!viewUserId}
         onClose={() => { setViewUserId(null); setDetail(null); }}
+        size="large"
         width={Math.min(720, window.innerWidth * 0.9)}
         destroyOnClose
         extra={
@@ -268,18 +308,22 @@ export default function KYCApprovalsPage() {
                   Kích hoạt tài khoản
                 </Button>
               </Popconfirm>
-              <Popconfirm
-                title="Từ chối kích hoạt"
-                description="Xác nhận từ chối hồ sơ định danh này?"
-                onConfirm={() => handleReject(viewUserId)}
-                okText="Từ chối"
-                cancelText="Hủy"
-                okButtonProps={{ danger: true }}
+              <Button
+                icon={<ExclamationCircleOutlined />}
+                loading={requesting.has(viewUserId)}
+                onClick={() => { setReasonModal({ type: 'request-update', userId: viewUserId }); setReasonText(''); }}
+                style={{ borderColor: token.colorWarning, color: token.colorWarning }}
               >
-                <Button danger icon={<CloseOutlined />} loading={rejecting.has(viewUserId)}>
-                  Từ chối
-                </Button>
-              </Popconfirm>
+                Yêu cầu bổ sung
+              </Button>
+              <Button
+                danger
+                icon={<CloseOutlined />}
+                loading={rejecting.has(viewUserId)}
+                onClick={() => { setReasonModal({ type: 'reject', userId: viewUserId }); setReasonText(''); }}
+              >
+                Từ chối
+              </Button>
             </Space>
           )
         }
@@ -294,6 +338,9 @@ export default function KYCApprovalsPage() {
               <Descriptions.Item label="Ngày sinh">{detail.ocr?.dateOfBirth || '–'}</Descriptions.Item>
               <Descriptions.Item label="Giới tính">{detail.ocr?.sex || '–'}</Descriptions.Item>
               <Descriptions.Item label="Địa chỉ">{detail.ocr?.address || '–'}</Descriptions.Item>
+              <Descriptions.Item label="Ngày cấp">{detail.ocr?.issueDate || detail.metadata?.issueDate || '–'}</Descriptions.Item>
+              <Descriptions.Item label="Cơ quan cấp">{detail.metadata?.issuer || '–'}</Descriptions.Item>
+              <Descriptions.Item label="Đặc điểm">{detail.metadata?.personalIdentification || '–'}</Descriptions.Item>
               <Descriptions.Item label="Ngày hoàn thành KYC">
                 {detail.metadata?.kycCompletedAt ? new Date(detail.metadata.kycCompletedAt).toLocaleString('vi-VN') : '–'}
               </Descriptions.Item>
@@ -340,6 +387,38 @@ export default function KYCApprovalsPage() {
           </div>
         ) : null}
       </Drawer>
+
+      {/* Modal nhập lý do từ chối / yêu cầu bổ sung */}
+      <Modal
+        open={!!reasonModal}
+        title={reasonModal?.type === 'reject' ? 'Lý do từ chối hồ sơ eKYC' : 'Lý do yêu cầu bổ sung hồ sơ'}
+        okText={reasonModal?.type === 'reject' ? 'Từ chối' : 'Gửi yêu cầu'}
+        cancelText="Hủy"
+        onCancel={() => { setReasonModal(null); setReasonText(''); }}
+        onOk={() => {
+          if (!reasonModal) return;
+          if (reasonModal.type === 'reject') {
+            if (!reasonText.trim()) { messageApi.warning('Vui lòng nhập lý do từ chối'); return; }
+            handleReject(reasonModal.userId, reasonText);
+          } else {
+            if (!reasonText.trim()) { messageApi.warning('Vui lòng nhập lý do'); return; }
+            handleRequestUpdate(reasonModal.userId, reasonText);
+          }
+        }}
+        okButtonProps={{
+          danger: reasonModal?.type === 'reject',
+          loading: reasonModal ? (reasonModal.type === 'reject' ? rejecting.has(reasonModal.userId) : requesting.has(reasonModal.userId)) : false,
+        }}
+        destroyOnClose
+      >
+        <Input.TextArea
+          rows={3}
+          placeholder={reasonModal?.type === 'reject' ? 'Nhập lý do từ chối (bắt buộc)...' : 'Nhập nội dung cần bổ sung (bắt buộc)...'}
+          value={reasonText}
+          onChange={e => setReasonText(e.target.value)}
+          style={{ marginTop: 8 }}
+        />
+      </Modal>
     </div>
   );
 }

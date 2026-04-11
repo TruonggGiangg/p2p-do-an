@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { CommonButton } from '../../../components/common/CommonButton';
 import { CommonCard } from '../../../components/common/CommonCard';
 
@@ -18,8 +19,12 @@ const { width: screenWidth } = Dimensions.get('window');
 
 const KYCIntro: React.FC = () => {
     const { theme } = useTheme();
+    const { user } = useAuth();
     const c = theme.colors;
     const navigation = useNavigation<any>();
+
+    const isPending = user?.kycStatus === 'PENDING';
+    const isRejected = user?.kycStatus === 'REJECTED';
 
     const benefits = [
         {
@@ -49,60 +54,102 @@ const KYCIntro: React.FC = () => {
                 <View style={{ width: 44 }} />
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.heroSection}>
-                    <View style={[styles.illustrationContainer, { backgroundColor: c.primaryGlass }]}>
-                        <Ionicons name="shield-checkmark" size={100} color={c.primary} />
+            <ScrollView contentContainerStyle={[styles.scrollContent, isPending && { flexGrow: 1 }]} showsVerticalScrollIndicator={false}>
+                {/* Pending Banner */}
+                {isPending && (
+                    <View style={[styles.statusBanner, { backgroundColor: 'rgba(240, 185, 11, 0.1)', borderColor: 'rgba(240, 185, 11, 0.3)' }]}>
+                        <Ionicons name="time-outline" size={24} color="#F0B90B" />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={[styles.bannerTitle, { color: c.textPrimary }]}>Hồ sơ đang chờ duyệt</Text>
+                            <Text style={[styles.bannerDesc, { color: c.textSecondary }]}>
+                                Hệ thống sẽ xử lý trong vòng 24h làm việc. Bạn sẽ nhận được thông báo khi hoàn tất.
+                            </Text>
+                        </View>
                     </View>
-                    <Text style={[styles.title, { color: c.textPrimary }]}>Xác minh eKYC</Text>
+                )}
+
+                {/* Rejected Banner */}
+                {isRejected && (
+                    <View style={[styles.statusBanner, { backgroundColor: 'rgba(255, 77, 79, 0.08)', borderColor: 'rgba(255, 77, 79, 0.25)' }]}>
+                        <Ionicons name="close-circle-outline" size={24} color="#FF4D4F" />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={[styles.bannerTitle, { color: '#FF4D4F' }]}>Hồ sơ bị từ chối</Text>
+                            <Text style={[styles.bannerDesc, { color: c.textSecondary }]}>
+                                {user?.kycRejectReason || 'Hồ sơ không đạt yêu cầu. Vui lòng kiểm tra và nộp lại.'}
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
+                <View style={[styles.heroSection, isPending && { flex: 1, justifyContent: 'center', marginTop: 0 }]}>
+                    <View style={[styles.illustrationContainer, { backgroundColor: isPending ? 'rgba(240, 185, 11, 0.08)' : c.primaryGlass }]}>
+                        <Ionicons
+                            name={isPending ? "hourglass-outline" : isRejected ? "refresh-outline" : "shield-checkmark"}
+                            size={100}
+                            color={isPending ? '#F0B90B' : isRejected ? '#FF4D4F' : c.primary}
+                        />
+                    </View>
+                    <Text style={[styles.title, { color: c.textPrimary }]}>
+                        {isPending ? 'Đang xử lý...' : isRejected ? 'Nộp lại hồ sơ' : 'Xác minh eKYC'}
+                    </Text>
                     <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-                        Quy trình xác minh nhanh chóng trong vòng 2 phút để mở khóa mọi tính năng.
+                        {isPending
+                            ? 'Hồ sơ của bạn đang được đội ngũ kiểm duyệt xem xét.'
+                            : isRejected
+                                ? 'Hãy chụp lại CCCD rõ nét hơn và thực hiện lại quy trình.'
+                                : 'Quy trình xác minh nhanh chóng trong vòng 2 phút để mở khóa mọi tính năng.'}
                     </Text>
                 </View>
 
-                <View style={styles.section}>
-                    <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tại sao cần xác minh?</Text>
-                    {benefits.map((item, index) => (
-                        <View
-                            key={index}
-                            style={[styles.benefitItem, { borderBottomColor: c.border }]}
-                        >
-                            <View style={[styles.iconBox, { backgroundColor: c.surfaceLight }]}>
-                                <Ionicons name={item.icon} size={24} color={c.primary} />
-                            </View>
-                            <View style={styles.benefitText}>
-                                <Text style={[styles.benefitTitle, { color: c.textPrimary }]}>{item.title}</Text>
-                                <Text style={[styles.benefitDesc, { color: c.textSecondary }]}>{item.desc}</Text>
-                            </View>
+                {!isPending && (
+                    <>
+                        <View style={styles.section}>
+                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tại sao cần xác minh?</Text>
+                            {benefits.map((item, index) => (
+                                <View
+                                    key={index}
+                                    style={[styles.benefitItem, { borderBottomColor: c.border }]}
+                                >
+                                    <View style={[styles.iconBox, { backgroundColor: c.surfaceLight }]}>
+                                        <Ionicons name={item.icon} size={24} color={c.primary} />
+                                    </View>
+                                    <View style={styles.benefitText}>
+                                        <Text style={[styles.benefitTitle, { color: c.textPrimary }]}>{item.title}</Text>
+                                        <Text style={[styles.benefitDesc, { color: c.textSecondary }]}>{item.desc}</Text>
+                                    </View>
+                                </View>
+                            ))}
                         </View>
-                    ))}
-                </View>
 
-                <View style={styles.prepSection}>
-                    <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Cần chuẩn bị gì?</Text>
-                    <CommonCard style={styles.prepCard}>
-                        <View style={styles.prepItem}>
-                            <Ionicons name="card-outline" size={20} color={c.primary} />
-                            <Text style={[styles.prepText, { color: c.textPrimary }]}>CCCD/CMND còn hiệu lực</Text>
+                        <View style={styles.prepSection}>
+                            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Cần chuẩn bị gì?</Text>
+                            <CommonCard style={styles.prepCard}>
+                                <View style={styles.prepItem}>
+                                    <Ionicons name="card-outline" size={20} color={c.primary} />
+                                    <Text style={[styles.prepText, { color: c.textPrimary }]}>CCCD/CMND còn hiệu lực</Text>
+                                </View>
+                                <View style={styles.prepItem}>
+                                    <Ionicons name="sunny-outline" size={20} color={c.primary} />
+                                    <Text style={[styles.prepText, { color: c.textPrimary }]}>Nơi có đủ ánh sáng</Text>
+                                </View>
+                                <View style={styles.prepItem}>
+                                    <Ionicons name="videocam-outline" size={20} color={c.primary} />
+                                    <Text style={[styles.prepText, { color: c.textPrimary }]}>Khuôn mặt không che chắn</Text>
+                                </View>
+                            </CommonCard>
                         </View>
-                        <View style={styles.prepItem}>
-                            <Ionicons name="sunny-outline" size={20} color={c.primary} />
-                            <Text style={[styles.prepText, { color: c.textPrimary }]}>Nơi có đủ ánh sáng</Text>
-                        </View>
-                        <View style={styles.prepItem}>
-                            <Ionicons name="videocam-outline" size={20} color={c.primary} />
-                            <Text style={[styles.prepText, { color: c.textPrimary }]}>Khuôn mặt không che chắn</Text>
-                        </View>
-                    </CommonCard>
-                </View>
+                    </>
+                )}
             </ScrollView>
 
-            <View style={[styles.footer, { borderTopColor: c.border }]}>
-                <CommonButton
-                    title="Bắt đầu ngay"
-                    onPress={() => navigation.navigate('KYCUpdate')}
-                />
-            </View>
+            {!isPending && (
+                <View style={[styles.footer, { borderTopColor: c.border }]}>
+                    <CommonButton
+                        title={isRejected ? 'Nộp lại hồ sơ' : 'Bắt đầu ngay'}
+                        onPress={() => navigation.navigate('KYCUpdate')}
+                    />
+                </View>
+            )}
         </SafeAreaView>
     );
 };
@@ -211,6 +258,24 @@ const styles = StyleSheet.create({
     footer: {
         padding: 24,
         borderTopWidth: StyleSheet.hairlineWidth,
+    },
+    statusBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        padding: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        marginBottom: 16,
+    },
+    bannerTitle: {
+        fontSize: 15,
+        fontFamily: 'Poppins_700Bold',
+        marginBottom: 4,
+    },
+    bannerDesc: {
+        fontSize: 13,
+        fontFamily: 'Poppins_400Regular',
+        lineHeight: 18,
     },
 });
 

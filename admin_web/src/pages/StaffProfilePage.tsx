@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
     Card, Form, Input, Button, Space, Typography, Avatar, Row, Col, Divider,
-    theme, App, Spin, Tag, Table,
+    theme, App, Tag, Table,
 } from 'antd';
 import {
     UserOutlined, MailOutlined, PhoneOutlined, LockOutlined,

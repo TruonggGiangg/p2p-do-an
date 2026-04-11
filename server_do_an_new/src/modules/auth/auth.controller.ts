@@ -45,6 +45,16 @@ export class AuthController {
     private readonly creditScoreService: CreditScoreService,
   ) {}
 
+  // ── Check Phone (giống HD-AMC CheckPhoneController) ────────────────────
+  @Public()
+  @Get('check-phone')
+  @ApiOperation({ summary: 'Kiểm tra SĐT đã đăng ký chưa' })
+  @ApiResponse({ status: 200, description: 'Trả về available true/false' })
+  async checkPhone(@Query('phone') phone: string) {
+    const result = await this.fineractSignupService.checkPhoneAvailability(phone || '');
+    return { data: result };
+  }
+
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
@@ -165,6 +175,9 @@ export class AuthController {
       ...user,
       profile: mongoProfile?.profile,
       kycStatus: mongoProfile?.kycStatus ?? 'NONE',
+      kycRejectReason: mongoProfile?.kycRejectReason || null,
+      userType: mongoProfile?.userType ?? 'borrower',
+      status: mongoProfile?.status ?? 'inactive',
       hasPin: pinStatus.hasPin,
       creditScore: creditScore
         ? {

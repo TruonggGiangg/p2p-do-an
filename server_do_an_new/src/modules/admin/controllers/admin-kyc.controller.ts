@@ -111,10 +111,19 @@ export class AdminKycController {
 
   @Post('kyc/:userId/reject')
   @CheckPolicies(ability => ability.can(Action.Update, 'Kyc'))
-  @ApiOperation({ summary: 'Từ chối KYC' })
+  @ApiOperation({ summary: 'Từ chối KYC (có lý do)' })
   @ApiResponse({ status: 200 })
-  async rejectKyc(@Param('userId') userId: string) {
-    const result = await this.adminService.rejectKyc(userId);
+  async rejectKyc(@Param('userId') userId: string, @Body() body: { reason?: string }) {
+    const result = await this.adminService.rejectKyc(userId, body?.reason);
+    return result ;
+  }
+
+  @Post('kyc/:userId/request-update')
+  @CheckPolicies(ability => ability.can(Action.Update, 'Kyc'))
+  @ApiOperation({ summary: 'Yêu cầu bổ sung hồ sơ eKYC (có lý do)' })
+  @ApiResponse({ status: 200 })
+  async requestUpdateKyc(@Param('userId') userId: string, @Body() body: { reason: string }) {
+    const result = await this.adminService.requestUpdateKyc(userId, body?.reason);
     return result ;
   }
 

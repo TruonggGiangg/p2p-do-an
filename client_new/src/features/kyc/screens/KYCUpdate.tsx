@@ -22,6 +22,7 @@ import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft } from 'react-nat
 import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { kycService } from '../services/kyc.service';
 import { KYCStepIndicator } from '../components/KYCStepIndicator';
 import { KYCInfoCard } from '../components/KYCInfoCard';
@@ -42,9 +43,22 @@ enum KYCStep {
 
 const KYCUpdate: React.FC = () => {
     const { theme, themeMode } = useTheme();
+    const { user, refreshUser } = useAuth();
     const c = theme.colors;
     const isDark = themeMode === 'dark';
     const navigation = useNavigation<any>();
+    const [isSubmitted, setIsSubmitted] = useState(false);
+
+    // Guard: block access if KYC is pending review
+    useEffect(() => {
+        if (user?.kycStatus === 'PENDING' && !isSubmitted) {
+            Alert.alert(
+                'Hồ sơ đang chờ duyệt',
+                'Bạn không thể nộp lại hồ sơ khi hệ thống đang xử lý.',
+                [{ text: 'Quay lại', onPress: () => navigation.goBack() }],
+            );
+        }
+    }, [user?.kycStatus, isSubmitted]);
 
     const [currentStep, setCurrentStep] = useState<KYCStep>(KYCStep.FRONT_ID);
     const [frontImage, setFrontImage] = useState<string | null>(null);
@@ -189,7 +203,11 @@ const KYCUpdate: React.FC = () => {
         try {
             const res = await kycService.ocrFrontID(uri);
             if (res && res.success) {
-                const data = res.data?.result || res.data || res;
+                // NestJS returns { success: true, data: { ... } }
+                // Python returns { result: { fullName, idNumber, ... } }
+                const result = res.data?.result || res.data || res;
+                const data = result?.data || result;
+                
                 setOcrData((prev: any) => ({
                     ...prev,
                     name: data.fullName || data.name,
@@ -200,9 +218,15 @@ const KYCUpdate: React.FC = () => {
                     nationality: data.nationality,
                     birthplace: data.birthplace,
                 }));
+            } else {
+                const errorMsg = res?.message || res?.error || 'Không thể nhận diện mặt trước';
+                Alert.alert('Thất bại', errorMsg);
+                setFrontImage(null);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('OCR Front error:', err);
+            Alert.alert('Lỗi', 'Không thể kết nối với dịch vụ eKYC');
+            setFrontImage(null);
         } finally {
             setLoading(false);
         }
@@ -215,15 +239,24 @@ const KYCUpdate: React.FC = () => {
             if (res && (res.success || res.errorCode === 0)) {
                 const result = res.data?.result || res.data || res;
                 const data = result?.data || result;
+                
                 setOcrData((prev: any) => ({
                     ...prev,
-                    issueDate: data?.init_date || data?.issueDate || data?.issue_date || result?.issueDate,
-                    issueLoc: data?.issueLoc || data?.issue_loc || data?.place_of_issue || result?.issueLoc,
-                    expiryDate: data?.expiryDate || data?.expiry_date || result?.expiryDate,
+                    issueDate: data?.issue_date || data?.init_date || data?.issueDate || result?.issueDate,
+                    issueLoc: data?.issue_loc || data?.issueLoc || data?.place_of_issue || result?.issueLoc,
+                    expiryDate: data?.expiry_date || data?.expiryDate || result?.expiryDate,
+                    issuer: data?.issuer || result?.issuer,
+                    personalIdentification: data?.personal_identification || result?.personal_identification,
                 }));
+            } else {
+                const errorFields = res?.data?.error || res?.error || res?.message || 'Không thể nhận diện mặt sau';
+                Alert.alert('Vui lòng kiểm tra lại', errorFields);
+                setBackImage(null);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('OCR Back error:', err);
+            Alert.alert('Lỗi', 'Không thể kết nối với dịch vụ eKYC');
+            setBackImage(null);
         } finally {
             setLoading(false);
         }
@@ -272,9 +305,15 @@ const KYCUpdate: React.FC = () => {
             });
             if (res?.success) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert('Hoàn tất', 'Hồ sơ đã được gửi và đang chờ phê duyệt.', [
-                    { text: 'Xong', onPress: () => navigation.goBack() }
-                ]);
+                setIsSubmitted(true);
+                // Refresh user status immediately so HomeScreen/IntroScreen is updated
+                try {
+                    await refreshUser();
+                } catch (e) {
+                    console.error('Failed to refresh user after KYC:', e);
+                }
+                // Redirect back immediately
+                navigation.goBack();
             } else {
                 Alert.alert('Lỗi', res?.message || 'Không thể gửi hồ sơ');
             }
@@ -296,8 +335,9 @@ const KYCUpdate: React.FC = () => {
 
     const idInfo = useMemo(() => [
         { label: 'Ngày cấp', value: ocrData?.issueDate, icon: 'time-outline', key: 'issueDate' },
-        { label: 'Nơi cấp', value: ocrData?.issueLoc, icon: 'location-outline', key: 'issueLoc' },
+        { label: 'Nơi cấp/Người ký', value: ocrData?.issuer || ocrData?.issueLoc, icon: 'location-outline', key: 'issueLoc' },
         { label: 'Hạn đến', value: ocrData?.expiryDate, icon: 'calendar-outline', key: 'expiryDate' },
+        { label: 'Đặc điểm', value: ocrData?.personalIdentification, icon: 'finger-print-outline', key: 'personalIdentification' },
         { label: 'Địa chỉ', value: ocrData?.address, icon: 'home-outline', key: 'address' },
     ], [ocrData]);
 
@@ -315,8 +355,9 @@ const KYCUpdate: React.FC = () => {
         ];
         const backOcrItems = [
             { label: 'Ngày cấp', value: ocrData?.issueDate, icon: 'time-outline' as const },
-            { label: 'Nơi cấp', value: ocrData?.issueLoc, icon: 'location-outline' as const },
+            { label: 'Cơ quan cấp', value: ocrData?.issuer || ocrData?.issueLoc, icon: 'ribbon-outline' as const },
             { label: 'Hạn đến', value: ocrData?.expiryDate, icon: 'calendar-outline' as const },
+            { label: 'Đặc điểm', value: ocrData?.personalIdentification, icon: 'finger-print-outline' as const },
         ];
         return (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepContent}>

@@ -23,6 +23,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       roles: payload.roles,
       keycloakUserId: payload.keycloakUserId,
       fineractClientId: payload.fineractClientId,
+      kycStatus: payload.kycStatus,
     };
   }
 }

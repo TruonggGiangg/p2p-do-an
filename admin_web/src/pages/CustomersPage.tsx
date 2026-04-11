@@ -7,10 +7,10 @@ import {
     Card, Row, Col, Select, DatePicker, Form, Input
 } from 'antd';
 import {
-    EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
-    ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
-    BankOutlined,
-} from '@ant-design/icons';
+     EyeOutlined, UserOutlined, PhoneOutlined, CheckCircleOutlined,
+     ClockCircleOutlined, FilterOutlined, ReloadOutlined, TeamOutlined,
+     BankOutlined, ExclamationCircleOutlined
+ } from '@ant-design/icons';
 import { adminApi, CustomerDto } from '../api/admin';
 import { FineractStatusBadge } from '../utils/fineractStatus';
 import { PRO_TABLE_DEFAULTS } from '../utils/proTableConfig';
@@ -23,7 +23,7 @@ const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
 
 type ViewMode = 'all' | 'pending' | 'active' | 'inactive';
-type KycFilter = 'all' | 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+type KycFilter = 'all' | 'NONE' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'UPDATE_REQUESTED';
 type FineractFilter = 'all' | 'active' | 'inactive' | 'pending';
 
 interface FilterState {
@@ -163,6 +163,7 @@ export default function CustomersPage() {
                 { text: 'Có thông tin KYC, chờ duyệt', value: 'PENDING' },
                 { text: 'Đã duyệt', value: 'VERIFIED' },
                 { text: 'Từ chối', value: 'REJECTED' },
+                { text: 'Cần bổ sung', value: 'UPDATE_REQUESTED' },
             ],
             onFilter: (value, record) => (record.kycStatus || 'NONE') === value,
             render: (_, r) => {
@@ -172,6 +173,7 @@ export default function CustomersPage() {
                     'PENDING': { color: 'warning', icon: <ClockCircleOutlined />, text: 'Có thông tin KYC, chờ duyệt', bg: token.colorWarningBg },
                     'VERIFIED': { color: 'success', icon: <CheckCircleOutlined />, text: 'Đã duyệt', bg: token.colorSuccessBg },
                     'REJECTED': { color: 'error', icon: null, text: 'Từ chối', bg: token.colorErrorBg },
+                    'UPDATE_REQUESTED': { color: 'warning', icon: <ExclamationCircleOutlined />, text: 'Cần bổ sung', bg: token.colorWarningBg },
                 };
                 const s = statusMap[v] || statusMap['NONE'];
                 return (
@@ -399,6 +401,7 @@ export default function CustomersPage() {
                                     { value: 'PENDING', label: 'Có thông tin KYC, chờ duyệt' },
                                     { value: 'VERIFIED', label: 'Đã duyệt' },
                                     { value: 'REJECTED', label: 'Từ chối' },
+                                    { value: 'UPDATE_REQUESTED', label: 'Cần bổ sung' },
                                 ]}
                             />
                         </Form.Item>

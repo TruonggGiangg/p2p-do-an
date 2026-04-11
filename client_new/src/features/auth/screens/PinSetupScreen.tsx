@@ -299,7 +299,7 @@ export default function PinSetupScreen() {
                     <View style={styles.headerRow}>
                         <View style={styles.backBtn} />
                         <View style={styles.headerCenter}>
-                            <MaterialCommunityIcons name="shield-alert" size={32} color="#000" />
+                            <MaterialCommunityIcons name="shield-alert" size={32} color="#FFFFFF" />
                         </View>
                         <View style={styles.backBtn} />
                     </View>
@@ -358,7 +358,7 @@ export default function PinSetupScreen() {
                         activeOpacity={0.85}
                     >
                         {isOtpLoading ? (
-                            <ActivityIndicator color="#000" />
+                            <ActivityIndicator color="#FFFFFF" />
                         ) : (
                             <Text style={styles.activateBtnText}>Kích hoạt ngay</Text>
                         )}
@@ -417,9 +417,9 @@ export default function PinSetupScreen() {
                                             }}
                                         >
                                             {isOtpLoading ? (
-                                                <ActivityIndicator size="small" color="#000" />
+                                                <ActivityIndicator size="small" color="#FFFFFF" />
                                             ) : (
-                                                <Text style={styles.modalBtnText}>Xác nhận</Text>
+                                                <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Xác nhận</Text>
                                             )}
                                         </TouchableOpacity>
                                     </View>
@@ -494,13 +494,13 @@ export default function PinSetupScreen() {
                 <View style={styles.headerRow}>
                     {step === 'confirm' ? (
                         <TouchableOpacity onPress={handleBack} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+                            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
                         </TouchableOpacity>
                     ) : (
                         <View style={styles.backBtn} />
                     )}
                     <View style={styles.headerCenter}>
-                        <MaterialCommunityIcons name="shield-lock" size={32} color="#000" />
+                        <MaterialCommunityIcons name="shield-lock" size={32} color="#FFFFFF" />
                     </View>
                     <View style={styles.backBtn} />
                 </View>
@@ -627,13 +627,13 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 22,
         fontWeight: '700',
-        color: '#000',
+        color: '#FFFFFF',
         marginTop: 4,
         letterSpacing: 0.3,
     },
     headerSub: {
         fontSize: 13,
-        color: 'rgba(0,0,0,0.65)',
+        color: 'rgba(255,255,255,0.85)',
         marginTop: 6,
         textAlign: 'center',
         paddingHorizontal: 16,
@@ -724,7 +724,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
     },
     doneBtnText: {
-        color: '#000',
+        color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '700',
     },
@@ -765,7 +765,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     activateBtnText: {
-        color: '#000',
+        color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '700',
     },

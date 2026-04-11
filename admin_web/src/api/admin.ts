@@ -144,10 +144,17 @@ export interface KycDetailDto {
     address?: string;
     sex?: string;
     issueDate?: string;
+    issuer?: string;
+    personalIdentification?: string;
+    mrz?: string;
   };
   metadata: {
     kycCompletedAt?: string;
     fineractClientDocs?: { front?: number; back?: number };
+    issuer?: string;
+    personalIdentification?: string;
+    mrz?: string;
+    issueDate?: string;
   };
   documents: {
     id: number;
@@ -194,38 +201,9 @@ export interface KycPendingUserDto {
   profile?: { firstName?: string; lastName?: string; avatar?: string };
   fineractClientId?: string;
   kycStatus: string;
+  kycRejectReason?: string;
   kycCompletedAt?: string;
   displayName?: string;
-}
-
-export interface KycDetailDto {
-  user: {
-    _id: string;
-    username: string;
-    email?: string;
-    profile?: any;
-    fineractClientId?: string;
-    kycStatus: string;
-  };
-  ocr: {
-    fullName?: string;
-    ssn?: string;
-    dateOfBirth?: string;
-    address?: string;
-    sex?: string;
-    issueDate?: string;
-  };
-  metadata: {
-    kycCompletedAt?: string;
-    fineractClientDocs?: { front?: number; back?: number };
-  };
-  documents: {
-    id: number;
-    name: string;
-    entityType: string;
-    entityId: number;
-    label: string;
-  }[];
 }
 
 export interface LoanDto {
@@ -1032,11 +1010,18 @@ export const adminApi = {
       }>(`/api/admin/kyc/${userId}/approve`)
       .then((r) => r.data.data),
 
-  rejectKyc: (userId: string) =>
+  rejectKyc: (userId: string, reason?: string) =>
     api
       .post<{
         data: { kycStatus: string; userId: string };
-      }>(`/api/admin/kyc/${userId}/reject`)
+      }>(`/api/admin/kyc/${userId}/reject`, { reason })
+      .then((r) => r.data.data),
+
+  requestUpdateKyc: (userId: string, reason: string) =>
+    api
+      .post<{
+        data: { kycStatus: string; userId: string; message: string };
+      }>(`/api/admin/kyc/${userId}/request-update`, { reason })
       .then((r) => r.data.data),
 
   downloadKycDocument: (

@@ -45,6 +45,7 @@ import {
     UTILITIES,
     type ShortcutItem,
 } from '../constants/home.constants';
+import LockedFeatureOverlay from '../../../shared/components/LockedFeatureOverlay';
 
 // ─────────────────────────────────────────────
 // Phosphor Icon Map
@@ -463,39 +464,59 @@ export default function HomeScreen() {
                         </View>
                     </Animated.View>
 
-                    {/* 3. QUICK ACTIONS */}
-                    <View style={styles.quickActionsSection}>
-                        {QUICK_ACTIONS.map((item, idx) => (
-                            <QuickActionButton key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={300 + idx * 60} />
-                        ))}
+
+                    {/* 3, 4, 5. RESTRICTED SECTIONS WRAPPER */}
+                    {/* 3, 4, 5. RESTRICTED SECTIONS WRAPPER */}
+                    <View style={{ position: 'relative' }}>
+                        <View pointerEvents={user?.kycStatus !== 'VERIFIED' ? 'none' : 'auto'} style={{ opacity: user?.kycStatus !== 'VERIFIED' ? 0 : 1 }}>
+                            {/* 3. QUICK ACTIONS */}
+                            <View style={[styles.quickActionsSection, { marginTop: 12 }]}>
+                                {QUICK_ACTIONS.map((item, idx) => (
+                                    <QuickActionButton key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={300 + idx * 60} />
+                                ))}
+                            </View>
+
+                            {/* 4. MAIN FEATURES — 4 cards ngang */}
+                            <Animated.View entering={FadeInDown.delay(500).duration(600)} style={styles.sectionWrap}>
+                                <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Chức năng chính</Text>
+                                <View style={styles.mainFeaturesGrid}>
+                                    {MAIN_FEATURES.map((item, idx) => (
+                                        <MainFeatureCard key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={500 + idx * 60} />
+                                    ))}
+                                </View>
+                            </Animated.View>
+
+                            {/* 5. FINANCIAL SERVICES (Chỉ các mục nhạy cảm) */}
+                            <Animated.View entering={FadeInDown.delay(700).duration(600)} style={styles.sectionWrap}>
+                                <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Dịch vụ tài chính</Text>
+                                <View style={[styles.serviceListCard, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                                    {FINANCIAL_SERVICES.filter(i => i.label !== 'Xác thực KYC' && i.label !== 'Thông báo').map((item, idx) => (
+                                        <ServiceListItem key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={700 + idx * 50} />
+                                    ))}
+                                </View>
+                            </Animated.View>
+                        </View>
+
+                        {user?.kycStatus !== 'VERIFIED' && (
+                            <LockedFeatureOverlay 
+                                message="Bạn cần được phê duyệt định danh (eKYC) để sử dụng các tính năng Gửi tiền, Vay vốn và Đầu tư."
+                                kycStatus={user?.kycStatus}
+                                rejectReason={user?.kycRejectReason}
+                            />
+                        )}
                     </View>
 
-                    {/* 4. MAIN FEATURES — 4 cards ngang */}
-                    <Animated.View entering={FadeInDown.delay(500).duration(600)} style={styles.sectionWrap}>
-                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Chức năng chính</Text>
-                        <View style={styles.mainFeaturesGrid}>
-                            {MAIN_FEATURES.map((item, idx) => (
-                                <MainFeatureCard key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={500 + idx * 60} />
-                            ))}
-                        </View>
-                    </Animated.View>
-
-                    {/* 5. FINANCIAL SERVICES — List group */}
-                    <Animated.View entering={FadeInDown.delay(700).duration(600)} style={styles.sectionWrap}>
-                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Dịch vụ tài chính</Text>
-                        <View style={[styles.serviceListCard, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
-                            {FINANCIAL_SERVICES.map((item, idx) => (
-                                <ServiceListItem key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={700 + idx * 50} />
-                            ))}
-                        </View>
-                    </Animated.View>
-
-                    {/* 6. UTILITIES — List group */}
+                    {/* 6. UTILITIES & OPEN SERVICES */}
                     <Animated.View entering={FadeInDown.delay(900).duration(600)} style={styles.sectionWrap}>
-                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích & cài đặt</Text>
+                        <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Tiện ích & Cài đặt</Text>
                         <View style={[styles.serviceListCard, { backgroundColor: isDark ? '#14231C' : '#FFFFFF' }]}>
+                            {/* Luôn ưu tiên hiển thị Thông báo và KYC nếu chưa định danh */}
+                            {FINANCIAL_SERVICES.filter(i => i.label === 'Thông báo' || (i.label === 'Xác thực KYC' && user?.kycStatus !== 'VERIFIED')).map((item, idx) => (
+                                <ServiceListItem key={`fs-${idx}`} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={900 + idx * 50} />
+                            ))}
+                            
                             {UTILITIES.map((item, idx) => (
-                                <ServiceListItem key={idx} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={900 + idx * 50} />
+                                <ServiceListItem key={`ut-${idx}`} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={950 + idx * 50} />
                             ))}
                         </View>
                     </Animated.View>

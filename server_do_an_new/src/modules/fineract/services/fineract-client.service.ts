@@ -204,12 +204,18 @@ export class FineractClientService extends FineractBaseService {
      */
     async updateClient(clientId: number, data: Record<string, any>): Promise<void> {
         try {
-            const payload: any = { ...this.getCommonLocaleParams('display') };
+            // Use ISO format (yyyy-MM-dd) for strict validation to avoid 400 Bad Request
+            const payload: any = { 
+                locale: 'en',
+                dateFormat: 'yyyy-MM-dd'
+            };
             const allowed = ['firstname', 'lastname', 'dateOfBirth', 'externalId', 'mobileNo', 'emailAddress'];
             for (const k of allowed) {
                 if (data[k] != null) payload[k] = data[k];
             }
             if (Object.keys(payload).length <= 2) return;
+            
+            this.logger.debug(`[updateClient] Updating Fineract client ${clientId} with payload: ${JSON.stringify(payload)}`);
             await this.client.put(`/clients/${clientId}`, payload);
             this.logger.log(`[updateClient] Updated client ${clientId}`);
         } catch (error: any) {

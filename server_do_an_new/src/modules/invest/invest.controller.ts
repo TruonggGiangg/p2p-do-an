@@ -11,12 +11,13 @@ import { CreateInvestmentOrderDto } from './dto/create-investment-order.dto';
 import { UpdateInvestmentOrderDto } from './dto/update-investment-order.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('invest')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
+@UseGuards(RolesGuard, KycVerifiedGuard)
 @Roles('lender')
 @Controller('invest')
 export class InvestController {

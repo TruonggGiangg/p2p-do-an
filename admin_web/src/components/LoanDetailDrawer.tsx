@@ -363,7 +363,7 @@ export default function LoanDetailDrawer({
             open={open}
             onClose={handleClose}
             width={Math.min(960, window.innerWidth * 0.92)}
-            destroyOnClose
+            destroyOnHidden
             styles={{ body: { padding: 0 } }}
             extra={headerActions}
         >

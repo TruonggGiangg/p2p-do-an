@@ -10,6 +10,19 @@ import type {
 } from "../../../types/auth.types";
 
 export const authAPI = {
+  /** Kiểm tra SĐT đã đăng ký chưa (giống HD-AMC CheckPhoneController) */
+  checkPhone: async (phone: string): Promise<{ available: boolean; reason?: string }> => {
+    try {
+      const response = await api.get<{ data: { available: boolean; reason?: string } }>(
+        "/api/auth/check-phone",
+        { params: { phone } },
+      );
+      return response.data.data;
+    } catch {
+      return { available: true }; // Fallback: cho phép tiếp tục nếu API lỗi
+    }
+  },
+
   /** Register new user */
   register: async (data: RegisterRequest): Promise<RegisterResponse> => {
     const response = await api.post<RegisterResponse>(

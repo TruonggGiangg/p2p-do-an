@@ -24,6 +24,7 @@ import { CommonButton } from '../../../components/common/CommonButton';
 import investService, { AvailableLoanItem, LenderScheduleItem } from '../services/invest.service';
 import { walletAPI } from '../../wallet/api/wallet.api';
 import type { Wallet } from '../../../types/auth.types';
+import { OtpActionType } from '../../../types/otp.types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_UNIT_PRICE = 500_000;
@@ -631,7 +632,7 @@ export default function InvestmentFlowScreen() {
       {/* OTP Verification */}
       <OTPVerifyModal
         visible={showOTPModal}
-        actionType="INVESTMENT"
+        actionType={OtpActionType.INVESTMENT}
         actionData={{ loanId: loan?._id, numNotes, capital: investCapital }}
         title="Xác thực Smart OTP"
         description={`Xác nhận đầu tư ${fmt(investCapital)} vào khoản vay`}

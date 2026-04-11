@@ -28,10 +28,31 @@ Output:
 """
 
 import os
+import sys
 import json
 import numpy as np
 import xgboost as xgb
 import joblib
+
+# ── Compat shim: numpy 2.0 models on numpy 1.x ──
+# Models saved with numpy>=2.0 reference numpy._core,
+# which doesn't exist in numpy<2.0. Alias it so pickle works.
+if not hasattr(np, '_core'):
+    import numpy.core as _npc
+    sys.modules['numpy._core'] = _npc
+    # Also alias common sub-modules that may be referenced
+    for _sub in ('multiarray', 'umath', 'numeric', 'fromnumeric',
+                 '_methods', '_internal'):
+        _src = f'numpy.core.{_sub}'
+        _dst = f'numpy._core.{_sub}'
+        if _src in sys.modules:
+            sys.modules[_dst] = sys.modules[_src]
+        else:
+            try:
+                __import__(_src)
+                sys.modules[_dst] = sys.modules[_src]
+            except ImportError:
+                pass
 
 try:
     import lightgbm as lgb

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
 import { WalletsService } from './wallets.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TransferDto } from './dto/transfer.dto';
@@ -11,7 +12,7 @@ import { ConfirmTransferDto } from './dto/confirm-transfer.dto';
 @ApiTags('wallets')
 @ApiBearerAuth('access-token')
 @Controller('wallets')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, KycVerifiedGuard)
 export class WalletsController {
   constructor(private readonly walletsService: WalletsService) { }
 

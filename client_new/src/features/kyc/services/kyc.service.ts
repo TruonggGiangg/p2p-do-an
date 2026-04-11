@@ -135,7 +135,7 @@ class KycService {
       "[KycService] processFaceMatching raw response:",
       JSON.stringify(response.data),
     );
-    return response.data?.data ?? response.data;
+    return response.data;
   }
 
   /**

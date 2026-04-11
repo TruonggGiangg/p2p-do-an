@@ -16,13 +16,17 @@ import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { TwoFactorModule } from '../two-factor/two-factor.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 import { CreditScoreModule } from '../credit-score/credit-score.module';
+import { Notification, NotificationSchema } from '../loan/schemas/notification.schema';
 
 @Module({
   imports: [
     PassportModule,
     UsersModule,
     WalletsModule,
-    MongooseModule.forFeature([{ name: Wallet.name, schema: WalletSchema }]),
+    MongooseModule.forFeature([
+      { name: Wallet.name, schema: WalletSchema },
+      { name: Notification.name, schema: NotificationSchema },
+    ]),
     TwoFactorModule,
     SmartOtpModule,
     CreditScoreModule,

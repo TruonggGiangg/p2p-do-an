@@ -37,27 +37,27 @@ export const KYCStepIndicator: React.FC<KYCStepIndicatorProps> = ({ steps, curre
                                     style={[
                                         styles.iconCircle,
                                         {
-                                            backgroundColor: isActive ? c.primary : isCompleted ? c.successGlass : c.surfaceLight,
+                                            backgroundColor: isActive ? c.primary : isCompleted ? c.success : c.surfaceLight,
                                             borderColor: isActive ? c.primary : isCompleted ? c.success : c.border,
                                             borderWidth: isActive || isCompleted ? 0 : 1.5,
                                         }
                                     ]}
                                 >
                                     {isCompleted ? (
-                                        <Ionicons name="checkmark-sharp" size={18} color={c.success} />
+                                        <Ionicons name="checkmark-sharp" size={18} color="#fff" />
                                     ) : (
                                         <Ionicons
                                             name={step.icon as any}
                                             size={18}
-                                            color={isActive ? '#000' : c.textMuted}
+                                            color={isActive ? '#fff' : c.textMuted}
                                         />
                                     )}
                                 </Animated.View>
                                 <Text style={[
                                     styles.label,
                                     {
-                                        color: isActive ? c.textPrimary : c.textMuted,
-                                        fontWeight: isActive ? '700' : '500'
+                                        color: isActive ? c.textPrimary : isCompleted ? c.success : c.textMuted,
+                                        fontWeight: (isActive || isCompleted) ? '700' : '500'
                                     }
                                 ]}>
                                     {step.label}

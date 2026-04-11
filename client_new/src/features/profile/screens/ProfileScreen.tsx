@@ -246,7 +246,7 @@ export default function ProfileScreen() {
                         </View>
 
                         {/* ═══ CREDIT SCORE — Chỉ hiển thị cho người vay (borrower) ═══ */}
-                        {user?.roles?.includes("borrower") && (
+                        {(user?.userType === 'borrower' || user?.roles?.includes('borrower')) && (
                             <View style={styles.creditSection}>
                                 <View style={styles.creditHeader}>
                                     <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ĐIỂM TÍN DỤNG</Text>
@@ -408,17 +408,36 @@ export default function ProfileScreen() {
                                     icon="shield-check-outline"
                                     title="Xác minh danh tính"
                                     subtitle={
-                                        (user as any)?.kycStatus === 'VERIFIED' ? 'Đã xác minh (eKYC)'
-                                            : (user as any)?.kycStatus === 'PENDING' ? 'Đang chờ phê duyệt'
-                                                : 'Chưa xác minh'
+                                        user?.kycStatus === 'VERIFIED' ? 'Đã xác minh (eKYC)'
+                                            : user?.kycStatus === 'PENDING' ? 'Đang chờ phê duyệt'
+                                                : user?.kycStatus === 'REJECTED' ? `Bị từ chối${user?.kycRejectReason ? `: ${user.kycRejectReason}` : ''}`
+                                                    : user?.kycStatus === 'UPDATE_REQUESTED' ? `Cần bổ sung${user?.kycRejectReason ? `: ${user.kycRejectReason}` : ''}`
+                                                        : 'Chưa xác minh'
                                     }
                                     onPress={() => {
-                                        const status = (user as any)?.kycStatus;
+                                        const status = user?.kycStatus;
                                         if (status === 'PENDING') { Alert.alert('Đang chờ phê duyệt', 'Hồ sơ xác minh danh tính của bạn đang được xử lý.', [{ text: 'Đã hiểu' }]); return; }
                                         if (status === 'VERIFIED') { Alert.alert('Đã xác minh', 'Tài khoản của bạn đã được xác minh eKYC.'); return; }
+                                        if (status === 'REJECTED' || status === 'UPDATE_REQUESTED') {
+                                            Alert.alert(
+                                                status === 'REJECTED' ? 'Hồ sơ bị từ chối' : 'Cần bổ sung hồ sơ',
+                                                user?.kycRejectReason || 'Vui lòng cập nhật lại hồ sơ eKYC.',
+                                                [
+                                                    { text: 'Để sau' },
+                                                    { text: 'Cập nhật ngay', onPress: () => (navigation as any).getParent()?.navigate('KYCUpdate') },
+                                                ]
+                                            );
+                                            return;
+                                        }
                                         (navigation as any).getParent()?.navigate('KYCIntro');
                                     }}
-                                    color={(user as any)?.kycStatus === 'VERIFIED' ? c.success : (user as any)?.kycStatus === 'PENDING' ? c.primary : c.warning}
+                                    color={
+                                        user?.kycStatus === 'VERIFIED' ? c.success
+                                            : user?.kycStatus === 'PENDING' ? c.primary
+                                                : user?.kycStatus === 'REJECTED' ? c.error
+                                                    : user?.kycStatus === 'UPDATE_REQUESTED' ? '#F59E0B'
+                                                        : c.warning
+                                    }
                                 />
                                 <SmartOTPSection />
                                 <TwoFactorSection />

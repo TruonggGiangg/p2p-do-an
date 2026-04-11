@@ -1,4 +1,4 @@
-import type { User } from '../../../types/auth.types';
+import type { User } from '../../types/auth.types';
 
 /**
  * Get user display name with fallback priority:

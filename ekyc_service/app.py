@@ -72,6 +72,6 @@ def create_app():
 
 if __name__ == '__main__':
     initialized_app = create_app()
-    initialized_app.run(host='0.0.0.0', port=8000, debug=True)
+    initialized_app.run(host='0.0.0.0', port=8686, debug=True)
 
     logging.getLogger().info("Flask development server stopped.")

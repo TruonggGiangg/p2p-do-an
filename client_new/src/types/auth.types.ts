@@ -81,7 +81,9 @@ export interface User {
   profile?: UserProfile;
   metadata?: UserMetadata;
   status?: "active" | "inactive" | "suspended";
-  kycStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED";
+  userType?: "borrower" | "lender" | "staff";
+  kycStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED" | "UPDATE_REQUESTED";
+  kycRejectReason?: string | null;
   hasPin?: boolean;
   creditScore?: UserCreditScore | null;
   creditScoreHistory?: UserCreditScoreHistoryItem[];
@@ -156,6 +158,7 @@ export interface RegisterResponse {
     username: string;
     keycloakUserId: string;
     fineractClientId: number;
+    userType: string;
   };
 }
 

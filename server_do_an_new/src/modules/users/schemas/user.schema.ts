@@ -7,6 +7,12 @@ export enum UserStatus {
   SUSPENDED = 'suspended',
 }
 
+export enum UserType {
+  BORROWER = 'borrower',
+  LENDER = 'lender',
+  STAFF = 'staff',
+}
+
 @Schema({ timestamps: true, collection: 'users' })
 export class User extends Document {
   @Prop({ required: true, unique: true })
@@ -48,12 +54,24 @@ export class User extends Document {
   })
   status: UserStatus;
 
+  /** Loại người dùng: borrower (người vay) hoặc lender (người cho vay) */
   @Prop({
     type: String,
-    enum: ['NONE', 'PENDING', 'VERIFIED', 'REJECTED'],
+    enum: UserType,
+    default: UserType.BORROWER,
+  })
+  userType: UserType;
+
+  @Prop({
+    type: String,
+    enum: ['NONE', 'PENDING', 'VERIFIED', 'REJECTED', 'UPDATE_REQUESTED'],
     default: 'NONE',
   })
   kycStatus: string;
+
+  /** Lý do từ chối hoặc yêu cầu bổ sung eKYC (do Admin nhập) */
+  @Prop({ type: String, required: false, default: null })
+  kycRejectReason?: string;
 
   @Prop({ type: Object, default: null, required: false })
   kycData?: any;
@@ -161,3 +179,4 @@ export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ fineractClientId: 1 }); // For Fineract client lookup
 UserSchema.index({ username: 1 }); // Already unique, but explicit index for queries
 UserSchema.index({ keycloakId: 1 }); // Already unique, but explicit index for queries
+UserSchema.index({ userType: 1 }); // For filtering by role (borrower/lender)

@@ -17,6 +17,7 @@ import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import InvestmentOrderListScreen from '../features/invest/screens/InvestmentOrderListScreen';
 import AvailableLoansScreen from '../features/invest/screens/AvailableLoansScreen';
+import LockedFeatureOverlay from '../shared/components/LockedFeatureOverlay';
 
 /** HOC: bọc screen yêu cầu PIN 1 lần/phiên */
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
@@ -38,14 +39,16 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
 
         if (!pinVerified) {
             return (
-                <PinVerifyModal
-                    visible={isFocused}
-                    dismissable={true}
-                    onSuccess={markPinVerified}
-                    onCancel={() => (navigation as any).navigate('Home')}
-                    title="Xác thực mã PIN"
-                    subtitle="Nhập mã PIN để truy cập tính năng này"
-                />
+                <View style={{ flex: 1 }}>
+                    <PinVerifyModal
+                        visible={isFocused}
+                        dismissable={true}
+                        onSuccess={markPinVerified}
+                        onCancel={() => (navigation as any).navigate('Home')}
+                        title="Xác thực mã PIN"
+                        subtitle="Nhập mã PIN để truy cập tính năng này"
+                    />
+                </View>
             );
         }
 
@@ -53,10 +56,30 @@ function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>)
     };
 }
 
-const PinGatedLoanScreen = withPinGate(LoanScreen);
-const PinGatedBNPLScreen = withPinGate(BNPLScreen);
-const PinGatedOrderScreen = withPinGate(InvestmentOrderListScreen);
-const PinGatedInvestScreen = withPinGate(AvailableLoansScreen);
+/** HOC: chặn truy cập nếu chưa VERIFIED KYC */
+function withKycGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
+    return function KycGatedScreen(props: P) {
+        const { user } = useAuth();
+
+        if (user?.kycStatus !== 'VERIFIED') {
+            return (
+                <View style={{ flex: 1, backgroundColor: '#fff' }}>
+                    <LockedFeatureOverlay
+                        kycStatus={user?.kycStatus}
+                        rejectReason={user?.kycRejectReason}
+                    />
+                </View>
+            );
+        }
+
+        return <WrappedComponent {...props} />;
+    };
+}
+
+const PinGatedLoanScreen = withKycGate(withPinGate(LoanScreen));
+const PinGatedBNPLScreen = withKycGate(withPinGate(BNPLScreen));
+const PinGatedOrderScreen = withKycGate(withPinGate(InvestmentOrderListScreen));
+const PinGatedInvestScreen = withKycGate(withPinGate(AvailableLoansScreen));
 
 export type MainTabParamList = {
     Home: undefined;
@@ -106,7 +129,9 @@ export default function MainNavigator() {
     const insets = useSafeAreaInsets();
 
     // Phân quyền: chỉ lender mới thấy tab Đầu tư
+    // Ưu tiên userType top-level (server mới) → fallback metadata.userType (user cũ) → roles
     const isLender =
+        user?.userType === 'lender' ||
         user?.metadata?.userType === 'lender' ||
         (user?.roles || []).some(r => r.toLowerCase() === 'lender');
 
@@ -115,7 +140,7 @@ export default function MainNavigator() {
     return (
         <Tab.Navigator
             tabBar={(props) => (
-                <View style={styles.tabBarWrapper}>
+                <View style={[styles.tabBarWrapper, { paddingBottom: Math.max(insets.bottom, 20) }]}>
                     <BottomTabBar {...props} />
                 </View>
             )}
@@ -240,7 +265,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         paddingHorizontal: 20,
-        paddingBottom: 25,
+        paddingBottom: 20,
         backgroundColor: 'transparent',
     },
 });

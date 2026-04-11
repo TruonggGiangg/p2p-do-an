@@ -95,13 +95,17 @@ export default function LoanTable({
     return (
         <>
             {showFilterPanel && filterContent && (
-                <Card bordered={false} style={{ marginBottom: 16 }} title={<Space><FilterOutlined /> Bộ lọc nâng cao</Space>}>
+                <Card variant="borderless" style={{ marginBottom: 16 }} title={<Space><FilterOutlined /> Bộ lọc nâng cao</Space>}>
                     {filterContent(actionRef)}
                 </Card>
             )}
 
             <ProTable<LoanTableRow>
                 {...PRO_TABLE_DEFAULTS}
+                cardProps={{
+                    ...(typeof PRO_TABLE_DEFAULTS.cardProps === 'object' ? PRO_TABLE_DEFAULTS.cardProps : {}),
+                    bodyStyle: { padding: '16px 16px 16px 16px' },
+                }}
                 actionRef={actionRef}
                 rowKey={rowKey ?? ((r) => String(r.fineractLoanId ?? r._id ?? ''))}
                 columns={columns}

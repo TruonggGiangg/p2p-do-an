@@ -6,6 +6,7 @@ export interface UserPayload {
   roles?: string[];
   keycloakUserId?: string;
   fineractClientId?: string;
+  kycStatus?: string;
 }
 
 export interface KeycloakUser {
@@ -16,6 +17,7 @@ export interface KeycloakUser {
   name?: string;
   roles?: string[];
   fineractClientId?: string;
+  kycStatus?: string;
 }
 
 export interface TokenResponse {

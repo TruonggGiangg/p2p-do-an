@@ -216,8 +216,11 @@ export class AdminService implements OnModuleInit {
   async approveKyc(userId: string) {
     return this.kycService.approveKyc(userId);
   }
-  async rejectKyc(userId: string) {
-    return this.kycService.rejectKyc(userId);
+  async rejectKyc(userId: string, reason?: string) {
+    return this.kycService.rejectKyc(userId, reason);
+  }
+  async requestUpdateKyc(userId: string, reason: string) {
+    return this.kycService.requestUpdateKyc(userId, reason);
   }
   async getKycDocumentStream(userId: string, entityType: string, entityId: number, documentId: number) {
     return this.kycService.getKycDocumentStream(userId, entityType, entityId, documentId);

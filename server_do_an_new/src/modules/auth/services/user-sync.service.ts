@@ -155,11 +155,27 @@ export class UserSyncService {
   }
 
   /**
-   * Get user profile with kycStatus from MongoDB (for /auth/me)
+   * Get user profile with full lifecycle info from MongoDB (for /auth/me)
    */
-  async getProfileWithKyc(userId: string): Promise<{ profile?: any; kycStatus?: string } | null> {
-    const user = await this.userModel.findById(userId).select('profile kycStatus').lean();
-    return user ? { profile: user.profile, kycStatus: user.kycStatus } : null;
+  async getProfileWithKyc(userId: string): Promise<{
+    profile?: any;
+    kycStatus?: string;
+    kycRejectReason?: string;
+    userType?: string;
+    status?: string;
+  } | null> {
+    const user = await this.userModel
+      .findById(userId)
+      .select('profile kycStatus kycRejectReason userType status metadata')
+      .lean();
+    if (!user) return null;
+    return {
+      profile: user.profile,
+      kycStatus: user.kycStatus,
+      kycRejectReason: (user as any).kycRejectReason || undefined,
+      userType: user.userType || (user.metadata as any)?.userType || 'borrower',
+      status: user.status,
+    };
   }
 
   private async syncWallets(mongoUser: User, fineractClientId: number, username: string): Promise<void> {

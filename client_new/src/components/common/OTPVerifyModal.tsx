@@ -576,6 +576,6 @@ const styles = StyleSheet.create({
   registerNowText: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#000',
+    color: '#FFFFFF',
   },
 });

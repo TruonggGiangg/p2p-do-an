@@ -1,3 +1,4 @@
+import React from 'react';
 import { Tag } from 'antd';
 import type { FineractStatus } from '../api/admin';
 
@@ -38,20 +39,20 @@ const CODE_MAP: Record<string, { color: string; label: string }> = {
     'inactive': { color: 'default', label: 'Không hoạt động' },
 };
 
-export function FineractStatusBadge({ status }: {
-    status?: FineractStatus | { value: string; code: string } | string | null
-}) {
-    if (!status) return <Tag color="default">–</Tag>;
+export const FineractStatusBadge = React.forwardRef<HTMLSpanElement, { status?: FineractStatus | { value: string; code: string } | string | null }>(
+    ({ status }, ref) => {
+        if (!status) return <Tag ref={ref} color="default">–</Tag>;
 
-    const code = getStatusCode(status);
-    const value = getStatusValue(status);
+        const code = getStatusCode(status);
+        const value = getStatusValue(status);
 
-    const mapped = CODE_MAP[code] ?? CODE_MAP[value.toLowerCase()];
-    const color = mapped?.color ?? 'default';
-    const label = mapped?.label ?? value;
+        const mapped = CODE_MAP[code] ?? CODE_MAP[value.toLowerCase()];
+        const color = mapped?.color ?? 'default';
+        const label = mapped?.label ?? value;
 
-    return <Tag color={color} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{label}</Tag>;
-}
+        return <Tag ref={ref} color={color} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{label}</Tag>;
+    }
+);
 
 export function fmtVND(n?: any) {
     if (!n && n !== 0) return '–';

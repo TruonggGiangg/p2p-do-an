@@ -8,11 +8,12 @@ import { DigitalSignature } from './schemas/digital-signature.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { generateLoanContractHTML } from '../loan/templates/loan-contract.template';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
 
 @ApiTags('Digital Signature')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, KycVerifiedGuard)
 @Controller('digital-signature')
 export class DigitalSignatureController {
   constructor(

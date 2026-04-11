@@ -10,6 +10,9 @@ export type NotificationType =
   | 'repayment_due'
   | 'repayment_received'
   | 'overdue_reminder'
+  | 'kyc_approved'
+  | 'kyc_rejected'
+  | 'kyc_update_requested'
   | 'general';
 
 @Schema({ timestamps: true, collection: 'notifications' })

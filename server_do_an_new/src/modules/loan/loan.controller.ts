@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
 import { LoanService } from './loan.service';
 import { RepaymentService } from './repayment.service';
 import { ContractService } from './contract.service';
@@ -27,7 +28,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @ApiTags('loan')
 @ApiBearerAuth()
 @Controller('loan')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, KycVerifiedGuard)
 export class LoanController {
   constructor(
     private readonly loanService: LoanService,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Wallet, WalletSchema } from './schemas/wallet.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
 import { WalletsController } from './wallets.controller';
 import { WalletsService } from './wallets.service';
 import { UsersModule } from '../users/users.module';
@@ -8,7 +9,10 @@ import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Wallet.name, schema: WalletSchema }]), 
+    MongooseModule.forFeature([
+      { name: Wallet.name, schema: WalletSchema },
+      { name: User.name, schema: UserSchema },
+    ]), 
     UsersModule, 
     SmartOtpModule
   ],

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -21,6 +21,7 @@ import {
     CommonInput,
     BinanceHeader,
 } from '../../../components';
+import { authAPI } from '../api/auth.api';
 
 export default function RegisterScreen() {
     const navigation = useNavigation();
@@ -37,6 +38,8 @@ export default function RegisterScreen() {
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [fadeAnim] = useState(new Animated.Value(0));
+    const [phoneChecking, setPhoneChecking] = useState(false);
+    const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -46,6 +49,25 @@ export default function RegisterScreen() {
         }).start();
     }, [fadeAnim]);
 
+    // Debounced phone check (giống HD-AMC CheckPhoneController)
+    const checkPhoneAvailability = useCallback((phone: string) => {
+        if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+        const normalized = phone.replace(/\D/g, '');
+        if (normalized.length < 10) return;
+
+        setPhoneChecking(true);
+        phoneCheckTimer.current = setTimeout(async () => {
+            try {
+                const result = await authAPI.checkPhone(normalized);
+                if (!result.available) {
+                    setErrors(prev => ({ ...prev, phoneNumber: result.reason || 'Số điện thoại đã được đăng ký' }));
+                }
+            } finally {
+                setPhoneChecking(false);
+            }
+        }, 500);
+    }, []);
+
     const updateField = (field: string, value: string) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
         if (errors[field]) {
@@ -54,6 +76,10 @@ export default function RegisterScreen() {
                 delete newErrors[field];
                 return newErrors;
             });
+        }
+        // Auto-check phone availability
+        if (field === 'phoneNumber') {
+            checkPhoneAvailability(value);
         }
     };
 

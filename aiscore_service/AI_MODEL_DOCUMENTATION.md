@@ -908,3 +908,85 @@ Hai hệ thống **bổ trợ nhau**: credit_score đặt context chung, AIScore
 
 > **Phiên bản mô hình: v11.0 — Explainable Hybrid (WOE+LR Scorecard ⊕ XGBoost + Isotonic Calibration).**  
 > **12 features (IV ≥ 0.02) | 1,345,310 mẫu | AUC 0.7129 | Brier 0.1447 | Full Scorecard Explanation.**
+
+---
+
+## 14. Phụ lục — Luồng train_model.py v17.0 (Stacking 3 nhánh)
+
+Phần này mô tả đúng pipeline trong file train_model.py bản v17.0 để đối chiếu code hiện tại.
+
+### 14.1. Khác biệt chính so với v11.0
+
+| Thành phần | v11.0 | v17.0 (code hiện tại) |
+| ---------- | ----- | --------------------- |
+| Kiến trúc ensemble | Alpha blend 2 nhánh | Stacking Meta-LR (Scorecard + XGBoost + LightGBM) |
+| Số features | 12 sau IV | 47 total features (numeric + interaction + power + high-signal + categorical) |
+| Vai trò IV filter | Dùng chung | Chỉ lọc cho Scorecard branch, XGB/LGBM vẫn dùng toàn bộ features |
+| Threshold | Chủ yếu tham chiếu 0.5 | Tối ưu theo acc_weighted trên xác suất raw của Stacked model |
+| Calibration | Isotonic | Isotonic (áp dụng cho PD báo cáo) |
+
+### 14.2. Luồng train end-to-end (10 bước)
+
+1. Load và clean Lending Club accepted data, tạo is_default.
+2. Feature engineering lớn: interaction, power, high-signal (bao gồm interest_rate).
+3. Train/test split có đảm bảo số mẫu test tối thiểu.
+4. Per-feature scaling cho nhánh tree models (XGBoost, LightGBM).
+5. WOE binning + tính IV toàn bộ features, sau đó lọc IV chỉ cho Scorecard.
+6. Train nhánh 1: LogisticRegressionCV trên WOE features (Scorecard branch).
+7. Train nhánh 2: XGBoost trên full scaled features, có monotonic constraints và tuning.
+8. Train nhánh 3: LightGBM trên full scaled features (nếu môi trường có lightgbm).
+9. Tạo OOF predictions để train Meta-LR stacking, tìm threshold tối ưu theo acc_weighted, rồi isotonic calibration.
+10. Đánh giá, cross-validation toàn pipeline, lưu artifacts, export test_predictions.csv và sinh charts.
+
+### 14.3. Sơ đồ luồng training v17.0
+
+INPUT DATA (accepted_2007_to_2018Q4.csv)
+  -> Clean + Label (is_default)
+  -> 47-feature engineering
+  -> Stratified split (train/test)
+
+TRAIN BRANCH 1 (Explainable)
+  train_raw
+    -> WOE binning
+    -> IV ranking
+    -> keep IV >= threshold (scorecard only)
+    -> LogisticRegressionCV
+    -> scorecard_pd
+
+TRAIN BRANCH 2 (Strong non-linear)
+  train_raw
+    -> per-feature scaling
+    -> XGBoost + monotonic constraints + HP tuning
+    -> xgb_pd
+
+TRAIN BRANCH 3 (Optional strong non-linear)
+  train_raw
+    -> per-feature scaling
+    -> LightGBM + monotonic constraints + HP tuning
+    -> lgbm_pd
+
+STACKING
+  OOF(scorecard_pd, xgb_pd, lgbm_pd)
+    -> Meta Logistic Regression
+    -> hybrid_pd_raw
+
+POST-PROCESS
+  hybrid_pd_raw
+    -> optimize threshold (metric=acc_weighted)
+    -> isotonic calibration
+    -> hybrid_pd_calibrated
+
+OUTPUT
+  Models: xgb_pd_model, lr_scorecard_model, optional lgbm model, meta_lr, iso_calibrator
+  Data: metadata.json, scorecard_table.json, test_predictions.csv
+  Diagnostics: ROC/PR/Calibration/KS/Feature importance charts
+
+### 14.4. Công thức vận hành chính
+
+- Scorecard branch: WOE(X) -> LR -> scorecard_pd
+- Tree branches: Scale(X) -> XGB/LGBM -> xgb_pd, lgbm_pd
+- Stacking raw PD: hybrid_pd_raw = MetaLR(scorecard_pd, xgb_pd, lgbm_pd)
+- Calibrated PD: hybrid_pd_calibrated = Isotonic(hybrid_pd_raw)
+- Classification decision: default_pred = 1 if hybrid_pd_raw >= optimal_threshold else 0
+
+Lưu ý: threshold dùng cho phân lớp lấy trên hybrid_pd_raw, còn hybrid_pd_calibrated dùng để báo cáo xác suất vỡ nợ (PD) cho nghiệp vụ.
