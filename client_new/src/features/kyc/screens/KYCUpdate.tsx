@@ -11,6 +11,7 @@ import {
     Platform,
     Dimensions,
     Linking,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -208,7 +209,7 @@ const KYCUpdate: React.FC = () => {
                 // Python returns { result: { fullName, idNumber, ... } }
                 const result = res.data?.result || res.data || res;
                 const data = result?.data || result;
-                
+
                 setOcrData((prev: any) => ({
                     ...prev,
                     name: data.fullName || data.name,
@@ -240,7 +241,7 @@ const KYCUpdate: React.FC = () => {
             if (res && (res.success || res.errorCode === 0)) {
                 const result = res.data?.result || res.data || res;
                 const data = result?.data || result;
-                
+
                 setOcrData((prev: any) => ({
                     ...prev,
                     issueDate: data?.issue_date || data?.init_date || data?.issueDate || result?.issueDate,
