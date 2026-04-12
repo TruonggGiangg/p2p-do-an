@@ -4,6 +4,12 @@
 /server_do_an/dist
 /server_do_an/build
 
+*.docx
+*.tex
+*.md
+*.txt
+charts/
+
 # Dependencies
 node_modules
 /node_modules

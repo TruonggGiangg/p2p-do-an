@@ -1,992 +1,699 @@
-# AIScore Service — Tài liệu mô hình AI chấm điểm tín dụng v11.0
+# AIScore — Tài liệu Kỹ thuật Mô hình AI
 
 ## Mục lục
 
-1. [Tổng quan](#1-tổng-quan)
-2. [Dữ liệu đầu vào (Input Dataset)](#2-dữ-liệu-đầu-vào-input-dataset)
-3. [Tiền xử lý dữ liệu (Preprocessing Pipeline)](#3-tiền-xử-lý-dữ-liệu-preprocessing-pipeline)
-4. [Feature Selection — WOE Information Value](#4-feature-selection--woe-information-value)
-5. [Kỹ thuật Feature Engineering & Smart Scaling](#5-kỹ-thuật-feature-engineering--smart-scaling)
-6. [Huấn luyện mô hình Explainable Hybrid](#6-huấn-luyện-mô-hình-explainable-hybrid)
-7. [Output — JSON trả về](#7-output--json-trả-về)
-8. [Đánh giá mô hình (Evaluation)](#8-đánh-giá-mô-hình-evaluation)
-9. [Tích hợp hệ thống P2P Lending — NestJS ↔ AIScore](#9-tích-hợp-hệ-thống-p2p-lending--nestjs--aiscore)
-10. [credit_score → sub_grade → Grade → Tier — Mapping chi tiết](#10-credit_score--sub_grade--grade--tier--mapping-chi-tiết)
-11. [API Endpoints](#11-api-endpoints)
-12. [So sánh v9.0 → v11.0](#12-so-sánh-v90--v110)
-13. [Kết luận](#13-kết-luận)
+1. [Tổng quan Kiến trúc](#1-tổng-quan-kiến-trúc)
+2. [Dữ liệu & Tiền xử lý](#2-dữ-liệu--tiền-xử-lý)
+3. [Đặc trưng (Features)](#3-đặc-trưng-features)
+4. [Kiến trúc Triple-Branch Stacking](#4-kiến-trúc-triple-branch-stacking)
+5. [Huấn luyện & Tối ưu](#5-huấn-luyện--tối-ưu)
+6. [Đánh giá Mô hình](#6-đánh-giá-mô-hình)
+7. [Phân tích Chi tiết từ Biểu đồ](#7-phân-tích-chi-tiết-từ-biểu-đồ)
+8. [API Endpoints](#8-api-endpoints)
+9. [Tích hợp NestJS](#9-tích-hợp-nestjs)
+10. [Credit Score & Tier System](#10-credit-score--tier-system)
+11. [Artifacts & Triển khai](#11-artifacts--triển-khai)
 
 ---
 
-## 1. Tổng quan
+## 1. Tổng quan Kiến trúc
 
-| Thông tin          | Giá trị                                                                                             |
-| ------------------ | --------------------------------------------------------------------------------------------------- |
-| **Tên service**    | AIScore Service v11.0                                                                               |
-| **Mô hình**        | Explainable Hybrid — WOE+LR Scorecard ⊕ XGBoost + Isotonic Calibration                              |
-| **Framework API**  | FastAPI + Uvicorn                                                                                   |
-| **Ngôn ngữ**       | Python 3.11+                                                                                        |
-| **Port**           | 8001                                                                                                |
-| **Mục đích**       | Dự đoán xác suất vỡ nợ (PD) + giải thích minh bạch cho người vay trong hệ thống P2P Lending         |
-| **Đơn vị tiền tệ** | VNĐ (quy đổi từ USD qua tỷ giá real-time: 26,258 VNĐ/USD)                                           |
-| **Phương pháp**    | Hybrid: α·Scorecard_PD + (1-α)·XGBoost_PD → Isotonic Calibration → PD + ai_risk_score + Explanation |
-| **Số features**    | **12** (9 numeric + 3 categorical) — lọc bằng IV ≥ 0.02 từ 25 features gốc                          |
-| **Chuẩn hóa**      | Smart Per-Feature Scaling — 6 chiến lược (chỉ cho Nhánh 2 XGBoost)                                  |
-| **Dataset**        | Lending Club accepted_2007_to_2018Q4.csv (2.26M rows → 1,345,310 mẫu qualified)                     |
-
-### Kiến trúc Explainable Hybrid (2 nhánh song song)
+**AIScore** là hệ thống chấm điểm tín dụng AI cho nền tảng P2P Lending, sử dụng kiến trúc **Triple-Branch Stacking Ensemble**:
 
 ```
-25 Features gốc (21 Num + 4 Cat)
-    │
-    ├─── WOE Feature Selection ───► IV ≥ 0.02 → 12 features (loại 13 useless)
-    │
-    │      ┌───────────────────────────────────────────────────────┐
-    │      │                                                       │
-    ▼      ▼                                                       ▼
-┌──────────────────────────┐                          ┌──────────────────────────┐
-│ NHÁNH 1 — MINH BẠCH      │                          │ NHÁNH 2 — SỨC MẠNH       │
-│                          │                          │                          │
-│ WOE Binning (20 bins)    │                          │ Smart Per-Feature Scaling │
-│     ↓                    │                          │ (6 strategies)            │
-│ Logistic Regression      │                          │     ↓                    │
-│ (C=1.0, L2, balanced)    │                          │ XGBoost (800 trees, d=5)  │
-│     ↓                    │                          │ (lr=0.02, spw=4.01)       │
-│ Scorecard Points         │                          │     ↓                    │
-│ (base=600, pdo=20)       │                          │ XGB PD (0.0 – 1.0)       │
-│     ↓                    │                          │     ↓                    │
-│ Scorecard PD (0.0 – 1.0) │                          │ AUC = 0.7130             │
-│ AUC = 0.7073             │                          │                          │
-└───────────┬──────────────┘                          └───────────┬──────────────┘
-            │                                                     │
-            └───────────────────┬─────────────────────────────────┘
-                                │
-                                ▼
-                ┌───────────────────────────────────┐
-                │  Hybrid Blending:                  │
-                │  PD = 0.05·SC_PD + 0.95·XGB_PD     │
-                │  α = 0.05 (optimized via CV)       │
-                └───────────────┬───────────────────┘
-                                │
-                                ▼
-                ┌───────────────────────────────────┐
-                │  Isotonic Calibration              │
-                │  Brier: 0.2164 → 0.1447 (-33%)    │
-                └───────────────┬───────────────────┘
-                                │
-                                ▼
-                ┌───────────────────────────────────┐
-                │  OUTPUT:                           │
-                │  • ai_risk_score = round(PD × 100) │  ← 0–100
-                │  • default_probability = PD        │  ← 0.0–1.0
-                │  • scorecard_score (427–559)       │  ← giải thích
-                │  • scorecard_explanation[]          │  ← từng factor
-                └───────────────────────────────────┘
+48 Features (42 Numeric + 6 Categorical)
+         ├──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+   Nhánh 1: Scorecard  Nhánh 2: XGBoost  Nhánh 3: LightGBM
+   (WOE → LR, 32 feat) (Scaled, 48 feat)  (Scaled, 48 feat)
+         │                  │                  │
+         ▼                  ▼                  ▼
+      SC_pd              XGB_pd            LGBM_pd
+         └──────────────────┼──────────────────┘
+                            ▼
+                   Meta-LR (Level 2)
+                            ▼
+                  Isotonic Calibration
+                            ▼
+                     PD → ai_risk_score
 ```
 
-### Tại sao Explainable Hybrid thay vì Stacking (v9.0)?
+**Ưu điểm kiến trúc:**
+- **Nhánh 1 (Minh bạch):** WOE-Scorecard giải thích rành mạch — "Trừ 50 điểm vì 2 khoản nợ trễ"
+- **Nhánh 2 (Sức mạnh):** XGBoost nắm bắt quan hệ phi tuyến phức tạp
+- **Nhánh 3 (Bổ sung):** LightGBM (GOSS) bổ sung góc nhìn khác biệt
+- **Meta-LR:** Học trọng số tối ưu tự động thay vì blend cố định
 
-| Tiêu chí                | v9.0 Stacking (XGB+SVM→LR)          | v11.0 Hybrid (WOE+LR ⊕ XGBoost)               |
-| ----------------------- | ----------------------------------- | --------------------------------------------- |
-| **Khả năng giải trình** | Hạn chế — LR Meta khó giải thích    | **Xuất sắc** — Scorecard giải thích từng điểm |
-| **Regulatory**          | Black-box, khó đáp ứng quy định     | **White-box** — WOE+LR tuân thủ Basel II/III  |
-| **Feature Selection**   | Giữ nguyên 25 features              | **Tự động loại 13 features yếu** (IV < 0.02)  |
-| **Calibration**         | Brier = 0.2146                      | **Isotonic** → Brier = 0.1447 (cải thiện 33%) |
-| **Dataset**             | 500K subsample                      | **1.345M rows** (toàn bộ dữ liệu qualified)   |
-| **Transparency**        | Không biết tại sao model quyết định | **"Trừ 26 điểm vì credit_score ≤ 344"**       |
-
-### Ý tưởng cốt lõi
-
-- **Nhánh 1 — WOE + LR Scorecard (Minh bạch):** WOE Binning 20 bins → Logistic Regression → Scorecard points (base=600, pdo=20). Giải thích từng yếu tố: "+4 pts vì term 36 tháng", "-26 pts vì credit_score thấp"
-- **Nhánh 2 — XGBoost (Sức mạnh):** Smart Scaling → 800 trees, depth 5, lr 0.02 → Bắt mọi non-linear interaction
-- **Hybrid Blending:** α = 0.05 (5% Scorecard + 95% XGBoost) → AUC tối ưu 0.7171 (CV)
-- **Isotonic Calibration:** Non-parametric calibrator → PD chính xác thống kê, Brier cải thiện 33%
-- **Feature Selection:** WOE IV ≥ 0.02 tự động loại 13 features yếu → model gọn hơn, ít noise
+![Kiến trúc hệ thống](charts/16_architecture_diagram.png)
 
 ---
 
-## 2. Dữ liệu đầu vào (Input Dataset)
+## 2. Dữ liệu & Tiền xử lý
 
-### 2.1. Nguồn dữ liệu
+### 2.1 Nguồn dữ liệu
 
-| Thông tin          | Giá trị                                               |
-| ------------------ | ----------------------------------------------------- |
-| **Dataset**        | Lending Club Loan Data (2007-2018 Q4)                 |
-| **File chính**     | `accepted_2007_to_2018Q4.csv`                         |
-| **Tổng bản ghi**   | **~2,260,000** khoản vay                              |
-| **Sau lọc target** | **1,345,310** mẫu (chỉ Fully Paid + Charged Off)      |
-| **Số cột gốc**     | **151 cột** (dùng 25 cột → WOE lọc còn 12)            |
-| **File phụ**       | `rejected_2007_to_2018Q4.csv` (27.6M rows — EDA only) |
+| Thuộc tính | Giá trị |
+|---|---|
+| Dataset | Lending Club accepted_2007_to_2018Q4.csv |
+| Tổng records | ~2,260,000 (accepted, có nhãn) |
+| Biến mục tiêu | `loan_status` → binary (0=Good, 1=Default) |
+| Tỷ lệ Default | ~20% (imbalanced) |
 
-### 2.2. Các cột sử dụng từ CSV gốc (25 cột)
+### 2.2 Train/Test Split
 
-| #   | Tên cột LC                   | Mô tả                                 | → Feature v11.0            | Giữ/Loại           |
-| --- | ---------------------------- | ------------------------------------- | -------------------------- | ------------------ |
-| 1   | `sub_grade`                  | Hạng tín dụng chi tiết (A1→G5)        | `credit_score` (150-750)   | ✅ GIỮ (IV=0.493)  |
-| 2   | `loan_amnt`                  | Số tiền vay (USD)                     | `capital` (VNĐ)            | ✅ GIỮ (IV=0.034)  |
-| 3   | `annual_inc`                 | Thu nhập năm (USD)                    | `monthly_income` (VNĐ)     | ✅ GIỮ (IV=0.029)  |
-| 4   | `installment`                | Trả góp/tháng (USD)                   | `monthly_pay` (VNĐ)        | ✅ GIỮ (IV=0.036)  |
-| 5   | `revol_bal`                  | Dư nợ quay vòng (USD)                 | `revolving_balance` (VNĐ)  | ✗ LOẠI (IV=0.004)  |
-| 6   | `tot_cur_bal`                | Tổng dư nợ tất cả TK (USD)            | `total_current_balance`    | ✅ GIỮ (IV=0.043)  |
-| 7   | `dti`                        | Tỷ lệ Nợ/Thu nhập (%)                 | `dti`                      | ✅ GIỮ (IV=0.073)  |
-| 8   | `revol_util`                 | % sử dụng hạn mức                     | `revolving_util_percent`   | ✅ GIỮ (IV=0.025)  |
-| 9   | `emp_length`                 | Thời gian đi làm                      | `emp_length_years`         | ✗ LOẠI (IV=0.007)  |
-| 10  | `pub_rec`                    | Hồ sơ nợ xấu công                     | `active_bad_debts`         | ✗ LOẠI (IV=0.006)  |
-| 11  | `pub_rec_bankruptcies`       | Số lần phá sản                        | `bankruptcies`             | ✗ LOẠI (IV=0.004)  |
-| 12  | `open_acc`                   | Tài khoản đang mở                     | `active_loans`             | ✗ LOẠI (IV=0.005)  |
-| 13  | `total_acc`                  | Tổng tài khoản từng có                | `total_loans_history`      | ✗ LOẠI (IV=0.002)  |
-| 14  | `earliest_cr_line`           | Ngày mở TK đầu tiên                   | `credit_history_months`    | ✗ LOẠI (IV=0.016)  |
-| 15  | `inq_last_6mths`             | Truy vấn TD 6 tháng                   | `recent_inquiries`         | ✅ GIỮ (IV=0.027)  |
-| 16  | `delinq_2yrs`                | Trễ hạn 2 năm                         | `delinquencies_2yr`        | ✗ LOẠI (IV=0.003)  |
-| 17  | `acc_now_delinq`             | TK đang quá hạn hiện tại              | `accounts_delinquent`      | ✗ LOẠI (IV=0.0001) |
-| 18  | `num_tl_90g_dpd_24m`         | TK 90+ ngày quá hạn / 24 tháng        | `severe_delinquencies_24m` | ✗ LOẠI (IV=0.002)  |
-| 19  | `pct_tl_nvr_dlq`             | % TK chưa từng quá hạn                | `pct_never_delinquent`     | ✗ LOẠI (IV=0.003)  |
-| 20  | `collections_12_mths_ex_med` | Thu hồi nợ 12 tháng                   | `collections_12m`          | ✗ LOẠI (IV=0.002)  |
-| 21  | `term`                       | Kỳ hạn vay                            | `term_enc`                 | ✅ GIỮ (IV=0.175)  |
-| 22  | `home_ownership`             | Hình thức nhà ở                       | `home_ownership_enc`       | ✅ GIỮ (IV=0.031)  |
-| 23  | `verification_status`        | Trạng thái xác minh                   | `verification_status_enc`  | ✅ GIỮ (IV=0.051)  |
-| 24  | `purpose`                    | Mục đích vay                          | `purpose_enc`              | ✗ LOẠI (IV=0.014)  |
-| 25  | `loan_status`                | **TARGET** (Fully Paid / Charged Off) | `is_default` (0/1)         | —                  |
+| Tập | Số mẫu |
+|---|---|
+| Tổng sau lọc | 1,345,310 |
+| Train (80%) | 1,076,248 |
+| Test (20%) | 269,062 |
 
-> **Lưu ý**: `int_rate` (lãi suất) bị loại — lãi suất là **động**, do nhân viên duyệt quyết định, không có sẵn tại thời điểm scoring.
+### 2.3 Xử lý mất cân bằng (SMOTE)
 
-### 2.3. Phân phối Target
+Áp dụng **RUS + BorderlineSMOTE** trên tập train:
 
-| Trạng thái                       | Số mẫu     | Tỷ lệ       |
-| -------------------------------- | ---------- | ----------- |
-| **Fully Paid** (không vỡ nợ = 0) | ~1,076,718 | **~80.04%** |
-| **Charged Off** (vỡ nợ = 1)      | ~268,592   | **~19.96%** |
+- **Random Under-Sampling (RUS):** Giảm class majority
+- **BorderlineSMOTE:** Tạo mẫu tổng hợp ở vùng biên quyết định
+- **sampling_strategy:** 0.5 (tỷ lệ minority/majority sau resampling)
+- **Kết quả:** 1,076,248 → 661,067 mẫu cân bằng (chỉ dùng cho train, test giữ nguyên)
 
-### 2.4. Tại sao dùng toàn bộ 1.345M rows thay vì subsample?
+### 2.4 Smart Scaling
 
-v9.0 chỉ dùng 500K subsample do SVM cần O(n²) memory. v11.0 **loại bỏ SVM** → không còn bottleneck memory:
+Mỗi feature được scale bằng strategy riêng tối ưu:
 
-- WOE Binning + LR: O(n) memory, tuyến tính
-- XGBoost histogram: O(n) memory, tiết kiệm
-- Kết quả: train trên **2.69× nhiều data** → mô hình ổn định hơn, CV std giảm từ 0.0016 → 0.0013
+| Strategy | Features tiêu biểu |
+|---|---|
+| `log_standard` | capital, monthly_pay, revolving_balance |
+| `log_robust` | monthly_income, loan_to_income, income_per_loan |
+| `robust` | dti, active_bad_debts, delinquencies_2yr |
+| `standard` | active_loans, pct_never_delinquent, interest_rate |
+| `minmax` | emp_length_years |
+| `passthrough` | term_enc, grade_enc, sub_grade_enc (categorical) |
 
 ---
 
-## 3. Tiền xử lý dữ liệu (Preprocessing Pipeline)
+## 3. Đặc trưng (Features)
 
-### 3.1. Lọc Target (Chống Data Leakage)
+### 3.1 Tổng quan: 48 Features
 
-```python
-df = df[df["loan_status"].isin(["Fully Paid", "Charged Off"])]
-df["is_default"] = (df["loan_status"] == "Charged Off").astype(int)
-# Kết quả: 1,345,310 mẫu (từ ~2.26M gốc)
+| Nhóm | Số lượng | Mô tả |
+|---|---|---|
+| Base Numeric | 20 | Thông tin tài chính cơ bản từ hồ sơ vay |
+| Interaction | 6 | Tỷ lệ tương tác giữa các biến cơ bản |
+| Power | 8 | Biến phi tuyến nâng cao (squared, rate, accumulation) |
+| High-Signal | 8 | Biến có IV cao (interest_rate, credit_limit, v.v.) |
+| Categorical | 6 | Mã hóa danh mục (grade, term, purpose, v.v.) |
+| **Tổng** | **48** | |
+
+### 3.2 Chi tiết Features
+
+**Base Numeric (20):**
+```
+capital, monthly_income, monthly_pay, revolving_balance,
+total_current_balance, dti, revolving_util_percent, emp_length_years,
+active_bad_debts, bankruptcies, active_loans, total_loans_history,
+credit_history_months, recent_inquiries, delinquencies_2yr,
+accounts_delinquent, severe_delinquencies_24m, pct_never_delinquent,
+collections_12m, loan_to_income
 ```
 
-### 3.2. Mapping sub_grade → credit_score (150–750)
-
-| Grade | Sub-grades                             | Điểm tín dụng |
-| ----- | -------------------------------------- | ------------- |
-| **A** | A1=750, A2=732, A3=715, A4=697, A5=679 | 679 – 750     |
-| **B** | B1=662, B2=644, B3=626, B4=609, B5=591 | 591 – 662     |
-| **C** | C1=574, C2=556, C3=538, C4=521, C5=503 | 503 – 574     |
-| **D** | D1=485, D2=468, D3=450, D4=432, D5=415 | 415 – 485     |
-| **E** | E1=397, E2=379, E3=362, E4=344, E5=326 | 326 – 397     |
-| **F** | F1=309, F2=291, F3=274, F4=256, F5=238 | 238 – 309     |
-| **G** | G1=221, G2=203, G3=185, G4=168, G5=150 | 150 – 221     |
-
-### 3.3. Quy đổi USD → VNĐ (Dynamic Exchange Rate)
-
-Chuỗi ưu tiên: `USD_TO_VND` env → open.er-api.com → exchangerate-api.com → fallback 25,000
-
+**Interaction (6):**
 ```
-loan_amnt × VNĐ          →  capital
-annual_inc / 12 × VNĐ    →  monthly_income
-installment × VNĐ        →  monthly_pay
-tot_cur_bal × VNĐ        →  total_current_balance
+payment_burden = monthly_pay / (monthly_income + 1)
+balance_income_ratio = total_current_balance / (monthly_income × 12 + 1)
+revolving_concentration = revolving_balance / (total_current_balance + 1)
+delinquency_severity = delinquencies_2yr + 2×accounts_delinquent + 3×severe_delinquencies_24m
+inquiry_per_account = recent_inquiries / (active_loans + 1)
+credit_quality_depth = credit_history_months × pct_never_delinquent / 100
 ```
 
-> **Lưu ý v11.0:** `revolving_balance` (revol_bal) không còn quy đổi vì bị loại (IV=0.004).
+**Power (8):**
+```
+income_per_loan, risk_accumulation, term_loan_risk, dti_squared,
+score_utilization, installment_income_term, delinquency_rate,
+net_monthly_cashflow
+```
 
-### 3.4. Parse các cột phức tạp
+**High-Signal (8):**
+```
+interest_rate, revolving_credit_limit, months_since_delinquency,
+new_accounts_12m, mortgage_accounts, total_credit_limit,
+rate_loan_risk, credit_headroom_pct
+```
 
-| Cột gốc                   | Xử lý                 | Kết quả                   |
-| ------------------------- | --------------------- | ------------------------- |
-| `term` = " 36 months"     | Regex extract `(\d+)` | `term_enc` = 36           |
-| `home_ownership` = "RENT" | Ordinal encode        | `home_ownership_enc` = 0  |
-| `verification_status`     | Ordinal encode        | `verification_status_enc` |
+**Categorical (6):**
+```
+term_enc, home_ownership_enc, verification_status_enc,
+purpose_enc, grade_enc, sub_grade_enc
+```
 
-### 3.5. Xử lý Missing Values (12 features giữ lại)
+### 3.3 Feature Selection cho Scorecard
 
-| Feature                  | Phương pháp | Lý do                |
-| ------------------------ | ----------- | -------------------- |
-| `revolving_util_percent` | median      | Giữ phân phối gốc    |
-| `total_current_balance`  | 0           | Không có dữ liệu = 0 |
-| `recent_inquiries`       | 0           | Không truy vấn = 0   |
+Scorecard chỉ giữ **32/48 features** có IV ≥ 0.02. Loại bỏ 16 features có IV thấp:
 
-> 13 features bị loại (IV < 0.02) không cần xử lý missing — chúng bị loại trước khi vào model.
+```
+Loại bỏ: revolving_balance (0.004), emp_length_years (0.009),
+active_bad_debts (0.003), bankruptcies (0.002), total_loans_history (0.001),
+credit_history_months (0.015), delinquencies_2yr (0.001),
+accounts_delinquent (0.002), severe_delinquencies_24m (0.001),
+pct_never_delinquent (0.004), collections_12m (0.007),
+delinquency_severity (0.002), credit_quality_depth (0.016),
+delinquency_rate (0.002), months_since_delinquency (0.006),
+purpose_enc (0.019)
+```
+
+> **Lưu ý:** XGBoost và LightGBM sử dụng đầy đủ 48 features.
+
+### 3.4 Top Features theo IV
+
+![Information Value — Feature Importance](charts/07_iv_feature_importance.png)
+
+Top 10 features có IV cao nhất:
+
+| # | Feature | IV |
+|---|---|---|
+| 1 | sub_grade_enc | 0.506 |
+| 2 | interest_rate | 0.470 |
+| 3 | grade_enc | 0.428 |
+| 4 | rate_loan_risk | 0.330 |
+| 5 | score_utilization | 0.315 |
+| 6 | term_enc | 0.218 |
+| 7 | installment_income_term | 0.198 |
+| 8 | term_loan_risk | 0.196 |
+| 9 | loan_to_income | 0.116 |
+| 10 | new_accounts_12m | 0.096 |
+
+### 3.5 Top Features theo XGBoost Gain
+
+![XGBoost Feature Importance (Gain)](charts/06_feature_importance_xgb.png)
+
+| # | Feature | Gain |
+|---|---|---|
+| 1 | grade_enc | 0.6717 |
+| 2 | sub_grade_enc | 0.1519 |
+| 3 | term_enc | 0.0357 |
+| 4 | rate_loan_risk | 0.0216 |
+| 5 | verification_status_enc | 0.0112 |
+
+> **Nhận xét:** `grade_enc` chiếm ~67% tổng gain của XGBoost — cho thấy hạng tín dụng là yếu tố quyết định mạnh nhất. `sub_grade_enc` bổ sung thêm ~15%. Hai biến này cùng nhau chiếm >82% sức mạnh dự đoán.
 
 ---
 
-## 4. Feature Selection — WOE Information Value
+## 4. Kiến trúc Triple-Branch Stacking
 
-### 4.1. Information Value là gì?
+### 4.1 Nhánh 1 — WOE Scorecard (Minh bạch)
 
-Information Value (IV) đo lường **sức mạnh dự đoán** của từng feature đối với target. Công thức:
+| Thuộc tính | Giá trị |
+|---|---|
+| Phương pháp | WOE Binning (20 bins) → LogisticRegressionCV |
+| Features | 32 (IV ≥ 0.02) |
+| Regularization | L2, C=0.01, solver=saga |
+| Class weight | balanced |
+| Intercept | 0.005005 |
+| AUC (test) | **0.7109** |
+| Total IV | 3.8934 |
 
-$$IV = \sum_{i=1}^{n} (Good\%_i - Bad\%_i) \times WOE_i$$
+**Pipeline:**
+1. Raw features → WOE Binning (20 bins mỗi feature)
+2. WOE values → Logistic Regression (L2 regularized)
+3. LR coefficients → Scorecard points
+4. Output: `scorecard_pd` (xác suất vỡ nợ)
 
-$$WOE_i = \ln\left(\frac{Good\%_i}{Bad\%_i}\right)$$
+**Scorecard Parameters:**
+- Base Score: 600
+- PDO (Points to Double Odds): 20
+- Factor: 28.8539
+- Offset: 487.1229
 
-| IV Range        | Phân loại             | Quyết định |
-| --------------- | --------------------- | ---------- |
-| IV < 0.02       | **Useless**           | ✗ LOẠI     |
-| 0.02 ≤ IV < 0.1 | **Weak Predictive**   | ✅ GIỮ     |
-| 0.1 ≤ IV < 0.3  | **Medium Predictive** | ✅ GIỮ     |
-| IV ≥ 0.3        | **Strong Predictive** | ✅ GIỮ     |
+![Scorecard Points — Top 6 Features](charts/18_scorecard_points.png)
 
-### 4.2. Bảng IV — Toàn bộ 25 features (sắp xếp theo IV giảm dần)
+> **Phân tích:** Biểu đồ cho thấy `sub_grade_enc` (IV=0.506) có biên độ điểm lớn nhất (-30 đến +40), `interest_rate` (IV=0.470) phạt nặng lãi suất cao (>22.95% bị trừ ~10 điểm). `grade_enc` có pattern rõ ràng: grade cao (>5 = A,B) được cộng điểm, grade thấp (≤2 = F,G) bị trừ mạnh.
 
-| Hạng | Feature                    | IV         | Phân loại  | Quyết định |
-| ---- | -------------------------- | ---------- | ---------- | ---------- |
-| 1    | `credit_score`             | **0.4930** | **Strong** | ✅ GIỮ     |
-| 2    | `term_enc`                 | **0.1747** | **Medium** | ✅ GIỮ     |
-| 3    | `loan_to_income`           | **0.1213** | **Medium** | ✅ GIỮ     |
-| 4    | `dti`                      | 0.0728     | Weak       | ✅ GIỮ     |
-| 5    | `verification_status_enc`  | 0.0513     | Weak       | ✅ GIỮ     |
-| 6    | `total_current_balance`    | 0.0426     | Weak       | ✅ GIỮ     |
-| 7    | `monthly_pay`              | 0.0356     | Weak       | ✅ GIỮ     |
-| 8    | `capital`                  | 0.0343     | Weak       | ✅ GIỮ     |
-| 9    | `home_ownership_enc`       | 0.0314     | Weak       | ✅ GIỮ     |
-| 10   | `monthly_income`           | 0.0295     | Weak       | ✅ GIỮ     |
-| 11   | `recent_inquiries`         | 0.0265     | Weak       | ✅ GIỮ     |
-| 12   | `revolving_util_percent`   | 0.0251     | Weak       | ✅ GIỮ     |
-| 13   | `credit_history_months`    | 0.0159     | Useless    | ✗ LOẠI     |
-| 14   | `purpose_enc`              | 0.0137     | Useless    | ✗ LOẠI     |
-| 15   | `emp_length_years`         | 0.0069     | Useless    | ✗ LOẠI     |
-| 16   | `active_bad_debts`         | 0.0061     | Useless    | ✗ LOẠI     |
-| 17   | `active_loans`             | 0.0049     | Useless    | ✗ LOẠI     |
-| 18   | `revolving_balance`        | 0.0043     | Useless    | ✗ LOẠI     |
-| 19   | `bankruptcies`             | 0.0041     | Useless    | ✗ LOẠI     |
-| 20   | `pct_never_delinquent`     | 0.0028     | Useless    | ✗ LOẠI     |
-| 21   | `delinquencies_2yr`        | 0.0026     | Useless    | ✗ LOẠI     |
-| 22   | `collections_12m`          | 0.0020     | Useless    | ✗ LOẠI     |
-| 23   | `total_loans_history`      | 0.0019     | Useless    | ✗ LOẠI     |
-| 24   | `severe_delinquencies_24m` | 0.0017     | Useless    | ✗ LOẠI     |
-| 25   | `accounts_delinquent`      | 0.0001     | Useless    | ✗ LOẠI     |
+### 4.2 Nhánh 2 — XGBoost (Sức mạnh)
 
-### 4.3. Tại sao delinquency features bị loại?
+| Thuộc tính | Giá trị |
+|---|---|
+| Phương pháp | XGBClassifier + Optuna HP tuning |
+| Features | 48 (all) |
+| Eval metric | aucpr (Area Under PR Curve) |
+| AUC (test) | **0.7195** |
 
-**Phát hiện quan trọng:** Tất cả 6 features liên quan delinquency đều có IV < 0.007 trên Lending Club data:
+**Hyperparameters (Optuna-tuned):**
 
-- `accounts_delinquent` (IV=0.0001), `severe_delinquencies_24m` (IV=0.0017), `collections_12m` (IV=0.0020), `delinquencies_2yr` (IV=0.0026), `pct_never_delinquent` (IV=0.0028), `active_bad_debts` (IV=0.0061)
+| Parameter | Value |
+|---|---|
+| n_estimators (trained) | 1,401 |
+| max_depth | 5 |
+| learning_rate | 0.0546 |
+| subsample | 0.9109 |
+| colsample_bytree | 0.7078 |
+| min_child_weight | 43 |
+| gamma | 0.0538 |
+| reg_alpha | 2.6203 |
+| reg_lambda | 5.1773 |
+| scale_pos_weight | 3.1228 |
 
-**Lý do:** Lending Club data có **rất ít variance** ở các cột này — đa số người vay có giá trị = 0. Trong hệ thống P2P thực tế tại Việt Nam, các features này sẽ có IV cao hơn khi được tính từ dữ liệu nội bộ.
+**Monotonic Constraints:** Có — đảm bảo grade cao hơn luôn có PD thấp hơn.
 
-**Quan trọng:** Scorer vẫn **nhận 25 features đầu vào** từ NestJS → 13 features bị loại khỏi model nhưng vẫn được ghi nhận để tương lai retrain.
+### 4.3 Nhánh 3 — LightGBM (Bổ sung)
 
-### 4.4. 12 Features cuối cùng — Phân nhóm
+| Thuộc tính | Giá trị |
+|---|---|
+| Phương pháp | LGBMClassifier (GOSS boosting) |
+| Features | 48 (all) |
+| Objective | binary_logloss |
+| AUC (test) | **0.7197** |
+| n_estimators | 1,175 |
+| scale_pos_weight | 3.34 |
 
-| Nhóm                   | Features                                                           | Tổng IV |
-| ---------------------- | ------------------------------------------------------------------ | ------- |
-| **Tín dụng cốt lõi**   | credit_score                                                       | 0.4930  |
-| **Khoản vay**          | term_enc, loan_to_income, capital, monthly_pay                     | 0.3659  |
-| **Tài chính**          | dti, total_current_balance, monthly_income, revolving_util_percent | 0.1700  |
-| **Xác minh/Nhân khẩu** | verification_status_enc, home_ownership_enc, recent_inquiries      | 0.1092  |
+> **Vai trò:** LightGBM sử dụng GOSS (Gradient-based One-Side Sampling) — khác biệt cơ bản với XGBoost, giúp Meta-LR có thêm góc nhìn đa dạng về dữ liệu.
 
-**Tổng IV:** 1.2051 (Strong tổng thể)
+### 4.4 Level 2 — Meta-LR Stacking
 
----
+| Thuộc tính | Giá trị |
+|---|---|
+| Input | [SC_pd, XGB_pd, LGBM_pd] |
+| Model | LogisticRegression |
+| Intercept | -2.8425 |
+| Coef (SC) | -0.0372 |
+| Coef (XGB) | 2.0783 |
+| Coef (LGBM) | 2.5690 |
 
-## 5. Kỹ thuật Feature Engineering & Smart Scaling
+**Phân tích trọng số Meta-LR:**
+- **LightGBM (2.569):** Trọng số cao nhất → Meta-LR tin tưởng LightGBM nhất
+- **XGBoost (2.078):** Trọng số cao thứ hai → bổ sung mạnh cho LightGBM
+- **Scorecard (-0.037):** Trọng số gần 0 → Scorecard đóng vai trò "tham chiếu minh bạch" hơn là đóng góp dự đoán trực tiếp
+- **Intercept (-2.843):** Bias âm lớn → baseline thận trọng, đòi hỏi evidence mạnh từ base models
 
-### 5.1. Bảng 12 Features cuối cùng
+### 4.5 Isotonic Calibration
 
-| #   | Tên Feature               | Nguồn gốc                    | Mô tả                | Đơn vị  | Scaling (Nhánh 2) |
-| --- | ------------------------- | ---------------------------- | -------------------- | ------- | ----------------- |
-| 1   | `credit_score`            | sub_grade → mapping          | Điểm tín dụng        | 150–750 | standard          |
-| 2   | `capital`                 | loan_amnt × VNĐ              | Số tiền vay          | VNĐ     | log_standard      |
-| 3   | `monthly_income`          | annual_inc / 12 × VNĐ        | Lương tháng          | VNĐ     | log_robust        |
-| 4   | `monthly_pay`             | installment × VNĐ            | Trả góp/tháng        | VNĐ     | log_standard      |
-| 5   | `total_current_balance`   | tot_cur_bal × VNĐ            | Tổng dư nợ tất cả TK | VNĐ     | log_standard      |
-| 6   | `dti`                     | dti                          | Tỷ lệ Nợ/Thu nhập    | %       | robust            |
-| 7   | `revolving_util_percent`  | revol_util                   | % sử dụng hạn mức    | %       | robust            |
-| 8   | `recent_inquiries`        | inq_last_6mths               | Truy vấn TD gần đây  | count   | robust            |
-| 9   | `loan_to_income`          | ENGINEERED                   | Tỷ lệ vay/thu nhập   | ratio   | log_robust        |
-| 10  | `term_enc`                | term → parse                 | Kỳ hạn vay           | tháng   | passthrough       |
-| 11  | `home_ownership_enc`      | home_ownership → encode      | Hình thức nhà ở      | ordinal | passthrough       |
-| 12  | `verification_status_enc` | verification_status → encode | Mức xác minh         | ordinal | passthrough       |
+Sau Meta-LR, xác suất được hiệu chỉnh bằng **Isotonic Regression** để PD phản ánh chính xác tần suất default thực tế.
 
-### 5.2. Smart Per-Feature Scaling — 6 Chiến lược (Nhánh 2 — XGBoost)
+![Calibration Curves](charts/05_calibration.png)
 
-| Strategy       | Pipeline                   | Dùng cho                                  |
-| -------------- | -------------------------- | ----------------------------------------- |
-| `log_standard` | log1p(x) → StandardScaler  | Tiền VNĐ lệch phải (capital, monthly_pay) |
-| `log_robust`   | log1p(x) → RobustScaler    | Tiền VNĐ có outliers (monthly_income)     |
-| `robust`       | RobustScaler (median, IQR) | %, zero-inflated (dti, recent_inquiries)  |
-| `standard`     | StandardScaler (μ, σ)      | Phân phối gần normal (credit_score)       |
-| `minmax`       | MinMaxScaler [0, 1]        | (không dùng trong v11.0)                  |
-| `passthrough`  | Không transform            | Ordinal categorical (term_enc, etc.)      |
+| Model | Brier Score |
+|---|---|
+| XGBoost | 0.2723 |
+| Scorecard | 0.2138 |
+| **Stacked (calibrated)** | **0.2116** |
 
-> **Nhánh 1 (WOE+LR)** không cần scaling — WOE Binning tự biến đổi mọi feature sang WOE values.
-
-### 5.3. Encoding các biến phân loại
-
-**Home Ownership:** RENT=0, OWN=1, MORTGAGE=2, OTHER/NONE/ANY=3  
-**Verification Status:** Not Verified=0, Source Verified=1, Verified=2  
-**Term:** Giữ nguyên giá trị numeric (36 hoặc 60)
+> **Nhận xét:** Stacked model sau Isotonic calibration có Brier score thấp nhất (0.2116), cho thấy xác suất được hiệu chỉnh chính xác nhất. Đường calibration của Stacked bám sát đường chéo lý tưởng hơn các model đơn lẻ.
 
 ---
 
-## 6. Huấn luyện mô hình Explainable Hybrid
+## 5. Huấn luyện & Tối ưu
 
-### 6.1. Nhánh 1 — WOE Binning + Logistic Regression → Scorecard
-
-#### WOE Binning (Weight of Evidence)
-
-WOE chia mỗi feature thành 20 bins, tính WOE cho mỗi bin:
-
-$$WOE_i = \ln\left(\frac{Good\%_i}{Bad\%_i}\right)$$
-
-- WOE > 0 → bin đó có nhiều Good hơn → rủi ro thấp
-- WOE < 0 → bin đó có nhiều Bad hơn → rủi ro cao
-
-#### Logistic Regression (trên WOE features)
-
-| Parameter      | Giá trị  | Lý do                                       |
-| -------------- | -------- | ------------------------------------------- |
-| `C`            | 1.0      | Inverse regularization strength             |
-| `penalty`      | l2       | L2 — giữ coefficients nhỏ, ổn định          |
-| `class_weight` | balanced | Cân bằng cho imbalanced data (~20% default) |
-| `max_iter`     | 300      | Converged tại iteration 21                  |
-| `solver`       | saga     | Tối ưu cho L2 + dense dataset               |
-
-#### Scorecard Conversion
-
-$$\text{Score} = \text{Offset} - \text{Factor} \times \ln(\text{odds}) + \sum_{i} \text{Points}_i$$
-
-| Parameter       | Giá trị   |
-| --------------- | --------- |
-| **Base Score**  | 600       |
-| **PDO**         | 20        |
-| **Factor**      | 28.8539   |
-| **Offset**      | 487.1229  |
-| **Score range** | 427 – 559 |
-| **AUC**         | 0.7073    |
-
-**Ví dụ giải thích Scorecard:**
+### 5.1 Pipeline Huấn luyện
 
 ```
-Base Score:                                    600 điểm
-─────────────────────────────────────────────────────────
-⊖ credit_score: -26 pts    (≤ 344 → rủi ro rất cao)
-⊖ term_enc: -7 pts         (60 tháng → rủi ro)
-⊖ dti: -5 pts              (DTI > 30%)
-⊕ loan_to_income: +3 pts   (tỷ lệ thấp → tốt)
-⊕ monthly_income: +2 pts   (thu nhập cao)
-... (các features khác)
-─────────────────────────────────────────────────────────
-= Score: 467 | PD: 0.78 (78%)
+CSV → Clean → Feature Engineering (48 feat) → Train/Test Split (80/20)
+  → RUS + BorderlineSMOTE (train only) → 661,067 balanced samples
+  → [Branch 1: WOE→LR | Branch 2: Optuna→XGB | Branch 3: LGBM]
+  → Meta-LR (stacking on test fold predictions)
+  → Isotonic Calibration → Save 10 Artifacts + 21 Charts
 ```
 
-### 6.2. Nhánh 2 — XGBoost (Non-linear Pattern Detector)
+### 5.2 Optuna Hyperparameter Tuning (XGBoost)
 
-XGBoost học pattern phi tuyến phức tạp từ 12 features (đã scaled). Output: `predict_proba` → PD.
+- **Framework:** Optuna (TPE sampler)
+- **Metric tối ưu:** F1-score trên validation
+- **Số trials:** Tự động (convergence-based)
+- **Search space:** max_depth [3,8], learning_rate [0.01,0.3], subsample [0.5,1.0], v.v.
 
-| Parameter          | Giá trị    | Lý do                                     |
-| ------------------ | ---------- | ----------------------------------------- |
-| `n_estimators`     | **800**    | Đủ cây cho pattern phức tạp               |
-| `max_depth`        | **5**      | Đủ phức tạp, tiết kiệm RAM                |
-| `learning_rate`    | **0.02**   | Learning rate thấp + nhiều trees          |
-| `subsample`        | 0.8        | 80% samples mỗi tree                      |
-| `colsample_bytree` | 0.7        | 70% features mỗi tree                     |
-| `min_child_weight` | 10         | Tránh split quá nhỏ                       |
-| `gamma`            | 0.3        | Penalize phức tạp                         |
-| `reg_alpha`        | 0.5        | L1 regularization                         |
-| `reg_lambda`       | 2.0        | L2 regularization                         |
-| `scale_pos_weight` | **4.01**   | Cân bằng class (neg/pos ≈ 4:1)            |
-| `tree_method`      | hist       | CPU histogram-based (nhanh nhất trên CPU) |
-| `device`           | cpu        | Dùng CPU                                  |
-| **AUC**            | **0.7130** |                                           |
+### 5.3 Cross-Validation
 
-### 6.3. Hybrid Blending
+| Metric | Mean ± Std |
+|---|---|
+| Stacked AUC | 0.7346 ± 0.0007 |
+| Stacked F1 | 0.5552 ± 0.0006 |
+| Scorecard AUC | 0.7213 |
+| XGBoost AUC | 0.7338 |
+| Folds | 3 (StratifiedKFold) |
 
-$$\text{Hybrid PD} = \alpha \times \text{Scorecard PD} + (1-\alpha) \times \text{XGBoost PD}$$
-
-α được tối ưu qua Cross-Validation (sweep 0.00 → 1.00, step 0.05):
-
-| α        | CV AUC     | Ý nghĩa                       |
-| -------- | ---------- | ----------------------------- |
-| 0.00     | 0.7130     | 100% XGBoost                  |
-| **0.05** | **0.7171** | **5% SC + 95% XGB → Optimal** |
-| 0.10     | 0.7168     | Giảm dần                      |
-| 1.00     | 0.7073     | 100% Scorecard                |
-
-### 6.4. Isotonic Calibration
-
-Sau blending, Isotonic Regression hiệu chuẩn PD thành xác suất thật:
-
-- **Input:** Hybrid raw PD (under-calibrated ở vùng PD cao)
-- **Output:** Calibrated PD (chính xác thống kê)
-- **Brier Score:** 0.2164 → **0.1447** (cải thiện **33%**)
-
-> Isotonic Regression là non-parametric → không giả định phân phối → phù hợp cho mọi shape.
-
-### 6.5. Training Pipeline — 10 bước
-
-```
-[1/10]  Load & Clean Data (2.26M → 1,345,310 qualified)
-[2/10]  Train/Test Split (80/20 stratified): 1,076,248 / 269,062
-[3/10]  WOE Binning (20 bins per feature) → Calculate IV (25 features)
-[4/10]  Feature Selection: IV ≥ 0.02 → 12 features (loại 13)
-[5/10]  Branch 1: WOE Transform → LR → Scorecard (base=600, pdo=20)
-[6/10]  Branch 2: Smart Per-Feature Scaling → XGBoost (800 trees)
-[7/10]  Alpha Optimization: sweep α = 0.00→1.00 → best α = 0.05
-[8/10]  Hybrid Blending: 0.05·SC_PD + 0.95·XGB_PD
-[9/10]  Isotonic Calibration (train on OOF predictions)
-[10/10] Save Artifacts (8 files) + Export 19 Charts
-```
-
-### 6.6. Artifacts (8 files)
-
-| File                         | Mô tả                                          |
-| ---------------------------- | ---------------------------------------------- |
-| `xgb_pd_model.json`          | XGBoost Nhánh 2 (800 trees, 12 features)       |
-| `lr_scorecard_model.joblib`  | LR Nhánh 1 (12 WOE features)                   |
-| `woe_binning.joblib`         | WOE bin edges + WOE values (20 bins/feature)   |
-| `per_feature_scalers.joblib` | 12 (strategy, scaler) tuples                   |
-| `iso_calibrator.joblib`      | Isotonic Regression calibrator                 |
-| `scorecard_table.json`       | Full scorecard points per bin (human-readable) |
-| `metadata.json`              | Metrics + config + IV ranking + artifacts      |
-| `test_predictions.csv`       | 269,062 test predictions (for validation)      |
+> **Nhận xét:** Độ lệch chuẩn cực thấp (σ = 0.0007) cho thấy model rất ổn định, không overfitting.
 
 ---
 
-## 7. Output — JSON trả về
+## 6. Đánh giá Mô hình
 
-### 7.1. API Request (Input từ NestJS)
+### 6.1 So sánh Tổng quan (threshold = 0.50)
+
+| Metric | Scorecard | XGBoost | LightGBM | **Stacked** |
+|---|---|---|---|---|
+| AUC-ROC | 0.7109 | 0.7195 | 0.7197 | **0.7200** |
+| Accuracy | 0.6508 | 0.5302 | 0.5063 | **0.6394** |
+| Precision | 0.3183 | 0.2758 | 0.2648 | **0.3157** |
+| Recall | 0.6558 | 0.8326 | 0.8563 | **0.6909** |
+| F1-Score | 0.4285 | 0.4144 | 0.4092 | **0.4334** |
+| MCC | 0.2481 | 0.2347 | 0.2291 | **0.2558** |
+| Brier | 0.2138 | 0.2723 | 0.2834 | **0.2116** |
+| KS Statistic | 0.3061 | 0.3178 | — | **0.3186** |
+| Avg Precision | 0.3750 | 0.3865 | — | **0.3875** |
+
+### 6.2 Confusion Matrix — Stacked (threshold = 0.50)
+
+|  | Predicted Good (0) | Predicted Default (1) |
+|---|---|---|
+| **Actual Good (0)** | TN = 134,926 | FP = 80,424 |
+| **Actual Default (1)** | FN = 16,603 | TP = 37,109 |
+
+![Confusion Matrices](charts/04_confusion_matrices.png)
+
+**Phân tích:**
+- **Recall = 69.09%** — Phát hiện 37,109 / 53,712 khoản vay vỡ nợ
+- **FPR = 37.34%** — 80,424 khoản vay tốt bị từ chối nhầm
+- **NPV = 89.05%** — Trong số khoản được duyệt (TN+FN), 89% thực sự tốt
+- **FN cost ước tính:** 16,603 × 100 triệu = **1,660.3 tỷ VND** (mất vốn)
+- **FP cost ước tính:** 80,424 × 10 triệu = **804.2 tỷ VND** (mất cơ hội)
+
+### 6.3 Ngưỡng (Threshold)
+
+- **Ngưỡng chuẩn:** t = 0.50 (dùng cho đánh giá và so sánh)
+- **Ngưỡng F1-optimized:** t = 0.466 (tối ưu từ cross-validation, tuỳ chọn cho production)
+- **Best F2 thresholds:** XGB@0.44, SC@0.33, Stacked@0.34
+
+> Ở ngưỡng t=0.466: Recall tăng lên 73.80%, F1=0.4288, F2=0.5728 — ưu tiên phát hiện default hơn.
+
+![Threshold Analysis](charts/08_threshold_analysis.png)
+
+### 6.4 Tổng kết
+
+![Summary Dashboard](charts/21_summary_dashboard.png)
+
+**Stacked model đạt AUC=0.7200** — cao nhất trong tất cả các nhánh, khẳng định stacking cải thiện kết quả. Brier score 0.2116 (thấp nhất) cho thấy xác suất được hiệu chỉnh tốt nhất. MCC=0.2558 cũng cao nhất, phản ánh khả năng phân loại cân bằng giữa hai class.
+
+---
+
+## 7. Phân tích Chi tiết từ Biểu đồ
+
+### 7.1 ROC Curves
+
+![ROC Curves](charts/01_roc_curves.png)
+
+Ba model có AUC rất gần nhau (0.7109 – 0.7200), với Stacked nhỉnh hơn nhẹ. Đường ROC cho thấy tất cả model đều vượt xa random baseline (0.5).
+
+### 7.2 Precision-Recall Curves
+
+![Precision-Recall Curves](charts/02_precision_recall.png)
+
+Average Precision: XGB=0.3865, SC=0.3750, Stacked=0.3875. PR curve phản ánh thách thức của dữ liệu imbalanced — precision giảm nhanh khi tăng recall.
+
+### 7.3 Score Distribution
+
+![Score Distribution](charts/03_score_distribution.png)
+
+Phân bố điểm cho thấy sự tách biệt giữa nhóm Good và Default, với vùng overlap ở khoảng giữa — đây là vùng mà model khó phân loại nhất.
+
+### 7.4 KS Statistic
+
+![KS Statistic](charts/19_ks_statistic.png)
+
+| Model | KS |
+|---|---|
+| XGBoost | 0.3178 |
+| Scorecard | 0.3061 |
+| **Stacked** | **0.3186** |
+
+KS > 0.30 cho tất cả models — đạt tiêu chuẩn ngành tài chính cho credit scoring.
+
+### 7.5 Metrics Comparison
+
+![Metrics Comparison](charts/11_metrics_comparison.png)
+
+Biểu đồ bar so sánh trực quan các metrics giữa 3 nhánh + Stacked tại threshold=0.50.
+
+### 7.6 Cumulative Gains
+
+![Cumulative Gains](charts/13_cumulative_gains.png)
+
+Đường cumulative gains cho thấy: kiểm tra 40% hồ sơ có score rủi ro cao nhất sẽ phát hiện được ~60-65% tổng số default — hiệu quả gấp ~1.6 lần so với random.
+
+### 7.7 Probability Distribution
+
+![Probability Distribution](charts/09_probability_distribution.png)
+
+### 7.8 Score by Credit Tier
+
+![Score by Credit Tier](charts/10_score_by_credit_tier.png)
+
+### 7.9 Correlation Heatmap
+
+![Correlation Heatmap](charts/12_correlation_heatmap.png)
+
+### 7.10 Score Stability
+
+![Score Stability](charts/14_score_stability.png)
+
+### 7.11 Delinquency Impact
+
+![Delinquency Impact](charts/15_delinquency_impact.png)
+
+### 7.12 XGB vs Scorecard PD
+
+![XGB vs Scorecard PD](charts/17_xgb_vs_scorecard_pd.png)
+
+### 7.13 WOE Patterns
+
+![WOE Patterns](charts/20_woe_patterns.png)
+
+---
+
+## 8. API Endpoints
+
+### 8.1 Base URL
+
+```
+http://localhost:8000
+```
+
+### 8.2 Endpoints
+
+| Method | Path | Mô tả |
+|---|---|---|
+| POST | `/api/score` | Chấm điểm 1 borrower |
+| POST | `/api/score/batch` | Chấm điểm batch (max 100) |
+| GET | `/api/model/info` | Metadata & metrics |
+| GET | `/api/health` | Health check |
+| GET | `/api/exchange-rate` | Tỷ giá USD→VND |
+| POST | `/api/model/retrain` | Retrain model |
+
+### 8.3 POST /api/score — Request
 
 ```json
-POST /api/score
-Content-Type: application/json
-
 {
-    "credit_score": 580,
-    "capital": 250000000,
-    "monthly_income": 15000000,
-    "monthly_pay": 7500000,
-    "total_current_balance": 80000000,
-    "dti": 22.0,
-    "revolving_util_percent": 45.0,
-    "recent_inquiries": 1,
-    "term": 36,
-    "home_ownership": "RENT",
-    "verification_status": "Verified"
+  "credit_score": 650,
+  "loanAmount": 50000000,
+  "monthly_income": 15000000,
+  "monthly_pay": 3000000,
+  "revolving_balance": 5000000,
+  "total_current_balance": 20000000,
+  "dti": 20.0,
+  "revolving_util_percent": 45.0,
+  "emp_length_years": 5,
+  "active_bad_debts": 0,
+  "bankruptcies": 0,
+  "active_loans": 3,
+  "total_loans_history": 8,
+  "credit_history_months": 120,
+  "recent_inquiries": 1,
+  "delinquencies_2yr": 0,
+  "accounts_delinquent": 0,
+  "severe_delinquencies_24m": 0,
+  "pct_never_delinquent": 100,
+  "collections_12m": 0,
+  "periodMonth": 36,
+  "home_ownership": "MORTGAGE",
+  "verification_status": "Verified",
+  "purpose": "debt_consolidation"
 }
 ```
 
-> **12 features bắt buộc.** `loan_to_income` tự tính: `capital / (monthly_income × 12)`.
->
-> Scorer vẫn **nhận** 25 features (backward compatible) — 13 features thừa sẽ bị ignore trong model nhưng được logged.
-
-### 7.2. API Response (Output) — v11.0
+### 8.4 POST /api/score — Response
 
 ```json
 {
   "ai_risk_score": 21,
   "default_probability": 0.2098,
-  "scorecard_score": 543,
-  "scorecard_explanation": [
-    {
-      "feature": "credit_score",
-      "bin": "574-591",
-      "points": 8,
-      "direction": "positive"
-    },
-    {
-      "feature": "term_enc",
-      "bin": "36",
-      "points": 4,
-      "direction": "positive"
-    },
-    {
-      "feature": "dti",
-      "bin": "20.0-25.0",
-      "points": -2,
-      "direction": "negative"
-    },
-    {
-      "feature": "loan_to_income",
-      "bin": "0.20-0.30",
-      "points": 1,
-      "direction": "positive"
-    }
-  ],
+  "input_grade": "C",
+  "input_sub_grade": "C1",
   "status": "success"
 }
 ```
 
-### 7.3. Giải thích các trường Output
+**Giải thích output:**
+- `ai_risk_score`: 0–100 (0 = rủi ro thấp, 100 = rủi ro cao)
+- `default_probability`: PD sau Isotonic calibration (0.0 – 1.0)
+- `input_grade` / `input_sub_grade`: Grade/Sub-grade derive từ `credit_score`
 
-| Trường                  | Kiểu   | Phạm vi       | Mô tả                                                                       |
-| ----------------------- | ------ | ------------- | --------------------------------------------------------------------------- |
-| `ai_risk_score`         | int    | **0 – 100**   | Điểm rủi ro. 0 = rủi ro thấp nhất, 100 = rủi ro cao nhất. `round(PD × 100)` |
-| `default_probability`   | float  | **0.0–1.0**   | Xác suất vỡ nợ (PD) sau Isotonic Calibration                                |
-| `scorecard_score`       | int    | **427–559**   | Điểm Scorecard (WOE+LR). Điểm cao = rủi ro thấp                             |
-| `scorecard_explanation` | array  | —             | Giải thích từng factor: feature, bin, points, direction                     |
-| `status`                | string | success/error | Trạng thái xử lý                                                            |
+### 8.5 Input Fields
 
-### 7.4. Luồng Inference (Hybrid v11.0)
+| Field | Type | Range | Mô tả |
+|---|---|---|---|
+| credit_score | float | 150–750 | Điểm tín dụng CIC → auto derive grade/sub_grade |
+| loanAmount (capital) | float | >0 | Số tiền vay (VND) |
+| monthly_income | float | ≥0 | Thu nhập hàng tháng |
+| monthly_pay | float | ≥0 | Trả góp hàng tháng |
+| dti | float | 0–100 | Tỷ lệ Nợ/Thu nhập (%) |
+| revolving_util_percent | float | 0–150 | % sử dụng hạn mức tín dụng |
+| emp_length_years | float | 0–10 | Số năm đi làm |
+| active_bad_debts | int | 0–20 | Số hồ sơ nợ xấu |
+| bankruptcies | int | 0–10 | Số lần phá sản |
+| active_loans | int | 0–50 | Số khoản vay đang mở |
+| delinquencies_2yr | int | 0–20 | Số lần trễ hạn 2 năm |
+| periodMonth (term) | int | 36/60 | Kỳ hạn vay (tháng) |
+| home_ownership | string | RENT/OWN/MORTGAGE/OTHER | Tình trạng nhà ở |
+| verification_status | string | Not Verified/Source Verified/Verified | Mức xác minh eKYC |
+| purpose | string | — | Mục đích vay |
+
+### 8.6 Feature Aliases (NestJS Compatibility)
+
+Scorer hỗ trợ alias tiếng Việt:
+
+```
+so_tien_vay → capital
+thu_nhap_hang_thang → monthly_income
+tra_hang_thang → monthly_pay
+diem_tin_dung → credit_score
+ky_han_thang → term_enc
+loai_nha_o → home_ownership_enc
+...
+```
+
+---
+
+## 9. Tích hợp NestJS
+
+### 9.1 Flow tích hợp
+
+```
+NestJS (server_do_an_new)
+  → POST /api/score (FastAPI - aiscore_service)
+  → CreditScorer.predict(features)
+  → Return {ai_risk_score, default_probability, status}
+```
+
+### 9.2 credit_score → grade/sub_grade Mapping
+
+AIScore tự động chuyển đổi `credit_score` (150–750) thành `grade` (A–G) và `sub_grade` (A1–G5):
+
+| credit_score | Grade | Sub-grade |
+|---|---|---|
+| 750 | A | A1 |
+| 697 | A | A4 |
+| 650 | B | ~B2 |
+| 574 | C | C1 |
+| 485 | D | D1 |
+| 397 | E | E1 |
+| 309 | F | F1 |
+| 221 | G | G1 |
+| 150 | G | G5 |
+
+### 9.3 Encoding Maps
+
+```
+Grade Encoding: A=6, B=5, C=4, D=3, E=2, F=1, G=0
+Sub-grade Encoding: G5=0, G4=1, ..., A1=34
+Home Ownership: RENT=0, OWN=1, MORTGAGE=2, OTHER=3
+Verification: Not Verified=0, Source Verified=1, Verified=2
+Term: Passthrough (36 hoặc 60)
+```
+
+---
+
+## 10. Credit Score & Tier System
+
+### 10.1 PD → Credit Score
 
 ```python
-# 1. Feature selection & preparation (12 features from 25 input)
-X_12 = select_features(X_raw_25, IV_SELECTED_12)
+FACTOR = PDO / ln(2) = 20 / 0.6931 = 28.8539
+OFFSET = BASE_SCORE - FACTOR × ln(BASE_ODDS) = 600 - 28.8539 × ln(50) = 487.12
 
-# 2. Branch 1: WOE + LR → Scorecard PD
-X_woe = woe_transform(X_12, woe_binning)        # WOE values
-sc_pd = lr_model.predict_proba(X_woe)[0, 1]     # Scorecard PD
-sc_score, sc_explanation = calc_scorecard(X_12)  # Points + explain
-
-# 3. Branch 2: Smart Scaling → XGBoost PD
-X_scaled = apply_per_feature_scalers(X_12, scalers)
-xgb_pd = xgb_model.predict_proba(X_scaled)[0, 1]
-
-# 4. Hybrid Blending
-hybrid_raw = 0.05 * sc_pd + 0.95 * xgb_pd
-
-# 5. Isotonic Calibration
-pd_calibrated = iso_calibrator.predict([hybrid_raw])[0]
-
-# 6. Output
-ai_risk_score = round(pd_calibrated * 100)      # 0-100
+score = OFFSET - FACTOR × ln(PD / (1 - PD))
+score = clip(score, 150, 950)
 ```
+
+### 10.2 Tier System
+
+| Tier | Score Range | Ý nghĩa |
+|---|---|---|
+| Excellent | 750+ | Rủi ro rất thấp |
+| Good | 650–749 | Rủi ro thấp |
+| Fair | 550–649 | Rủi ro trung bình |
+| Poor | 450–549 | Rủi ro cao |
+| Very Poor | < 450 | Rủi ro rất cao |
 
 ---
 
-## 8. Đánh giá mô hình (Evaluation)
+## 11. Artifacts & Triển khai
 
-> Kết quả trích xuất từ `models/metadata.json` và 19 biểu đồ trong `docs/`.  
-> Test set: **269,062 mẫu** (20% holdout, stratified).
+### 11.1 Model Artifacts (10 files)
 
-### 8.1. Tổng hợp Metrics — Test Set
+| File | Mô tả |
+|---|---|
+| `xgb_pd_model.json` | XGBoost Level 1 model |
+| `lgbm_pd_model.txt` | LightGBM Level 1 model |
+| `lr_scorecard_model.joblib` | WOE-LR Scorecard Level 1 |
+| `woe_binning.joblib` | WOE bin edges + maps |
+| `meta_lr.joblib` | Meta-LR Level 2 (stacking) |
+| `iso_calibrator.joblib` | Isotonic calibration |
+| `per_feature_scalers.joblib` | Per-feature scaling strategies |
+| `scorecard_table.json` | Human-readable scorecard points |
+| `metadata.json` | Metrics, config, feature lists |
+| `test_predictions.csv` | Test set predictions |
 
-| Metric          | WOE Scorecard | XGBoost | Hybrid (Final)          |
-| --------------- | ------------- | ------- | ----------------------- |
-| **AUC-ROC**     | 0.7073        | 0.7130  | **0.7129**              |
-| **Accuracy**    | 0.6401        | 0.6421  | **0.6421**              |
-| **Precision**   | 0.3125        | 0.3150  | **0.3150**              |
-| **Recall**      | 0.6691        | 0.6749  | **0.6749**              |
-| **F1-Score**    | 0.4260        | 0.4295  | **0.4295**              |
-| **F2-Score**    | 0.5448        | 0.5494  | **0.5494**              |
-| **MCC**         | 0.2440        | 0.2495  | **0.2495**              |
-| **Brier Score** | 0.2183        | 0.2164  | **0.1447** (calibrated) |
+### 11.2 Charts (21 files)
 
-### 8.2. Cross-Validation (5-Fold)
+Tất cả charts được generate tự động bởi `generate_charts.py` và lưu trong `charts/`:
 
-| Model      | CV AUC Mean | CV AUC Std  |
-| ---------- | ----------- | ----------- |
-| Scorecard  | 0.7073      | ±0.0013     |
-| XGBoost    | 0.7128      | ±0.0013     |
-| **Hybrid** | **0.7128**  | **±0.0013** |
+| # | File | Nội dung |
+|---|---|---|
+| 01 | roc_curves.png | ROC curves (AUC comparison) |
+| 02 | precision_recall.png | PR curves (AP comparison) |
+| 03 | score_distribution.png | Score distribution by class |
+| 04 | confusion_matrices.png | Confusion matrices (thr=0.50) |
+| 05 | calibration.png | Calibration curves + Brier |
+| 06 | feature_importance_xgb.png | XGBoost gain importance |
+| 07 | iv_feature_importance.png | Information Value ranking |
+| 08 | threshold_analysis.png | Threshold optimization |
+| 09 | probability_distribution.png | PD distribution |
+| 10 | score_by_credit_tier.png | Score by tier boxplot |
+| 11 | metrics_comparison.png | Metrics bar comparison |
+| 12 | correlation_heatmap.png | Feature correlation |
+| 13 | cumulative_gains.png | Cumulative gains chart |
+| 14 | score_stability.png | Score stability analysis |
+| 15 | delinquency_impact.png | Delinquency impact |
+| 16 | architecture_diagram.png | System architecture |
+| 17 | xgb_vs_scorecard_pd.png | XGB vs SC scatter |
+| 18 | scorecard_points.png | Scorecard points (top 6 IV) |
+| 19 | ks_statistic.png | KS statistic curves |
+| 20 | woe_patterns.png | WOE transformation patterns |
+| 21 | summary_dashboard.png | Summary dashboard |
 
-**CV AUC (0.7128) ≈ Test AUC (0.7129)** → gap chỉ 0.001% → **không overfitting**.
+### 11.3 Docker Deployment
 
-### 8.3. Discriminatory Power
+```yaml
+# docker-compose.yml
+services:
+  aiscore:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_DIR=models
+      - USD_TO_VND=25000
+```
 
-| Metric           | XGBoost | Scorecard | Hybrid |
-| ---------------- | ------- | --------- | ------ |
-| **KS Statistic** | 0.3101  | 0.3023    | 0.3098 |
-| **Gini**         | 0.4260  | 0.4146    | 0.4258 |
+### 11.4 Tech Stack
 
-KS > 0.3 và Gini > 0.4 → **acceptable** theo tiêu chuẩn banking (Basel II: AUC > 0.7 ✅).
-
-### 8.4. Feature Importance — XGBoost Gain
-
-| Hạng | Feature                   | Importance | IV     |
-| ---- | ------------------------- | ---------- | ------ |
-| 1    | `credit_score`            | **42.20%** | 0.4930 |
-| 2    | `term_enc`                | **34.72%** | 0.1747 |
-| 3    | `home_ownership_enc`      | 5.38%      | 0.0314 |
-| 4    | `verification_status_enc` | 3.26%      | 0.0513 |
-| 5    | `recent_inquiries`        | 3.06%      | 0.0265 |
-| 6    | `loan_to_income`          | 2.74%      | 0.1213 |
-| 7    | `dti`                     | 2.63%      | 0.0728 |
-| 8    | `total_current_balance`   | 2.20%      | 0.0426 |
-| 9    | `monthly_income`          | 1.22%      | 0.0295 |
-| 10   | `monthly_pay`             | 0.94%      | 0.0356 |
-| 11   | `capital`                 | 0.89%      | 0.0343 |
-| 12   | `revolving_util_percent`  | 0.78%      | 0.0251 |
-
-> **Top 2 features chiếm 76.92%** XGBoost importance.
-
-### 8.5. 19 Biểu đồ đánh giá
-
-| #   | File                              | Mục đích                               |
-| --- | --------------------------------- | -------------------------------------- |
-| 0   | `00_accepted_vs_rejected.png`     | So sánh phân phối approved vs rejected |
-| 1   | `01_roc_curves.png`               | AUC comparison: XGB, Scorecard, Hybrid |
-| 2   | `02_precision_recall.png`         | AP và trade-off Precision/Recall       |
-| 3   | `03_score_distribution.png`       | Phân phối score Good vs Bad            |
-| 4   | `04_confusion_matrices.png`       | TP/FP/TN/FN chi tiết                   |
-| 5   | `05_calibration.png`              | Calibration + Brier score              |
-| 6   | `06_feature_importance_xgb.png`   | XGBoost gain importance                |
-| 7   | `07_iv_feature_importance.png`    | IV ranking — WOE feature selection     |
-| 8   | `08_threshold_analysis.png`       | Threshold tối ưu F1/F2                 |
-| 9   | `09_probability_distribution.png` | KDE phân bố PD theo class              |
-| 10  | `10_score_by_credit_tier.png`     | Hybrid score boxplot theo credit tier  |
-| 11  | `11_metrics_comparison.png`       | So sánh 6 metrics across 3 models      |
-| 12  | `12_correlation_heatmap.png`      | Heatmap 12 features + 3 PD predictions |
-| 13  | `13_cumulative_gains.png`         | Hiệu quả xếp hạng rủi ro               |
-| 15  | `15_delinquency_impact.png`       | 6 features nợ xấu bị loại (IV < 0.02)  |
-| 16  | `16_architecture_diagram.png`     | Sơ đồ kiến trúc Hybrid v11.0           |
-| 18  | `18_scorecard_points.png`         | WOE points per bin (top 6 features)    |
-| 19  | `19_ks_statistic.png`             | Phân tách CDF Good/Bad                 |
-
-> Chi tiết phân tích từng biểu đồ → xem [MODEL_EVALUATION_REPORT.md](docs/MODEL_EVALUATION_REPORT.md).
+| Component | Technology |
+|---|---|
+| API Framework | FastAPI + Uvicorn |
+| ML Libraries | XGBoost, LightGBM, scikit-learn |
+| HP Tuning | Optuna |
+| Resampling | imbalanced-learn (SMOTE) |
+| Serialization | joblib, JSON |
+| Container | Docker |
+| WSGI | Gunicorn + Uvicorn workers |
 
 ---
 
-## 9. Tích hợp hệ thống P2P Lending — NestJS ↔ AIScore
-
-### 9.1. Luồng tổng quan
-
-```
-Client (React)
-    │
-    ▼  POST /api/loans/apply
-NestJS Backend (Port 3000)
-    │
-    ├── credit-score.service.ts ──► Tính credit_score (150-750) từ 5 yếu tố
-    │
-    ├── loan.service.ts ──────────► POST /api/score → AIScore Service
-    │                                   │
-    │                    ◄──────────────┘ {ai_risk_score, PD, scorecard_score, explanation}
-    │
-    ├── Auto-Decision Logic:
-    │   ├── ai_risk_score ≤ 40 → AUTO APPROVE
-    │   ├── ai_risk_score ≥ 80 → AUTO REJECT
-    │   └── 41-79 → MANUAL REVIEW
-    │
-    └── MongoDB: loan-application.schema.ts
-        ├── aiScore: {pd, creditScore, grade, subGrade, tier, decision}
-        └── interestRate (risk-based pricing từ grade)
-```
-
-### 9.2. Mapping 12 Features → Hệ thống P2P
-
-| #   | Feature v11.0             | Hệ thống P2P (NestJS)                            | Schema/Entity              |
-| --- | ------------------------- | ------------------------------------------------ | -------------------------- |
-| 1   | `credit_score`            | `CreditScore.score` (150-750)                    | credit-score.schema.ts     |
-| 2   | `capital`                 | `LoanApplication.capital` (VNĐ)                  | loan-application.schema.ts |
-| 3   | `monthly_income`          | User thu nhập tháng / KYC data                   | user.schema.ts / kycData   |
-| 4   | `monthly_pay`             | `LoanApplication.monthlyPay` (VNĐ)               | loan-application.schema.ts |
-| 5   | `total_current_balance`   | `SUM(LoanApp.outstandingAmount)` WHERE disbursed | loan-application.schema.ts |
-| 6   | `dti`                     | Tỷ lệ nợ/thu nhập                                | computed                   |
-| 7   | `revolving_util_percent`  | % sử dụng hạn mức tín dụng                       | computed                   |
-| 8   | `recent_inquiries`        | Count đơn vay mới 90 ngày                        | loan-application.schema.ts |
-| 9   | `loan_to_income`          | `capital / (monthly_income × 12)` — auto         | —                          |
-| 10  | `term_enc`                | `LoanApplication.periodMonth`                    | loan-application.schema.ts |
-| 11  | `home_ownership_enc`      | KYC home ownership                               | kycData                    |
-| 12  | `verification_status_enc` | `User.kycStatus`                                 | user.schema.ts             |
-
-### 9.3. Backward Compatibility — 25 Features Input
-
-Scorer vẫn **nhận 25 features** từ NestJS (backward compatible với v9.0):
-
-```
-capital           / loanAmount / loan_amnt
-monthly_income    / monthlyIncome / annual_inc (÷12)
-monthly_pay       / monthlyPay / monthlyPayment
-total_current_balance / totalOutstandingAll / tot_cur_bal
-accounts_delinquent   / currentDelinquentAccounts / acc_now_delinq
-severe_delinquencies_24m / severeDelinquencies
-pct_never_delinquent     / cleanLoanRatio
-collections_12m          / collectionsLast12m
-emp_length_years  / employmentYears / emp_length (string)
-term              / periodMonth / term_months
-credit_history_months / creditAge
-delinquencies_2yr / latePayments / delinq_2yrs
-```
-
-13 features thừa (IV < 0.02) được nhận nhưng **không đưa vào model** — chúng chỉ được log.
-
-### 9.4. credit_score (150-750) — Cách tính trong Backend
-
-Backend NestJS tính credit_score qua **5-Factor Internal Model** (credit-score.service.ts):
-
-| Yếu tố              | Trọng số | Cách tính                                       |
-| ------------------- | -------- | ----------------------------------------------- |
-| **Payment History** | 35%      | Khởi đầu 100, trừ penalty theo debt group (1-5) |
-| **Debt Level**      | 30%      | Credit Utilization: ≤10%→100, >80%→10           |
-| **Credit Age**      | 15%      | Months since first loan: ≥36m→100, <3m→10       |
-| **Credit Mix**      | 10%      | Distinct products: ≥3→100, 1→40                 |
-| **New Credit**      | 10%      | Recent 90-day loans: 0→100, ≥3→10               |
-
-$$\text{credit\_score} = 150 + (0.35 \times P + 0.30 \times D + 0.15 \times A + 0.10 \times M + 0.10 \times N) \times 6$$
-
-Scale: 150 (tệ nhất) → 750 (tốt nhất)
-
-### 9.5. Auto-Decision Logic (loan.service.ts)
-
-| ai_risk_score | PD Range    | Decision          | Action              |
-| ------------- | ----------- | ----------------- | ------------------- |
-| 0 – 20        | 0.00 – 0.20 | **AUTO APPROVE**  | Tự động duyệt       |
-| 21 – 40       | 0.21 – 0.40 | **AUTO APPROVE**  | Tự động duyệt       |
-| 41 – 60       | 0.41 – 0.60 | **MANUAL REVIEW** | Chuyển admin review |
-| 61 – 80       | 0.61 – 0.80 | **MANUAL REVIEW** | Chuyển admin review |
-| 81 – 100      | 0.81 – 1.00 | **AUTO REJECT**   | Tự động từ chối     |
-
-### 9.6. Risk-Based Interest Rate
-
-| Grade | ai_risk_score | Base Interest | Risk Premium |
-| ----- | ------------- | ------------- | ------------ |
-| **A** | 0 – 20        | 12% p.a.      | +0%          |
-| **B** | 21 – 40       | 15% p.a.      | +3%          |
-| **C** | 41 – 60       | 18% p.a.      | +6%          |
-| **D** | 61 – 80       | 20-24% p.a.   | +8-12%       |
-
----
-
-## 10. credit_score → sub_grade → Grade → Tier — Mapping chi tiết
-
-### 10.1. Bảng Mapping đầy đủ
-
-Bảng dưới đây mô tả cách `credit_score` (150-750) từ Backend NestJS được mapping sang sub_grade, Grade, Tier, và lãi suất:
-
-| credit_score | sub_grade | Grade | Tier         | Base Interest | Scorecard WOE Points  |
-| ------------ | --------- | ----- | ------------ | ------------- | --------------------- |
-| 750          | A1        | **A** | **Platinum** | 12% p.a.      | +40 pts (max)         |
-| 732          | A2        | **A** | **Platinum** | 12% p.a.      | +37 pts               |
-| 715          | A3        | **A** | **Platinum** | 12% p.a.      | +35 pts               |
-| 697          | A4        | **A** | **Platinum** | 12% p.a.      | +32 pts               |
-| 679          | A5        | **A** | **Platinum** | 12% p.a.      | +28 pts               |
-| 662          | B1        | **B** | **Gold**     | 15% p.a.      | +18 pts               |
-| 644          | B2        | **B** | **Gold**     | 15% p.a.      | +15 pts               |
-| 626          | B3        | **B** | **Gold**     | 15% p.a.      | +11 pts               |
-| 609          | B4        | **B** | **Gold**     | 15% p.a.      | +8 pts                |
-| 591          | B5        | **B** | **Gold**     | 15% p.a.      | +4 pts                |
-| **574**      | **C1**    | **C** | **Silver**   | 18% p.a.      | **0 pts (ranh giới)** |
-| 556          | C2        | **C** | **Silver**   | 18% p.a.      | -3 pts                |
-| 538          | C3        | **C** | **Silver**   | 18% p.a.      | -6 pts                |
-| 521          | C4        | **C** | **Silver**   | 18% p.a.      | -9 pts                |
-| 503          | C5        | **C** | **Silver**   | 18% p.a.      | -12 pts               |
-| 485          | D1        | **D** | **Basic**    | 20% p.a.      | -15 pts               |
-| ≤ 344        | E4+       | E-G   | ❌ Reject    | —             | -26 pts (min)         |
-
-> **Ranh giới quan trọng:** credit_score ≈ **574** (C1/B5) = điểm chuyển từ trừ → cộng trên WOE Scorecard.
-
-### 10.2. Cách mapping hoạt động
-
-```
-Backend NestJS                          AIScore Service
-─────────────────                       ──────────────────
-1. Tính credit_score = 620             1. Nhận credit_score = 620
-   (5-factor model)                    2. WOE Binning: bin "609-626"
-                                       3. WOE value → LR → Scorecard: +11 pts
-2. POST /api/score                     4. XGBoost: + non-linear prediction
-   {credit_score: 620, ...}            5. Hybrid: 0.05×SC + 0.95×XGB
-                                       6. Isotonic → PD = 0.18
-3. Nhận: {                             7. ai_risk_score = 18
-     ai_risk_score: 18,                8. scorecard_score = 532
-     PD: 0.18,                         9. explanation: [
-     scorecard_score: 532                   "credit_score: +11 pts (609-626)",
-   }                                        "term: +4 pts (36 tháng)",
-                                            ...
-4. grade = "B" (credit_score 620)         ]
-   sub_grade = "B3"
-   tier = "Gold"
-   interestRate = 15%
-```
-
-### 10.3. Tại sao mapping cần 2 hệ thống?
-
-| Hệ thống                  | Mục đích                   | Dùng cho                      |
-| ------------------------- | -------------------------- | ----------------------------- |
-| **Backend credit_score**  | Xếp hạng tổng quát (Grade) | Lãi suất, tier, investor view |
-| **AIScore PD**            | Xác suất vỡ nợ chính xác   | Auto-decision, risk pricing   |
-| **Scorecard explanation** | Giải trình cho borrower    | Compliance, transparency      |
-
-Backend credit_score = **đánh giá tín dụng tổng thể** (payment history, credit age, etc.)  
-AIScore PD = **xác suất vỡ nợ cụ thể** cho khoản vay này (dựa trên credit_score + 11 factors khác)
-
-Hai hệ thống **bổ trợ nhau**: credit_score đặt context chung, AIScore tinh chỉnh cho từng khoản vay.
-
----
-
-## 11. API Endpoints
-
-| Method | Endpoint             | Mô tả                                        |
-| ------ | -------------------- | -------------------------------------------- |
-| POST   | `/api/score`         | Score 1 borrower → PD + risk_score + explain |
-| POST   | `/api/score/batch`   | Score nhiều borrower (max 100)               |
-| GET    | `/api/health`        | Health check + model info                    |
-| GET    | `/api/model/info`    | Full metadata & metrics                      |
-| GET    | `/api/exchange-rate` | Tỷ giá USD→VND hiện tại                      |
-| POST   | `/api/model/retrain` | Retrain model (off-peak only)                |
-
-### Batch Response
-
-```json
-{
-  "status": "success",
-  "data": {
-    "results": [
-      {
-        "ai_risk_score": 15,
-        "default_probability": 0.15,
-        "scorecard_score": 543,
-        "scorecard_explanation": [...],
-        "status": "success",
-        "index": 0
-      }
-    ],
-    "errors": [],
-    "summary": {
-      "total": 2,
-      "scored": 2,
-      "errors": 0,
-      "avg_risk_score": 30.0,
-      "avg_pd": 0.3
-    }
-  }
-}
-```
-
----
-
-## 12. So sánh v9.0 → v11.0
-
-| Tiêu chí                | v9.0 Stacking               | v11.0 Hybrid                                   | Thay đổi                   |
-| ----------------------- | --------------------------- | ---------------------------------------------- | -------------------------- |
-| **Architecture**        | XGB + SVM → LR Meta         | WOE+LR ⊕ XGBoost + Isotonic                    | Simpler, transparent       |
-| **Models**              | 3 (XGB + SVM + LR Meta)     | 4 (WOE + LR + XGB + Isotonic)                  | +1 model, -SVM             |
-| **Features**            | 25 (all)                    | **12** (IV ≥ 0.02)                             | Loại 13 useless            |
-| **Dataset**             | 500K (subsample)            | **1.345M** (full)                              | 2.69× data                 |
-| **AUC**                 | 0.7213                      | 0.7129                                         | -0.84% (stricter features) |
-| **Calibration (Brier)** | 0.2146                      | **0.1447** (Isotonic)                          | **+33% better**            |
-| **Explainability**      | ❌ None                     | ✅ **Full Scorecard**                          | Major gain                 |
-| **Regulatory**          | ⚠️ Black-box                | ✅ **Basel II approved (WOE+LR)**              | Critical for VN market     |
-| **SVM contribution**    | weight = -0.024 (near zero) | **Removed entirely**                           | Honest simplification      |
-| **Artifacts**           | 5 files                     | **8 files** (+scorecard, +isotonic)            | +3 new files               |
-| **Output**              | PD + ai_risk_score          | PD + ai_risk_score + **scorecard explanation** | +2 new fields              |
-| **Inference latency**   | ~15ms (3 models sequential) | ~10ms (2 branches + blend)                     | -33% faster                |
-
----
-
-## 13. Kết luận
-
-### v11.0 — Kết quả đạt được
-
-| Metric                 | Giá trị thực tế   | Đạt Basel II? | Đánh giá                       |
-| ---------------------- | ----------------- | ------------- | ------------------------------ |
-| **Hybrid AUC**         | **0.7129**        | ✅ (>0.7)     | Acceptable cho credit scoring  |
-| **KS Statistic**       | **0.3098**        | ✅ (>0.25)    | Phân tách Good/Bad tốt         |
-| **Gini**               | **0.4258**        | ✅ (>0.3)     | Moderate discriminatory power  |
-| **CV AUC**             | **0.7128±0.0013** | ✅            | Không overfitting              |
-| **Brier (calibrated)** | **0.1447**        | ✅            | PD rất chính xác sau calibrate |
-| **Recall**             | **67.49%**        | —             | Bắt 2/3 ca vỡ nợ               |
-| **Explainability**     | Full Scorecard    | ✅            | Giải thích từng yếu tố         |
-
-### v11.0 — Điểm nổi bật
-
-| Cải tiến                       | Chi tiết                                                            |
-| ------------------------------ | ------------------------------------------------------------------- |
-| **Full Explainability**        | WOE Scorecard giải thích từng yếu tố: "+15 pts vì credit_score tốt" |
-| **IV-based Feature Selection** | Tự động loại 13 features yếu → model gọn hơn, ít noise              |
-| **Isotonic Calibration**       | Brier cải thiện 33% → PD chính xác thống kê                         |
-| **Full Dataset Training**      | 1.345M mẫu (2.69× so với v9.0) → ổn định hơn                        |
-| **No SVM Overhead**            | Loại SVM (contribution gần 0) → inference nhanh hơn 33%             |
-| **Dual Output**                | AI PD (accuracy) + Scorecard points (transparency) trong 1 response |
-| **Basel II Compliance**        | WOE+LR = chuẩn vàng banking → sẵn sàng regulatory tại VN            |
-| **Backward Compatible**        | Scorer vẫn nhận 25 features → NestJS không cần thay đổi API call    |
-
-### Hạn chế & Hướng phát triển
-
-| Hạn chế hiện tại                               | Hướng cải thiện                                |
-| ---------------------------------------------- | ---------------------------------------------- |
-| AUC ~0.71 (moderate, chưa đạt >0.8)            | Thêm features từ VN payment history            |
-| Delinquency features bị loại (IV thấp trên LC) | Retrain với dữ liệu VN → IV cao hơn            |
-| Precision ~31.5% → nhiều false positive        | Giảm threshold xuống 0.35 (Best F2)            |
-| Data từ Lending Club (US market)               | Retrain/fine-tune với dữ liệu Việt Nam         |
-| Top 2 features chiếm 76.92% importance         | Thêm behavioral features (transaction, social) |
-
----
-
-> **Phiên bản mô hình: v11.0 — Explainable Hybrid (WOE+LR Scorecard ⊕ XGBoost + Isotonic Calibration).**  
-> **12 features (IV ≥ 0.02) | 1,345,310 mẫu | AUC 0.7129 | Brier 0.1447 | Full Scorecard Explanation.**
-
----
-
-## 14. Phụ lục — Luồng train_model.py v17.0 (Stacking 3 nhánh)
-
-Phần này mô tả đúng pipeline trong file train_model.py bản v17.0 để đối chiếu code hiện tại.
-
-### 14.1. Khác biệt chính so với v11.0
-
-| Thành phần | v11.0 | v17.0 (code hiện tại) |
-| ---------- | ----- | --------------------- |
-| Kiến trúc ensemble | Alpha blend 2 nhánh | Stacking Meta-LR (Scorecard + XGBoost + LightGBM) |
-| Số features | 12 sau IV | 47 total features (numeric + interaction + power + high-signal + categorical) |
-| Vai trò IV filter | Dùng chung | Chỉ lọc cho Scorecard branch, XGB/LGBM vẫn dùng toàn bộ features |
-| Threshold | Chủ yếu tham chiếu 0.5 | Tối ưu theo acc_weighted trên xác suất raw của Stacked model |
-| Calibration | Isotonic | Isotonic (áp dụng cho PD báo cáo) |
-
-### 14.2. Luồng train end-to-end (10 bước)
-
-1. Load và clean Lending Club accepted data, tạo is_default.
-2. Feature engineering lớn: interaction, power, high-signal (bao gồm interest_rate).
-3. Train/test split có đảm bảo số mẫu test tối thiểu.
-4. Per-feature scaling cho nhánh tree models (XGBoost, LightGBM).
-5. WOE binning + tính IV toàn bộ features, sau đó lọc IV chỉ cho Scorecard.
-6. Train nhánh 1: LogisticRegressionCV trên WOE features (Scorecard branch).
-7. Train nhánh 2: XGBoost trên full scaled features, có monotonic constraints và tuning.
-8. Train nhánh 3: LightGBM trên full scaled features (nếu môi trường có lightgbm).
-9. Tạo OOF predictions để train Meta-LR stacking, tìm threshold tối ưu theo acc_weighted, rồi isotonic calibration.
-10. Đánh giá, cross-validation toàn pipeline, lưu artifacts, export test_predictions.csv và sinh charts.
-
-### 14.3. Sơ đồ luồng training v17.0
-
-INPUT DATA (accepted_2007_to_2018Q4.csv)
-  -> Clean + Label (is_default)
-  -> 47-feature engineering
-  -> Stratified split (train/test)
-
-TRAIN BRANCH 1 (Explainable)
-  train_raw
-    -> WOE binning
-    -> IV ranking
-    -> keep IV >= threshold (scorecard only)
-    -> LogisticRegressionCV
-    -> scorecard_pd
-
-TRAIN BRANCH 2 (Strong non-linear)
-  train_raw
-    -> per-feature scaling
-    -> XGBoost + monotonic constraints + HP tuning
-    -> xgb_pd
-
-TRAIN BRANCH 3 (Optional strong non-linear)
-  train_raw
-    -> per-feature scaling
-    -> LightGBM + monotonic constraints + HP tuning
-    -> lgbm_pd
-
-STACKING
-  OOF(scorecard_pd, xgb_pd, lgbm_pd)
-    -> Meta Logistic Regression
-    -> hybrid_pd_raw
-
-POST-PROCESS
-  hybrid_pd_raw
-    -> optimize threshold (metric=acc_weighted)
-    -> isotonic calibration
-    -> hybrid_pd_calibrated
-
-OUTPUT
-  Models: xgb_pd_model, lr_scorecard_model, optional lgbm model, meta_lr, iso_calibrator
-  Data: metadata.json, scorecard_table.json, test_predictions.csv
-  Diagnostics: ROC/PR/Calibration/KS/Feature importance charts
-
-### 14.4. Công thức vận hành chính
-
-- Scorecard branch: WOE(X) -> LR -> scorecard_pd
-- Tree branches: Scale(X) -> XGB/LGBM -> xgb_pd, lgbm_pd
-- Stacking raw PD: hybrid_pd_raw = MetaLR(scorecard_pd, xgb_pd, lgbm_pd)
-- Calibrated PD: hybrid_pd_calibrated = Isotonic(hybrid_pd_raw)
-- Classification decision: default_pred = 1 if hybrid_pd_raw >= optimal_threshold else 0
-
-Lưu ý: threshold dùng cho phân lớp lấy trên hybrid_pd_raw, còn hybrid_pd_calibrated dùng để báo cáo xác suất vỡ nợ (PD) cho nghiệp vụ.
+*Tài liệu được cập nhật dựa trên metadata.json v19.1.0 và kết quả đánh giá tại threshold=0.50.*

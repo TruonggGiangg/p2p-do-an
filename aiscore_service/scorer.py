@@ -95,6 +95,30 @@ EMP_YEARS_MAP = {
     "8 years": 8.0, "9 years": 9.0, "10+ years": 10.0,
 }
 
+# ─── Reverse Mapping: credit_score → grade + sub_grade (v18) ───
+SUBGRADE_SCORE_MAP = {
+    'A1': 750, 'A2': 732, 'A3': 715, 'A4': 697, 'A5': 679,
+    'B1': 662, 'B2': 644, 'B3': 626, 'B4': 609, 'B5': 591,
+    'C1': 574, 'C2': 556, 'C3': 538, 'C4': 521, 'C5': 503,
+    'D1': 485, 'D2': 468, 'D3': 450, 'D4': 432, 'D5': 415,
+    'E1': 397, 'E2': 379, 'E3': 362, 'E4': 344, 'E5': 326,
+    'F1': 309, 'F2': 291, 'F3': 274, 'F4': 256, 'F5': 238,
+    'G1': 221, 'G2': 203, 'G3': 185, 'G4': 168, 'G5': 150,
+}
+GRADE_ENC_MAP = {'A': 6, 'B': 5, 'C': 4, 'D': 3, 'E': 2, 'F': 1, 'G': 0}
+SUBGRADE_ENC_MAP = {sg: i for i, (sg, _) in enumerate(
+    sorted(SUBGRADE_SCORE_MAP.items(), key=lambda x: x[1])
+)}  # G5=0, G4=1, ..., A1=34
+
+
+def credit_score_to_grade_subgrade(score):
+    """Map credit score (150-750) → (grade, sub_grade, grade_enc, sub_grade_enc)"""
+    score = float(np.clip(score, 150, 750))
+    closest_sg = min(SUBGRADE_SCORE_MAP.keys(),
+                     key=lambda sg: abs(SUBGRADE_SCORE_MAP[sg] - score))
+    grade = closest_sg[0]
+    return grade, closest_sg, GRADE_ENC_MAP[grade], SUBGRADE_ENC_MAP[closest_sg]
+
 
 def _transform_one_feature(values_1d, strategy, scaler):
     """Transform 1 feature using its pre-fit scaler."""
@@ -230,6 +254,21 @@ class CreditScorer:
         # Process base features (NestJS compatible)
         f = self._process_features(resolved)
 
+        # Derive grade/sub_grade as INPUT features from credit_score (v18)
+        # This is the reverse mapping: credit_score → grade + sub_grade
+        pred_grade, pred_sub_grade, _, _ = credit_score_to_grade_subgrade(f["credit_score"])
+
+        # Allow caller to override grade/sub_grade directly
+        if "grade" in resolved and resolved["grade"]:
+            pred_grade = str(resolved["grade"]).upper()
+        if "sub_grade" in resolved and resolved["sub_grade"]:
+            pred_sub_grade = str(resolved["sub_grade"]).upper()
+            pred_grade = pred_sub_grade[0]  # grade derives from sub_grade
+
+        # Recompute encodings from final grade/sub_grade
+        f["grade_enc"] = GRADE_ENC_MAP.get(pred_grade, 3)
+        f["sub_grade_enc"] = SUBGRADE_ENC_MAP.get(pred_sub_grade, 17)
+
         # Auto-compute interaction features (v12+)
         mi = f.get("monthly_income", 0)
         mp = f.get("monthly_pay", 0)
@@ -253,17 +292,17 @@ class CreditScorer:
         abd = f.get("active_bad_debts", 0)
         bk = f.get("bankruptcies", 0)
         col12 = f.get("collections_12m", 0)
-        cs = f.get("credit_score", 600)
         rup = f.get("revolving_util_percent", 50)
         dti = f.get("dti", 15)
         tlh = f.get("total_loans_history", 10)
         te = f.get("term_enc", 36)
         lti = f.get("loan_to_income", 0.2)
+        sge = f.get("sub_grade_enc", 17)
         f.setdefault("income_per_loan", mi / (al + 1))
         f.setdefault("risk_accumulation", abd + 2 * bk + 3 * sd24 + d2y + col12)
         f.setdefault("term_loan_risk", (te / 36) * lti)
         f.setdefault("dti_squared", (dti / 100) ** 2)
-        f.setdefault("score_utilization", cs * (1 - rup / 150))
+        f.setdefault("score_utilization", sge * (1 - rup / 150))
         annual_inc = mi * 12 if mi * 12 > 0 else 1
         f.setdefault("installment_income_term", mp * te / annual_inc)
         f.setdefault("delinquency_rate", (d2y + acd) / (tlh + 1))
@@ -317,6 +356,8 @@ class CreditScorer:
         return {
             "ai_risk_score": ai_risk_score,
             "default_probability": round(pd_cal, 4),
+            "input_grade": pred_grade,
+            "input_sub_grade": pred_sub_grade,
             "status": "success",
         }
 
@@ -469,5 +510,10 @@ class CreditScorer:
         purpose = str(raw.get("purpose",
                                raw.get("loanPurpose", "other"))).lower()
         f["purpose_enc"] = PURPOSE_MAP.get(purpose, 3)
+
+        # Grade/SubGrade encoding from credit_score (v18)
+        _, _, ge, sge = credit_score_to_grade_subgrade(f["credit_score"])
+        f["grade_enc"] = ge
+        f["sub_grade_enc"] = sge
 
         return f

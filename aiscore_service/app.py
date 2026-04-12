@@ -40,7 +40,9 @@ from scorer import CreditScorer
 # ── Pydantic models ──
 
 class ScoreRequest(BaseModel):
-    credit_score: float = Field(..., ge=150, le=750, description="Diem tin dung he thong (CIC 150-750)")
+    credit_score: float = Field(..., ge=150, le=750, description="Diem tin dung he thong (CIC 150-750) → tu dong chuyen thanh grade/sub_grade")
+    grade: Optional[str] = Field(default=None, description="Tu dong tu credit_score: A-G. Truyen truc tiep de ghi de.")
+    sub_grade: Optional[str] = Field(default=None, description="Tu dong tu credit_score: A1-G5. Truyen truc tiep de ghi de.")
     capital: float = Field(..., gt=0, description="So tien vay (VND)", alias="loanAmount")
     monthly_income: float = Field(default=0, ge=0, description="Thu nhap hang thang (VND)")
     monthly_pay: float = Field(default=0, ge=0, description="Tra gop hang thang (VND)")
@@ -70,6 +72,8 @@ class ScoreRequest(BaseModel):
 class ScoreResponse(BaseModel):
     ai_risk_score: int
     default_probability: float
+    input_grade: str = Field(description="Grade (A-G) duoc su dung lam input cho model, derive tu credit_score")
+    input_sub_grade: str = Field(description="Sub-grade (A1-G5) duoc su dung lam input cho model, derive tu credit_score")
     status: str
 
 class BatchRequest(BaseModel):

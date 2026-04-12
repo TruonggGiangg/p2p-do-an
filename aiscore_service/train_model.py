@@ -29,7 +29,7 @@
 ║    → Meta-LR(SC, XGB, LGBM) → Acc-Weighted threshold → Isotonic → PD  ║
 ║                                                                        ║
 ║  31 → 39 FEATURES (Lending Club → mapped to P2P system):                ║
-║    NUMERIC (27): credit_score, capital, monthly_income, monthly_pay,   ║
+║    NUMERIC (26): capital, monthly_income, monthly_pay,                  ║
 ║                  revolving_balance, total_current_balance, dti,         ║
 ║                  revolving_util_percent, emp_length_years,              ║
 ║                  active_bad_debts, bankruptcies, active_loans,          ║
@@ -45,8 +45,9 @@
 ║                  term_loan_risk, dti_squared, score_utilization,        ║
 ║                  installment_income_term, delinquency_rate,             ║
 ║                  net_monthly_cashflow                                   ║
-║    CATEGORY (4): term_enc, home_ownership_enc,                         ║
-║                  verification_status_enc, purpose_enc                   ║
+║    CATEGORY (4+2): term_enc, home_ownership_enc,                       ║
+║                  verification_status_enc, purpose_enc,                  ║
+║                  grade_enc, sub_grade_enc (derived from credit_score)   ║
 ║                                                                        ║
 ║  DATA SOURCE:                                                          ║
 ║    accepted_2007_to_2018Q4.csv — 2.26M rows (labeled: train)          ║
@@ -62,8 +63,29 @@
 # ══════════════════════════════════════════════════════════
 # CELL 0: Mount Google Drive + Install
 # ══════════════════════════════════════════════════════════
+# Google Colab — uncomment the block below if running on Google Colab
+import os as _os, shutil as _shutil, subprocess as _sp
 from google.colab import drive
-drive.mount('/content/drive')
+_mp = '/content/drive'
+if _os.path.isdir(_mp) and _os.listdir(_mp):
+    print("[mount] Drive dir not empty, cleaning up...")
+    try:
+        _os.system('fusermount -uz ' + _mp)
+    except Exception:
+        pass
+    if _os.path.isdir(_mp) and _os.listdir(_mp):
+        _shutil.rmtree(_mp, ignore_errors=True)
+        _os.makedirs(_mp, exist_ok=True)
+drive.mount(_mp)
+
+# Auto-install missing packages on Colab
+for _pkg, _pip in [('optuna', 'optuna'), ('imblearn', 'imbalanced-learn')]:
+    try:
+        __import__(_pkg)
+    except ImportError:
+        print(f"[setup] Installing {_pip}...")
+        _sp.check_call(['pip', 'install', '-q', _pip])
+del _pkg, _pip
 
 import os
 import gc
@@ -102,7 +124,7 @@ except ImportError:
 
 try:
     from imblearn.combine import SMOTETomek
-    from imblearn.over_sampling import SMOTE
+    from imblearn.over_sampling import SMOTE, BorderlineSMOTE
     from imblearn.under_sampling import TomekLinks, RandomUnderSampler
     HAS_IMBLEARN = True
 except ImportError:
@@ -122,7 +144,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ===================== CONFIG =====================
 RANDOM_STATE = 42
-N_FOLDS = 5
+N_FOLDS = 3  # v19: Reduced from 5 for faster training (15-30 min target)
 WOE_BINS = 20  # Number of equal-frequency bins for WOE
 IV_MIN_THRESHOLD = 0.02  # Features with IV < this are auto-removed ("Useless")
 
@@ -144,15 +166,16 @@ FACTOR = PDO / np.log(2)
 OFFSET = BASE_SCORE - FACTOR * np.log(BASE_ODDS)
 
 # ── Imbalance handling ──
-USE_SMOTE = False          # v14: DISABLED — XGBoost handles imbalance via scale_pos_weight natively
-SMOTE_SAMPLING_STRATEGY = 0.5  # Only used if USE_SMOTE=True
-SMOTE_MAX_SAMPLES = 500_000    # Only used if USE_SMOTE=True
-THRESHOLD_METRIC = 'acc_weighted'  # v15: acc * sqrt(prec * rec) — prioritizes Accuracy over Prec/Rec
+USE_SMOTE = True           # v19: ENABLED — combines resampling + scale_pos_weight for max F1
+SMOTE_SAMPLING_STRATEGY = 0.5  # v19.1: 0.5 = minority/majority ratio (→ ~33% minority, NOT 50/50)
+SMOTE_MAX_SAMPLES = 500_000    # >500K uses RandomUnderSampler, ≤500K uses BorderlineSMOTE-Tomek
+SMOTE_TARGET_MINORITY = 0.35   # v19.1: Target minority % after BorderlineSMOTE (avoid 50/50 overfitting)
+THRESHOLD_METRIC = 'f1'  # v18: Directly optimize F1-Score for best classification performance
 
-print(f"[config] Architecture: HYBRID v17.0 — Stacking(XGB+LGBM+SC) + 47 Features + int_rate + AccWeighted")
+print(f"[config] Architecture: HYBRID v19.1 — Stacking(XGB+LGBM+SC) + SMOTE + Optuna + F1-Optimized")
 print(f"[config] Optuna HP tuning: {'AVAILABLE' if HAS_OPTUNA else 'NOT FOUND — will use grid search fallback'}")
 print(f"[config] LightGBM: {'AVAILABLE' if HAS_LGBM else 'NOT FOUND — stacking without LGBM'}")
-print(f"[config] Resampling: {'ENABLED' if USE_SMOTE and HAS_IMBLEARN else 'DISABLED (XGB uses scale_pos_weight)'}")
+print(f"[config] Resampling: {'ENABLED (RUS+BorderlineSMOTE)' if USE_SMOTE and HAS_IMBLEARN else 'DISABLED (XGB uses scale_pos_weight)'}")
 print(f"[config] Threshold metric: {THRESHOLD_METRIC}")
 print(f"[config] Scorecard: Base={BASE_SCORE}, PDO={PDO}, Factor={FACTOR:.3f}")
 print(f"[config] WOE bins: {WOE_BINS} | MAX_SAMPLES={MAX_SAMPLES}, MIN_TEST={MIN_TEST_SAMPLES:,}")
@@ -209,7 +232,7 @@ print(f"[config] Exchange rate: 1 USD = {USD_TO_VND:,.0f} VND (source: {_RATE_SO
 
 
 NUMERIC_FEATURES = [
-    "credit_score", "capital", "monthly_income", "monthly_pay",
+    "capital", "monthly_income", "monthly_pay",
     "revolving_balance", "total_current_balance", "dti",
     "revolving_util_percent", "emp_length_years", "active_bad_debts",
     "bankruptcies", "active_loans", "total_loans_history",
@@ -231,7 +254,7 @@ NUMERIC_FEATURES = [
 
 CATEGORICAL_FEATURES = [
     "term_enc", "home_ownership_enc", "verification_status_enc",
-    "purpose_enc",
+    "purpose_enc", "grade_enc", "sub_grade_enc",
 ]
 
 FEATURE_NAMES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
@@ -260,6 +283,22 @@ SUBGRADE_SCORE_MAP = {
     'G1': 221, 'G2': 203, 'G3': 185, 'G4': 168, 'G5': 150,
 }
 
+# ─── Reverse Mapping: credit_score → grade + sub_grade (v18) ───
+GRADE_ENC_MAP = {'A': 6, 'B': 5, 'C': 4, 'D': 3, 'E': 2, 'F': 1, 'G': 0}
+SUBGRADE_ENC_MAP = {sg: i for i, (sg, _) in enumerate(
+    sorted(SUBGRADE_SCORE_MAP.items(), key=lambda x: x[1])
+)}  # G5=0, G4=1, ..., A1=34
+
+
+def credit_score_to_grade_subgrade(score):
+    """Map credit score (150-750) → (grade, sub_grade, grade_enc, sub_grade_enc)"""
+    score = float(np.clip(score, 150, 750))
+    closest_sg = min(SUBGRADE_SCORE_MAP.keys(),
+                     key=lambda sg: abs(SUBGRADE_SCORE_MAP[sg] - score))
+    grade = closest_sg[0]
+    return grade, closest_sg, GRADE_ENC_MAP[grade], SUBGRADE_ENC_MAP[closest_sg]
+
+
 HOME_MAP = {"RENT": 0, "OWN": 1, "MORTGAGE": 2, "OTHER": 3, "NONE": 3, "ANY": 3}
 VERIFICATION_MAP = {"Not Verified": 0, "Source Verified": 1, "Verified": 2}
 PURPOSE_MAP = {
@@ -276,7 +315,7 @@ EMP_YEARS_MAP = {
 
 
 FEATURE_SCALING_CONFIG = {
-    "credit_score": "standard", "capital": "log_standard",
+    "capital": "log_standard",
     "monthly_income": "log_robust", "monthly_pay": "log_standard",
     "revolving_balance": "log_standard", "total_current_balance": "log_standard",
     "dti": "robust", "revolving_util_percent": "robust",
@@ -303,12 +342,12 @@ FEATURE_SCALING_CONFIG = {
     "rate_loan_risk": "robust", "credit_headroom_pct": "standard",
     "term_enc": "passthrough", "home_ownership_enc": "passthrough",
     "verification_status_enc": "passthrough", "purpose_enc": "passthrough",
+    "grade_enc": "passthrough", "sub_grade_enc": "passthrough",
 }
 
 # Monotonic constraints for XGBoost (domain knowledge)
 # -1: feature ↑ → PD ↓ (protective)   1: feature ↑ → PD ↑ (risky)   0: no constraint
 MONOTONIC_CONSTRAINTS = {
-    "credit_score": -1,              # higher score → less default
     "capital": 0,                     # ambiguous (larger loan = more risk but also better borrower)
     "monthly_income": -1,             # higher income → less default
     "monthly_pay": 1,                 # higher payment burden → more stress
@@ -357,6 +396,8 @@ MONOTONIC_CONSTRAINTS = {
     "home_ownership_enc": 0,          # ordinal encoding not monotonic
     "verification_status_enc": 0,
     "purpose_enc": 0,
+    "grade_enc": -1,                  # higher grade (A=6) → less default
+    "sub_grade_enc": -1,              # higher sub_grade (A1=34) → less default
 }
 
 
@@ -571,6 +612,10 @@ def load_and_clean_data(accepted_path, rejected_path=None, chart_dir=None):
     rate = USD_TO_VND
     df["credit_score"] = df["sub_grade"].map(SUBGRADE_SCORE_MAP)
     df = df.dropna(subset=["credit_score"])
+    # v18: Derive grade + sub_grade ordinal encodings from sub_grade
+    df["grade"] = df["sub_grade"].str[0]
+    df["grade_enc"] = df["grade"].map(GRADE_ENC_MAP).fillna(3).astype(int)
+    df["sub_grade_enc"] = df["sub_grade"].map(SUBGRADE_ENC_MAP).fillna(17).astype(int)
     df["capital"] = pd.to_numeric(df["loan_amnt"], errors='coerce') * rate
     df["monthly_income"] = pd.to_numeric(df["annual_inc"], errors='coerce') * rate / 12
     df["monthly_income"] = df["monthly_income"].clip(0, df["monthly_income"].quantile(0.99))
@@ -652,8 +697,8 @@ def load_and_clean_data(accepted_path, rejected_path=None, chart_dir=None):
     df["term_loan_risk"] = df["term_loan_risk"].clip(0, df["term_loan_risk"].quantile(0.99))
     # DTI bình phương → DTI cao thì rủi ro tăng phi tuyến
     df["dti_squared"] = (df["dti"] / 100) ** 2
-    # Điểm tín dụng × dư địa sử dụng tín dụng
-    df["score_utilization"] = df["credit_score"] * (1 - df["revolving_util_percent"] / 150)
+    # Điểm sub_grade × dư địa sử dụng tín dụng (v18: thay credit_score bằng sub_grade_enc)
+    df["score_utilization"] = df["sub_grade_enc"] * (1 - df["revolving_util_percent"] / 150)
     # Tổng số tiền trả / thu nhập (kỳ hạn × monthly_pay / monthly_income)
     annual_income_safe = (df["monthly_income"] * 12).clip(lower=1)
     df["installment_income_term"] = df["monthly_pay"] * df["term_enc"] / annual_income_safe
@@ -744,7 +789,7 @@ def find_optimal_threshold(y_true, proba, metric='f1', beta=2):
     Supports: 'f1', 'f2', 'balanced_accuracy', 'youden_j'
     Returns: (best_threshold, best_score)
     """
-    thresholds = np.arange(0.05, 0.90, 0.005)
+    thresholds = np.arange(0.05, 0.90, 0.002)
     best_t, best_score = 0.50, 0.0
     for t in thresholds:
         preds = (proba >= t).astype(int)
@@ -797,16 +842,16 @@ def _build_xgb(spw, feature_names, random_state=RANDOM_STATE, tuned_params=None)
         params = {k: v for k, v in tuned_params.items() if k != 'scale_pos_weight'}
         final_spw = tuned_params.get('scale_pos_weight', spw)
         return xgb.XGBClassifier(
-            n_estimators=2500, **params,
+            n_estimators=1500, **params,
             monotone_constraints=mc,
             scale_pos_weight=final_spw, random_state=random_state,
-            eval_metric="aucpr", early_stopping_rounds=150,
+            eval_metric="aucpr", early_stopping_rounds=100,
             tree_method="hist", device="cpu",
         )
     return xgb.XGBClassifier(
-        n_estimators=1500, max_depth=7, learning_rate=0.03,
-        subsample=0.85, colsample_bytree=0.7, min_child_weight=10,
-        gamma=0.2, reg_alpha=0.3, reg_lambda=2.0, max_bin=256,
+        n_estimators=1000, max_depth=6, learning_rate=0.03,
+        subsample=0.8, colsample_bytree=0.7, min_child_weight=15,
+        gamma=0.3, reg_alpha=0.5, reg_lambda=3.0, max_bin=256,
         monotone_constraints=mc,
         scale_pos_weight=spw, random_state=random_state,
         eval_metric="aucpr", early_stopping_rounds=100,
@@ -814,9 +859,9 @@ def _build_xgb(spw, feature_names, random_state=RANDOM_STATE, tuned_params=None)
     )
 
 
-def _tune_xgb(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000):
-    """HP search: Optuna (50 trials) if available, else grid search (18 combos).
-    v14.0: Optimizes gmean_pra (balanced Acc*Prec*Rec) + deeper trees + wider SPW."""
+def _tune_xgb(X_train, y_train, feature_names, scale_pos_wt, tune_size=200_000):
+    """HP search: Optuna (20 trials) if available, else grid search (12 combos).
+    v19.0: Faster tuning (15-30 min target) + wider SPW + F1-optimized."""
     mc = _get_monotonic_tuple(feature_names)
     n = min(tune_size, len(y_train))
     if n < len(y_train):
@@ -827,8 +872,8 @@ def _tune_xgb(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000):
     else:
         X_t, y_t = X_train, y_train
 
-    def _eval_params(params, n_est=800, es=60, n_folds=3):
-        """Evaluate params by F1 at optimal threshold (not AUC)."""
+    def _eval_params(params, n_est=500, es=40, n_folds=3):
+        """Evaluate params by F1 at optimal threshold (not AUC). v19: faster n_est/es."""
         kf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=RANDOM_STATE)
         scores = []
         spw = params.pop('scale_pos_weight', scale_pos_wt)
@@ -850,45 +895,47 @@ def _tune_xgb(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000):
         params['scale_pos_weight'] = spw  # restore
         return np.mean(scores)
 
+    # v19.1: Adaptive SPW range — after SMOTE SPW ~1-2, without SMOTE SPW ~3-7
+    _post_smote = scale_pos_wt < 2.5  # If data was balanced, SPW is near 1.0
+    _spw_lo = 1.0 if _post_smote else 2.0
+    _spw_hi = 4.0 if _post_smote else 10.0
+
     if HAS_OPTUNA:
-        print(f"    Optuna Bayesian search (50 trials, 3-fold CV, metric={THRESHOLD_METRIC})...")
+        print(f"    Optuna Bayesian search (25 trials, 3-fold CV, metric={THRESHOLD_METRIC}, SPW [{_spw_lo:.0f}-{_spw_hi:.0f}])...")
         def objective(trial):
             params = {
-                'max_depth': trial.suggest_int('max_depth', 5, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.15, log=True),
+                'max_depth': trial.suggest_int('max_depth', 4, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.15, log=True),
                 'subsample': trial.suggest_float('subsample', 0.65, 0.95),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.9),
-                'min_child_weight': trial.suggest_int('min_child_weight', 3, 50),
-                'gamma': trial.suggest_float('gamma', 0.01, 1.0, log=True),
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 5.0, log=True),
-                'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 10.0, log=True),
-                'scale_pos_weight': trial.suggest_float('scale_pos_weight', 1.5, 8.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.85),
+                'min_child_weight': trial.suggest_int('min_child_weight', 5, 80),
+                'gamma': trial.suggest_float('gamma', 0.05, 2.0, log=True),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 15.0, log=True),
+                'scale_pos_weight': trial.suggest_float('scale_pos_weight', _spw_lo, _spw_hi),
             }
             return _eval_params(params)
         study = optuna.create_study(
             direction='maximize',
             sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE),
         )
-        study.optimize(objective, n_trials=50, show_progress_bar=True)
+        study.optimize(objective, n_trials=25, show_progress_bar=True)
         return study.best_params, study.best_value
     else:
-        print(f"    Grid search fallback (18 combos with SPW sweep, 3-fold CV, metric={THRESHOLD_METRIC})...")
+        print(f"    Grid search fallback (12 combos, 3-fold CV, metric={THRESHOLD_METRIC}, SPW [{_spw_lo:.0f}-{_spw_hi:.0f}])...")
         base_params = [
             {'max_depth': 5, 'learning_rate': 0.05, 'subsample': 0.85, 'colsample_bytree': 0.75,
-             'min_child_weight': 5, 'gamma': 0.1, 'reg_alpha': 0.1, 'reg_lambda': 1.0},
-            {'max_depth': 6, 'learning_rate': 0.03, 'subsample': 0.85, 'colsample_bytree': 0.7,
-             'min_child_weight': 8, 'gamma': 0.15, 'reg_alpha': 0.2, 'reg_lambda': 1.5},
-            {'max_depth': 7, 'learning_rate': 0.03, 'subsample': 0.8, 'colsample_bytree': 0.7,
              'min_child_weight': 10, 'gamma': 0.2, 'reg_alpha': 0.3, 'reg_lambda': 2.0},
-            {'max_depth': 8, 'learning_rate': 0.02, 'subsample': 0.8, 'colsample_bytree': 0.65,
+            {'max_depth': 6, 'learning_rate': 0.03, 'subsample': 0.8, 'colsample_bytree': 0.7,
              'min_child_weight': 15, 'gamma': 0.3, 'reg_alpha': 0.5, 'reg_lambda': 3.0},
-            {'max_depth': 9, 'learning_rate': 0.02, 'subsample': 0.75, 'colsample_bytree': 0.6,
-             'min_child_weight': 20, 'gamma': 0.4, 'reg_alpha': 0.8, 'reg_lambda': 4.0},
-            {'max_depth': 6, 'learning_rate': 0.05, 'subsample': 0.9, 'colsample_bytree': 0.8,
-             'min_child_weight': 5, 'gamma': 0.1, 'reg_alpha': 0.1, 'reg_lambda': 1.0},
+            {'max_depth': 7, 'learning_rate': 0.03, 'subsample': 0.8, 'colsample_bytree': 0.7,
+             'min_child_weight': 20, 'gamma': 0.3, 'reg_alpha': 0.5, 'reg_lambda': 3.0},
+            {'max_depth': 6, 'learning_rate': 0.05, 'subsample': 0.85, 'colsample_bytree': 0.8,
+             'min_child_weight': 10, 'gamma': 0.15, 'reg_alpha': 0.2, 'reg_lambda': 2.0},
         ]
-        # v14.0: SPW candidates centered around true imbalance ratio (~4)
-        spw_candidates = [3.0, 4.0, 5.0]
+        # v19.1: SPW adaptive — near 1.0 after SMOTE, wider without
+        _mid = (_spw_lo + _spw_hi) / 2
+        spw_candidates = [round(_spw_lo, 1), round(_mid, 1), round(_spw_hi, 1)]
         param_grid = []
         for bp in base_params:
             for spw_val in spw_candidates:
@@ -922,16 +969,16 @@ def _build_lgbm(spw, feature_names, random_state=RANDOM_STATE, tuned_params=None
         params = {k: v for k, v in tuned_params.items() if k != 'scale_pos_weight'}
         final_spw = tuned_params.get('scale_pos_weight', spw)
         return lgb.LGBMClassifier(
-            n_estimators=2500, **params,
+            n_estimators=1500, **params,
             monotone_constraints=mc,
             scale_pos_weight=final_spw, random_state=random_state,
             metric="auc", verbose=-1,
             boosting_type="gbdt",
         )
     return lgb.LGBMClassifier(
-        n_estimators=1500, max_depth=7, learning_rate=0.03,
-        subsample=0.85, colsample_bytree=0.7, min_child_samples=50,
-        reg_alpha=0.3, reg_lambda=2.0, num_leaves=63,
+        n_estimators=1000, max_depth=6, learning_rate=0.03,
+        subsample=0.8, colsample_bytree=0.7, min_child_samples=70,
+        reg_alpha=0.5, reg_lambda=3.0, num_leaves=63,
         monotone_constraints=mc,
         scale_pos_weight=spw, random_state=random_state,
         metric="auc", verbose=-1,
@@ -939,8 +986,8 @@ def _build_lgbm(spw, feature_names, random_state=RANDOM_STATE, tuned_params=None
     )
 
 
-def _tune_lgbm(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000):
-    """HP search for LightGBM: Optuna (40 trials) or grid search (18 combos)."""
+def _tune_lgbm(X_train, y_train, feature_names, scale_pos_wt, tune_size=200_000):
+    """HP search for LightGBM: Optuna (15 trials) or grid search (12 combos). v19: faster."""
     mc = _get_lgbm_monotone(feature_names)
     n = min(tune_size, len(y_train))
     if n < len(y_train):
@@ -951,7 +998,7 @@ def _tune_lgbm(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000)
     else:
         X_t, y_t = X_train, y_train
 
-    def _eval_params(params, n_est=800, n_folds=3):
+    def _eval_params(params, n_est=500, n_folds=3):
         kf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=RANDOM_STATE)
         scores = []
         spw = params.pop('scale_pos_weight', scale_pos_wt)
@@ -973,44 +1020,47 @@ def _tune_lgbm(X_train, y_train, feature_names, scale_pos_wt, tune_size=300_000)
         params['scale_pos_weight'] = spw
         return np.mean(scores)
 
+    # v19.1: Adaptive SPW range — same logic as XGB
+    _post_smote = scale_pos_wt < 2.5
+    _spw_lo = 1.0 if _post_smote else 2.0
+    _spw_hi = 4.0 if _post_smote else 10.0
+
     if HAS_OPTUNA:
-        print(f"    Optuna Bayesian search (40 trials, 3-fold CV, metric={THRESHOLD_METRIC})...")
+        print(f"    Optuna Bayesian search (20 trials, 3-fold CV, metric={THRESHOLD_METRIC}, SPW [{_spw_lo:.0f}-{_spw_hi:.0f}])...")
         def objective(trial):
             params = {
-                'num_leaves': trial.suggest_int('num_leaves', 31, 127),
-                'max_depth': trial.suggest_int('max_depth', 5, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.15, log=True),
+                'num_leaves': trial.suggest_int('num_leaves', 31, 95),
+                'max_depth': trial.suggest_int('max_depth', 4, 8),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.15, log=True),
                 'subsample': trial.suggest_float('subsample', 0.65, 0.95),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.9),
-                'min_child_samples': trial.suggest_int('min_child_samples', 20, 100),
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 5.0, log=True),
-                'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 10.0, log=True),
-                'scale_pos_weight': trial.suggest_float('scale_pos_weight', 1.5, 8.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.85),
+                'min_child_samples': trial.suggest_int('min_child_samples', 30, 150),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 15.0, log=True),
+                'scale_pos_weight': trial.suggest_float('scale_pos_weight', _spw_lo, _spw_hi),
             }
             return _eval_params(params)
         study = optuna.create_study(
             direction='maximize',
             sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE + 1),
         )
-        study.optimize(objective, n_trials=40, show_progress_bar=True)
+        study.optimize(objective, n_trials=20, show_progress_bar=True)
         return study.best_params, study.best_value
     else:
-        print(f"    Grid search fallback (18 combos, 3-fold CV, metric={THRESHOLD_METRIC})...")
+        print(f"    Grid search fallback (12 combos, 3-fold CV, metric={THRESHOLD_METRIC}, SPW [{_spw_lo:.0f}-{_spw_hi:.0f}])...")
         base_params = [
-            {'num_leaves': 63, 'max_depth': 6, 'learning_rate': 0.05, 'subsample': 0.85,
-             'colsample_bytree': 0.75, 'min_child_samples': 30, 'reg_alpha': 0.1, 'reg_lambda': 1.0},
-            {'num_leaves': 63, 'max_depth': 7, 'learning_rate': 0.03, 'subsample': 0.85,
-             'colsample_bytree': 0.7, 'min_child_samples': 50, 'reg_alpha': 0.3, 'reg_lambda': 2.0},
-            {'num_leaves': 127, 'max_depth': 8, 'learning_rate': 0.03, 'subsample': 0.8,
-             'colsample_bytree': 0.65, 'min_child_samples': 50, 'reg_alpha': 0.5, 'reg_lambda': 3.0},
-            {'num_leaves': 127, 'max_depth': 9, 'learning_rate': 0.02, 'subsample': 0.8,
-             'colsample_bytree': 0.6, 'min_child_samples': 70, 'reg_alpha': 0.8, 'reg_lambda': 4.0},
-            {'num_leaves': 63, 'max_depth': 6, 'learning_rate': 0.05, 'subsample': 0.9,
-             'colsample_bytree': 0.8, 'min_child_samples': 30, 'reg_alpha': 0.1, 'reg_lambda': 1.0},
-            {'num_leaves': 95, 'max_depth': 7, 'learning_rate': 0.04, 'subsample': 0.85,
-             'colsample_bytree': 0.7, 'min_child_samples': 40, 'reg_alpha': 0.2, 'reg_lambda': 1.5},
+            {'num_leaves': 63, 'max_depth': 5, 'learning_rate': 0.05, 'subsample': 0.85,
+             'colsample_bytree': 0.75, 'min_child_samples': 50, 'reg_alpha': 0.3, 'reg_lambda': 2.0},
+            {'num_leaves': 63, 'max_depth': 6, 'learning_rate': 0.03, 'subsample': 0.85,
+             'colsample_bytree': 0.7, 'min_child_samples': 70, 'reg_alpha': 0.5, 'reg_lambda': 3.0},
+            {'num_leaves': 95, 'max_depth': 7, 'learning_rate': 0.03, 'subsample': 0.8,
+             'colsample_bytree': 0.65, 'min_child_samples': 70, 'reg_alpha': 0.5, 'reg_lambda': 3.0},
+            {'num_leaves': 63, 'max_depth': 6, 'learning_rate': 0.04, 'subsample': 0.85,
+             'colsample_bytree': 0.75, 'min_child_samples': 50, 'reg_alpha': 0.3, 'reg_lambda': 2.0},
         ]
-        spw_candidates = [3.0, 4.0, 5.0]
+        # v19.1: SPW adaptive
+        _mid = (_spw_lo + _spw_hi) / 2
+        spw_candidates = [round(_spw_lo, 1), round(_mid, 1), round(_spw_hi, 1)]
         param_grid = []
         for bp in base_params:
             for spw_val in spw_candidates:
@@ -1422,11 +1472,12 @@ def plot_all_charts(
 def train_model():
     ts = time.time()
     print("\n" + "═"*70)
-    print("  STACKING ENSEMBLE TRAINING PIPELINE v16.0")
+    print("  STACKING ENSEMBLE TRAINING PIPELINE v19.1")
     print("  Nhánh 1: WOE + LR → Scorecard (IV-filtered features)")
-    print("  Nhánh 2: Full Data → 39 Features → XGBoost (Deep HP + SPW)")
-    print("  Nhánh 3: Full Data → 39 Features → LightGBM (GOSS + SPW)")
-    print("  Stacking: Meta-LR(SC, XGB, LGBM) → Acc-Weighted threshold → Isotonic → PD")
+    print("  Nhánh 2: Full Data → ALL Features → XGBoost (Tuned HP + SPW)")
+    print("  Nhánh 3: Full Data → ALL Features → LightGBM (GOSS + SPW)")
+    print("  Resampling: SMOTE + RandomUnderSampler (imbalance handling)")
+    print("  Stacking: Meta-LR(SC, XGB, LGBM) → F1-Optimized threshold → Isotonic → PD")
     print("═"*70)
 
     os.makedirs(MODEL_DIR, exist_ok=True)
@@ -1434,7 +1485,7 @@ def train_model():
 
     # ── Step 1: Load & clean ──
     print(f"\n[1/10] Loading & cleaning data...")
-    df = load_and_clean_data(ACCEPTED_CSV, REJECTED_CSV, CHART_DIR)
+    df = load_and_clean_data(ACCEPTED_CSV, chart_dir=CHART_DIR)
     X = df[FEATURE_NAMES].values.astype(np.float64)
     y = df["is_default"].values.astype(np.int32)
     del df; gc.collect()
@@ -1463,16 +1514,28 @@ def train_model():
         print(f"  Before resampling: {n_train:,} samples | default rate: {y_train.mean():.4f}")
         try:
             if n_train > SMOTE_MAX_SAMPLES:
-                print(f"  Dataset > {SMOTE_MAX_SAMPLES:,} → using RandomUnderSampler (fast O(n))")
+                # v19: Two-stage: first undersample majority, then BorderlineSMOTE for quality
+                print(f"  Dataset > {SMOTE_MAX_SAMPLES:,} → Stage 1: RandomUnderSampler to {SMOTE_MAX_SAMPLES:,}")
                 rus = RandomUnderSampler(
                     sampling_strategy=SMOTE_SAMPLING_STRATEGY,
                     random_state=RANDOM_STATE,
                 )
                 X_train_raw, y_train = rus.fit_resample(X_train_raw, y_train)
+                # Stage 2: BorderlineSMOTE to boost minority at boundary (NOT to 50/50!)
+                minority_ratio = y_train.mean()
+                target_ratio = SMOTE_TARGET_MINORITY / (1 - SMOTE_TARGET_MINORITY)  # e.g. 0.35→0.538
+                if minority_ratio < SMOTE_TARGET_MINORITY:
+                    print(f"  Stage 2: BorderlineSMOTE ({minority_ratio:.3f} → target {SMOTE_TARGET_MINORITY:.2f})")
+                    bsmote = BorderlineSMOTE(
+                        sampling_strategy=target_ratio, random_state=RANDOM_STATE, k_neighbors=5,
+                    )
+                    X_train_raw, y_train = bsmote.fit_resample(X_train_raw, y_train)
+                else:
+                    print(f"  Stage 2: Skipped (minority={minority_ratio:.3f} already ≥ {SMOTE_TARGET_MINORITY:.2f})")
             else:
-                print(f"  Dataset ≤ {SMOTE_MAX_SAMPLES:,} → using SMOTE-Tomek (high quality)")
+                print(f"  Dataset ≤ {SMOTE_MAX_SAMPLES:,} → using BorderlineSMOTE-Tomek (high quality)")
                 smote_tomek = SMOTETomek(
-                    smote=SMOTE(sampling_strategy=SMOTE_SAMPLING_STRATEGY, random_state=RANDOM_STATE, k_neighbors=5),
+                    smote=BorderlineSMOTE(sampling_strategy=SMOTE_SAMPLING_STRATEGY, random_state=RANDOM_STATE, k_neighbors=5),
                     tomek=TomekLinks(sampling_strategy='majority'),
                     random_state=RANDOM_STATE,
                 )
@@ -1621,7 +1684,7 @@ def train_model():
     # ── Step 7: Stacking Meta-Learner (SC + XGB + LGBM → LR) ──
     # OOF (Out-of-Fold) predictions for meta-features to avoid overfitting
     print(f"\n[7/10] Building Stacking Meta-Learner (OOF predictions → LogisticRegression)...")
-    n_meta_folds = 5
+    n_meta_folds = N_FOLDS  # v19: use N_FOLDS (3) for speed
     kf_meta = StratifiedKFold(n_splits=n_meta_folds, shuffle=True, random_state=RANDOM_STATE + 200)
 
     # Initialize OOF arrays
@@ -1658,7 +1721,7 @@ def train_model():
             _itr2, _ival2 = next(_inner2.split(X_train_scaled[meta_tr], y_train[meta_tr]))
             lgbm_fold.fit(X_train_scaled[meta_tr][_itr2], y_train[meta_tr][_itr2],
                           eval_set=[(X_train_scaled[meta_tr][_ival2], y_train[meta_tr][_ival2])],
-                          callbacks=[lgb.early_stopping(150, verbose=False)])
+                          callbacks=[lgb.early_stopping(80, verbose=False)])
             oof_lgbm[meta_val] = lgbm_fold.predict_proba(X_train_scaled[meta_val])[:, 1]
             del lgbm_fold
 
@@ -1896,8 +1959,8 @@ def train_model():
     del test_export; gc.collect()
 
     metadata = {
-        "version": "17.0.0",
-        "architecture": "STACKING v17.0 (SC(IV) + XGB(ALL47) + LGBM(ALL47,AUC) → Meta-LR + AccWeighted + Isotonic)",
+        "version": "19.1.0",
+        "architecture": "STACKING v19.1 (SC(IV) + XGB(ALL) + LGBM(ALL) → Meta-LR + SMOTE(35%) + Optuna + F1-Optimized + Isotonic)",
         "branch_1_scorecard": {
             "type": "WOE + LogisticRegressionCV",
             "woe_bins": WOE_BINS,
@@ -1947,7 +2010,7 @@ def train_model():
         },
         "smote": {
             "applied": smote_applied,
-            "method": "SMOTETomek" if smote_applied else "none",
+            "method": "RUS+BorderlineSMOTE" if smote_applied else "none",
             "sampling_strategy": SMOTE_SAMPLING_STRATEGY if smote_applied else None,
         },
         "feature_selection": {
@@ -2148,6 +2211,13 @@ class CreditScorer:
             canon = self.FEATURE_ALIASES.get(k, k)
             resolved[canon] = v
 
+        # Auto-compute grade/sub_grade from credit_score as INPUT features (v18)
+        # credit_score is NOT a model feature — it’s converted to grade_enc + sub_grade_enc
+        _cs_val = resolved.get("credit_score", 600)
+        _grade, _sub_grade, _grade_enc_v, _sub_grade_enc_v = credit_score_to_grade_subgrade(_cs_val)
+        resolved.setdefault("grade_enc", _grade_enc_v)
+        resolved.setdefault("sub_grade_enc", _sub_grade_enc_v)
+
         # Auto-compute interaction features from base features (v12)
         mi = resolved.get("monthly_income", 0)
         mp = resolved.get("monthly_pay", 0)
@@ -2171,17 +2241,17 @@ class CreditScorer:
         abd = resolved.get("active_bad_debts", 0)
         bk = resolved.get("bankruptcies", 0)
         col12 = resolved.get("collections_12m", 0)
-        cs = resolved.get("credit_score", 600)
         rup = resolved.get("revolving_util_percent", 50)
         dti = resolved.get("dti", 15)
         tlh = resolved.get("total_loans_history", 10)
         te = resolved.get("term_enc", 36)
         lti = resolved.get("loan_to_income", 0.2)
+        sge = resolved.get("sub_grade_enc", 17)
         resolved.setdefault("income_per_loan", mi / (al + 1))
         resolved.setdefault("risk_accumulation", abd + 2 * bk + 3 * sd24 + d2y + col12)
         resolved.setdefault("term_loan_risk", (te / 36) * lti)
         resolved.setdefault("dti_squared", (dti / 100) ** 2)
-        resolved.setdefault("score_utilization", cs * (1 - rup / 150))
+        resolved.setdefault("score_utilization", sge * (1 - rup / 150))
         annual_inc = mi * 12 if mi * 12 > 0 else 1
         resolved.setdefault("installment_income_term", mp * te / annual_inc)
         resolved.setdefault("delinquency_rate", (d2y + acd) / (tlh + 1))
@@ -2255,6 +2325,8 @@ class CreditScorer:
         return {
             "ai_risk_score": score,
             "default_probability": round(pd_cal, 6),
+            "input_grade": _grade,
+            "input_sub_grade": _sub_grade,
             "is_default_predicted": is_default,
             "threshold": self.optimal_threshold,
             "components": {
@@ -2278,7 +2350,8 @@ if __name__ == "__main__":
     print("\n  Quick sanity check (CreditScorer)...")
     scorer = CreditScorer(MODEL_DIR)
     test_features = {
-        "credit_score": 700, "capital": 200_000_000,
+        "credit_score": 700,  # API input → auto-converted to grade_enc + sub_grade_enc
+        "capital": 200_000_000,
         "monthly_income": 30_000_000, "monthly_pay": 5_000_000,
         "revolving_balance": 10_000_000, "total_current_balance": 50_000_000,
         "dti": 15.0, "revolving_util_percent": 30.0,
