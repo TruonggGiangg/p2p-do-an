@@ -298,6 +298,36 @@ export class FineractSavingsService extends FineractBaseService {
     }
 
     /**
+     * Deposit to a savings account (used for loan disbursement to borrower wallet)
+     * POST /savingsaccounts/{savingsId}/transactions?command=deposit
+     */
+    async depositToSavings(
+        savingsId: number,
+        amount: number,
+        note: string = 'Loan disbursement deposit',
+    ): Promise<{ transactionId: number }> {
+        try {
+            this.logger.log(`[depositToSavings] savingsId=${savingsId} amount=${amount}`);
+            const response = await this.client.post(
+                `/savingsaccounts/${savingsId}/transactions?command=deposit`,
+                {
+                    transactionDate: this.getTodayFormatted('iso'),
+                    transactionAmount: amount,
+                    paymentTypeId: 1,
+                    dateFormat: 'yyyy-MM-dd',
+                    locale: 'en',
+                    note,
+                },
+            );
+            const txId = response.data.resourceId || response.data.savingsId;
+            this.logger.log(`[depositToSavings] SUCCESS transactionId=${txId}`);
+            return { transactionId: txId };
+        } catch (error: any) {
+            this.handleError(error, `Failed to deposit ${amount} to savings ${savingsId}`);
+        }
+    }
+
+    /**
      * Get Savings Account Transactions
      */
     async getSavingsAccountTransactions(

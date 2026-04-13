@@ -173,8 +173,12 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
             <View style={styles.standardContent}>
                 <View style={styles.leftRow}>
                     {showBack && navigation.canGoBack() && (
-                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                            <MaterialCommunityIcons name="chevron-left" size={28} color={theme.colors.textPrimary} />
+                        <TouchableOpacity 
+                            onPress={() => navigation.goBack()} 
+                            style={styles.backButton}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.textPrimary} />
                         </TouchableOpacity>
                     )}
                     {title && (
@@ -184,7 +188,9 @@ export const BinanceHeader: React.FC<BinanceHeaderProps> = ({
                 <View style={styles.rightActions}>
                     {showThemeToggle && <ThemeToggleButton />}
                     {rightComponents || (
-                        <TouchableOpacity>
+                        <TouchableOpacity
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
                             <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.textPrimary} />
                         </TouchableOpacity>
                     )}

@@ -473,6 +473,17 @@ class InvestService {
     }>("/api/digital-signature/certificates");
     return response.data.data.certificates ?? [];
   }
+
+  /**
+   * Ký hợp đồng đầu tư qua chế độ DEV_MODE (bỏ qua SmartCA)
+   */
+  async devSignContract(contractId: string): Promise<any> {
+    const response = await api.post<{
+      statusCode: number;
+      data: any;
+    }>("/api/digital-signature/dev-sign", { contractId });
+    return response.data.data;
+  }
 }
 
 export const investService = new InvestService();

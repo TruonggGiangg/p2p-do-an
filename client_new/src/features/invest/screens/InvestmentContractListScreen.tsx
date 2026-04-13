@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   countBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
   countText: { fontSize: 14, fontWeight: '700' },
-  listContent: { padding: 16, paddingBottom: 32 },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   card: {
     borderRadius: 16, padding: 16, marginBottom: 12,

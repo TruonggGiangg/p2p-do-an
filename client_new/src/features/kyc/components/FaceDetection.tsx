@@ -14,6 +14,7 @@ import {
     Vibration,
 } from 'react-native';
 import { Camera, CameraView, CameraType, PermissionStatus } from 'expo-camera';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -269,13 +270,15 @@ const FaceDetection: React.FC = () => {
             <View style={styles.overlay}>
                 {/* Glassmorphism Header */}
                 <BlurView intensity={Platform.OS === 'ios' ? 20 : 100} tint={isDark ? 'dark' : 'light'} style={styles.headerGlass}>
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                            <Ionicons name="chevron-back" size={28} color={isDark ? '#fff' : '#000'} />
-                        </TouchableOpacity>
-                        <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>Xác thực khuôn mặt</Text>
-                        <View style={{ width: 44 }} />
-                    </View>
+                    <SafeAreaView edges={['top']}>
+                        <View style={styles.header}>
+                            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                                <Ionicons name="chevron-back" size={28} color={isDark ? '#fff' : '#000'} />
+                            </TouchableOpacity>
+                            <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>Xác thực khuôn mặt</Text>
+                            <View style={{ width: 44 }} />
+                        </View>
+                    </SafeAreaView>
                 </BlurView>
 
                 <Animated.View style={[styles.mainContent, { opacity: fadeAnim }]}>
@@ -337,7 +340,7 @@ const FaceDetection: React.FC = () => {
                             {status === 'waiting' && (
                                 <TouchableOpacity style={[styles.startButton, { backgroundColor: c.primary }]} onPress={startCountdown}>
                                     <Text style={styles.startButtonText}>Bắt đầu quét</Text>
-                                    <Ionicons name="scan-outline" size={22} color="#000" />
+                                    <Ionicons name="scan-outline" size={22} color="#fff" />
                                 </TouchableOpacity>
                             )}
                             {status === 'completed' && resultStatus === 'failed' && (
@@ -368,7 +371,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.45)',
     },
     headerGlass: {
-        paddingTop: Platform.OS === 'ios' ? 50 : 20,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: 'rgba(255,255,255,0.1)',
     },
@@ -487,7 +489,7 @@ const styles = StyleSheet.create({
         elevation: 6,
     },
     startButtonText: {
-        color: '#000',
+        color: '#fff',
         fontSize: 16,
         fontWeight: '700',
         fontFamily: 'Poppins_700Bold',

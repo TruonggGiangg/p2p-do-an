@@ -192,6 +192,17 @@ export class InvestmentContract extends Document {
 
   @Prop({ default: 0 })
   totalInterestReceived: number;
+
+  // ── Payment Status (Fineract transfer + FD) ──
+  @Prop({
+    type: String,
+    enum: ['completed', 'transfer_failed', 'partial_fd_failed', 'pending'],
+    default: 'pending',
+  })
+  paymentStatus: string;
+
+  @Prop({ required: false, default: null })
+  paymentError: string;
 }
 
 export const InvestmentContractSchema = SchemaFactory.createForClass(InvestmentContract);

@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { authStorage, authEvents, AuthEvent } from '../core';
 import { authAPI } from '../features/auth/api/auth.api';
 import { setSmartOTPUserId, clearSmartOTPUserId, migrateFromLegacyKeys } from '../services/smart-otp.service';
@@ -39,6 +40,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             authEvents.removeListener(AuthEvent.LOGOUT, handleLogout);
         };
     }, []);
+
+    // Foreground refresh
+    const appState = useRef(AppState.currentState);
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', nextAppState => {
+            if (
+                appState.current.match(/inactive|background/) &&
+                nextAppState === 'active'
+            ) {
+                if (user) {
+                    refreshUser().catch(() => {});
+                }
+            }
+            appState.current = nextAppState;
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, [user]);
 
     const loadStoredAuthData = async () => {
         try {

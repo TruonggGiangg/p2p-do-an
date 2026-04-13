@@ -12,10 +12,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, Pagination } from '../../../components';
+import { BinanceHeader, FintechPagination } from '../../../components';
 import investService, { AvailableLoanItem } from '../services/invest.service';
 import FilterBar from '../components/FilterBar';
 import FilterBottomSheet from '../components/FilterBottomSheet';
+import SortBottomSheet from '../components/SortBottomSheet';
 import { useFilterState, FilterState } from '../hooks/useFilterState';
 
 type SortType = 'newest' | 'oldest' | 'capital_desc' | 'capital_asc' | 'rate_desc' | 'return_desc';
@@ -120,278 +121,106 @@ export default function AvailableLoansScreen() {
   const renderItem = ({ item }: { item: AvailableLoanItem }) => {
     const annualRate = (item.monthlyRatePercent * 12).toFixed(1);
     const riskLevel = item.aiScore?.riskLevel || '';
-    const tier = item.aiScore?.tier || '';
     const grade = item.aiScore?.grade || '';
+    
+    // Progress calculation logic
     const totalNotes = item.totalNotes || Math.ceil(item.capital / 500000);
-    const nodeMatch = item.nodeMatch || 0;
-    const invested = item.investedNotes || 0;
-    const totalClaimed = nodeMatch + invested;
-    const available = Math.max(0, totalNotes - totalClaimed);
+    const totalClaimed = (item.nodeMatch || 0) + (item.investedNotes || 0);
     const pct = totalNotes > 0 ? Math.min(100, Math.round((totalClaimed / totalNotes) * 100)) : 0;
-    const matchPct = totalNotes > 0 ? Math.min(100, Math.round((totalClaimed / totalNotes) * 100)) : 0;
-
-    // Map tier and risk to theme tokens
-    const tierColor = { Platinum: theme.colors.textMuted, Gold: theme.colors.warning, Silver: theme.colors.textSecondary, Basic: theme.colors.textDim }[tier] || theme.colors.textMuted;
-    const riskColor = { LOW: theme.colors.success, MEDIUM: theme.colors.warning, HIGH: theme.colors.error, VERY_HIGH: theme.colors.error }[riskLevel] || theme.colors.textMuted;
-    const statusLabel = item.status === 'disbursed' ? 'Đang vay' : item.status === 'approved' ? 'Chờ giải ngân' : 'Đang xử lý';
-    const statusAccent = item.status === 'disbursed' ? theme.colors.success : theme.colors.primary;
-    const statusBackground = item.status === 'disbursed' ? theme.colors.successGlass : theme.colors.primaryGlass;
-
-    // Compute AI repayment probability display
+    
+    // Repayment Probability
     const repayProb = item.aiScore?.creditScore ? Math.min(99.9, 80 + (item.aiScore.creditScore / 50)).toFixed(1) : null;
 
     return (
       <View style={[styles.card, { backgroundColor: theme.colors.backgroundSecondary }]}>
-
-        {/* ── Header Row ── */}
+        {/* ── Header: Purpose & Rate ── */}
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
+            <View style={styles.leftHeaderPart}>
+              <Text style={[styles.editorialLabel, { color: theme.colors.textSecondary }]}>MỤC ĐÍCH VAY</Text>
+              <Text style={[styles.cardTitleText, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+                {item.willing || 'Vay tiêu dùng cá nhân'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.rightHeaderPart}>
+            <Text style={[styles.editorialLabel, { color: theme.colors.primary }]}>LÃI SUẤT</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={[styles.rateValueText, { color: theme.colors.primary }]}>
+                {item.fdMonthlyRate || item.monthlyRatePercent}%
+              </Text>
+              <Text style={[styles.rateUnitText, { color: theme.colors.textSecondary }]}>/tháng</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Premium Metrics Grid (3 columns) ── */}
+        <View style={styles.premiumMetricsGrid}>
+          <View style={styles.premiumMetricCell}>
+            <Text style={[styles.editorialMiniLabel, { color: theme.colors.textSecondary }]}>KHOẢN VAY</Text>
+            <Text style={[styles.premiumMetricValue, { color: theme.colors.textPrimary }]}>{fmt(item.capital / 1000000).replace(' ₫', '')}M</Text>
+          </View>
+          <View style={styles.premiumMetricCell}>
+            <Text style={[styles.editorialMiniLabel, { color: theme.colors.textSecondary }]}>KỲ HẠN</Text>
+            <Text style={[styles.premiumMetricValue, { color: theme.colors.textPrimary }]}>{item.periodMonth} Tháng</Text>
+          </View>
+          <View style={styles.premiumMetricCell}>
+            <Text style={[styles.editorialMiniLabel, { color: theme.colors.textSecondary }]}>HÀNG THÁNG</Text>
+            <Text style={[styles.premiumMetricValue, { color: theme.colors.textPrimary }]}>~{fmt(item.entirelyPay / (item.periodMonth || 1) / 1000000).replace(' ₫', '')}M</Text>
+          </View>
+        </View>
+
+        {/* ── AI Insight Banner ── */}
+        {item.aiScore && (
+          <View style={[styles.aiInsightBanner, { backgroundColor: theme.colors.surfaceLight || '#1E2D26' }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.aiTitle, { color: theme.colors.primary }]}>
+                Xác suất hoàn sớm: {repayProb}%
+              </Text>
+              <Text style={[styles.aiSubtitle, { color: theme.colors.textSecondary }]}>
+                Hạng {grade || 'A'} ({riskLevel === 'LOW' ? 'Rủi ro thấp' : 'Ổn định'})
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="shield-check-outline" size={20} color={theme.colors.primary} />
+          </View>
+        )}
+
+        {/* ── Progress Section ── */}
+        <View style={styles.modernProgressSection}>
+          <View style={styles.progressLabelRow}>
+            <Text style={[styles.modernProgressLabel, { color: theme.colors.textSecondary }]}>Tiến độ gọi vốn</Text>
+            <Text style={[styles.modernProgressValue, { color: theme.colors.primary }]}>{pct}%</Text>
+          </View>
+          <View style={[styles.modernProgressBarTrack, { backgroundColor: theme.colors.border + '30' }]}>
             <LinearGradient
-              colors={[theme.colors.primary + '30', theme.colors.success + '18']}
+              colors={[theme.colors.primary, theme.colors.primary + 'CC']}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.purposeIcon}
+              end={{ x: 1, y: 0 }}
+              style={[styles.modernProgressBarFill, { width: `${pct}%` }]}
+            />
+          </View>
+        </View>
+
+        {/* ── Quick Stats Footer ── */}
+        <View style={styles.cardFooter}>
+          <Text style={[styles.idText, { color: theme.colors.textMuted }]}>
+            Mã #{item._id?.slice(-4)?.toUpperCase()} • {item.borrowerSignedVerified ? '✅ Đã xác minh' : 'Đã thẩm định'}
+          </Text>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('InvestmentFlow', { loan: item })}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[theme.colors.primary, '#1E3A2F']} // Lime to Deep Emerald gradient for pop
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryActionBtn}
             >
-              <MaterialCommunityIcons name="file-document-outline" size={20} color={theme.colors.primary} />
+              <MaterialCommunityIcons name="lightning-bolt" size={18} color="#FFF" />
+              <Text style={[styles.primaryActionText, { color: '#FFF' }]}>ĐẦU TƯ NGAY</Text>
             </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.cardTitle, { color: theme.colors.text }]} numberOfLines={1}>
-                {item.willing || 'Chưa xác định mục đích'}
-              </Text>
-              <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>
-                Mã #{item._id?.slice(-4)?.toUpperCase()} • Đã thẩm định
-              </Text>
-              {item.borrowerSignedVerified && (
-                <View style={[styles.borrowerVerifiedBadge, { backgroundColor: theme.colors.success + '15' }]}>
-                  <MaterialCommunityIcons name="shield-check" size={12} color={theme.colors.success} />
-                  <Text style={[styles.borrowerVerifiedText, { color: theme.colors.success }]}>Đã ký xác minh</Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <View style={[styles.statusBadge, {
-            backgroundColor: statusBackground,
-          }]}>
-            <View style={[styles.statusDot, {
-              backgroundColor: statusAccent,
-            }]} />
-            <Text style={[styles.statusText, {
-              color: statusAccent,
-            }]}>
-              {statusLabel}
-            </Text>
-          </View>
+          </TouchableOpacity>
         </View>
-
-        {/* ── Key Metrics 2x2 Grid — tonal elevated surface ── */}
-        <View style={[styles.metricsGrid, { backgroundColor: theme.colors.surfaceLight }]}>
-          <View style={styles.metricItem}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>GIÁ TRỊ KHOẢN VAY</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{fmt(item.capital)}</Text>
-          </View>
-          <View style={[styles.metricItem, styles.metricItemRight]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>LỢI SUẤT</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.primary }]}>
-              {item.fdMonthlyRate || item.monthlyRatePercent}%
-            </Text>
-            <Text style={[styles.metricSubValue, { color: theme.colors.primary }]}>({item.fdInterestRate || annualRate}%/năm)</Text>
-          </View>
-          <View style={[styles.metricItem, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.textMuted + '15' }]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>KỲ HẠN ĐẦU TƯ</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-              <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{item.periodMonth}</Text>
-              <Text style={[styles.metricUnit, { color: theme.colors.textSecondary }]}>tháng</Text>
-            </View>
-          </View>
-          <View style={[styles.metricItem, styles.metricItemRight, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.textMuted + '15' }]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>TỔNG THU NHẬN</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{fmt(item.entirelyPay)}</Text>
-          </View>
-        </View>
-
-        {/* ── AI Score Badges — Glassmorphism ── */}
-        {item.aiScore && (
-          <View style={styles.badgeRow}>
-            {grade ? (
-              <LinearGradient
-                colors={[theme.colors.primary + '25', theme.colors.primary + '0D']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.badge}
-              >
-                <MaterialCommunityIcons name="shield-star" size={12} color={theme.colors.primary} />
-                <Text style={[styles.badgeText, { color: theme.colors.primary }]}>
-                  {grade}{item.aiScore.subGrade ? ` (${item.aiScore.subGrade})` : ''}
-                </Text>
-              </LinearGradient>
-            ) : null}
-            {tier ? (
-              <LinearGradient
-                colors={[tierColor + '25', tierColor + '0D']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.badge}
-              >
-                <MaterialCommunityIcons name="trophy" size={11} color={tierColor} />
-                <Text style={[styles.badgeText, { color: tierColor }]}>{tier}</Text>
-              </LinearGradient>
-            ) : null}
-            {riskLevel ? (
-              <LinearGradient
-                colors={[riskColor + '25', riskColor + '0D']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.badge}
-              >
-                <Ionicons name={riskLevel === 'LOW' ? 'shield-checkmark' : 'warning'} size={11} color={riskColor} />
-                <Text style={[styles.badgeText, { color: riskColor }]}>
-                  {riskLevel === 'LOW' ? 'An toàn' : riskLevel === 'MEDIUM' ? 'Trung bình' : 'Rủi ro cao'}
-                </Text>
-              </LinearGradient>
-            ) : null}
-          </View>
-        )}
-
-        {/* ── Delinquency / Risk Warning — Red alert for investors ── */}
-        {item.borrowerDelinquencyWarning && item.borrowerDelinquencyWarning.debtGroup >= 2 && (
-          <View style={[styles.warningBanner, { backgroundColor: theme.colors.error + '18', borderColor: theme.colors.error + '40' }]}>
-            <Ionicons name="alert-circle" size={16} color={theme.colors.error} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.warningTitle, { color: theme.colors.error }]}>
-                Cảnh báo nợ xấu — Nhóm {item.borrowerDelinquencyWarning.debtGroup}
-              </Text>
-              <Text style={[styles.warningDesc, { color: theme.colors.error + 'CC' }]}>
-                Quá hạn {item.borrowerDelinquencyWarning.delinquentDays} ngày • Dư nợ: {fmt(item.borrowerDelinquencyWarning.overdueAmount)}
-              </Text>
-            </View>
-          </View>
-        )}
-        {!item.borrowerDelinquencyWarning && item.aiScore && (item.aiScore.creditScore > 0 && item.aiScore.creditScore < 431) && (
-          <View style={[styles.warningBanner, { backgroundColor: theme.colors.warning + '15', borderColor: theme.colors.warning + '35' }]}>
-            <Ionicons name="warning" size={14} color={theme.colors.warning} />
-            <Text style={[styles.warningDesc, { color: theme.colors.warning }]}>
-              Điểm tín dụng thấp — Rủi ro đầu tư cao hơn bình thường
-            </Text>
-          </View>
-        )}
-
-        {/* ── AI Insight Cards — Stitch "Bioluminescent" tonal sections ── */}
-        {item.aiScore && (
-          <View style={styles.insightRow}>
-            <View style={[styles.insightCard, { backgroundColor: theme.colors.primary + '0D' }]}>
-              <MaterialCommunityIcons name="shield-check" size={16} color={theme.colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.insightTitle, { color: theme.colors.primary }]}>Bảo toàn vốn</Text>
-                <Text style={[styles.insightDesc, { color: theme.colors.textMuted }]}>Ký quỹ hợp đồng thông minh</Text>
-              </View>
-            </View>
-            {repayProb && (
-              <View style={[styles.insightCard, { backgroundColor: theme.colors.success + '0D' }]}>
-                <MaterialCommunityIcons name="chart-timeline-variant" size={16} color={theme.colors.success} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.insightTitle, { color: theme.colors.success }]}>{repayProb}%</Text>
-                  <Text style={[styles.insightDesc, { color: theme.colors.textMuted }]}>Tỷ lệ hoàn vốn</Text>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ── Investment Progress — Stitch Donut ── */}
-        <View style={[styles.progressSection, { backgroundColor: theme.colors.surfaceLight }]}>
-          {/* Header */}
-          <View style={styles.progressHeader}>
-            <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>TIẾN ĐỘ HUY ĐỘNG</Text>
-            <Text style={[styles.progressValue, { color: theme.colors.primary }]}>
-              {totalClaimed}/{totalNotes} phần
-            </Text>
-          </View>
-          {/* Divider */}
-          <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '15', marginBottom: 12 }} />
-
-          {/* Donut Ring (left) + Legend (right) */}
-          {(() => {
-            const SIZE = 66;
-            const STROKE = 6;
-            const R = (SIZE - STROKE) / 2;
-            const C = 2 * Math.PI * R;
-            const investedPct = totalNotes > 0 ? invested / totalNotes : 0;
-            const matchPctVal = totalNotes > 0 ? nodeMatch / totalNotes : 0;
-            const availablePct = 1 - investedPct - matchPctVal;
-            const pctNum = totalNotes > 0 ? Math.round(((invested + nodeMatch) / totalNotes) * 100) : 0;
-
-            const gap = 0.01;
-            const investedLen = investedPct * C;
-            const matchLen = matchPctVal * C;
-            const availableLen = Math.max(0, availablePct * C - (investedPct > 0 ? gap * C : 0) - (matchPctVal > 0 ? gap * C : 0));
-            const offset2 = investedLen + gap * C;
-            const offset3 = offset2 + matchLen + gap * C;
-
-            const Svg = require('react-native-svg').default;
-            const Circle = require('react-native-svg').Circle;
-
-            return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                {/* Ring */}
-                <View style={{ width: SIZE, height: SIZE }}>
-                  <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-                    <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.textMuted + '15'} strokeWidth={STROKE} fill="none" />
-                    {availableLen > 0 && (
-                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.textMuted + '30'} strokeWidth={STROKE} fill="none"
-                        strokeDasharray={`${availableLen} ${C - availableLen}`} strokeDashoffset={-offset3} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
-                    )}
-                    {matchLen > 0 && (
-                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.warning || '#F0B90B'} strokeWidth={STROKE} fill="none"
-                        strokeDasharray={`${matchLen} ${C - matchLen}`} strokeDashoffset={-offset2} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
-                    )}
-                    {investedLen > 0 && (
-                      <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={theme.colors.success} strokeWidth={STROKE + 1} fill="none"
-                        strokeDasharray={`${investedLen} ${C - investedLen}`} strokeDashoffset={0} strokeLinecap="round" rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`} />
-                    )}
-                  </Svg>
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>{pctNum}%</Text>
-                  </View>
-                </View>
-                {/* Legend */}
-                <View style={{ flex: 1, gap: 0 }}>
-                  <View style={styles.legendRow}>
-                    <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
-                    <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Đã rót vốn</Text>
-                    <Text style={[styles.legendVal, { color: theme.colors.success }]}>{invested}</Text>
-                  </View>
-                  <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '10', marginVertical: 6 }} />
-                  {nodeMatch > 0 && (
-                    <>
-                      <View style={styles.legendRow}>
-                        <View style={[styles.legendDot, { backgroundColor: theme.colors.warning || '#F0B90B' }]} />
-                        <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Giữ chỗ</Text>
-                        <Text style={[styles.legendVal, { color: theme.colors.warning || '#F0B90B' }]}>{nodeMatch}</Text>
-                      </View>
-                      <View style={{ height: 1, backgroundColor: theme.colors.textMuted + '10', marginVertical: 6 }} />
-                    </>
-                  )}
-                  <View style={styles.legendRow}>
-                    <View style={[styles.legendDot, { backgroundColor: theme.colors.textMuted + '50' }]} />
-                    <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Khả dụng</Text>
-                    <Text style={[styles.legendVal, { color: theme.colors.text }]}>{available}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })()}
-        </View>
-
-        {/* ── Action Button — Navigate to Investment Flow ── */}
-        <TouchableOpacity
-          style={[styles.filledBtn, { backgroundColor: theme.colors.primary, flex: undefined }]}
-          onPress={() => navigation.navigate('InvestmentFlow', { loan: item })}
-          disabled={available <= 0}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons name="rocket-launch" size={16} color={theme.colors.onPrimary} />
-          <Text style={[styles.filledBtnText, { color: theme.colors.onPrimary }]}>Đầu tư sinh lời</Text>
-        </TouchableOpacity>
       </View>
     );
   };
@@ -449,28 +278,16 @@ export default function AvailableLoansScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <View>
+              {/* Sort header Row */}
               <View style={styles.sortRow}>
                 <Text style={[styles.sortResultText, { color: theme.colors.textSecondary }]}>
                   {totalCount} khoản vay
                 </Text>
-                <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(true)} activeOpacity={0.7}>
                   <Text style={[styles.sortBtnText, { color: theme.colors.textSecondary }]}>{sortLabel}</Text>
-                  <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.textSecondary} />
+                  <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-              {showSort && (
-                <View style={[styles.sortMenu, { backgroundColor: theme.colors.backgroundSecondary }]}>
-                  {SORT_OPTIONS.map(opt => {
-                    const active = sortType === opt.key;
-                    return (
-                      <TouchableOpacity key={opt.key} style={[styles.sortItem, active && { backgroundColor: theme.colors.primary + '12' }]} onPress={() => onSort(opt.key)}>
-                        <Text style={[styles.sortItemText, { color: active ? theme.colors.primary : theme.colors.text }]}>{opt.label}</Text>
-                        {active && <Ionicons name="checkmark" size={16} color={theme.colors.primary} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
             </View>
           }
           refreshControl={
@@ -482,7 +299,7 @@ export default function AvailableLoansScreen() {
           }
           ListFooterComponent={
             totalPages > 1 ? (
-              <Pagination
+              <FintechPagination
                 mode="page"
                 currentPage={page}
                 totalPages={totalPages}
@@ -502,7 +319,14 @@ export default function AvailableLoansScreen() {
         onReset={resetFilters}
         onClose={() => setFilterSheetVisible(false)}
       />
-
+      {/* ── Sort Bottom Sheet ── */}
+      <SortBottomSheet
+        visible={showSort}
+        options={SORT_OPTIONS}
+        currentSort={sortType}
+        onSelect={onSort}
+        onClose={() => setShowSort(false)}
+      />
 
     </View>
   );
@@ -510,7 +334,7 @@ export default function AvailableLoansScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { padding: 16, paddingBottom: 32 },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Sort row
@@ -528,108 +352,59 @@ const styles = StyleSheet.create({
   filterBadge: { position: 'absolute', top: -4, right: -6, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   filterBadgeText: { fontSize: 9, fontWeight: '700' },
 
-  // Card — Stitch "Bioluminescent Vault" tonal layering
+  // Card — Editorial Premium Style
   card: {
-    borderRadius: 22, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, marginBottom: 16,
-    overflow: 'hidden',
-    shadowColor: '#00110D',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
+    borderRadius: 24, padding: 24, marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)',
+  },
+
+  // Editorial Header
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  leftHeaderPart: { flex: 1, gap: 4 },
+  rightHeaderPart: { alignItems: 'flex-end', gap: 2 },
+  editorialLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  cardTitleText: { fontSize: 18, fontWeight: '700', letterSpacing: -0.2 },
+  rateValueText: { fontSize: 24, fontWeight: '800' },
+  rateUnitText: { fontSize: 12, fontWeight: '500', marginLeft: 2 },
+
+  // Premium Metrics Grid (3 columns)
+  premiumMetricsGrid: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 20, paddingVertical: 12 },
+  premiumMetricCell: { flex: 1, gap: 2 },
+  editorialMiniLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  premiumMetricValue: { fontSize: 16, fontWeight: '700' },
+
+  // AI Insight Banner
+  aiInsightBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, width: '100%', marginBottom: 20 },
+  aiTitle: { fontSize: 12, fontWeight: '700' },
+  aiSubtitle: { fontSize: 10, fontWeight: '600' },
+
+  // Modern Progress
+  modernProgressSection: { width: '100%', gap: 8, marginBottom: 20 },
+  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  modernProgressLabel: { fontSize: 11, fontWeight: '600' },
+  modernProgressValue: { fontSize: 11, fontWeight: '700' },
+  modernProgressBarTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
+  modernProgressBarFill: { height: '100%', borderRadius: 3 },
+
+  // Card Footer
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  idText: { fontSize: 11, fontWeight: '500', flex: 1 },
+  primaryActionBtn: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 16, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    shadowColor: '#CDEA2D',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
     elevation: 8,
   },
-
-  // Gradient accent line at top of card
-  cardAccentLine: { height: 3, width: '100%', marginBottom: 16 },
-
-  // Card Header — Stitch editorial style
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingHorizontal: 2 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  purposeIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
-  cardSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2, letterSpacing: 0.3 },
-  borrowerVerifiedBadge: {
-    marginTop: 6,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  borrowerVerifiedText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-
-  // Metrics Grid — Stitch tonal elevation with generous spacing
-  metricsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    borderRadius: 16, overflow: 'hidden', marginBottom: 14,
-  },
-  metricItem: { width: '50%', paddingVertical: 14, paddingHorizontal: 16 },
-  metricItemRight: {},
-  metricLabel: { fontSize: 10, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase', fontWeight: '600' },
-  metricValue: { fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
-  metricSubValue: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  metricUnit: { fontSize: 12, fontWeight: '500' },
-
-  // Badges — Stitch glassmorphism
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-
-  // Delinquency / Risk Warning Banner
-  warningBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 12, borderWidth: 1, marginBottom: 12,
-  },
-  warningTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
-  warningDesc: { fontSize: 11, fontWeight: '500', marginTop: 1, lineHeight: 16 },
-
-  // AI Insight Cards — Stitch "Bioluminescent" tonal
-  insightRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  insightCard: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
-  },
-  insightTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
-  insightDesc: { fontSize: 10, fontWeight: '500', marginTop: 1 },
-
-  // Progress — Stitch segmented progress bar
-  progressSection: { borderRadius: 16, padding: 14, marginBottom: 16 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  progressLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  progressValue: { fontSize: 13, fontWeight: '700' },
-  // Donut legend (right side)
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legendDot: { width: 6, height: 6, borderRadius: 3 },
-  legendText: { fontSize: 12, fontWeight: '500', flex: 1 },
-  legendVal: { fontSize: 12, fontWeight: '700' },
-
-  // Action buttons — Stitch premium CTA with glow
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 2 },
-  outlineBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    paddingVertical: 14, borderRadius: 14,
-  },
-  outlineBtnText: { fontSize: 14, fontWeight: '700' },
-  filledBtn: {
-    flex: 1.3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    paddingVertical: 14, borderRadius: 14,
-    shadowColor: '#CDEA2D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  filledBtnText: { color: '#0B1F1A', fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
+  primaryActionText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
 
   // Empty
   emptyContainer: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 40 },

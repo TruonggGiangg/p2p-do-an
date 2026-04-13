@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
-import { ModuleRef } from '@nestjs/core';
 import { Model, Types } from 'mongoose';
 import { SmartCAService } from './smartca.service';
 import { DigitalSignature } from './schemas/digital-signature.schema';
@@ -10,8 +11,9 @@ import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { InvestmentContract } from '../invest/schemas/investment-contract.schema';
 import { generateLoanContractHTML } from '../loan/templates/loan-contract.template';
 import { generateInvestmentContractHTML } from '../invest/templates/investment-contract.template';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { InvestPaymentService } from '../invest/invest-payment.service';
 import type { UserPayload } from '../auth/interfaces/auth.interface';
 
 @ApiTags('Digital Signature')
@@ -24,6 +26,7 @@ export class DigitalSignatureController {
   constructor(
     private readonly smartCAService: SmartCAService,
     private readonly moduleRef: ModuleRef,
+    private readonly configService: ConfigService,
     @InjectModel(DigitalSignature.name) private signatureModel: Model<DigitalSignature>,
     @InjectModel(LoanContract.name) private contractModel: Model<LoanContract>,
     @InjectModel(InvestmentContract.name) private investContractModel: Model<InvestmentContract>,
@@ -34,9 +37,20 @@ export class DigitalSignatureController {
       const contract = await this.contractModel.findById(contractMongoId).select('loanId').lean();
       if (!contract?.loanId) return;
 
-      const investPaymentService = this.moduleRef.get('InvestPaymentService', { strict: false }) as any;
-      if (!investPaymentService?.handleFullMatchDisbursement) return;
+      let investPaymentService: InvestPaymentService;
+      try {
+        investPaymentService = this.moduleRef.get(InvestPaymentService, { strict: false });
+      } catch {
+        this.logger.warn('[triggerAutoDisburseIfEligible] InvestPaymentService not available in context');
+        return;
+      }
 
+      if (!investPaymentService?.handleFullMatchDisbursement) {
+        this.logger.warn('[triggerAutoDisburseIfEligible] handleFullMatchDisbursement method not found');
+        return;
+      }
+
+      this.logger.log(`[triggerAutoDisburseIfEligible] 🚀 Triggering auto-disbursement for loanId=${contract.loanId}`);
       investPaymentService.handleFullMatchDisbursement(String(contract.loanId), userId).catch((err: any) => {
         this.logger.warn(`[triggerAutoDisburseIfEligible] Auto-disburse trigger failed: ${err?.message}`);
       });
@@ -402,6 +416,31 @@ export class DigitalSignatureController {
       return investContract;
     }
     return null;
+  }
+
+  @Post('dev-sign')
+  @ApiOperation({ summary: 'Ký DEV MODE (chỉ dành cho development)' })
+  async devSign(@Body() body: { contractId: string }, @CurrentUser() user: UserPayload) {
+    const isDevMode = this.configService.get<boolean>('devMode');
+    if (!isDevMode) {
+      throw new ForbiddenException('Chế độ DEV_MODE không được bật trên máy chủ.');
+    }
+
+    const userId = user._id || (user as any).sub || (user as any).userId;
+    const contract = await this.findContract(body.contractId, userId);
+
+    if (contract.status !== 'pending_signature') {
+      throw new BadRequestException(`Trạng thái hợp đồng không hợp lệ để ký: ${contract.status}`);
+    }
+
+    this.logger.log(`[DEV_MODE] Manual signing contract ${body.contractId} for user ${userId}`);
+    await this.updateContractSigned(contract, 'DEV_MODE_SIGNATURE');
+
+    return {
+      status: 'signed',
+      message: 'Hợp đồng đã được ký thành công qua chế độ DEV_MODE',
+      contractId: body.contractId,
+    };
   }
 
   private async findContract(contractId: string, userId: string): Promise<any> {

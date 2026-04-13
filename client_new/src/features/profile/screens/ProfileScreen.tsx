@@ -22,6 +22,7 @@ import {
     FintechScreenSkeleton,
 } from '../../../components';
 import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
+import CreditScoreGauge from '../components/CreditScoreGauge';
 import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { authAPI } from '../../auth/api/auth.api';
@@ -140,21 +141,25 @@ export default function ProfileScreen() {
         else if (meta.key === 'creditAge') weight = '15%';
 
         return (
-            <View key={meta.key} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
-                        <Text style={{ fontSize: 13, color: c.textSecondary, fontFamily: 'Poppins_600SemiBold' }}>
-                            {meta.label}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: c.textMuted }}>({weight})</Text>
+            <View key={meta.key} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: meta.color + '15', justifyContent: 'center', alignItems: 'center' }}>
+                            <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
+                        </View>
+                        <View>
+                            <Text style={{ fontSize: 13, color: c.textPrimary, fontFamily: 'Poppins_600SemiBold' }}>
+                                {meta.label}
+                            </Text>
+                            <Text style={{ fontSize: 10, color: c.textMuted }}>Trọng số: {weight}</Text>
+                        </View>
                     </View>
-                    <Text style={{ fontSize: 14, fontFamily: 'Poppins_700Bold', color: pColor }}>
+                    <Text style={{ fontSize: 15, fontFamily: 'Poppins_700Bold', color: pColor }}>
                         {Math.round(value)}
                     </Text>
                 </View>
-                <View style={{ height: 6, backgroundColor: isDark ? c.border + '50' : '#F1F5F9', borderRadius: 3 }}>
-                    <View style={{ height: 6, width: `${Math.max(Math.min(value, 100), 2)}%`, backgroundColor: pColor, borderRadius: 3 }} />
+                <View style={{ height: 6, backgroundColor: isDark ? c.border + '40' : '#F1F5F9', borderRadius: 10, overflow: 'hidden' }}>
+                    <View style={{ height: '100%', width: `${Math.max(Math.min(value, 100), 2)}%`, backgroundColor: pColor, borderRadius: 10 }} />
                 </View>
             </View>
         );
@@ -250,10 +255,21 @@ export default function ProfileScreen() {
                         {(user?.userType === 'borrower' || user?.roles?.includes('borrower')) && (
                             <View style={styles.creditSection}>
                                 <View style={styles.creditHeader}>
-                                    <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ĐIỂM TÍN DỤNG</Text>
-                                    <TouchableOpacity style={styles.creditLink} onPress={() => navigation.navigate('CreditScoreDetail')}>
-                                        <Text style={[styles.creditLinkText, { color: c.textPrimary }]}>Chi tiết</Text>
-                                        <MaterialCommunityIcons name="chevron-right" size={16} color={c.textMuted} />
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#18A05815', justifyContent: 'center', alignItems: 'center' }}>
+                                            <MaterialCommunityIcons name="shield-check" size={18} color="#18A058" />
+                                        </View>
+                                        <View>
+                                            <Text style={{ fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: c.textPrimary }}>Điểm tín dụng</Text>
+                                            <Text style={{ fontSize: 11, color: c.textMuted }}>{band.label} • {scoreValue}/750</Text>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity 
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#18A05810', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }} 
+                                        onPress={() => navigation.navigate('CreditScoreDetail')}
+                                    >
+                                        <Text style={{ fontSize: 12, fontFamily: 'Poppins_500Medium', color: '#18A058' }}>Chi tiết</Text>
+                                        <MaterialCommunityIcons name="chevron-right" size={14} color="#18A058" />
                                     </TouchableOpacity>
                                 </View>
 
@@ -268,130 +284,19 @@ export default function ProfileScreen() {
                                     elevation: isDark ? 6 : 3,
                                 }]}>
                                     {/* Component Header */}
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <View>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                <Text style={[styles.creditScoreValue, { color: c.textPrimary }]}>{scoreValue}</Text>
-                                                {recalculating ? (
-                                                    <ActivityIndicator size="small" color={c.primary} style={{ marginLeft: 4 }} />
-                                                ) : (
-                                                    <TouchableOpacity
-                                                        style={{ padding: 4, backgroundColor: c.primary + '15', borderRadius: 8 }}
-                                                        onPress={handleRecalculate}
-                                                    >
-                                                        <MaterialCommunityIcons name="refresh" size={18} color={c.primary} />
-                                                    </TouchableOpacity>
-                                                )}
-                                            </View>
-                                            <Text style={[{ color: c.textMuted, fontSize: 12, fontFamily: 'Poppins_400Regular', marginTop: -4 }]}>
-                                                Cập nhật: {formatDateTime(creditScore?.lastUpdated)}
-                                            </Text>
-                                        </View>
-                                        <View style={[styles.creditBadge, { backgroundColor: band.color + '15', borderColor: band.color + '30', borderWidth: 1 }]}>
-                                            <Text style={[styles.creditBadgeText, { color: band.color }]}>{band.label}</Text>
-                                        </View>
+                                    {/* ── New Gauge Component ── */}
+                                    <View style={{ height: 180, marginTop: 10, marginBottom: -10 }}>
+                                        <CreditScoreGauge 
+                                            score={scoreValue} 
+                                            label={band.label}
+                                            size={200}
+                                            loading={recalculating}
+                                        />
                                     </View>
 
-                                    {/* Segmented Progress bar */}
-                                    <View style={{ marginTop: 24, marginBottom: 8 }}>
-                                        <View style={{ width: '100%', height: 16, position: 'relative' }}>
-                                            {!recalculating && (
-                                                <View style={{ position: 'absolute', bottom: 0, left: `${scoreRatio * 100}%`, marginLeft: -12, zIndex: 10 }}>
-                                                    <MaterialCommunityIcons name="menu-down" size={24} color={isDark ? '#FFFFFF' : '#0F172A'} />
-                                                </View>
-                                            )}
-                                        </View>
-                                        <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' }}>
-                                            <View style={{ backgroundColor: '#EF4444', flex: 1.72 }} />
-                                            <View style={{ backgroundColor: '#F97316', flex: 1.09 }} />
-                                            <View style={{ backgroundColor: '#F59E0B', flex: 1.39 }} />
-                                            <View style={{ backgroundColor: '#84CC16', flex: 1.10 }} />
-                                            <View style={{ backgroundColor: '#22C55E', flex: 0.70 }} />
-                                        </View>
-                                        <View style={{ height: 16, marginTop: 4, width: '100%', position: 'relative' }}>
-                                            <Text style={{ position: 'absolute', left: '0%', fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>150</Text>
-                                            <Text style={{ position: 'absolute', left: '28.6%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>322</Text>
-                                            <Text style={{ position: 'absolute', left: '46.8%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>431</Text>
-                                            <Text style={{ position: 'absolute', left: '70%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>570</Text>
-                                            <Text style={{ position: 'absolute', left: '88.3%', transform: [{ translateX: -8 }], fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>680</Text>
-                                            <Text style={{ position: 'absolute', right: '0%', fontSize: 10, color: c.textMuted, fontFamily: 'Poppins_400Regular' }}>750</Text>
-                                        </View>
-                                    </View>
-
-                                    {/* 5-Factor Breakdown */}
-                                    <View style={{ marginTop: 24, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border + '90' }}>
-                                        <Text style={{ fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: c.textPrimary, marginBottom: 16 }}>
-                                            Phân tích yếu tố tín dụng
-                                        </Text>
-                                        {creditScore?.factors ? (
-                                            <View>
-                                                {FACTOR_META.map(m => renderFactorBar(m, (creditScore.factors as any)[m.key] ?? 0))}
-                                            </View>
-                                        ) : (
-                                            <Text style={{ color: c.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginVertical: 10 }}>
-                                                Chưa có dữ liệu phân tích chi tiết.
-                                            </Text>
-                                        )}
-                                    </View>
                                 </View>
 
-                                {/* Credit History */}
-                                {creditHistory.length > 0 && (
-                                    <View style={[styles.historyCard, {
-                                        backgroundColor: isDark ? c.surface : '#FFFFFF',
-                                        borderColor: c.border,
-                                        borderWidth: 1,
-                                        shadowColor: isDark ? '#000' : '#14342B',
-                                        shadowOffset: { width: 0, height: 6 },
-                                        shadowOpacity: isDark ? 0.2 : 0.03,
-                                        shadowRadius: 15,
-                                        elevation: isDark ? 4 : 2,
-                                    }]}>
-                                        <View style={styles.historyHeaderRow}>
-                                            <Text style={[styles.historyTitle, { color: c.textPrimary }]}>Lịch sử điểm gần đây</Text>
-                                            <View style={[styles.historyCountBadge, { backgroundColor: c.border + '30' }]}>
-                                                <Text style={[styles.historyCount, { color: c.textMuted }]}>{creditHistory.length} thay đổi</Text>
-                                            </View>
-                                        </View>
 
-                                        <View style={styles.historyList}>
-                                            {creditHistory.slice(0, 5).map((item: any, index: number) => {
-                                                const change = Number(item?.changeAmount || 0);
-                                                const isUp = change > 0;
-                                                const isDown = change < 0;
-                                                const changeColor = isUp ? '#0ECB81' : isDown ? '#F6465D' : c.textMuted;
-                                                return (
-                                                    <View key={item?._id || `${index}`}
-                                                        style={[styles.historyItem, { borderBottomColor: c.border + '40' },
-                                                        index === Math.min(creditHistory.length, 5) - 1 && { borderBottomWidth: 0 },
-                                                        ]}>
-                                                        <View style={[styles.historyIconWrap, { backgroundColor: changeColor + '15' }]}>
-                                                            <MaterialCommunityIcons
-                                                                name={isUp ? 'trending-up' : isDown ? 'trending-down' : 'circle-small'}
-                                                                size={18}
-                                                                color={changeColor}
-                                                            />
-                                                        </View>
-                                                        <View style={styles.historyLeft}>
-                                                            <Text style={[styles.historyReason, { color: c.textPrimary }]} numberOfLines={1}>
-                                                                {formatHistoryReason(item?.reason)}
-                                                            </Text>
-                                                            <Text style={[styles.historyDate, { color: c.textMuted }]}>
-                                                                {formatDateTime(item?.createdAt)}
-                                                            </Text>
-                                                        </View>
-                                                        <View style={styles.historyRight}>
-                                                            <Text style={[styles.historyAfter, { color: c.textPrimary }]}>{item?.afterScore ?? '--'}</Text>
-                                                            <Text style={[styles.historyDelta, { color: changeColor }]}>
-                                                                {isUp ? `+${change}` : `${change}`}
-                                                            </Text>
-                                                        </View>
-                                                    </View>
-                                                );
-                                            })}
-                                        </View>
-                                    </View>
-                                )}
                             </View>
                         )}
 
@@ -469,7 +374,7 @@ export default function ProfileScreen() {
 // ═══════════════════════════════════════════════
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { paddingBottom: 100, flexGrow: 1 },
+    scrollContent: { paddingBottom: 140, flexGrow: 1 },
     loadingContainer: { marginTop: Platform.OS === 'ios' ? 24 : 36 },
 
     // ── Hero Section ──

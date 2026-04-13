@@ -1090,34 +1090,57 @@ export default function CustomerDetailPage() {
                 {/* Savings Accounts Table */}
                 <ProTable
                     {...PRO_TABLE_DEFAULTS}
-                    cardProps={{
-                        ...(typeof PRO_TABLE_DEFAULTS.cardProps === 'object' ? PRO_TABLE_DEFAULTS.cardProps : {}),
-                        bodyStyle: { padding: '16px' },
-                        style: { ...(typeof PRO_TABLE_DEFAULTS.cardProps === 'object' ? PRO_TABLE_DEFAULTS.cardProps?.style : {}), marginBottom: 20 }
-                    }}
+                    cardProps={PRO_TABLE_DEFAULTS.cardProps}
                     headerTitle={
-                        <Space>
-                            <BankOutlined style={{ color: '#3B82F6', fontSize: 16 }} />
-                            <Text strong style={{ fontSize: 14 }}>Tài khoản tiết kiệm</Text>
-                            <Tag style={{ borderRadius: 6 }}>{savingsAccounts.length} tài khoản</Tag>
+                        <Space size={12}>
+                            <BankOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
+                            <Text strong style={{ fontSize: 15, letterSpacing: '-0.01em' }}>Tài khoản tiết kiệm</Text>
+                            <Tag bordered={false} style={{ borderRadius: 6, background: token.colorFillSecondary, margin: 0 }}>
+                                {savingsAccounts.length} tài khoản
+                            </Tag>
                         </Space>
                     }
                     search={false}
-                    options={false}
+                    options={{ reload: true, density: true, setting: true }}
                     dataSource={savingsAccounts}
                     rowKey={(r: any) => r.id ?? r.savingsId ?? r.accountNo ?? String(Math.random())}
-                    size="small"
+                    size="middle"
                     pagination={false}
+                    scroll={{ x: 'max-content' }}
                     columns={[
-                        { title: 'Số tài khoản', dataIndex: 'accountNo', key: 'accountNo', render: (_, r: any) => <Text strong>{r.accountNo || '–'}</Text> },
-                        { title: 'Sản phẩm', dataIndex: 'productName', key: 'productName', render: (_, r: any) => r.productName || '–' },
-                        { title: 'Số dư', key: 'balance', align: 'right' as const, render: (_, r: any) => <Text strong style={{ color: '#059669' }}>{fmtVND(r.accountBalance ?? r.balance ?? 0)}</Text> },
+                        { 
+                            title: 'Số tài khoản', 
+                            dataIndex: 'accountNo', 
+                            key: 'accountNo', 
+                            render: (_, r: any) => <Text strong style={{ color: token.colorLink }}>{r.accountNo || '–'}</Text> 
+                        },
+                        { 
+                            title: 'Sản phẩm', 
+                            dataIndex: 'productName', 
+                            key: 'productName', 
+                            render: (_, r: any) => <Text style={{ fontSize: 13 }}>{r.productName || '–'}</Text> 
+                        },
+                        { 
+                            title: 'Số dư', 
+                            key: 'balance', 
+                            align: 'right' as const, 
+                            render: (_, r: any) => (
+                                <Text strong style={{ color: '#059669', fontSize: 14 }}>
+                                    {fmtVND(r.accountBalance ?? r.balance ?? 0)}
+                                </Text>
+                            ) 
+                        },
                         {
-                            title: 'Trạng thái', key: 'status', render: (_, r: any) => (
-                                <Tag color={r.status?.active ? 'success' : 'default'} style={{ borderRadius: 4 }}>
-                                    {r.status?.value ?? r.status?.code ?? '–'}
-                                </Tag>
-                            )
+                            title: 'Trạng thái', 
+                            key: 'status', 
+                            render: (_, r: any) => {
+                                const active = r.status?.active;
+                                return (
+                                    <Tag color={active ? 'success' : 'default'} style={{ borderRadius: 6, padding: '0 8px' }}>
+                                        {r.status?.value ?? r.status?.code ?? '–'}
+                                    </Tag>
+                                );
+                            }
                         },
                     ]}
                     locale={{ emptyText: <Empty description="Chưa có tài khoản tiết kiệm" style={{ padding: '40px 0' }} /> }}
@@ -1127,34 +1150,63 @@ export default function CustomerDetailPage() {
                 {charges.length > 0 && (
                     <ProTable
                         {...PRO_TABLE_DEFAULTS}
-                        cardProps={{
-                            ...(typeof PRO_TABLE_DEFAULTS.cardProps === 'object' ? PRO_TABLE_DEFAULTS.cardProps : {}),
-                            bodyStyle: { padding: '16px' },
-                        }}
+                        cardProps={PRO_TABLE_DEFAULTS.cardProps}
                         headerTitle={
-                            <Space>
-                                <DollarOutlined style={{ color: '#D97706', fontSize: 16 }} />
-                                <Text strong style={{ fontSize: 14 }}>Các khoản phí sắp tới</Text>
-                                <Tag color={totalOutstanding > 0 ? 'error' : 'success'} style={{ marginLeft: 8, borderRadius: 6 }}>
-                                    {totalOutstanding > 0 ? `Còn nợ ${fmtVND(totalOutstanding)}` : 'Đã thanh toán hết'}
+                            <Space size={12}>
+                                <DollarOutlined style={{ color: '#D97706', fontSize: 18 }} />
+                                <Text strong style={{ fontSize: 15, letterSpacing: '-0.01em' }}>Các khoản phí sắp tới</Text>
+                                <Tag color={totalOutstanding > 0 ? 'error' : 'success'} bordered={false} style={{ borderRadius: 6 }}>
+                                    {totalOutstanding > 0 ? `Chưa thanh toán: ${fmtVND(totalOutstanding)}` : 'Đã tất toán'}
                                 </Tag>
                             </Space>
                         }
                         search={false}
-                        options={false}
+                        options={{ reload: true, density: true }}
                         dataSource={charges}
                         rowKey="id"
-                        size="small"
+                        size="middle"
                         pagination={false}
+                        scroll={{ x: 'max-content' }}
                         columns={[
-                            { title: 'Tên', dataIndex: 'name', key: 'name' },
-                            { title: 'Đến hạn', dataIndex: 'dueDate', key: 'dueDate', render: (_, r: any) => r.dueDate ? [...r.dueDate].reverse().join('/') : '–' },
-                            { title: 'Phải trả', dataIndex: 'amount', key: 'amount', align: 'right' as const, render: (_, r: any) => fmtVND(r.amount) },
-                            { title: 'Đã trả', dataIndex: 'amountPaid', key: 'amountPaid', align: 'right' as const, render: (_, r: any) => fmtVND(r.amountPaid || 0) },
-                            { title: 'Đã miễn', dataIndex: 'amountWaived', key: 'amountWaived', align: 'right' as const, render: (_, r: any) => fmtVND(r.amountWaived || 0) },
+                            { 
+                                title: 'Tên khoản phí', 
+                                dataIndex: 'name', 
+                                key: 'name',
+                                render: (t) => <Text strong>{t}</Text>
+                            },
+                            { 
+                                title: 'Ngày đến hạn', 
+                                dataIndex: 'dueDate', 
+                                key: 'dueDate', 
+                                align: 'center' as const,
+                                render: (_, r: any) => {
+                                    const dateStr = r.dueDate ? [...r.dueDate].reverse().join('/') : '–';
+                                    return <Tag bordered={false} color="orange">{dateStr}</Tag>;
+                                }
+                            },
+                            { 
+                                title: 'Phải trả', 
+                                dataIndex: 'amount', 
+                                key: 'amount', 
+                                align: 'right' as const, 
+                                render: (_, r: any) => <Text strong>{fmtVND(r.amount)}</Text> 
+                            },
+                            { 
+                                title: 'Đã trả', 
+                                dataIndex: 'amountPaid', 
+                                key: 'amountPaid', 
+                                align: 'right' as const, 
+                                render: (_, r: any) => <Text type="secondary">{fmtVND(r.amountPaid || 0)}</Text> 
+                            },
                             {
-                                title: 'Chưa thanh toán', dataIndex: 'amountOutstanding', key: 'amountOutstanding', align: 'right' as const, render: (_, r: any) => (
-                                    <Text type={(r.amountOutstanding || 0) > 0 ? 'danger' : 'success'} strong>{fmtVND(r.amountOutstanding || 0)}</Text>
+                                title: 'Còn lại', 
+                                dataIndex: 'amountOutstanding', 
+                                key: 'amountOutstanding', 
+                                align: 'right' as const, 
+                                render: (_, r: any) => (
+                                    <Text type={(r.amountOutstanding || 0) > 0 ? 'danger' : 'success'} strong style={{ fontSize: 14 }}>
+                                        {fmtVND(r.amountOutstanding || 0)}
+                                    </Text>
                                 )
                             },
                         ]}

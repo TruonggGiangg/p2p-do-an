@@ -18,7 +18,7 @@ import Animated, {
     interpolate,
     Extrapolate,
 } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -389,7 +389,15 @@ export default function HomeScreen() {
         }
     }, [refreshUser]);
 
-    useEffect(() => { fetchWallets(); }, []);
+    useFocusEffect(
+        useCallback(() => {
+            // Only refresh user and wallets if not verified or if we want to ensure latest data
+            if (user?.kycStatus !== 'VERIFIED') {
+                refreshUser().catch(() => {});
+            }
+            fetchWallets();
+        }, [refreshUser])
+    );
 
     const handleItemPress = (item: ShortcutItem) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -422,7 +430,7 @@ export default function HomeScreen() {
                 </View>
             ) : (
                 <FintechPullToRefresh onRefresh={onRefresh} refreshing={refreshing}
-                    contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 32 }]}
+                    contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 60 }]}
                     primaryColor={c.primary} glowColor={c.primaryLight}>
 
                     {/* 1. GREETING */}

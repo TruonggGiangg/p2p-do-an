@@ -13,45 +13,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useConfirmModal } from '../../../components/common/ConfirmModal';
 import { BinanceHeader, CommonCard, FintechPullToRefresh, FintechScreenSkeleton } from '../../../components';
-import { loanService, LoanProduct, LoanHistoryItem } from '../services/loan.service';
+import { loanService, LoanProduct } from '../services/loan.service';
+import {
+    formatMoney,
+    formatDateShort
+} from '../utils/loanUtils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 type LoanScreenNav = NativeStackNavigationProp<RootStackParamList, 'LoanProductDetail'>;
-
-const getStatusInfo = (loan: LoanHistoryItem) => {
-    const sf = loan.statusInfo;
-    if (sf) {
-        if (sf.active) return { text: 'Đang vay', color: '#3B82F6', icon: 'progress-clock' as const };
-        if (sf.closedObligationsMet) return { text: 'Đã tất toán', color: '#0ECB81', icon: 'check-circle' as const };
-        if (sf.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', icon: 'close-circle' as const };
-        if (sf.overpaid) return { text: 'Trả thừa', color: '#0ECB81', icon: 'check-circle' as const };
-        if (sf.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', icon: 'clock-outline' as const };
-        if (sf.waitingForDisbursal) return { text: 'Chờ giải ngân', color: '#8B5CF6', icon: 'bank-transfer' as const };
-        if (sf.closed) return { text: 'Đã đóng', color: '#6B7280', icon: 'close-circle' as const };
-        if (sf.rejected) return { text: 'Bị từ chối', color: '#F6465D', icon: 'alert-circle' as const };
-        if (sf.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', icon: 'close-circle' as const };
-    }
-    if (loan.status === 'clean' || loan.status === 'closed') return { text: 'Đã tất toán', color: '#0ECB81', icon: 'check-circle' as const };
-    if (loan.status === 'success' || loan.status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', icon: 'progress-clock' as const };
-    if (loan.status === 'waiting' || loan.status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', icon: 'clock-outline' as const };
-    if (loan.status === 'approved') return { text: 'Đã duyệt', color: '#8B5CF6', icon: 'check-decagram' as const };
-    if (loan.status === 'rejected' || loan.status === 'fail') return { text: 'Bị từ chối', color: '#F6465D', icon: 'alert-circle' as const };
-    if (loan.status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', icon: 'close-circle' as const };
-    if (loan.status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', icon: 'close-circle' as const };
-    return { text: loan.status || 'N/A', color: '#6B7280', icon: 'help-circle' as const };
-};
-
-const formatMoney = (amount?: number | null) => {
-    if (amount == null || isNaN(amount)) return '0';
-    return Math.round(amount).toLocaleString('vi-VN');
-};
-
-const formatDateShort = (dateStr?: string) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
 
 const PRODUCT_ICONS: Record<string, string> = {
     'P': 'account-cash-outline',
@@ -65,73 +34,26 @@ export default function LoanScreen() {
     const isDark = theme.mode === 'dark';
     const modal = useConfirmModal();
     const [products, setProducts] = useState<LoanProduct[]>([]);
-    const [activeLoans, setActiveLoans] = useState<LoanHistoryItem[]>([]);
-    const [pendingLoans, setPendingLoans] = useState<LoanHistoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const isActiveLoan = useCallback((loan: LoanHistoryItem) => {
-        const sf = loan.statusInfo;
-        const status = String(loan.status || '').toLowerCase();
-        return Boolean(sf?.active || status === 'success' || status === 'disbursed' || status === 'active');
-    }, []);
-
-    const isPendingLoan = useCallback((loan: LoanHistoryItem) => {
-        const sf = loan.statusInfo;
-        const status = String(loan.status || '').toLowerCase();
-        return Boolean(
-            sf?.pendingApproval ||
-            sf?.waitingForDisbursal ||
-            status === 'waiting' ||
-            status === 'pending' ||
-            status === 'approved'
-        );
-    }, []);
-
     const fetchData = useCallback(async () => {
-        const minDelay = new Promise(resolve => setTimeout(resolve, 1700));
+        const minDelay = new Promise(resolve => setTimeout(resolve, 1400));
         try {
-            const [[data, activeRes, pendingRes]] = await Promise.all([
-                Promise.all([
-                    loanService.getLoanProducts(),
-                    loanService.getApplications({ page: 1, pageSize: 30, status: 'success', sortBy: 'createdAt', sortOrder: 'desc' }),
-                    loanService.getApplications({ page: 1, pageSize: 30, status: 'waiting', sortBy: 'createdAt', sortOrder: 'desc' }),
-                ]),
+            const [productRes] = await Promise.all([
+                loanService.getLoanProducts(),
                 minDelay,
             ]);
 
-            setProducts(data);
-
-            let nextActiveLoans = (activeRes?.loans ?? []).filter(isActiveLoan);
-            let nextPendingLoans = (pendingRes?.loans ?? []).filter(isPendingLoan);
-            let allLoansFallback: LoanHistoryItem[] | null = null;
-
-            // Fallback: in case backend status filter misses loans by semantic status mapping
-            if (nextActiveLoans.length === 0 || nextPendingLoans.length === 0) {
-                const allRes = await loanService.getApplications({ page: 1, pageSize: 80, sortBy: 'createdAt', sortOrder: 'desc' });
-                allLoansFallback = allRes?.loans ?? [];
-            }
-
-            if (nextActiveLoans.length === 0 && allLoansFallback) {
-                nextActiveLoans = allLoansFallback.filter(isActiveLoan);
-            }
-
-            if (nextPendingLoans.length === 0 && allLoansFallback) {
-                nextPendingLoans = allLoansFallback.filter(isPendingLoan);
-            }
-
-            setActiveLoans(nextActiveLoans);
-            setPendingLoans(nextPendingLoans);
+            setProducts(productRes);
         } catch (error) {
             console.error('Failed to fetch loan data:', error);
-            setActiveLoans([]);
-            setPendingLoans([]);
             modal.error('Lỗi', 'Không thể tải danh sách sản phẩm vay');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [isActiveLoan, isPendingLoan]);
+    }, [modal]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -203,59 +125,7 @@ export default function LoanScreen() {
         );
     };
 
-    const renderActiveLoanItem = ({ item }: { item: LoanHistoryItem }) => {
-        const status = getStatusInfo(item);
-        return (
-            <TouchableOpacity
-                style={styles.activeLoanItem}
-                activeOpacity={0.8}
-                onPress={() => (navigation as any).navigate('LoanDetail', { loan: item })}
-            >
-                <CommonCard style={[styles.activeLoanCard, { backgroundColor: c.backgroundSecondary, borderColor: c.border }]}>
-                    <View style={styles.activeLoanTop}>
-                        <View style={[styles.activeLoanIconWrap, { backgroundColor: c.primaryGlass }]}>
-                            <MaterialCommunityIcons name="credit-card-outline" size={18} color={c.primary} />
-                        </View>
-                        <View style={styles.activeLoanInfo}>
-                            <Text style={[styles.activeLoanTitle, { color: c.textPrimary }]} numberOfLines={1}>
-                                {item.productName || `Khoản vay #${item.fineractLoanId ?? item.id.slice(-6)}`}
-                            </Text>
-                            <Text style={[styles.activeLoanAmount, { color: c.textSecondary }]}>
-                                Vay: {formatMoney(item.capital)} đ
-                            </Text>
-                            {item.contractSignedVerified && (
-                                <View style={[styles.verifiedBadge, { backgroundColor: `${c.success}1A` }]}>
-                                    <MaterialCommunityIcons name="shield-check" size={11} color={c.success} />
-                                    <Text style={[styles.verifiedBadgeText, { color: c.success }]}>Đã ký xác minh</Text>
-                                </View>
-                            )}
-                        </View>
-                        <View style={[styles.statusChip, { backgroundColor: status.color + '20' }]}>
-                            <MaterialCommunityIcons name={status.icon as any} size={12} color={status.color} />
-                            <Text style={[styles.statusChipText, { color: status.color }]}>{status.text}</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.activeLoanMetaRow}>
-                        <View style={styles.metaCol}>
-                            <Text style={[styles.metaLabel, { color: c.textMuted }]}>Kỳ hạn</Text>
-                            <Text style={[styles.metaValue, { color: c.textPrimary }]}>{item.periodMonth || '--'} tháng</Text>
-                        </View>
-                        <View style={styles.metaCol}>
-                            <Text style={[styles.metaLabel, { color: c.textMuted }]}>Ngày tạo</Text>
-                            <Text style={[styles.metaValue, { color: c.textPrimary }]}>{formatDateShort(item.createdAt) || '--'}</Text>
-                        </View>
-                        <View style={styles.metaCol}>
-                            <Text style={[styles.metaLabel, { color: c.textMuted }]}>Trả/tháng</Text>
-                            <Text style={[styles.metaValue, { color: c.textPrimary }]}>
-                                {item.monthlyPay ? `${formatMoney(item.monthlyPay)} đ` : '--'}
-                            </Text>
-                        </View>
-                    </View>
-                </CommonCard>
-            </TouchableOpacity>
-        );
-    };
+    // ── Product Card ──
 
     return (
         <View style={[styles.container, { backgroundColor: c.background }]}>
@@ -324,73 +194,7 @@ export default function LoanScreen() {
                     />
                 )}
 
-                {/* ═══ ACTIVE LOANS ═══ */}
-                {!loading && (
-                    <View style={styles.activeSection}>
-                        <View style={styles.activeHeaderRow}>
-                            <Text style={[styles.activeSectionTitle, { color: c.textPrimary }]}>Khoản vay đang hoạt động</Text>
-                            <View style={[styles.activeCountBadge, { backgroundColor: c.primaryGlass, borderColor: c.primaryBorder }]}>
-                                <Text style={[styles.activeCountText, { color: c.primary }]}>{activeLoans.length} khoản</Text>
-                            </View>
-                        </View>
 
-                        {activeLoans.length > 0 ? (
-                            <FlatList
-                                data={activeLoans}
-                                renderItem={renderActiveLoanItem}
-                                keyExtractor={(item) => item.id}
-                                scrollEnabled={false}
-                                ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-                            />
-                        ) : (
-                            <CommonCard style={[styles.activeEmptyCard, { backgroundColor: c.backgroundSecondary, borderColor: c.border }]}>
-                                <Text style={[styles.activeEmptyText, { color: c.textSecondary }]}>
-                                    Hiện chưa có khoản vay nào đang hoạt động.
-                                </Text>
-                            </CommonCard>
-                        )}
-                    </View>
-                )}
-
-                {!loading && (
-                    <View style={styles.pendingSection}>
-                        <View style={styles.activeHeaderRow}>
-                            <Text style={[styles.activeSectionTitle, { color: c.textPrimary }]}>Khoản vay chờ duyệt</Text>
-                            <View
-                                style={[
-                                    styles.pendingCountBadge,
-                                    {
-                                        backgroundColor: isDark ? 'rgba(248, 185, 77, 0.16)' : 'rgba(245, 158, 11, 0.12)',
-                                        borderColor: isDark ? 'rgba(248, 185, 77, 0.35)' : 'rgba(180, 83, 9, 0.22)',
-                                    },
-                                ]}
-                            >
-                                <Text
-                                    style={[
-                                        styles.activeCountText,
-                                        { color: isDark ? '#F8B94D' : '#B45309' },
-                                    ]}
-                                >
-                                    {pendingLoans.length} hồ sơ
-                                </Text>
-                            </View>
-                        </View>
-
-                        {pendingLoans.length > 0 ? (
-                            <FlatList
-                                data={pendingLoans}
-                                renderItem={renderActiveLoanItem}
-                                keyExtractor={(item) => `pending-${item.id}`}
-                                scrollEnabled={false}
-                                ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-                            />
-                        ) : (
-                            <CommonCard style={[styles.activeEmptyCard, { backgroundColor: c.backgroundSecondary, borderColor: c.border }]}>
-                                <Text style={[styles.activeEmptyText, { color: c.textSecondary }]}>Chưa có khoản vay nào đang chờ duyệt.</Text>
-                            </CommonCard>
-                        )}
-                    </View>
-                )}
 
 
 
@@ -483,128 +287,6 @@ const styles = StyleSheet.create({
         fontSize: 12, fontFamily: 'Poppins_400Regular', color: 'rgba(205,234,45,0.7)',
     },
     productStatDivider: { width: 1, height: 30, marginHorizontal: 16 },
-
-    // ── Active Loans ──
-    activeSection: {
-        marginTop: 20,
-    },
-    pendingSection: {
-        marginTop: 16,
-    },
-    activeHeaderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 10,
-    },
-    activeSectionTitle: {
-        fontSize: 17,
-        fontFamily: 'Poppins_700Bold',
-    },
-    activeCountBadge: {
-        borderWidth: 1,
-        borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-    },
-    pendingCountBadge: {
-        borderWidth: 1,
-        borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-    },
-    activeCountText: {
-        fontSize: 11,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    activeEmptyCard: {
-        borderRadius: 14,
-        borderWidth: 1,
-        paddingVertical: 14,
-        paddingHorizontal: 12,
-    },
-    activeEmptyText: {
-        fontSize: 13,
-        fontFamily: 'Poppins_400Regular',
-        textAlign: 'center',
-    },
-    activeLoanItem: {
-        borderRadius: 16,
-    },
-    activeLoanCard: {
-        borderRadius: 16,
-        borderWidth: 1,
-        paddingVertical: 12,
-        paddingHorizontal: 12,
-    },
-    activeLoanTop: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    activeLoanIconWrap: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    activeLoanInfo: {
-        flex: 1,
-        marginLeft: 10,
-        marginRight: 8,
-    },
-    activeLoanTitle: {
-        fontSize: 13,
-        fontFamily: 'Poppins_600SemiBold',
-        marginBottom: 2,
-    },
-    activeLoanAmount: {
-        fontSize: 12,
-        fontFamily: 'Poppins_400Regular',
-    },
-    verifiedBadge: {
-        marginTop: 6,
-        alignSelf: 'flex-start',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        borderRadius: 999,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-    },
-    verifiedBadgeText: {
-        fontSize: 10,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    statusChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        borderRadius: 999,
-    },
-    statusChipText: {
-        fontSize: 10,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    activeLoanMetaRow: {
-        flexDirection: 'row',
-        marginTop: 10,
-        paddingTop: 10,
-    },
-    metaCol: {
-        flex: 1,
-    },
-    metaLabel: {
-        fontSize: 10,
-        fontFamily: 'Poppins_400Regular',
-        marginBottom: 2,
-    },
-    metaValue: {
-        fontSize: 12,
-        fontFamily: 'Poppins_600SemiBold',
-    },
 
     // ── Empty ──
     emptyContainer: { marginTop: 60, alignItems: 'center', gap: 16 },

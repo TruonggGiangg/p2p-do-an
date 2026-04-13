@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BinanceHeader, CommonCard } from '../../../components';
+import CreditScoreGauge from '../components/CreditScoreGauge';
 import { useToast } from '../../../components';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -171,17 +172,24 @@ export default function CreditScoreDetailScreen() {
         }
     }, [fetchHistory, hasNextPage, loading, page, refreshing]);
 
-    const renderFactorBar = (meta: typeof FACTOR_META[0], value: number) => (
-        <View key={meta.key} style={styles.factorRow}>
-            <View style={styles.factorLabelRow}>
-                <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
-                <Text style={[styles.factorLabel, { color: c.textPrimary }]}>{meta.label}</Text>
-                <Text style={[styles.factorValue, { color: meta.color }]}>{Math.round(value)}/100</Text>
+    const renderFactorCard = (meta: typeof FACTOR_META[0], value: number) => (
+        <View key={meta.key} style={[styles.factorCardBox, { backgroundColor: isDark ? c.backgroundTertiary : '#F8FAF9' }]}>
+            <View style={styles.factorCardHeader}>
+                <View style={[styles.factorIconBg, { backgroundColor: meta.color + '15' }]}>
+                    <MaterialCommunityIcons name={meta.icon as any} size={18} color={meta.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.factorCardLabel, { color: c.textPrimary }]}>{meta.label}</Text>
+                    <Text style={[styles.factorCardStatus, { color: meta.color }]}>
+                        {value >= 80 ? 'Rất tốt' : value >= 60 ? 'Tốt' : value >= 40 ? 'Trung bình' : 'Cần cải thiện'}
+                    </Text>
+                </View>
+                <Text style={[styles.factorCardValue, { color: c.textPrimary }]}>{Math.round(value)}%</Text>
             </View>
-            <View style={[styles.factorTrack, { backgroundColor: c.border + '40' }]}>
+            <View style={[styles.factorCardTrack, { backgroundColor: c.border + '30' }]}>
                 <View
                     style={[
-                        styles.factorFill,
+                        styles.factorCardFill,
                         {
                             width: `${Math.max(Math.min(value, 100), 2)}%`,
                             backgroundColor: meta.color,
@@ -302,48 +310,14 @@ export default function CreditScoreDetailScreen() {
                 contentContainerStyle={styles.contentContainer}
                 ListHeaderComponent={
                     <>
-                        {/* ── Hero Score Card with Gradient ── */}
-                        <View style={styles.heroCardWrap}>
-                            <LinearGradient
-                                colors={isDark
-                                    ? [c.backgroundSecondary, c.backgroundTertiary]
-                                    : ['#FFFFFF', '#F8FAF9']}
-                                style={[
-                                    styles.heroCard,
-                                    { borderColor: isDark ? c.border + '30' : '#E8E8E8' },
-                                ]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                            >
-                                {/* Score header */}
-                                <View style={styles.heroTopRow}>
-                                    <View>
-                                        <Text style={[styles.heroCaption, { color: c.textMuted }]}>Điểm tín dụng hiện tại</Text>
-                                        <Text style={[styles.heroScore, { color: c.textPrimary }]}>{scoreValue}</Text>
-                                    </View>
-                                    <View style={[styles.bandPill, { backgroundColor: band.color + '22' }]}>
-                                        <View style={[styles.bandDot, { backgroundColor: band.color }]} />
-                                        <Text style={[styles.bandPillText, { color: band.color }]}>{band.label}</Text>
-                                    </View>
-                                </View>
-
-                                {/* Progress bar */}
-                                <View style={[styles.scoreProgressTrack, { backgroundColor: isDark ? c.border + '60' : '#E8ECE9' }]}>
-                                    <LinearGradient
-                                        colors={[band.color + 'CC', band.color]}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 0 }}
-                                        style={[
-                                            styles.scoreProgressFill,
-                                            { width: `${Math.max(scoreRatio * 100, 5)}%` },
-                                        ]}
-                                    />
-                                </View>
-
-                                <View style={styles.scaleLabels}>
-                                    <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MIN}</Text>
-                                    <Text style={[styles.scaleText, { color: c.textMuted }]}>{SCORE_MAX}</Text>
-                                </View>
+                        {/* ── New Gauge Card ── */}
+                        <View style={styles.heroGaugeContainer}>
+                            <CreditScoreGauge 
+                                score={scoreValue} 
+                                label={band.label}
+                                loading={loading}
+                            />
+                        </View>
 
                                 {/* Meta stats */}
                                 <View style={styles.metaRow}>
@@ -391,8 +365,6 @@ export default function CreditScoreDetailScreen() {
                                         {recalculating ? 'Đang tính lại...' : 'Tính lại điểm'}
                                     </Text>
                                 </TouchableOpacity>
-                            </LinearGradient>
-                        </View>
 
                         {/* ── 5-Factor Breakdown Card ── */}
                         <CommonCard
@@ -405,26 +377,26 @@ export default function CreditScoreDetailScreen() {
                             ]}
                         >
                             <View style={styles.factorHeader}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <View style={[styles.factorIconWrap, { backgroundColor: isDark ? c.backgroundTertiary : '#F0F4F2' }]}>
-                                        <MaterialCommunityIcons name="chart-bar" size={16} color={c.textSecondary} />
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                    <View style={[styles.factorHeaderIconBox, { backgroundColor: '#18A05815' }]}>
+                                        <MaterialCommunityIcons name="shield-check-outline" size={20} color="#18A058" />
                                     </View>
                                     <View>
-                                        <Text style={[styles.factorTitle, { color: c.textPrimary }]}>5 Yếu tố tín dụng</Text>
-                                        <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Mỗi yếu tố 0-100 điểm</Text>
+                                        <Text style={[styles.factorTitle, { color: c.textPrimary }]}>Chỉ số thành phần</Text>
+                                        <Text style={[styles.factorSubtitle, { color: c.textMuted }]}>Phân tích chi tiết độ uy tín</Text>
                                     </View>
                                 </View>
                             </View>
 
                             {factors ? (
-                                <View style={styles.factorsContainer}>
-                                    {FACTOR_META.map(m => renderFactorBar(m, (factors as any)[m.key] ?? 0))}
+                                <View style={styles.factorsGrid}>
+                                    {FACTOR_META.map(m => renderFactorCard(m, (factors as any)[m.key] ?? 0))}
                                 </View>
                             ) : (
                                 <View style={styles.noFactors}>
                                     <MaterialCommunityIcons name="chart-bar" size={24} color={c.textMuted} />
                                     <Text style={[styles.noFactorsText, { color: c.textMuted }]}>
-                                        Đang tải phân tích 5 yếu tố...
+                                        Đang tải phân tích...
                                     </Text>
                                 </View>
                             )}
@@ -482,71 +454,14 @@ const styles = StyleSheet.create({
         paddingBottom: Platform.OS === 'ios' ? 120 : 100,
         paddingTop: 16,
     },
-    // ── Hero Card ──
-    heroCardWrap: {
-        marginBottom: 12,
-    },
-    heroCard: {
-        borderRadius: 20,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: 'transparent',
-    },
-    heroTopRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-    },
-    heroCaption: {
-        fontSize: 12,
-        fontFamily: 'Poppins_500Medium',
-        letterSpacing: 0.3,
-        textTransform: 'uppercase',
-    },
-    heroScore: {
-        fontSize: 48,
-        lineHeight: 56,
-        fontFamily: 'Poppins_700Bold',
-        marginTop: 2,
-    },
-    bandPill: {
-        flexDirection: 'row',
+    // ── Hero Gauge ──
+    heroGaugeContainer: {
+        marginBottom: 24,
         alignItems: 'center',
-        gap: 6,
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-    },
-    bandDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-    },
-    bandPillText: {
-        fontSize: 12,
-        fontFamily: 'Poppins_700Bold',
-    },
-    scoreProgressTrack: {
-        height: 10,
-        borderRadius: 999,
-        overflow: 'hidden',
-        marginTop: 18,
-    },
-    scoreProgressFill: {
-        height: '100%',
-        borderRadius: 999,
-    },
-    scaleLabels: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 4,
-    },
-    scaleText: {
-        fontSize: 10,
-        fontFamily: 'Poppins_400Regular',
     },
     metaRow: {
-        marginTop: 16,
+        marginTop: 0,
+        marginBottom: 24,
         flexDirection: 'row',
         justifyContent: 'space-between',
         gap: 8,
@@ -570,71 +485,83 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        marginTop: 16,
-        paddingVertical: 10,
-        borderRadius: 12,
+        paddingVertical: 12,
+        borderRadius: 16,
         borderWidth: 1,
     },
     recalcBtnText: {
-        fontSize: 13,
+        fontSize: 14,
         fontFamily: 'Poppins_600SemiBold',
     },
     // ── Factor Card ──
     factorCard: {
-        borderRadius: 20,
+        borderRadius: 24,
         padding: 20,
         borderWidth: 1,
         borderColor: 'transparent',
-        marginBottom: 16,
+        marginBottom: 24,
     },
     factorHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: 20,
     },
-    factorIconWrap: {
-        width: 32,
-        height: 32,
-        borderRadius: 10,
+    factorHeaderIconBox: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
     },
     factorTitle: {
-        fontSize: 15,
-        fontFamily: 'Poppins_600SemiBold',
-    },
-    factorSubtitle: {
-        fontSize: 11,
-        fontFamily: 'Poppins_400Regular',
-        marginTop: 1,
-    },
-    factorsContainer: {
-        gap: 14,
-    },
-    factorRow: {
-        gap: 6,
-    },
-    factorLabelRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    factorLabel: {
-        flex: 1,
-        fontSize: 12,
-        fontFamily: 'Poppins_500Medium',
-    },
-    factorValue: {
-        fontSize: 12,
+        fontSize: 16,
         fontFamily: 'Poppins_700Bold',
     },
-    factorTrack: {
-        height: 8,
+    factorSubtitle: {
+        fontSize: 12,
+        fontFamily: 'Poppins_400Regular',
+        marginTop: -2,
+    },
+    factorsGrid: {
+        gap: 12,
+    },
+    factorCardBox: {
+        padding: 16,
+        borderRadius: 16,
+    },
+    factorCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    factorIconBg: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    factorCardLabel: {
+        fontSize: 13,
+        fontFamily: 'Poppins_600SemiBold',
+    },
+    factorCardStatus: {
+        fontSize: 11,
+        fontFamily: 'Poppins_500Medium',
+        marginTop: -1,
+    },
+    factorCardValue: {
+        fontSize: 14,
+        fontFamily: 'Poppins_700Bold',
+    },
+    factorCardTrack: {
+        height: 6,
         borderRadius: 999,
         overflow: 'hidden',
     },
-    factorFill: {
+    factorCardFill: {
         height: '100%',
         borderRadius: 999,
     },

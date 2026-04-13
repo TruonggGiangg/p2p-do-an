@@ -172,6 +172,10 @@ export class InvestmentContractService {
     numNotes: number,
     investmentOrderId?: string,
   ): Promise<InvestmentContract> {
+    const LOG = '[createContract]';
+    this.logger.log(`${LOG} ── BẮT ĐẦU tạo hợp đồng đầu tư ──`);
+    this.logger.log(`${LOG} Input: lenderId=${lenderId}, loanId=${loanApplicationId}, numNotes=${numNotes}, orderId=${investmentOrderId || 'N/A'}`);
+
     // 1. Validate loan
     const loan = await this.loanModel.findById(loanApplicationId);
     if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
@@ -179,6 +183,7 @@ export class InvestmentContractService {
     if (!['approved', 'disbursed'].includes(loan.status)) {
       throw new BadRequestException('Khoản vay không ở trạng thái cho phép đầu tư');
     }
+    this.logger.log(`${LOG} ✅ Loan valid: capital=${(loan.capital || 0).toLocaleString()}, status=${loan.status}, productId=${loan.productId}`);
 
     // 2. Check available notes (must consider BOTH nodeMatch and investedNotes)
     const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
@@ -196,6 +201,7 @@ export class InvestmentContractService {
       if (order) {
         const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
         orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+        this.logger.log(`${LOG}    Order ${investmentOrderId}: matched ${orderMatchedNodes} nodes cho loan này`);
 
         if (numNotes !== orderMatchedNodes) {
           throw new BadRequestException(
@@ -209,6 +215,7 @@ export class InvestmentContractService {
     }
 
     const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
+    this.logger.log(`${LOG}    Notes: total=${totalLoanNotes}, invested=${investedSoFar}, nodeMatch=${nodeMatchSoFar}, effective=${effectiveNodeMatch}, available=${availableNotes}, requested=${numNotes}`);
     if (numNotes > availableNotes) {
       throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
     }
@@ -216,21 +223,27 @@ export class InvestmentContractService {
     // Resolve FD Interest Rate (Investor's Rate)
     let annualRatePercent = 0;
     try {
+      this.logger.log(`${LOG}    Resolving FD rate from loan productId=${loan.productId}...`);
       const loanProdRes = await (this.fineractFDService as any).client.get(`/loanproducts/${loan.productId}`);
       const shortName = loanProdRes.data?.shortName;
+      this.logger.log(`${LOG}    Loan product shortName="${shortName || 'N/A'}"`);
       if (shortName) {
         const fdRate = await this.fineractFDService.getFDProductAnnualRate(shortName);
         if (fdRate !== null) {
           annualRatePercent = fdRate;
+          this.logger.log(`${LOG}    ✅ FD rate resolved: ${fdRate}% /năm (from FD product "${shortName}")`);
+        } else {
+          this.logger.warn(`${LOG}    ⚠️ FD product "${shortName}" không có rate, sẽ fallback dùng loan rate`);
         }
       }
     } catch (err: any) {
-      this.logger.warn(`Failed to resolve FD rate for loan ${loan._id}: ${err.message}`);
+      this.logger.warn(`${LOG}    ⚠️ Failed to resolve FD rate: ${err.message}`);
     }
 
     // Fallback to loan rate if FD rate not found
     if (!annualRatePercent) {
       annualRatePercent = loan.monthlyRatePercent * 12;
+      this.logger.log(`${LOG}    Fallback: annualRate = loan.monthlyRate(${loan.monthlyRatePercent}%) × 12 = ${annualRatePercent}%`);
     }
     const monthlyRatePercent = +(annualRatePercent / 12).toFixed(2);
 
@@ -251,8 +264,12 @@ export class InvestmentContractService {
     const entirelyProfit = entirelyPay - capital;
     const monthlyIncome = this.roundToCurrency(entirelyPay / Math.max(1, periodMonth), loan.inMultiplesOf || 1000);
 
+    this.logger.log(`${LOG}    Financials: capital=${capital.toLocaleString()}, rate=${monthlyRatePercent}%/tháng (${annualRatePercent}%/năm), period=${periodMonth}m`);
+    this.logger.log(`${LOG}    entirelyPay=${entirelyPay.toLocaleString()}, profit=${entirelyProfit.toLocaleString()}, monthlyIncome=${monthlyIncome.toLocaleString()}`);
+
     // 4. Calculate lender schedule
     const { schedule, summary } = this.calculateLenderSchedule(loan, capital);
+    this.logger.log(`${LOG}    Lender schedule: ${schedule.length} periods, totalIncome=${summary.totalIncome.toLocaleString()}, totalInterest=${summary.totalInterest.toLocaleString()}`);
 
     // 5. Generate contract ID
     const contractId = this.generateContractId(String(loan._id));
@@ -284,6 +301,7 @@ export class InvestmentContractService {
     // 7. Update loan atomically: investedNotes++, nodeMatch-- (if from order)
     //    We do this BEFORE saving contract to revert easily if constraints fail.
     const nodeMatchDecrement = investmentOrderId ? orderMatchedNodes : 0;
+    this.logger.log(`${LOG}    Atomic update loan: investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`);
     const updateResult = await this.loanModel.findOneAndUpdate(
       {
         _id: loanApplicationId,
@@ -301,6 +319,7 @@ export class InvestmentContractService {
     );
 
     if (!updateResult) {
+      this.logger.error(`${LOG} ❌ Atomic update FAILED — race condition hoặc hết room`);
       throw new BadRequestException('Lỗi hệ thống: Khoản vay đã hết room khả dụng (race condition). Vui lòng thử lại.');
     }
 
@@ -315,14 +334,14 @@ export class InvestmentContractService {
     );
 
     this.logger.log(
-      `Loan ${loanApplicationId} (Atomic Update): investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
+      `${LOG}    Loan ${loanApplicationId} updated: investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
         `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
-        `${isFullMatch ? ' (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
+        `${isFullMatch ? ' 🎯 (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
     );
 
     // Save contract
     await contract.save();
-    this.logger.log(`Created InvestmentContract ${contractId}: ${capital.toLocaleString()} VND, ${numNotes} notes`);
+    this.logger.log(`${LOG} ✅ InvestmentContract saved: ${contractId}, capital=${capital.toLocaleString()} VND, ${numNotes} notes`);
 
     // Update order loan entry as invested
     if (investmentOrderId) {
@@ -330,11 +349,13 @@ export class InvestmentContractService {
         { _id: investmentOrderId, 'loans.loanId': String(loan._id) },
         { $set: { 'loans.$.isInvested': true } },
       );
+      this.logger.log(`${LOG}    Order ${investmentOrderId}: loan ${loan._id} marked as isInvested=true`);
     }
 
     // Return contract + isFullMatch flag (để payment service trigger disbursement)
     (contract as any)._isFullMatch = isFullMatch;
     (contract as any)._loanApplicationId = loanApplicationId;
+    this.logger.log(`${LOG} ── KẾT THÚC tạo hợp đồng ──`);
     return contract;
   }
 
@@ -371,9 +392,13 @@ export class InvestmentContractService {
   }
 
   async getContractById(contractId: string, lenderId: string): Promise<InvestmentContract> {
+    const query = Types.ObjectId.isValid(contractId)
+      ? { $or: [{ _id: contractId }, { contractId: contractId }] }
+      : { contractId: contractId };
+
     const contract = await this.contractModel
       .findOne({
-        $or: [{ _id: contractId }, { contractId: contractId }],
+        ...query,
         lenderId: new Types.ObjectId(lenderId),
       })
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status disbursementDate')

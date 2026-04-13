@@ -36,7 +36,7 @@ export const PRO_TABLE_DEFAULTS: ProTableDefaults = {
       backgroundColor: 'var(--surface-color)',
     },
     bodyStyle: {
-      padding: 0,
+      padding: 16,
     },
   },
   tableAlertRender: false,

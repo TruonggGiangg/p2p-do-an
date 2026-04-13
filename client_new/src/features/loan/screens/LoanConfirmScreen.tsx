@@ -45,67 +45,30 @@ type RouteParams = {
 
 type LoanConfirmNav = NativeStackNavigationProp<RootStackParamList, 'LoanConfirm'>;
 
-// ── Step indicator ────────────────────────────
-function StepIndicator({ current, theme }: { current: number, theme: any }) {
-    const EMERALD_THEME = {
-        ...theme.colors,
-        surfaceHigh: theme.colors.surfaceBright,
-        textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
-    };
-    const stepS = StyleSheet.create({
-        container: { paddingHorizontal: 20, paddingVertical: 14, gap: 10, marginBottom: 10 },
-        label: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.textDim, textTransform: 'uppercase', letterSpacing: 1 },
-        labelHighlight: { color: EMERALD_THEME.textPrimary },
-        stepsRow: { flexDirection: 'row', alignItems: 'center' },
-        dot: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-        dotText: { fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim },
-        connector: { height: 2, flex: 1, marginHorizontal: 8, borderRadius: 1 },
-    });
-    return (
-        <View style={stepS.container}>
-            <Text style={stepS.label}>Bước {current + 1}/2: <Text style={stepS.labelHighlight}>{current === 0 ? 'Nhập thông tin' : 'Xác nhận đơn'}</Text></Text>
-            <View style={stepS.stepsRow}>
-                {[0, 1].map((i) => (
-                    <React.Fragment key={i}>
-                        <View style={[
-                            stepS.dot,
-                            i <= current ? { backgroundColor: EMERALD_THEME.primary } : { backgroundColor: EMERALD_THEME.surfaceHigh },
-                        ]}>
-                            {i < current ? (
-                                <MaterialCommunityIcons name="check" size={12} color={EMERALD_THEME.onPrimary} />
-                            ) : (
-                                <Text style={[stepS.dotText, i <= current && { color: EMERALD_THEME.onPrimary }]}>{i + 1}</Text>
-                            )}
-                        </View>
-                        {i < 1 && (
-                            <View style={[
-                                stepS.connector,
-                                i < current ? { backgroundColor: EMERALD_THEME.primary } : { backgroundColor: EMERALD_THEME.surfaceHigh },
-                            ]} />
-                        )}
-                    </React.Fragment>
-                ))}
-            </View>
-        </View>
-    );
-}
-
 export default function LoanConfirmScreen() {
     const { theme } = useTheme();
     const EMERALD_THEME = {
-        ...theme.colors,
-        surfaceHigh: theme.colors.surfaceBright,
-        textDim: theme.mode === 'dark' ? theme.colors.textDim : theme.colors.textSecondary,
+        primary: '#1E3A2F',
+        onPrimary: '#FFFFFF',
+        textPrimary: '#111827',
+        textSecondary: '#6B7280',
+        textDim: '#9CA3AF',
+        border: '#E5E7EB',
+        background: '#F9FAFB',
+        surface: '#FFFFFF',
+        success: '#059669',
+        warning: '#F59E0B'
     };
-    const s = React.useMemo(() => getStyles(EMERALD_THEME), [EMERALD_THEME]);
 
     const route = useRoute();
     const navigation = useNavigation<LoanConfirmNav>();
     const insets = useSafeAreaInsets();
     const modal = useConfirmModal();
     const params = (route.params || {}) as RouteParams;
-    const { product, config, capital, periodMonth, willing, monthlyRatePercent, schedule } = params;
+    const { product, config, capital, periodMonth, willing, monthlyRatePercent, schedule: initialSchedule } = params;
 
+    const [schedule, setSchedule] = useState<LoanScheduleResult | null>(initialSchedule || null);
+    const [loadingSchedule, setLoadingSchedule] = useState(!initialSchedule);
     const [documentTypes, setDocumentTypes] = useState<LoanDocumentType[]>([]);
     const [charges, setCharges] = useState<ProductCharge[]>([]);
     const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -119,9 +82,28 @@ export default function LoanConfirmScreen() {
     const [policyExpanded, setPolicyExpanded] = useState(false);
     const [policyAgreed, setPolicyAgreed] = useState(false);
 
-    // PIN verification trước OTP
     const [showPinVerify, setShowPinVerify] = useState(false);
     const otpTriggerRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => {
+        if (!schedule) {
+            const fetchSchedule = async () => {
+                try {
+                    const res = await loanService.ratePreview({
+                        capital,
+                        periodMonth,
+                        productId: product.id,
+                    });
+                    setSchedule(res);
+                } catch (err) {
+                    console.error('Failed to fetch fallback schedule:', err);
+                } finally {
+                    setLoadingSchedule(false);
+                }
+            };
+            fetchSchedule();
+        }
+    }, [schedule]);
 
     const fetchData = useCallback(async () => {
         try {
@@ -183,8 +165,6 @@ export default function LoanConfirmScreen() {
             });
 
             const loanMongoId = result.id;
-
-            // Upload documents
             const uploadPromises = Object.entries(documents)
                 .filter(([, v]) => v?.uri)
                 .map(async ([documentTypeId, v]) => {
@@ -207,10 +187,7 @@ export default function LoanConfirmScreen() {
             });
         } catch (e: any) {
             const errData = e?.response?.data;
-            const msg =
-                typeof errData?.message === 'string'
-                    ? errData.message
-                    : 'Không thể tạo đơn vay. Vui lòng thử lại sau.';
+            const msg = typeof errData?.message === 'string' ? errData.message : 'Không thể tạo đơn vay. Vui lòng thử lại sau.';
             const blockData = errData?.data;
             navigation.navigate('LoanBlocked' as any, {
                 message: msg,
@@ -230,7 +207,6 @@ export default function LoanConfirmScreen() {
         setDocuments((prev) => ({ ...prev, [docTypeId]: { name: typeName, uri, type } }));
     };
 
-    // ImagePickerSheet state
     const [imagePickerVisible, setImagePickerVisible] = useState(false);
     const [imagePickerDocId, setImagePickerDocId] = useState<string | null>(null);
 
@@ -252,84 +228,72 @@ export default function LoanConfirmScreen() {
         setScheduleExpanded((v) => !v);
     };
 
-    if (!product || !schedule) {
+    const StepperBar = () => (
+        <View style={styles.stepperContainer}>
+            {[1, 2].map((s) => (
+                <View key={s} style={styles.stepSegmentWrapper}>
+                    <View style={[styles.stepSegment, { backgroundColor: s <= 2 ? '#1E3A2F' : '#E5E7EB', height: 4 }]} />
+                </View>
+            ))}
+        </View>
+    );
+
+    if (!product || (loadingSchedule && !schedule)) {
         return (
-            <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
-                <BinanceHeader title="Xác nhận đơn vay" mode="standard" />
-                <View style={s.centered}><Text style={{ color: EMERALD_THEME.textSecondary }}>Thiếu thông tin</Text></View>
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color="#1E3A2F" />
+                <Text style={{ marginTop: 12, color: '#6B7280' }}>Đang tính toán lịch trả nợ...</Text>
             </View>
         );
     }
+
+    const safeSchedule = schedule || { monthlyPay: 0, schedulePreview: [] };
 
     const isAnnual = product.interestRateFrequencyType?.value?.toLowerCase()?.includes('year');
     const effectiveRateRaw = monthlyRatePercent ?? (isAnnual ? config?.annualRate : config?.monthlyRate) ?? 0;
     const effectiveRate = +effectiveRateRaw.toFixed(2);
     const rateUnit = isAnnual ? 'năm' : 'tháng';
     const visibleRows = scheduleExpanded
-        ? (schedule.schedulePreview ?? [])
-        : (schedule.schedulePreview ?? []).slice(0, PREVIEW_ROWS);
+        ? (safeSchedule.schedulePreview ?? [])
+        : (safeSchedule.schedulePreview ?? []).slice(0, PREVIEW_ROWS);
 
     return (
-        <View style={[s.container, { backgroundColor: EMERALD_THEME.background }]}>
-            <StatusBar barStyle={theme.mode === 'dark' ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
-
-            <BinanceHeader title="Xác nhận đơn vay" mode="standard" />
-
-            <StepIndicator current={1} theme={theme} />
-
-            <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
-
-                {/* ── Hero: Tóm tắt chính ── */}
-                <View style={s.heroVaultCard}>
-                    <Text style={s.heroLabel}>TỔNG SỐ TIỀN VAY</Text>
-                    <Text style={s.heroAmount}>{formatCurrency(capital)}</Text>
-
-                    <View style={s.heroGrid}>
-                        <View style={s.heroCol}>
-                            <Text style={s.heroColLabel}>KỲ HẠN</Text>
-                            <Text style={s.heroColValue}>{periodMonth} tháng</Text>
-                        </View>
-                        <View style={s.heroDivider} />
-                        <View style={s.heroCol}>
-                            <Text style={s.heroColLabel}>LÃI SUẤT</Text>
-                            <Text style={s.heroColValue}>{effectiveRate}%/{rateUnit}</Text>
-                        </View>
-                        <View style={s.heroDivider} />
-                        <View style={s.heroCol}>
-                            <Text style={s.heroColLabel}>TRẢ/THÁNG</Text>
-                            <Text style={s.heroColValue}>{formatCurrency(schedule.monthlyPay)}</Text>
-                        </View>
-                    </View>
-
-                    <View style={s.heroTotalBox}>
-                        <Text style={s.heroTotalLabel}>Tổng số tiền phải trả</Text>
-                        <Text style={s.heroTotalValue}>{formatCurrency(schedule.entirelyPay)}</Text>
+        <View style={styles.container}>
+            <StatusBar barStyle="dark-content" />
+            <BinanceHeader
+                mode="standard"
+                title="Xác nhận đơn vay"
+                showBack
+                rightComponents={<Text style={styles.stepIndicatorText}>2/2</Text>}
+            />
+            <StepperBar />
+            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.summaryCard}>
+                    <Text style={styles.summaryLabel}>TỔNG SỐ TIỀN VAY</Text>
+                    <Text style={styles.summaryAmount}>{formatCurrency(capital)}</Text>
+                    <View style={styles.summaryStatsRow}>
+                        <View style={styles.summaryStatItem}><Text style={styles.summaryStatValue}>{periodMonth} tháng</Text></View>
+                        <View style={styles.summaryStatDivider} />
+                        <View style={styles.summaryStatItem}><Text style={styles.summaryStatValue}>{effectiveRate}%/{rateUnit}</Text></View>
+                        <View style={styles.summaryStatDivider} />
+                        <View style={styles.summaryStatItem}><Text style={styles.summaryStatValue}>{formatCurrency(safeSchedule.monthlyPay || 0)}/kỳ</Text></View>
                     </View>
                 </View>
 
-                {/* ── Phí khoản vay ── */}
                 {charges.length > 0 && (
-                    <View style={s.card}>
-                        <Text style={s.sectionTitle}>PHÍ KHOẢN VAY</Text>
-                        {charges.map((fee, idx) => {
+                    <View style={styles.card}>
+                        <Text style={styles.sectionTitle}>PHÍ KHOẢN VAY</Text>
+                        {charges.map((fee) => {
                             const isPercent = /percent|amount/i.test(fee.chargeCalculationType);
-                            const pct = fee.amount ?? 0;
-                            const feeAmountCalc = isPercent && capital > 0 ? Math.round(capital * pct / 100) : null;
                             const isDisbursement = /disbursement/i.test(fee.chargeTimeType);
-
                             return (
-                                <View key={fee.id} style={s.feeRow}>
-                                    <View style={s.feeLabelBlock}>
-                                        <Text style={s.feeName}>{fee.name}</Text>
-                                        {isDisbursement && <Text style={s.feeNote}>Thu khi giải ngân</Text>}
+                                <View key={fee.id} style={styles.feeRow}>
+                                    <View style={styles.feeLabelBlock}>
+                                        <Text style={styles.feeName}>{fee.name}</Text>
+                                        {isDisbursement && <Text style={styles.feeNote}>Thu khi giải ngân</Text>}
                                     </View>
-                                    <View style={s.feeValueBlock}>
-                                        <Text style={s.feeRate}>
-                                            {isPercent ? `${Number(pct).toFixed(2)}% gốc` : `${formatCurrency(pct)}`}
-                                        </Text>
-                                        {feeAmountCalc != null && (
-                                            <Text style={s.feeAmountText}>≈ {formatCurrency(feeAmountCalc)}</Text>
-                                        )}
+                                    <View style={styles.feeValueBlock}>
+                                        <Text style={styles.feeRate}>{isPercent ? `${(fee.amount ?? 0).toFixed(2)}% gốc` : formatCurrency(fee.amount ?? 0)}</Text>
                                     </View>
                                 </View>
                             );
@@ -337,439 +301,161 @@ export default function LoanConfirmScreen() {
                     </View>
                 )}
 
-                {/* ── Lịch trả nợ ── */}
-                {schedule.schedulePreview && schedule.schedulePreview.length > 0 && (
-                    <View style={s.card}>
-                        <View style={s.scheduleTitleRow}>
-                            <Text style={s.sectionTitle}>LỊCH TRẢ NỢ</Text>
-                            <TouchableOpacity style={s.expandBtn} onPress={toggleSchedule}>
-                                <Text style={s.expandText}>
-                                    {scheduleExpanded ? 'Thu gọn' : `Chi tiết (${schedule.schedulePreview.length})`}
-                                </Text>
-                                <MaterialCommunityIcons name={scheduleExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={EMERALD_THEME.primary} />
+                {safeSchedule.schedulePreview && safeSchedule.schedulePreview.length > 0 && (
+                    <View style={styles.card}>
+                        <View style={styles.scheduleTitleRow}>
+                            <Text style={styles.sectionTitle}>LỊCH TRẢ NỢ</Text>
+                            <TouchableOpacity style={styles.expandBtn} onPress={toggleSchedule}>
+                                <Text style={styles.expandText}>{scheduleExpanded ? 'Thu gọn' : `Chi tiết (${safeSchedule.schedulePreview.length})`}</Text>
+                                <MaterialCommunityIcons name={scheduleExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#1E3A2F" />
                             </TouchableOpacity>
                         </View>
-
-                        <View style={s.tableHeader}>
-                            <Text style={[s.colKy, s.tableHeaderText]}>Kỳ</Text>
-                            <Text style={[s.colGoc, s.tableHeaderText]}>Gốc</Text>
-                            <Text style={[s.colLai, s.tableHeaderText]}>Lãi</Text>
-                            <Text style={[s.colTong, s.tableHeaderText]}>Tổng</Text>
+                        <View style={styles.tableHeader}>
+                            <Text style={[styles.colKy, styles.tableHeaderText]}>Kỳ</Text>
+                            <Text style={[styles.colGoc, styles.tableHeaderText]}>Gốc</Text>
+                            <Text style={[styles.colLai, styles.tableHeaderText]}>Lãi</Text>
+                            <Text style={[styles.colTong, styles.tableHeaderText]}>Tổng</Text>
                         </View>
-
                         {visibleRows.map((item, index) => (
-                            <View key={item.period} style={[s.tableRow, index % 2 === 0 && { backgroundColor: EMERALD_THEME.background }]}>
-                                <View style={s.colKy}>
-                                    <View style={s.periodCircle}>
-                                        <Text style={s.periodCircleText}>{item.period}</Text>
-                                    </View>
-                                </View>
-                                <Text style={[s.colGoc, s.tableRowText]}>{formatCurrency(item.principal)}</Text>
-                                <Text style={[s.colLai, s.tableRowText, { color: EMERALD_THEME.textSecondary }]}>{formatCurrency(item.interest)}</Text>
-                                <Text style={[s.colTong, s.tableRowTextBold]}>{formatCurrency(item.total)}</Text>
+                            <View key={item.period} style={[styles.tableRow, index % 2 === 0 && { backgroundColor: '#F9FAFB' }]}>
+                                <View style={styles.colKy}><View style={styles.periodCircle}><Text style={styles.periodCircleText}>{item.period}</Text></View></View>
+                                <Text style={[styles.colGoc, styles.tableRowText]}>{formatCurrency(item.principal)}</Text>
+                                <Text style={[styles.colLai, styles.tableRowText, { color: '#6B7280' }]}>{formatCurrency(item.interest)}</Text>
+                                <Text style={[styles.colTong, styles.tableRowTextBold]}>{formatCurrency(item.total)}</Text>
                             </View>
                         ))}
-
-                        {!scheduleExpanded && schedule.schedulePreview.length > PREVIEW_ROWS && (
-                            <TouchableOpacity style={s.showMoreBtn} onPress={toggleSchedule}>
-                                <Text style={s.showMoreText}>+ {schedule.schedulePreview.length - PREVIEW_ROWS} kỳ còn lại</Text>
-                            </TouchableOpacity>
-                        )}
                     </View>
                 )}
 
-                {/* ── Thông tin nhận giải ngân ── */}
-                <View style={s.card}>
-                    <Text style={s.sectionTitle}>THÔNG TIN NHẬN GIẢI NGÂN</Text>
-                    {loading ? (
-                        <ActivityIndicator color={EMERALD_THEME.primary} size="small" />
-                    ) : (
-                        <TouchableOpacity
-                            style={[s.walletSelect, selectedWallet && { borderColor: EMERALD_THEME.primary }]}
-                            onPress={() => setShowWalletModal(true)}
-                        >
-                            <View style={s.walletIconWrap}>
-                                <MaterialCommunityIcons name="wallet-outline" size={24} color={EMERALD_THEME.primary} />
+                <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>THÔNG TIN NHẬN GIẢI NGÂN</Text>
+                    {loading ? <ActivityIndicator color="#1E3A2F" /> : (
+                        <TouchableOpacity style={styles.walletSelect} onPress={() => setShowWalletModal(true)}>
+                            <View style={styles.walletIconWrap}><MaterialCommunityIcons name="wallet-outline" size={24} color="#1E3A2F" /></View>
+                            <View style={styles.walletInfo}>
+                                <Text style={styles.walletName}>{selectedWallet?.productName || 'Ví điện tử'}</Text>
+                                <Text style={styles.walletNo}>ID: {selectedWallet?.accountNo || 'N/A'}</Text>
                             </View>
-                            {selectedWallet ? (
-                                <View style={s.walletInfo}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <Text style={s.walletName}>
-                                            {selectedWallet.productName || selectedWallet.metadata?.productName || 'Ví điện tử'}
-                                        </Text>
-                                        {selectedWallet.isDefault && (
-                                            <View style={s.defaultBadge}>
-                                                <Text style={s.defaultBadgeText}>Mặc định</Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                    <Text style={s.walletNo}>ID: {selectedWallet.accountNo || selectedWallet.fineractId || 'N/A'}</Text>
-                                </View>
-                            ) : (
-                                <Text style={s.walletPlaceholder}>Chọn ví nhận giải ngân</Text>
-                            )}
-                            <MaterialCommunityIcons name="chevron-right" size={24} color={EMERALD_THEME.textDim} />
+                            <MaterialCommunityIcons name="chevron-right" size={24} color="#9CA3AF" />
                         </TouchableOpacity>
                     )}
                 </View>
 
-                {/* ── Chính sách xử lý nợ ── */}
-                {policies.length > 0 && (
-                    <View style={s.card}>
-                        <TouchableOpacity style={s.scheduleTitleRow} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setPolicyExpanded(v => !v); }} activeOpacity={0.7}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <MaterialCommunityIcons name="shield-alert-outline" size={18} color={EMERALD_THEME.warning ?? '#f59e0b'} />
-                                <Text style={s.sectionTitle}>CHÍNH SÁCH NỢ QUÁ HẠN</Text>
-                            </View>
-                            <MaterialCommunityIcons name={policyExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={EMERALD_THEME.primary} />
-                        </TouchableOpacity>
-
-                        {!policyExpanded && (
-                            <Text style={{ fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: -8, marginBottom: 4 }}>
-                                Nhấn để xem chi tiết các biện pháp xử lý khi trễ hạn thanh toán
-                            </Text>
-                        )}
-
-                        {policyExpanded && (
-                            <View style={{ marginTop: 4 }}>
-                                {/* Table Header */}
-                                <View style={{
-                                    flexDirection: 'row',
-                                    paddingVertical: 10,
-                                    paddingHorizontal: 8,
-                                    backgroundColor: EMERALD_THEME.background,
-                                    borderRadius: 8,
-                                    marginBottom: 2,
-                                }}>
-                                    <Text style={{ flex: 1.2, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Nhóm</Text>
-                                    <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Ngày quá hạn</Text>
-                                    <Text style={{ flex: 1.5, fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim }}>Hành động</Text>
-                                </View>
-                                {/* Table Rows */}
-                                {policies.map((p, idx) => {
-                                    const actions: string[] = [];
-                                    if (p.send_notification) actions.push('Thông báo');
-                                    if (p.send_email) actions.push('Email');
-                                    if (p.send_sms) actions.push('SMS');
-                                    if (p.apply_penalty) actions.push('Áp dụng lãi phạt');
-                                    if (p.block_new_loan) actions.push('Chặn vay mới');
-                                    if (p.freeze_account) actions.push('Đóng băng tài khoản');
-                                    if (p.permanent_ban) actions.push('Cấm vĩnh viễn');
-                                    if (p.legal_escalation) actions.push('Xử lý pháp lý');
-                                    const dayRange = p.min_days != null && p.max_days != null
-                                        ? `${p.min_days} - ${p.max_days} ngày`
-                                        : p.min_days != null
-                                            ? `≥ ${p.min_days} ngày`
-                                            : '--';
-
-                                    return (
-                                        <View
-                                            key={p._id || idx}
-                                            style={{
-                                                flexDirection: 'row',
-                                                paddingVertical: 12,
-                                                paddingHorizontal: 8,
-                                                borderTopWidth: idx > 0 ? 1 : 0,
-                                                borderTopColor: EMERALD_THEME.border,
-                                                alignItems: 'flex-start',
-                                            }}
-                                        >
-                                            <View style={{ flex: 1.2 }}>
-                                                <Text style={{ fontSize: 12, fontWeight: '600', color: EMERALD_THEME.textPrimary }}>
-                                                    #{p.debt_group} – {p.debt_group_name}
-                                                </Text>
-                                            </View>
-                                            <Text style={{ flex: 1, fontSize: 12, color: EMERALD_THEME.textSecondary }}>{dayRange}</Text>
-                                            <Text style={{ flex: 1.5, fontSize: 12, color: EMERALD_THEME.textSecondary, lineHeight: 18 }}>
-                                                {actions.join(', ')}
-                                            </Text>
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        )}
-
-                        <TouchableOpacity
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border }}
-                            onPress={() => setPolicyAgreed(v => !v)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={{
-                                width: 22, height: 22, borderRadius: 6,
-                                borderWidth: 2, borderColor: policyAgreed ? EMERALD_THEME.primary : EMERALD_THEME.textDim,
-                                backgroundColor: policyAgreed ? EMERALD_THEME.primary : 'transparent',
-                                justifyContent: 'center', alignItems: 'center',
-                            }}>
-                                {policyAgreed && <MaterialCommunityIcons name="check" size={14} color={EMERALD_THEME.onPrimary} />}
-                            </View>
-                            <Text style={{ flex: 1, fontSize: 12, color: EMERALD_THEME.textSecondary, lineHeight: 18 }}>
-                                Tôi đã đọc và đồng ý với các điều khoản xử lý nợ quá hạn của hệ thống P2P Lending
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* ── Tài liệu đính kèm ── */}
                 {documentTypes.length > 0 && (
-                    <View style={s.card}>
-                        <View style={s.docSectionHeader}>
-                            <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={EMERALD_THEME.textDim} />
-                            <Text style={s.sectionTitle}>TÀI LIỆU ĐÍNH KÈM</Text>
-                        </View>
-
-                        {documentTypes.sort((a, b) => a.sortOrder - b.sortOrder).map((doc) => {
-                            const hasValue = !!documents[doc.id]?.name;
-
-                            return (
-                                <View key={doc.id} style={s.docRow}>
-                                    <View style={s.docHeader}>
-                                        <View style={[s.docIconWrap, hasValue && { backgroundColor: EMERALD_THEME.success + '20' }]}>
-                                            <MaterialCommunityIcons
-                                                name={hasValue ? "check-circle" : "file-image-outline"}
-                                                size={18}
-                                                color={hasValue ? EMERALD_THEME.success : EMERALD_THEME.primary}
-                                            />
-                                        </View>
-                                        <View style={s.docNameBlock}>
-                                            <Text style={s.docName}>{doc.name}</Text>
-                                            {doc.description ? (
-                                                <Text style={s.docDesc} numberOfLines={1}>{doc.description}</Text>
-                                            ) : null}
-                                        </View>
-                                        {doc.required ? (
-                                            <View style={s.badgeRequired}>
-                                                <Text style={s.badgeRequiredText}>Bắt buộc</Text>
-                                            </View>
-                                        ) : (
-                                            <View style={s.badgeOptional}>
-                                                <Text style={s.badgeOptionalText}>Tuỳ chọn</Text>
-                                            </View>
-                                        )}
-                                    </View>
-
-                                    <TouchableOpacity
-                                        style={[s.bigCameraBtn, documents[doc.id]?.uri && { borderColor: EMERALD_THEME.success, borderStyle: 'solid' }]}
-                                        onPress={() => pickImage(doc.id)}
-                                    >
-                                        {documents[doc.id]?.uri ? (
-                                            <View style={s.docThumbnailWrap}>
-                                                <Image source={{ uri: documents[doc.id]?.uri }} style={s.docThumbnail} />
-                                                <View style={s.docThumbnailOverlay}>
-                                                    <MaterialCommunityIcons name="pencil-circle" size={32} color="#fff" />
-                                                    <Text style={s.docThumbnailText}>Sửa ảnh</Text>
-                                                </View>
-                                            </View>
-                                        ) : (
-                                            <View style={s.emptyDocState}>
-                                                <MaterialCommunityIcons name="camera-plus-outline" size={32} color={EMERALD_THEME.textDim} />
-                                                <Text style={s.uploadHint}>Chụp hoặc chọn ảnh</Text>
-                                            </View>
-                                        )}
-                                    </TouchableOpacity>
+                    <View style={styles.card}>
+                        <Text style={styles.sectionTitle}>TÀI LIỆU ĐÍNH KÈM</Text>
+                        {documentTypes.map((doc) => (
+                            <View key={doc.id} style={styles.docRow}>
+                                <View style={styles.docHeader}>
+                                    <Text style={styles.docName}>{doc.name}</Text>
+                                    {doc.required && <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>Bắt buộc</Text></View>}
                                 </View>
-                            );
-                        })}
+                                <TouchableOpacity style={styles.bigCameraBtn} onPress={() => pickImage(doc.id)}>
+                                    {documents[doc.id]?.uri ? (
+                                        <Image source={{ uri: documents[doc.id]?.uri }} style={styles.docThumbnail} />
+                                    ) : (
+                                        <View style={{ alignItems: 'center' }}>
+                                            <MaterialCommunityIcons name="camera-plus-outline" size={32} color="#9CA3AF" />
+                                            <Text style={styles.uploadHint}>Tải ảnh lên</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        ))}
                     </View>
                 )}
 
-                {/* Footer Form Action */}
-                <View style={s.footer}>
+                <View style={styles.footer}>
                     <OTPProtectedAction
                         actionType={OtpActionType.LOAN_CREATE}
                         actionData={{ capital, periodMonth, productId: product.id }}
                         onExecute={handleApply}
                         requireOTP
-                        title="Xác thực phân đoạn"
-                        description="Nhập mã OTP để xác nhận tạo khoản vay"
                     >
-                        {({ trigger, isLoading, isInitialized }) => {
+                        {({ trigger, isLoading }) => {
                             otpTriggerRef.current = trigger;
-                            const handlePress = () => {
-                                if (!selectedWallet) { modal.error('Lỗi', 'Vui lòng chọn ví nhận giải ngân'); return; }
-                                if (policies.length > 0 && !policyAgreed) { modal.error('Lỗi', 'Vui lòng đọc và đồng ý điều khoản xử lý nợ quá hạn'); return; }
-                                const requiredMissing = documentTypes.filter((d) => d.required && !documents[d.id]?.name);
-                                if (requiredMissing.length > 0) {
-                                    modal.error('Lỗi', `Thiếu tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
-                                    return;
-                                }
-                                setShowPinVerify(true);
-                            };
-                            const isDisabled = submitting || !selectedWallet || isLoading || !isInitialized || (policies.length > 0 && !policyAgreed);
                             return (
                                 <TouchableOpacity
-                                    style={[s.submitBtn, { backgroundColor: isDisabled ? (theme.mode === 'dark' ? EMERALD_THEME.surfaceHigh : 'rgba(0,0,0,0.06)') : EMERALD_THEME.primary }]}
-                                    onPress={handlePress}
-                                    disabled={isDisabled}
-                                    activeOpacity={0.85}
+                                    style={[styles.submitBtn, (submitting || isLoading) && { opacity: 0.7 }]}
+                                    onPress={() => setShowPinVerify(true)}
+                                    disabled={submitting || isLoading}
                                 >
-                                    {submitting || isLoading ? (
-                                        <ActivityIndicator size="small" color={EMERALD_THEME.onPrimary} />
-                                    ) : (
-                                        <Text style={[s.submitBtnText, { color: isDisabled ? (theme.mode === 'dark' ? EMERALD_THEME.textDim : 'rgba(0,0,0,0.3)') : EMERALD_THEME.onPrimary }]}>
-                                            Xác nhận & gửi đơn
-                                        </Text>
-                                    )}
+                                    {submitting || isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Xác nhận & gửi đơn</Text>}
                                 </TouchableOpacity>
                             );
                         }}
                     </OTPProtectedAction>
                 </View>
-
-                <View style={{ height: 40 }} />
-
-
-                <WalletSelectorModal
-                    visible={showWalletModal}
-                    onClose={() => setShowWalletModal(false)}
-                    wallets={wallets}
-                    selectedWalletId={selectedWallet?.id ?? selectedWallet?._id}
-                    onSelect={setSelectedWallet}
-                    title="Chọn ví nhận giải ngân"
-                />
-
-                <ImagePickerSheet
-                    visible={imagePickerVisible}
-                    onClose={() => { setImagePickerVisible(false); setImagePickerDocId(null); }}
-                    onSelect={handleImagePicked}
-                    title="Tải tài liệu lên"
-                    allowCamera
-                    quality={0.8}
-                />
-
-                <PinVerifyModal
-                    visible={showPinVerify}
-                    dismissable
-                    onCancel={() => setShowPinVerify(false)}
-                    onSuccess={() => {
-                        setShowPinVerify(false);
-                        setTimeout(() => otpTriggerRef.current?.(), 300);
-                    }}
-                    onForgotPin={() => { setShowPinVerify(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
-                    title="Xác thực mã PIN"
-                    subtitle="Nhập mã PIN để tiếp tục giao dịch an toàn"
-                />
-
             </ScrollView>
-        </View >
+
+            <WalletSelectorModal
+                visible={showWalletModal}
+                onClose={() => setShowWalletModal(false)}
+                wallets={wallets}
+                selectedWalletId={selectedWallet?.id || selectedWallet?._id}
+                onSelect={setSelectedWallet}
+            />
+            <ImagePickerSheet visible={imagePickerVisible} onClose={() => setImagePickerVisible(false)} onSelect={handleImagePicked} />
+            <PinVerifyModal
+                visible={showPinVerify}
+                onCancel={() => setShowPinVerify(false)}
+                onSuccess={() => { setShowPinVerify(false); setTimeout(() => otpTriggerRef.current?.(), 300); }}
+            />
+        </View>
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  STYLES — Emerald Night
-// ═══════════════════════════════════════════════════════════
-const getStyles = (EMERALD_THEME: any) => StyleSheet.create({
-    container: { flex: 1 },
-
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#F9FAFB' },
+    stepIndicatorText: { fontSize: 13, fontWeight: '700', color: '#9CA3AF' },
     scroll: { flex: 1 },
-    scrollContent: { padding: 20, paddingBottom: 24, gap: 16 },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-    card: { backgroundColor: EMERALD_THEME.surface, borderRadius: 20, padding: 20 },
-    sectionTitle: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 16 },
-
-    // Hero Vault
-    heroVaultCard: {
-        backgroundColor: EMERALD_THEME.background,
-        borderRadius: 24, padding: 24,
-        alignItems: 'center',
-        borderWidth: 1, borderColor: EMERALD_THEME.border, // subtle highlight
-    },
-    heroLabel: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1.5, marginBottom: 8 },
-    heroAmount: { fontSize: 28, fontWeight: '700', color: EMERALD_THEME.primary, letterSpacing: -0.3, marginBottom: 20 },
-
-    heroGrid: { flexDirection: 'row', width: '100%', alignItems: 'center', marginBottom: 24 },
-    heroCol: { flex: 1, alignItems: 'center' },
-    heroColLabel: { fontSize: 10, fontWeight: '700', color: EMERALD_THEME.textDim, letterSpacing: 1, marginBottom: 4 },
-    heroColValue: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-    heroDivider: { width: 1, height: 24, backgroundColor: EMERALD_THEME.border },
-
-    heroTotalBox: {
-        width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingTop: 16, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border,
-    },
-    heroTotalLabel: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.textSecondary },
-    heroTotalValue: { fontSize: 16, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-
-    // Fees
-    feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
-    feeLabelBlock: { flex: 1, paddingRight: 12 },
-    feeName: { fontSize: 14, fontWeight: '600', color: EMERALD_THEME.textPrimary },
-    feeNote: { fontSize: 12, color: EMERALD_THEME.textDim, marginTop: 2 },
+    scrollContent: { padding: 16, paddingBottom: 100 },
+    stepperContainer: { flexDirection: 'row', height: 4, marginHorizontal: 16, marginVertical: 8, gap: 4 },
+    stepSegmentWrapper: { flex: 1 },
+    stepSegment: { borderRadius: 2 },
+    summaryCard: { backgroundColor: '#1E3A2F', borderRadius: 24, padding: 24, alignItems: 'center' },
+    summaryLabel: { fontSize: 12, fontWeight: '700', color: '#A7F3D0', marginBottom: 12 },
+    summaryAmount: { fontSize: 32, fontWeight: '800', color: '#FFFFFF', marginBottom: 24 },
+    summaryStatsRow: { flexDirection: 'row', width: '100%', paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
+    summaryStatItem: { flex: 1, alignItems: 'center' },
+    summaryStatValue: { fontSize: 13, fontWeight: '700', color: '#A7F3D0' },
+    summaryStatDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' },
+    card: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, marginTop: 16 },
+    sectionTitle: { fontSize: 14, fontWeight: '700', color: '#1E3A2F', marginBottom: 16 },
+    feeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
+    feeLabelBlock: { flex: 1 },
+    feeName: { fontSize: 14, fontWeight: '600', color: '#111827' },
+    feeNote: { fontSize: 12, color: '#6B7280' },
     feeValueBlock: { alignItems: 'flex-end' },
-    feeRate: { fontSize: 14, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-    feeAmountText: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 2 },
-
-    // Schedule
-    scheduleTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    feeRate: { fontSize: 14, fontWeight: '700', color: '#111827' },
+    scheduleTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    expandText: { fontSize: 12, fontWeight: '600', color: EMERALD_THEME.primary },
-    tableHeader: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 4, marginBottom: 8 },
-    tableHeaderText: { fontSize: 11, fontWeight: '700', color: EMERALD_THEME.textDim, textTransform: 'uppercase', letterSpacing: 0.5 },
-    tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, borderRadius: 8 },
-    colKy: { width: 44, alignItems: 'center' },
-    colGoc: { flex: 1.1, textAlign: 'right' },
+    expandText: { fontSize: 12, fontWeight: '600', color: '#1E3A2F' },
+    tableHeader: { flexDirection: 'row', paddingVertical: 8 },
+    tableHeaderText: { fontSize: 11, fontWeight: '700', color: '#9CA3AF' },
+    tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+    colKy: { width: 40 },
+    colGoc: { flex: 1, textAlign: 'right' },
     colLai: { flex: 1, textAlign: 'right' },
-    colTong: { flex: 1.1, textAlign: 'right' },
-
-    tableRowText: { fontSize: 13, fontWeight: '500', color: EMERALD_THEME.textPrimary, textAlign: 'right' },
-    tableRowTextBold: { fontSize: 13, fontWeight: '700', color: EMERALD_THEME.primary, textAlign: 'right' },
-
-    periodCircle: { width: 28, height: 28, borderRadius: 8, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
-    periodCircleText: { fontSize: 12, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-
-    showMoreBtn: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
-    showMoreText: { fontSize: 13, fontWeight: '600', color: EMERALD_THEME.primary },
-
-    // Wallet
-    walletSelect: {
-        flexDirection: 'row', alignItems: 'center', gap: 14,
-        padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: EMERALD_THEME.surfaceHigh,
-        backgroundColor: EMERALD_THEME.background,
-    },
-    walletIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
+    colTong: { flex: 1.2, textAlign: 'right' },
+    tableRowText: { fontSize: 13, textAlign: 'right' },
+    tableRowTextBold: { fontSize: 13, fontWeight: '700', color: '#1E3A2F', textAlign: 'right' },
+    periodCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
+    periodCircleText: { fontSize: 12, fontWeight: '700' },
+    walletSelect: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12 },
+    walletIconWrap: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#1E3A2F10', justifyContent: 'center', alignItems: 'center' },
     walletInfo: { flex: 1 },
-    walletName: { fontSize: 15, fontWeight: '700', color: EMERALD_THEME.textPrimary },
-    walletNo: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 4 },
-    walletPlaceholder: { flex: 1, fontSize: 14, color: EMERALD_THEME.textDim },
-    defaultBadge: { backgroundColor: EMERALD_THEME.primary + '20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-    defaultBadgeText: { fontSize: 10, fontWeight: '800', color: EMERALD_THEME.primary },
-
-    // Docs
-    docSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    docRow: { paddingTop: 16, marginTop: 16, borderTopWidth: 1, borderTopColor: EMERALD_THEME.border },
-    docHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-    docIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: EMERALD_THEME.surfaceHigh, justifyContent: 'center', alignItems: 'center' },
-    docNameBlock: { flex: 1 },
-    docName: { fontSize: 14, fontWeight: '600', color: EMERALD_THEME.textPrimary },
-    docDesc: { fontSize: 12, color: EMERALD_THEME.textSecondary, marginTop: 2 },
-    badgeRequired: { backgroundColor: '#93000a', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-    badgeRequiredText: { color: '#ffb4ab', fontSize: 10, fontWeight: '700' },
-    badgeOptional: { backgroundColor: EMERALD_THEME.surfaceHigh, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-    badgeOptionalText: { color: EMERALD_THEME.textSecondary, fontSize: 10, fontWeight: '600' },
-
-    bigCameraBtn: {
-        width: '100%', height: 110, borderRadius: 12,
-        backgroundColor: EMERALD_THEME.background,
-        borderWidth: 1.5, borderColor: EMERALD_THEME.surfaceHigh, borderStyle: 'dashed',
-        justifyContent: 'center', alignItems: 'center', overflow: 'hidden'
-    },
-    emptyDocState: { alignItems: 'center', gap: 8 },
-    uploadHint: { fontSize: 13, fontWeight: '500', color: EMERALD_THEME.textDim },
-    docThumbnailWrap: { width: '100%', height: '100%', position: 'relative' },
-    docThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
-    docThumbnailOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', gap: 4 },
-    docThumbnailText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-
-    // Footer
-    footer: {
-        width: '100%',
-        paddingVertical: 16,
-        paddingHorizontal: 0,
-    },
-    submitBtn: {
-        width: '100%',
-        paddingVertical: 18, borderRadius: 100,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    submitBtnText: { fontSize: 16, fontWeight: '700' },
+    walletName: { fontSize: 14, fontWeight: '700' },
+    walletNo: { fontSize: 12, color: '#6B7280' },
+    docRow: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+    docHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+    docName: { fontSize: 14, fontWeight: '600' },
+    badgeRequired: { backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    badgeRequiredText: { color: '#DC2626', fontSize: 10, fontWeight: '700' },
+    bigCameraBtn: { width: '100%', height: 120, backgroundColor: '#F9FAFB', borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
+    docThumbnail: { width: '100%', height: '100%', borderRadius: 12 },
+    uploadHint: { fontSize: 13, color: '#9CA3AF' },
+    footer: { marginTop: 24 },
+    submitBtn: { backgroundColor: '#1E3A2F', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    submitBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }
 });

@@ -90,6 +90,22 @@ export class FineractService {
     return this.savingsService.getSavingsAccountTransactions(savingsAccountId, limit, offset);
   }
 
+  async withdrawFromSavings(
+    savingsId: number,
+    amount: number,
+    note?: string,
+  ): Promise<{ transactionId: number }> {
+    return this.savingsService.withdrawFromSavings(savingsId, amount, note);
+  }
+
+  async depositToSavings(
+    savingsId: number,
+    amount: number,
+    note?: string,
+  ): Promise<{ transactionId: number }> {
+    return this.savingsService.depositToSavings(savingsId, amount, note);
+  }
+
   // ==================== LOAN OPERATIONS ====================
 
   async createLoanApplication(data: {

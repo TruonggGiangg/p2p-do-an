@@ -91,10 +91,16 @@ export const OTPProtectedAction: React.FC<OTPProtectedActionProps> = ({
       Keyboard.dismiss();
       setShowOTPModal(true);
     } else if (requireOTP && !isOTPEnabled) {
-      modal.error(
-        'Cần đăng ký Smart OTP',
-        'Bạn cần đăng ký Smart OTP trong mục Profile trước khi tạo khoản vay.',
-      );
+      modal.show({
+        title: 'Cần đăng ký Smart OTP',
+        message: 'Bạn cần đăng ký Smart OTP trong mục Profile trước khi thực hiện thao tác này.',
+        variant: 'warning',
+        confirmText: 'Cài đặt ngay',
+        onConfirm: () => (navigation as any).navigate('Main', { 
+          screen: 'Profile', 
+          params: { expandSmartOTP: true } 
+        })
+      });
     } else if (showConfirmIfNoOTP) {
       modal.confirm({
         title: confirmTitle,

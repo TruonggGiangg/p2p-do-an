@@ -10,9 +10,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Animated, Dimensions,
+  ActivityIndicator, Animated, Dimensions, Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -131,6 +132,10 @@ export default function InvestmentFlowScreen() {
 
   // ── Navigation between steps ──
   const goNext = () => {
+    if (step < 4) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     if (step === 1) {
       setStep(2);
       fetchSchedule();
@@ -152,147 +157,172 @@ export default function InvestmentFlowScreen() {
         modal.error('Chưa đồng ý', 'Vui lòng đồng ý với điều khoản đầu tư trước khi xác nhận.');
         return;
       }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowPinModal(true);
     }
   };
 
   const goBack = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (step > 1) setStep(step - 1);
     else navigation.goBack();
   };
 
   // ═══════════════════════════════════════════════════════════
-  //  STEPPER BAR
+  //  STEPPER BAR (Linear Styled)
   // ═══════════════════════════════════════════════════════════
-  const StepperBar = () => (
-    <View style={styles.stepperContainer}>
-      {[1, 2, 3, 4].map((s, idx) => (
-        <React.Fragment key={s}>
-          <View style={[
-            styles.stepDot,
-            {
-              backgroundColor: s <= step ? theme.colors.primary : theme.colors.textMuted + '40',
-              ...(s <= step ? { shadowColor: theme.colors.primary, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 } : {}),
-            },
-          ]}>
-            {s < step ? (
-              <Ionicons name="checkmark" size={10} color={theme.colors.onPrimary} />
-            ) : (
-              <Text style={[styles.stepDotText, { color: s <= step ? theme.colors.onPrimary : theme.colors.textMuted }]}>{s}</Text>
-            )}
+  const StepperBar = () => {
+    const activeColor = '#1E3A2F'; // Deep Emerald
+    const inactiveColor = theme.colors.textMuted + '25';
+    
+    return (
+      <View style={styles.stepperContainer}>
+        {[1, 2, 3, 4].map((s, idx) => (
+          <View key={s} style={styles.stepSegmentWrapper}>
+            <View 
+              style={[
+                styles.stepSegment, 
+                { 
+                  backgroundColor: s <= step ? activeColor : inactiveColor,
+                  height: s === step ? 4 : 3,
+                }
+              ]} 
+            />
           </View>
-          {idx < 3 && (
-            <View style={[styles.stepLine, { backgroundColor: s < step ? theme.colors.primary : theme.colors.textMuted + '25' }]} />
-          )}
-        </React.Fragment>
-      ))}
-    </View>
-  );
+        ))}
+      </View>
+    );
+  };
 
   const stepTitles = ['Chọn số lượng', 'Xem trước lợi nhuận', 'Chọn ví thanh toán', 'Xác nhận đầu tư'];
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 1: NODE SELECTOR
+  //  STEP 1: LOAN SELECTOR (Refined)
   // ═══════════════════════════════════════════════════════════
   const Step1 = () => (
     <ScrollView style={styles.stepContent} showsVerticalScrollIndicator={false}>
-      {/* Loan Info Card */}
-      <View style={[styles.infoCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <View style={styles.infoHeader}>
-          <LinearGradient colors={[theme.colors.primary + '30', theme.colors.success + '18']} style={styles.infoIcon}>
-            <MaterialCommunityIcons name="file-document-outline" size={20} color={theme.colors.primary} />
-          </LinearGradient>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.infoTitle, { color: theme.colors.text }]} numberOfLines={1}>{loan?.willing || 'Khoản vay'}</Text>
-            <Text style={[styles.infoSub, { color: theme.colors.textMuted }]}>Mã #{loan?._id?.slice(-4)?.toUpperCase()} • Đã thẩm định</Text>
+      {/* Modern Info Card */}
+      <View style={styles.infoCard}>
+        <View style={styles.infoCardHeader}>
+          <View style={styles.loanBadge}>
+            <Text style={styles.loanBadgeText}>KHOẢN VAY #{loan?._id?.slice(-4)?.toUpperCase()}</Text>
           </View>
-          <View style={[styles.verifiedBadge, { backgroundColor: theme.colors.success + '20' }]}>
-            <Ionicons name="shield-checkmark" size={11} color={theme.colors.success} />
-            <Text style={[styles.verifiedText, { color: theme.colors.success }]}>Đã xác minh</Text>
+          <View style={styles.verifiedRow}>
+            <Ionicons name="shield-checkmark" size={14} color="#059669" />
+            <Text style={styles.verifiedText}>Portfolio verified</Text>
           </View>
         </View>
-        <View style={[styles.metricsGrid, { backgroundColor: theme.colors.surfaceLight }]}>
+
+        <Text style={styles.loanTitle}>{loan?.willing || 'Đầu tư khoản vay'}</Text>
+
+        <View style={styles.metricsGrid}>
           <View style={styles.metricItem}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>GIÁ TRỊ KHOẢN VAY</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{fmt(loan?.capital || 0)}</Text>
+            <View style={[styles.metricIconBg, { backgroundColor: '#F0FDF4' }]}>
+              <MaterialCommunityIcons name="trending-up" size={16} color="#059669" />
+            </View>
+            <View>
+              <Text style={styles.metricLabel}>LÃI SUẤT</Text>
+              <Text style={[styles.metricValue, { color: '#059669' }]}>{annualRate.toFixed(1)}%</Text>
+            </View>
           </View>
-          <View style={[styles.metricItem, styles.metricRight]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>LÃI SUẤT FD</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.primary }]}>{annualRate.toFixed(1)}%/năm</Text>
+
+          <View style={styles.metricItem}>
+            <View style={[styles.metricIconBg, { backgroundColor: '#EFF6FF' }]}>
+              <MaterialCommunityIcons name="calendar-clock" size={16} color="#2563EB" />
+            </View>
+            <View>
+              <Text style={styles.metricLabel}>KỲ HẠN</Text>
+              <Text style={styles.metricValue}>{loan?.periodMonth} tháng</Text>
+            </View>
           </View>
-          <View style={[styles.metricItem, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.textMuted + '15' }]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>KỲ HẠN</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{loan?.periodMonth} tháng</Text>
-          </View>
-          <View style={[styles.metricItem, styles.metricRight, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.textMuted + '15' }]}>
-            <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>TỔNG THU NHẬN</Text>
-            <Text style={[styles.metricValue, { color: theme.colors.textPrimary }]}>{fmt(loan?.entirelyPay || 0)}</Text>
+
+          <View style={styles.metricItem}>
+            <View style={[styles.metricIconBg, { backgroundColor: '#FFF7ED' }]}>
+              <MaterialCommunityIcons name="chart-pie" size={16} color="#D97706" />
+            </View>
+            <View>
+              <Text style={styles.metricLabel}>HUY ĐỘNG</Text>
+              <Text style={styles.metricValue}>{Math.round(((nodeMatch + invested) / totalNotes) * 100)}%</Text>
+            </View>
           </View>
         </View>
-        {/* Progress */}
-        <View style={[styles.progressSection, { backgroundColor: theme.colors.surfaceLight }]}>
-          <View style={styles.progressHeader}>
-            <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>TIẾN ĐỘ HUY ĐỘNG</Text>
-            <Text style={[styles.progressValue, { color: theme.colors.primary }]}>{nodeMatch + invested}/{totalNotes} phần</Text>
+
+        <View style={styles.availableInfo}>
+          <View style={styles.availableBarBg}>
+            <View 
+              style={[
+                styles.availableBarFill, 
+                { width: `${Math.min(100, ((nodeMatch + invested) / totalNotes) * 100)}%` }
+              ]} 
+            />
           </View>
-          <View style={styles.progressBar}>
-            {invested > 0 && <View style={[styles.progressSeg, { width: `${(invested / totalNotes) * 100}%`, backgroundColor: theme.colors.success, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }]} />}
-            {nodeMatch > 0 && <View style={[styles.progressSeg, { width: `${(nodeMatch / totalNotes) * 100}%`, backgroundColor: theme.colors.warning || '#FBBF24' }]} />}
-            <View style={[styles.progressSeg, { flex: 1, backgroundColor: theme.colors.textMuted + '30', borderTopRightRadius: 4, borderBottomRightRadius: 4 }]} />
+          <View style={styles.availableTextRow}>
+            <Text style={styles.availableSubText}>Còn lại: <Text style={{ color: '#1E3A2F', fontWeight: '700' }}>{available} phần</Text></Text>
+            <Text style={styles.availableSubText}>{invested + nodeMatch}/{totalNotes} phần</Text>
           </View>
         </View>
       </View>
 
-      {/* Node Selector */}
-      <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Số lượng phần đầu tư</Text>
-      <View style={[styles.counterContainer, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <TouchableOpacity
-          style={[styles.counterBtn, { backgroundColor: theme.colors.primaryGlass }]}
-          onPress={() => setNumNotes(n => Math.max(1, n - 1))}
-          disabled={numNotes <= 1}
-        >
-          <Ionicons name="remove" size={24} color={numNotes <= 1 ? theme.colors.textMuted : theme.colors.primary} />
-        </TouchableOpacity>
-        <View style={styles.counterCenter}>
-          <Text style={[styles.counterValue, { color: theme.colors.text }]}>{numNotes}</Text>
-          <Text style={[styles.counterLabel, { color: theme.colors.textSecondary }]}>phần</Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.counterBtn, { backgroundColor: theme.colors.primaryGlass }]}
-          onPress={() => setNumNotes(n => Math.min(available, n + 1))}
-          disabled={numNotes >= available}
-        >
-          <Ionicons name="add" size={24} color={numNotes >= available ? theme.colors.textMuted : theme.colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Quick Select */}
-      <View style={styles.quickRow}>
-        {[1, 5, 10, available].filter((v, i, arr) => arr.indexOf(v) === i && v > 0).map(n => (
+      <View style={styles.counterSection}>
+        <Text style={styles.inputLabel}>Số lượng muốn đầu tư</Text>
+        
+        <View style={styles.counterContainer}>
           <TouchableOpacity
-            key={n}
-            style={[
-              styles.quickChip,
-              { borderColor: numNotes === n ? theme.colors.primary : theme.colors.textMuted + '30' },
-              numNotes === n && { backgroundColor: theme.colors.primaryGlass },
-            ]}
-            onPress={() => setNumNotes(Math.min(n, available))}
+            style={[styles.counterBtn, numNotes <= 1 && styles.counterBtnDisabled]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setNumNotes(n => Math.max(1, n - 1));
+            }}
+            disabled={numNotes <= 1}
           >
-            <Text style={[styles.quickText, { color: numNotes === n ? theme.colors.primary : theme.colors.textSecondary }]}>
-              {n === available ? 'Tối đa' : `${n} phần`}
-            </Text>
+            <Ionicons name="remove" size={24} color={numNotes <= 1 ? '#D1D5DB' : '#1E3A2F'} />
           </TouchableOpacity>
-        ))}
+          
+          <View style={styles.counterValueContainer}>
+            <Text style={styles.counterValueText}>{numNotes}</Text>
+            <Text style={styles.counterUnitText}>PHẦN</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.counterBtn, numNotes >= available && styles.counterBtnDisabled]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setNumNotes(n => Math.min(available, n + 1));
+            }}
+            disabled={numNotes >= available}
+          >
+            <Ionicons name="add" size={24} color={numNotes >= available ? '#D1D5DB' : '#1E3A2F'} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.quickSelectRow}>
+          {[1, 5, 10, available].filter((v, i, arr) => arr.indexOf(v) === i && v > 0).map(n => (
+            <TouchableOpacity
+              key={n}
+              style={[styles.quickSelectChip, numNotes === n && styles.quickSelectChipActive]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setNumNotes(Math.min(n, available));
+              }}
+            >
+              <Text style={[styles.quickSelectText, numNotes === n && styles.quickSelectTextActive]}>
+                {n === available ? 'MAX' : `+${n}`}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
-      {/* Summary */}
-      <View style={[styles.summaryCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
-        <Text style={[styles.summaryBigLabel, { color: theme.colors.textSecondary }]}>Tổng vốn đầu tư</Text>
-        <Text style={[styles.summaryBigValue, { color: theme.colors.text }]}>{fmt(investCapital)}</Text>
-        <View style={styles.summarySmallRow}>
-          <MaterialCommunityIcons name="trending-up" size={16} color={theme.colors.primary} />
-          <Text style={[styles.summarySmallText, { color: theme.colors.primary }]}>
-            Lợi nhuận kỳ vọng: ~{fmt(Math.round(investCapital * (annualRate / 100) * (loan?.periodMonth || 12) / 12))}
+      <View style={styles.investmentPreview}>
+        <View style={styles.previewDivider} />
+        <View style={styles.previewRow}>
+          <Text style={styles.previewLabel}>Vốn đầu tư</Text>
+          <Text style={styles.previewValue}>{fmt(investCapital)}</Text>
+        </View>
+        <View style={styles.previewRow}>
+          <Text style={styles.previewLabel}>Lợi nhuận ước tính</Text>
+          <Text style={[styles.previewValue, { color: '#059669' }]}>
+            +{fmt(Math.round(investCapital * (annualRate / 100) * (loan?.periodMonth || 12) / 12))}
           </Text>
         </View>
       </View>
@@ -300,265 +330,230 @@ export default function InvestmentFlowScreen() {
   );
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 2: SCHEDULE PREVIEW
+  //  STEP 2: SCHEDULE PREVIEW (Refined)
   // ═══════════════════════════════════════════════════════════
   const Step2 = () => (
-    <ScrollView style={styles.stepContent} showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1 }}>
       {scheduleLoading ? (
         <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Đang tính toán lịch trình...</Text>
+          <ActivityIndicator size="small" color="#1E3A2F" />
+          <Text style={styles.loadingText}>Đang xử lý lịch trình...</Text>
         </View>
       ) : (
         <>
-          {/* Hero Summary */}
-          <LinearGradient
-            colors={[theme.colors.backgroundSecondary, theme.colors.primary + '10']}
-            style={styles.heroCard}
-          >
-            <Text style={[styles.heroLabel, { color: theme.colors.textSecondary }]}>VỐN ĐẦU TƯ</Text>
-            <Text style={[styles.heroValue, { color: theme.colors.text }]}>{fmt(scheduleSummary?.capital || investCapital)}</Text>
-            <Text style={[styles.heroMeta, { color: theme.colors.textMuted }]}>
-              {loan?.periodMonth} tháng · Lãi suất: {annualRate.toFixed(1)}%/năm · {numNotes} phần
-            </Text>
-            <View style={styles.heroColumns}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.heroColLabel, { color: theme.colors.textMuted }]}>Tổng nhận</Text>
-                <Text style={[styles.heroColValue, { color: theme.colors.text }]}>{fmt(scheduleSummary?.summary?.totalIncome || scheduleSummary?.entirelyPay || 0)}</Text>
-              </View>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={[styles.heroColLabel, { color: theme.colors.textMuted }]}>Lợi nhuận</Text>
-                <Text style={[styles.heroColValue, { color: theme.colors.primary }]}>+{fmt(scheduleSummary?.summary?.totalInterest || scheduleSummary?.entirelyProfit || 0)}</Text>
+          <View style={styles.stepContentNoPadding}>
+            {/* Hero Summary */}
+            <View style={styles.refinedHeroCard}>
+              <Text style={styles.refinedHeroLabel}>TỔNG THU NHẬP DỰ KIẾN</Text>
+              <Text style={styles.refinedHeroValue}>{fmt(scheduleSummary?.summary?.totalIncome || 0)}</Text>
+              
+              <View style={styles.refinedHeroMetrics}>
+                <View style={styles.refinedHeroMetric}>
+                  <Text style={styles.refinedHeroMetricLabel}>Vốn gốc</Text>
+                  <Text style={styles.refinedHeroMetricValue}>{fmt(scheduleSummary?.summary?.totalPrincipal || 0)}</Text>
+                </View>
+                <View style={styles.refinedHeroMetric}>
+                  <Text style={styles.refinedHeroMetricLabel}>Lợi nhuận</Text>
+                  <Text style={[styles.refinedHeroMetricValue, { color: '#BCF50E' }]}>+{fmt(scheduleSummary?.summary?.totalInterest || 0)}</Text>
+                </View>
               </View>
             </View>
-          </LinearGradient>
 
-          {/* Schedule Table */}
-          <View style={[styles.tableCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
-            <View style={[styles.tableHeader, { borderBottomColor: theme.colors.textMuted + '15' }]}>
-              <Text style={[styles.tableHeaderText, { color: theme.colors.textMuted, flex: 0.5 }]}>KỲ</Text>
-              <Text style={[styles.tableHeaderText, { color: theme.colors.textMuted, flex: 1, textAlign: 'right' }]}>GỐC</Text>
-              <Text style={[styles.tableHeaderText, { color: theme.colors.textMuted, flex: 1, textAlign: 'right' }]}>LÃI</Text>
-              <Text style={[styles.tableHeaderText, { color: theme.colors.textMuted, flex: 1, textAlign: 'right' }]}>TỔNG</Text>
+            <View style={styles.scheduleHeaderRow}>
+              <Text style={styles.scheduleHeaderTitle}>Chi tiết các kỳ thu nhập</Text>
+              <Text style={styles.scheduleHeaderSub}>{schedule.length} kỳ</Text>
             </View>
-            {schedule.map((item, idx) => (
-              <View key={idx} style={[styles.tableRow, idx % 2 === 0 && { backgroundColor: theme.colors.surfaceLight }]}>
-                <Text style={[styles.tableCell, { color: theme.colors.textSecondary, flex: 0.5 }]}>{item.period}</Text>
-                <Text style={[styles.tableCell, { color: theme.colors.textPrimary, flex: 1, textAlign: 'right' }]}>{fmt(item.principal)}</Text>
-                <Text style={[styles.tableCell, { color: theme.colors.primary, flex: 1, textAlign: 'right' }]}>{fmt(item.interest)}</Text>
-                <Text style={[styles.tableCellBold, { color: theme.colors.text, flex: 1, textAlign: 'right' }]}>{fmt(item.total)}</Text>
-              </View>
-            ))}
-            {/* Total */}
-            <View style={[styles.tableRow, { borderTopWidth: 1, borderTopColor: theme.colors.primary + '30' }]}>
-              <Text style={[styles.tableCellBold, { color: theme.colors.primary, flex: 0.5 }]}>Σ</Text>
-              <Text style={[styles.tableCellBold, { color: theme.colors.textPrimary, flex: 1, textAlign: 'right' }]}>{fmt(scheduleSummary?.summary?.totalPrincipal || 0)}</Text>
-              <Text style={[styles.tableCellBold, { color: theme.colors.primary, flex: 1, textAlign: 'right' }]}>{fmt(scheduleSummary?.summary?.totalInterest || 0)}</Text>
-              <Text style={[styles.tableCellBold, { color: theme.colors.primary, flex: 1, textAlign: 'right' }]}>{fmt(scheduleSummary?.summary?.totalIncome || 0)}</Text>
-            </View>
+
+            <ScrollView 
+              style={styles.scheduleList} 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {schedule.map((item, idx) => (
+                <View key={idx} style={styles.scheduleCardItem}>
+                  <View style={styles.scheduleCardLeft}>
+                    <View style={styles.periodBadge}>
+                      <Text style={styles.periodBadgeText}>{item.period}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.scheduleDateLabel}>Kỳ thứ {item.period}</Text>
+                      <Text style={styles.scheduleTypeLabel}>Gốc + Lãi</Text>
+                    </View>
+                  </View>
+                  <View style={styles.scheduleCardRight}>
+                    <Text style={styles.scheduleAmountValue}>{fmt(item.total)}</Text>
+                    <Text style={styles.scheduleInterestValue}>Lãi: {fmt(item.interest)}</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         </>
       )}
-    </ScrollView>
+    </View>
   );
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 3: WALLET SELECTION
+  //  STEP 3: WALLET SELECTION (Refined)
   // ═══════════════════════════════════════════════════════════
   const Step3 = () => {
     const getWalletId = (w: Wallet) => w._id || (w as any).id || w.fineractSavingsId || (w as any).fineractId || '';
     const selId = selectedWallet ? getWalletId(selectedWallet) : '';
 
     return (
-      <ScrollView style={styles.stepContent} showsVerticalScrollIndicator={false}>
-        {/* Mini Summary */}
-        <View style={[styles.miniSummary, { backgroundColor: theme.colors.backgroundSecondary }]}>
-          <MaterialCommunityIcons name="file-document-outline" size={18} color={theme.colors.primary} />
-          <Text style={[styles.miniSummaryText, { color: theme.colors.text }]} numberOfLines={1}>
-            {loan?.willing || 'Khoản vay'} · {numNotes} phần · {fmt(investCapital)}
-          </Text>
+      <View style={{ flex: 1 }}>
+        <View style={styles.stepContentNoPadding}>
+          <Text style={[styles.inputLabel, { paddingHorizontal: 16 }]}>Chọn nguồn vốn thanh toán</Text>
+
+          {walletsLoading ? (
+            <ActivityIndicator size="small" color="#1E3A2F" style={{ marginTop: 32 }} />
+          ) : (
+            <ScrollView 
+              style={styles.walletList} 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {wallets.map((w, idx) => {
+                const wId = getWalletId(w);
+                const isSelected = selId === wId;
+                const isSufficient = w.balance >= investCapital;
+                return (
+                  <TouchableOpacity
+                    key={wId || idx}
+                    style={[
+                      styles.refinedWalletCard,
+                      isSelected && styles.refinedWalletCardSelected
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedWallet(w);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.walletIconCircle}>
+                      <Ionicons name="wallet-outline" size={20} color={isSelected ? '#1E3A2F' : '#6B7280'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.refinedWalletName}>{w.productName || 'Ví MyVND'}</Text>
+                      <Text style={styles.refinedWalletAcct}>{w.accountNo}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', marginRight: 24 }}>
+                      <Text style={[styles.refinedWalletBalance, !isSufficient && { color: '#EF4444' }]}>{fmt(w.balance)}</Text>
+                      <Text style={styles.refinedWalletStatus}>{isSufficient ? 'Đủ số dư' : 'Số dư thấp'}</Text>
+                    </View>
+                    {isSelected && (
+                      <View style={styles.selectedCheck}>
+                        <Ionicons name="checkmark-circle" size={20} color="#059669" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <View style={styles.paymentSecurityInfo}>
+            <Ionicons name="shield-checkmark" size={14} color="#6B7280" />
+            <Text style={styles.paymentSecurityText}>Thanh toán được bảo mật bởi hệ thống P2P</Text>
+          </View>
         </View>
-
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Chọn ví để thanh toán</Text>
-
-        {walletsLoading ? (
-          <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 32 }} />
-        ) : wallets.length === 0 ? (
-          <View style={[styles.emptyWallet, { backgroundColor: theme.colors.backgroundSecondary }]}>
-            <Ionicons name="alert-circle-outline" size={24} color={theme.colors.error} />
-            <Text style={[styles.emptyWalletText, { color: theme.colors.error }]}>Không tìm thấy ví nào</Text>
-          </View>
-        ) : (
-          wallets.map((w, idx) => {
-            const wId = getWalletId(w);
-            const isSelected = selId === wId;
-            const isSufficient = w.balance >= investCapital;
-            return (
-              <TouchableOpacity
-                key={wId || idx}
-                style={[
-                  styles.walletCard,
-                  {
-                    backgroundColor: isSelected ? theme.colors.primaryGlass : theme.colors.backgroundSecondary,
-                    borderColor: isSelected ? theme.colors.primary : 'transparent',
-                  },
-                ]}
-                onPress={() => setSelectedWallet(w)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.walletLeft}>
-                  <View style={[styles.walletIcon, { backgroundColor: isSelected ? theme.colors.primary + '20' : theme.colors.surfaceLight }]}>
-                    <Ionicons name="wallet" size={20} color={isSelected ? theme.colors.primary : theme.colors.textSecondary} />
-                  </View>
-                  <View>
-                    <Text style={[styles.walletName, { color: isSelected ? theme.colors.primary : theme.colors.text }]}>
-                      {w.productName || (w as any).metadata?.productName || 'Ví điện tử'}
-                    </Text>
-                    <Text style={[styles.walletAcct, { color: theme.colors.textMuted }]}>{w.accountNo || (w as any).metadata?.accountNo}</Text>
-                  </View>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.walletBalance, { color: isSufficient ? theme.colors.success : theme.colors.error }]}>{fmt(w.balance)}</Text>
-                  <View style={[styles.walletStatus, { backgroundColor: isSufficient ? theme.colors.success + '15' : theme.colors.error + '15' }]}>
-                    <Ionicons name={isSufficient ? 'checkmark-circle' : 'close-circle'} size={10} color={isSufficient ? theme.colors.success : theme.colors.error} />
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: isSufficient ? theme.colors.success : theme.colors.error }}>
-                      {isSufficient ? 'Đủ số dư' : 'Không đủ'}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-
-        {/* Balance Check */}
-        {selectedWallet && (
-          <View style={[styles.balanceCheck, { backgroundColor: theme.colors.primaryGlass }]}>
-            <Ionicons name="information-circle" size={16} color={theme.colors.primary} />
-            <Text style={[styles.balanceCheckText, { color: theme.colors.textSecondary }]}>
-              Cần thanh toán: <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>{fmt(investCapital)}</Text>
-              {' · '}Số dư: <Text style={{ color: selectedWallet.balance >= investCapital ? theme.colors.success : theme.colors.error, fontWeight: '700' }}>{fmt(selectedWallet.balance)}</Text>
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+      </View>
     );
   };
 
   // ═══════════════════════════════════════════════════════════
-  //  STEP 4: CONFIRMATION
+  //  STEP 4: CONFIRMATION & RESULT (Refined)
   // ═══════════════════════════════════════════════════════════
   const Step4 = () => {
     if (result) {
       return (
-        <View style={[styles.resultContainer, { backgroundColor: theme.colors.background }]}>
-          <View style={[styles.resultBgCircle1, { backgroundColor: theme.colors.primary + '18' }]} />
-          <View style={[styles.resultBgCircle2, { backgroundColor: theme.colors.primary + '12' }]} />
-
-          <View style={[styles.resultIcon, { backgroundColor: result.success ? theme.colors.primary + '18' : theme.colors.error + '18' }]}>
-            <View style={[styles.resultIconInner, { backgroundColor: result.success ? theme.colors.primary : theme.colors.error }]}>
-              <Ionicons
-                name={result.success ? 'checkmark' : 'close'}
-                size={36}
-                color={result.success ? theme.colors.onPrimary : '#fff'}
-              />
+        <View style={styles.refinedResultContainer}>
+          <View style={styles.successCircle}>
+            <Ionicons name="checkmark" size={48} color="#FFFFFF" />
+          </View>
+          <Text style={styles.refinedResultTitle}>Giao dịch thành công</Text>
+          <Text style={styles.refinedResultSub}>Chúc mừng bạn đã hoàn tất khoản đầu tư. Hệ thống đang tiến hành khớp lệnh.</Text>
+          
+          <View style={styles.refinedResultCard}>
+            <View style={styles.resultDetailsRow}>
+              <Text style={styles.resultDetailsLabel}>Mã hợp đồng</Text>
+              <Text style={styles.resultDetailsValue}>#{result.contractId?.slice(-6).toUpperCase()}</Text>
+            </View>
+            <View style={styles.resultDetailsRow}>
+              <Text style={styles.resultDetailsLabel}>Tổng đầu tư</Text>
+              <Text style={styles.resultDetailsValue}>{fmt(investCapital)}</Text>
+            </View>
+            <View style={styles.resultDetailsRow}>
+              <Text style={styles.resultDetailsLabel}>Kỳ hạn</Text>
+              <Text style={styles.resultDetailsValue}>{loan?.periodMonth} tháng</Text>
             </View>
           </View>
-          <Text style={[styles.resultTitle, { color: theme.colors.text }]}>
-            {result.success ? 'Đầu tư thành công!' : 'Đầu tư thất bại'}
-          </Text>
-          <Text style={[styles.resultSub, { color: theme.colors.textSecondary }]}>
-            {result.success
-              ? 'Hợp đồng đầu tư đã được tạo thành công.'
-              : result.error || 'Đã xảy ra lỗi'}
-          </Text>
 
-          {result.success && (
-            <View style={[styles.resultCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.primary + '30' }]}>
-              <View style={styles.resultCardRow}>
-                <MaterialCommunityIcons name="file-document-check" size={16} color={theme.colors.primary} />
-                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Mã HĐ: {result.contractId}</Text>
-              </View>
-              <View style={[styles.resultCardDivider, { backgroundColor: theme.colors.primary + '20' }]} />
-              <View style={styles.resultCardRow}>
-                <MaterialCommunityIcons name="cash-multiple" size={16} color={theme.colors.primary} />
-                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Vốn đầu tư: {fmt(investCapital)}</Text>
-              </View>
-              <View style={[styles.resultCardDivider, { backgroundColor: theme.colors.primary + '20' }]} />
-              <View style={styles.resultCardRow}>
-                <MaterialCommunityIcons name="chart-line" size={16} color={theme.colors.primary} />
-                <Text style={[styles.resultCardText, { color: theme.colors.text }]}>Theo dõi lợi nhuận trong danh sách hợp đồng</Text>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.resultActions}>
-            {result.success && (
-              <CommonButton
-                title="Xem hợp đồng"
-                variant="primary"
-                size="lg"
-                icon="file-document-outline"
-                onPress={() => navigation.navigate('InvestmentContractDetail', { contractId: result._id })}
-              />
-            )}
-            <CommonButton
-              title="Quay lại danh sách"
-              variant={result.success ? 'outline' : 'primary'}
-              size="md"
-              onPress={() => navigation.goBack()}
-            />
-          </View>
+          <TouchableOpacity 
+            style={styles.refinedResultCta}
+            onPress={() => navigation.navigate('InvestmentContractDetail', { contractId: result._id })}
+          >
+            <Text style={styles.refinedResultCtaText}>Xem chi tiết hợp đồng</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.refinedResultSecondaryCta}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.refinedResultSecondaryCtaText}>Quay lại danh sách</Text>
+          </TouchableOpacity>
         </View>
       );
     }
 
     return (
       <ScrollView style={styles.stepContent} showsVerticalScrollIndicator={false}>
-        {/* Review Card */}
-        <View style={[styles.reviewCard, { backgroundColor: theme.colors.backgroundSecondary }]}>
-          <Text style={[styles.reviewSectionTitle, { color: theme.colors.textMuted }]}>THÔNG TIN KHOẢN VAY</Text>
-          <ReviewRow label="Mục đích vay" value={loan?.willing || '—'} theme={theme} />
-          <ReviewRow label="Mã khoản vay" value={`#${loan?._id?.slice(-4)?.toUpperCase()}`} theme={theme} />
-          <ReviewRow label="Kỳ hạn" value={`${loan?.periodMonth} tháng`} theme={theme} />
+        <View style={styles.orderSummaryCard}>
+          <Text style={styles.orderSummaryTitle}>Tóm tắt đầu tư</Text>
+          
+          <View style={styles.orderItem}>
+            <Text style={styles.orderLabel}>Khoản vay</Text>
+            <Text style={styles.orderValue} numberOfLines={1}>{loan?.willing || 'Đầu tư'}</Text>
+          </View>
+          
+          <View style={styles.orderItem}>
+            <Text style={styles.orderLabel}>Số phần</Text>
+            <Text style={styles.orderValue}>{numNotes} phần</Text>
+          </View>
 
-          <View style={[styles.reviewDivider, { backgroundColor: theme.colors.textMuted + '15' }]} />
+          <View style={styles.orderDivider} />
+          
+          <View style={styles.orderItem}>
+            <Text style={styles.orderLabel}>Hệ số lãi suất</Text>
+            <Text style={[styles.orderValue, { color: '#059669' }]}>{annualRate.toFixed(1)}%/năm</Text>
+          </View>
 
-          <Text style={[styles.reviewSectionTitle, { color: theme.colors.textMuted }]}>CHI TIẾT ĐẦU TƯ</Text>
-          <ReviewRow label="Số phần đầu tư" value={`${numNotes} phần`} theme={theme} />
-          <ReviewRow label="Vốn đầu tư" value={fmt(investCapital)} theme={theme} accent />
-          <ReviewRow label="Lãi suất FD" value={`${annualRate.toFixed(1)}%/năm`} theme={theme} />
-          <ReviewRow label="Lợi nhuận kỳ vọng" value={`+${fmt(scheduleSummary?.summary?.totalInterest || 0)}`} theme={theme} accent />
-          <ReviewRow label="Tổng thu nhận" value={fmt(scheduleSummary?.summary?.totalIncome || 0)} theme={theme} />
+          <View style={styles.orderItem}>
+            <Text style={styles.orderLabel}>Tổng nhận dự kiến</Text>
+            <Text style={styles.orderValue}>{fmt(scheduleSummary?.summary?.totalIncome || 0)}</Text>
+          </View>
 
-          <View style={[styles.reviewDivider, { backgroundColor: theme.colors.textMuted + '15' }]} />
-
-          <Text style={[styles.reviewSectionTitle, { color: theme.colors.textMuted }]}>THANH TOÁN</Text>
-          <ReviewRow label="Ví thanh toán" value={selectedWallet?.productName || (selectedWallet as any)?.metadata?.productName || 'Ví điện tử'} theme={theme} />
-          <ReviewRow label="Số dư sau đầu tư" value={fmt((selectedWallet?.balance || 0) - investCapital)} theme={theme} />
+          <View style={styles.orderTotalRow}>
+            <Text style={styles.orderTotalLabel}>TỔNG THANH TOÁN</Text>
+            <Text style={styles.orderTotalValue}>{fmt(investCapital)}</Text>
+          </View>
         </View>
 
-        {/* Terms */}
-        <TouchableOpacity
-          style={styles.termsRow}
-          onPress={() => setAgreed(!agreed)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.checkbox, {
-            borderColor: agreed ? theme.colors.primary : theme.colors.textMuted,
-            backgroundColor: agreed ? theme.colors.primary : 'transparent',
-          }]}>
-            {agreed && <Ionicons name="checkmark" size={14} color={theme.colors.onPrimary} />}
-          </View>
-          <Text style={[styles.termsText, { color: theme.colors.textSecondary }]}>
-            Tôi đồng ý với <Text style={{ color: theme.colors.primary, textDecorationLine: 'underline' }}>điều khoản đầu tư</Text>
-          </Text>
-        </TouchableOpacity>
-
-        {/* Security */}
-        <View style={styles.securityRow}>
-          <Ionicons name="lock-closed" size={14} color={theme.colors.textMuted} />
-          <Text style={[styles.securityText, { color: theme.colors.textMuted }]}>Giao dịch được bảo mật bởi hệ thống</Text>
+        <View style={styles.refinedTermsBox}>
+          <TouchableOpacity 
+            style={styles.refinedCheckboxRow}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setAgreed(!agreed);
+            }}
+          >
+            <View style={[styles.refinedCheckbox, agreed && styles.refinedCheckboxActive]}>
+              {agreed && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+            </View>
+            <Text style={styles.refinedTermsText}>
+              Tôi đã đọc và đồng ý với <Text style={{ color: '#1E3A2F', fontWeight: '600' }}>Điều khoản đầu tư</Text> & <Text style={{ color: '#1E3A2F', fontWeight: '600' }}>Chính sách bảo mật</Text> của P2P.
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     );
@@ -645,137 +640,300 @@ export default function InvestmentFlowScreen() {
   );
 }
 
-// ── Helper Component ──
-function ReviewRow({ label, value, theme, accent }: { label: string; value: string; theme: any; accent?: boolean }) {
-  return (
-    <View style={styles.reviewRow}>
-      <Text style={[styles.reviewLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.reviewValue, { color: accent ? theme.colors.primary : theme.colors.text }, accent && { fontWeight: '700' }]}>{value}</Text>
-    </View>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════
 //  STYLES
 // ═══════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  stepIndicator: { fontSize: 13, fontWeight: '700', letterSpacing: 1, color: '#1E3A2F' },
   stepContent: { flex: 1, paddingHorizontal: 16 },
 
   // Stepper
-  stepperContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, paddingHorizontal: 40 },
-  stepDot: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  stepDotText: { fontSize: 11, fontWeight: '700' },
-  stepLine: { flex: 1, height: 2, borderRadius: 1 },
-  stepIndicator: { fontSize: 14, fontWeight: '600' },
+  stepperContainer: {
+    flexDirection: 'row',
+    height: 4,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    gap: 4,
+  },
+  stepSegmentWrapper: { flex: 1 },
+  stepSegment: { borderRadius: 2 },
 
-  // Info Card
-  infoCard: { borderRadius: 20, padding: 16, marginBottom: 20 },
-  infoHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  infoIcon: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  infoTitle: { fontSize: 15, fontWeight: '700' },
-  infoSub: { fontSize: 11, marginTop: 2 },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
-  verifiedText: { fontSize: 10, fontWeight: '700' },
+  // Step 1: Modern Info Card
+  infoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    marginTop: 12,
+    shadowColor: '#1E3A2F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  infoCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  loanBadge: {
+    backgroundColor: '#1E3A2F10',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6
+  },
+  loanBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1E3A2F',
+    letterSpacing: 0.5
+  },
+  verifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
+  verifiedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#059669'
+  },
+  loanTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E3A2F',
+    marginBottom: 20,
+    lineHeight: 28
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  metricIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  metricLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    letterSpacing: 0.5,
+    marginBottom: 2
+  },
+  metricValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1E3A2F'
+  },
+  availableInfo: {
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 16
+  },
+  availableBarBg: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    marginBottom: 10,
+    overflow: 'hidden'
+  },
+  availableBarFill: {
+    height: '100%',
+    backgroundColor: '#1E3A2F',
+    borderRadius: 3
+  },
+  availableTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  availableSubText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500'
+  },
 
-  // Metrics
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', borderRadius: 14, overflow: 'hidden', marginBottom: 12 },
-  metricItem: { width: '50%', paddingVertical: 12, paddingHorizontal: 14 },
-  metricRight: {},
-  metricLabel: { fontSize: 9, letterSpacing: 0.7, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
-  metricValue: { fontSize: 15, fontWeight: '700' },
+  // Counter Section
+  counterSection: {
+    marginTop: 32,
+    alignItems: 'center'
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E3A2F',
+    marginBottom: 24
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    padding: 8,
+    gap: 12
+  },
+  counterBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2
+  },
+  counterBtnDisabled: {
+    opacity: 0.5
+  },
+  counterValueContainer: {
+    width: 100,
+    alignItems: 'center'
+  },
+  counterValueText: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#1E3A2F'
+  },
+  counterUnitText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9CA3AF',
+    marginTop: -2
+  },
+  quickSelectRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24
+  },
+  quickSelectChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB'
+  },
+  quickSelectChipActive: {
+    backgroundColor: '#1E3A2F',
+    borderColor: '#1E3A2F'
+  },
+  quickSelectText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280'
+  },
+  quickSelectTextActive: {
+    color: '#FFFFFF'
+  },
 
-  // Progress
-  progressSection: { borderRadius: 14, padding: 12 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  progressLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-  progressValue: { fontSize: 12, fontWeight: '700' },
-  progressBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressSeg: { height: '100%' },
+  // Investment Preview
+  investmentPreview: {
+    marginTop: 32,
+    paddingHorizontal: 8
+  },
+  previewDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 20
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  previewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280'
+  },
+  previewValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1E3A2F'
+  },
 
-  // Counter
-  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, marginTop: 4 },
-  counterContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 18, padding: 20, gap: 28, marginBottom: 16 },
-  counterBtn: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  counterCenter: { alignItems: 'center' },
-  counterValue: { fontSize: 22, fontWeight: '700' },
-  counterLabel: { fontSize: 12, marginTop: 2 },
+  // Step 2: Schedule
+  stepContentNoPadding: { flex: 1 },
+  refinedHeroCard: { backgroundColor: '#1E3A2F', padding: 28, borderRadius: 24, marginHorizontal: 16, marginTop: 12 },
+  refinedHeroLabel: { fontSize: 10, fontWeight: '700', color: '#FFFFFF80', letterSpacing: 1 },
+  refinedHeroValue: { fontSize: 28, fontWeight: '800', color: '#FFFFFF', marginTop: 8 },
+  refinedHeroMetrics: { flexDirection: 'row', marginTop: 24, gap: 32 },
+  refinedHeroMetric: { flex: 1 },
+  refinedHeroMetricLabel: { fontSize: 11, fontWeight: '600', color: '#FFFFFF60' },
+  refinedHeroMetricValue: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginTop: 4 },
+  scheduleHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 24, marginBottom: 12 },
+  scheduleHeaderTitle: { fontSize: 15, fontWeight: '700', color: '#1E3A2F' },
+  scheduleHeaderSub: { fontSize: 12, color: '#6B7280' },
+  scheduleList: { flex: 1, paddingHorizontal: 16 },
+  scheduleCardItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: '#F3F4F6' },
+  scheduleCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  periodBadge: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#1E3A2F10', justifyContent: 'center', alignItems: 'center' },
+  periodBadgeText: { fontSize: 13, fontWeight: '800', color: '#1E3A2F' },
+  scheduleDateLabel: { fontSize: 13, fontWeight: '700', color: '#1E3A2F' },
+  scheduleTypeLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
+  scheduleCardRight: { alignItems: 'flex-end' },
+  scheduleAmountValue: { fontSize: 14, fontWeight: '700', color: '#1E3A2F' },
+  scheduleInterestValue: { fontSize: 11, color: '#059669', fontWeight: '600', marginTop: 2 },
+  loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
 
-  // Quick Select
-  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 20, justifyContent: 'center' },
-  quickChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  quickText: { fontSize: 13, fontWeight: '600' },
+  // Step 3: Wallet
+  walletList: { flex: 1, paddingHorizontal: 16 },
+  refinedWalletCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 16, borderRadius: 20, marginBottom: 10, gap: 12, borderWidth: 1.5, borderColor: 'transparent' },
+  refinedWalletCardSelected: { borderColor: '#1E3A2F', backgroundColor: '#FFFFFF' },
+  walletIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
+  refinedWalletName: { fontSize: 15, fontWeight: '700', color: '#1E3A2F' },
+  refinedWalletAcct: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  refinedWalletBalance: { fontSize: 15, fontWeight: '800', color: '#1E3A2F' },
+  refinedWalletStatus: { fontSize: 10, fontWeight: '700', color: '#6B7280', marginTop: 4 },
+  selectedCheck: { position: 'absolute', top: 12, right: 12 },
+  paymentSecurityInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
+  paymentSecurityText: { fontSize: 11, color: '#9CA3AF' },
 
-  // Summary
-  summaryCard: { borderRadius: 18, padding: 20, alignItems: 'center', marginBottom: 20 },
-  summaryBigLabel: { fontSize: 12, fontWeight: '500', marginBottom: 4 },
-  summaryBigValue: { fontSize: 20, fontWeight: '700', letterSpacing: 0.3 },
-  summarySmallRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  summarySmallText: { fontSize: 13, fontWeight: '600' },
-
-  // Schedule
-  loadingBox: { alignItems: 'center', paddingTop: 60 },
-  loadingText: { fontSize: 14, marginTop: 12 },
-  heroCard: { borderRadius: 20, padding: 20, marginBottom: 16 },
-  heroLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  heroValue: { fontSize: 20, fontWeight: '700', marginTop: 4 },
-  heroMeta: { fontSize: 12, marginTop: 6 },
-  heroColumns: { flexDirection: 'row', marginTop: 16, gap: 16 },
-  heroColLabel: { fontSize: 11, fontWeight: '500' },
-  heroColValue: { fontSize: 15, fontWeight: '700', marginTop: 2 },
-  tableCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 20 },
-  tableHeader: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  tableHeaderText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  tableRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10 },
-  tableCell: { fontSize: 12, fontWeight: '500' },
-  tableCellBold: { fontSize: 12, fontWeight: '700' },
-
-  // Wallet
-  miniSummary: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, marginBottom: 16 },
-  miniSummaryText: { fontSize: 14, fontWeight: '600', flex: 1 },
-  walletCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 16, padding: 16, borderWidth: 1.5, marginBottom: 10 },
-  walletLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  walletIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  walletName: { fontSize: 14, fontWeight: '700' },
-  walletAcct: { fontSize: 11, marginTop: 2 },
-  walletBalance: { fontSize: 15, fontWeight: '700' },
-  walletStatus: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 4 },
-  emptyWallet: { alignItems: 'center', padding: 32, borderRadius: 16, gap: 8 },
-  emptyWalletText: { fontSize: 14, fontWeight: '600' },
-  balanceCheck: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, marginTop: 8 },
-  balanceCheckText: { fontSize: 12, flex: 1 },
-
-  // Confirm
-  reviewCard: { borderRadius: 20, padding: 18, marginBottom: 16, marginTop: 4 },
-  reviewSectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10, marginTop: 4 },
-  reviewRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  reviewLabel: { fontSize: 13, fontWeight: '500' },
-  reviewValue: { fontSize: 14, fontWeight: '600' },
-  reviewDivider: { height: 1, marginVertical: 12, borderRadius: 1 },
-  termsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
-  termsText: { fontSize: 13, flex: 1 },
-  securityRow: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 12 },
-  securityText: { fontSize: 11 },
+  // Step 4: Confirm
+  orderSummaryCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, marginTop: 12, marginHorizontal: 16 },
+  orderSummaryTitle: { fontSize: 15, fontWeight: '800', color: '#1E3A2F', marginBottom: 20 },
+  orderItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  orderLabel: { fontSize: 14, color: '#6B7280' },
+  orderValue: { fontSize: 14, fontWeight: '700', color: '#1E3A2F', flex: 1, textAlign: 'right', marginLeft: 16 },
+  orderDivider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 12 },
+  orderTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  orderTotalLabel: { fontSize: 12, fontWeight: '700', color: '#6B7280', letterSpacing: 1 },
+  orderTotalValue: { fontSize: 22, fontWeight: '800', color: '#1E3A2F' },
+  refinedTermsBox: { paddingHorizontal: 24, marginTop: 24 },
+  refinedCheckboxRow: { flexDirection: 'row', gap: 12 },
+  refinedCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#D1D5DB', justifyContent: 'center', alignItems: 'center' },
+  refinedCheckboxActive: { backgroundColor: '#1E3A2F', borderColor: '#1E3A2F' },
+  refinedTermsText: { fontSize: 13, color: '#6B7280', lineHeight: 18, flex: 1 },
 
   // Result
-  resultContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, overflow: 'hidden' },
-  resultIcon: { width: 88, height: 88, borderRadius: 44, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  resultIconInner: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
-  resultTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  resultSub: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  resultActions: { gap: 10, marginTop: 24, width: '100%' },
-  resultBgCircle1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, top: -80, right: -80 },
-  resultBgCircle2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, bottom: -60, left: -60 },
-  resultCard: { width: '100%', borderRadius: 16, padding: 16, borderWidth: 1, gap: 10, marginTop: 12 },
-  resultCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  resultCardText: { fontSize: 13, fontWeight: '500', flex: 1 },
-  resultCardDivider: { height: 1 },
+  refinedResultContainer: { flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  successCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  refinedResultTitle: { fontSize: 24, fontWeight: '800', color: '#1E3A2F', marginBottom: 12 },
+  refinedResultSub: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  refinedResultCard: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 20, padding: 20, gap: 12, marginBottom: 32 },
+  resultDetailsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  resultDetailsLabel: { fontSize: 14, color: '#6B7280' },
+  resultDetailsValue: { fontSize: 14, fontWeight: '700', color: '#1E3A2F' },
+  refinedResultCta: { width: '100%', backgroundColor: '#1E3A2F', paddingVertical: 18, borderRadius: 18, alignItems: 'center' },
+  refinedResultCtaText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  refinedResultSecondaryCta: { marginTop: 16 },
+  refinedResultSecondaryCtaText: { fontSize: 15, fontWeight: '600', color: '#6B7280' },
 
-  // Buttons
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16 },
-  primaryBtnText: { fontSize: 15, fontWeight: '700' },
-  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 16 },
-  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
-  bottomCta: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 12 },
+  // Generic Buttons
+  bottomCta: { padding: 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  primaryBtn: { height: 56, borderRadius: 18, backgroundColor: '#1E3A2F', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
+  primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });

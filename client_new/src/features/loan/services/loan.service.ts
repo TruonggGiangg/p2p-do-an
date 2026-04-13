@@ -765,6 +765,17 @@ class LoanService {
     return response.data.data;
   }
 
+  /**
+   * Ký xác nhận hợp đồng vay qua chế độ DEV_MODE (bỏ qua SmartCA)
+   */
+  async devSignContract(contractId: string): Promise<LoanContract> {
+    const response = await api.post<{
+      statusCode: number;
+      data: LoanContract;
+    }>("/api/digital-signature/dev-sign", { contractId });
+    return response.data.data;
+  }
+
   // =============================================
   // DIGITAL SIGNATURE — VNPT SmartCA
   // =============================================

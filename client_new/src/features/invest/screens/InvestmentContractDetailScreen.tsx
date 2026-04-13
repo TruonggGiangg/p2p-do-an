@@ -67,10 +67,13 @@ export default function InvestmentContractDetailScreen() {
   const [contract, setContract] = useState<InvestmentContractItem | null>(null);
   const [contractHTML, setContractHTML] = useState('');
   const [loading, setLoading] = useState(true);
+  const [signing, setSigning] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [showSignConfirm, setShowSignConfirm] = useState(false);
   const [showSmartCA, setShowSmartCA] = useState(false);
   const [showSignSuccess, setShowSignSuccess] = useState(false);
+
+  const EXPO_PUBLIC_DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
 
   // Success animations
   const successPageAnim = useRef(new Animated.Value(0)).current;
@@ -120,6 +123,20 @@ export default function InvestmentContractDetailScreen() {
       ]).start();
     } else if (status === 'rejected') {
       modal.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng.');
+    }
+  };
+
+  const handleDevSign = async () => {
+    if (!contract) return;
+    setSigning(true);
+    try {
+      await investService.devSignContract(contract.contractId || contract._id);
+      modal.alert('Thành công', 'Đã ký hợp đồng đầu tư qua chế độ DEV_MODE.');
+      fetchContract();
+    } catch (err: any) {
+      modal.error('Lỗi', err?.response?.data?.message || err?.message || 'Không thể ký DEV MODE');
+    } finally {
+      setSigning(false);
     }
   };
 
@@ -288,6 +305,24 @@ export default function InvestmentContractDetailScreen() {
               Ký xác nhận hợp đồng đầu tư
             </Text>
           </TouchableOpacity>
+
+          {EXPO_PUBLIC_DEV_MODE && (
+            <TouchableOpacity
+              style={[
+                styles.signBtn,
+                { backgroundColor: '#FF6B6B', marginTop: 8 },
+                signing && { opacity: 0.6 },
+              ]}
+              onPress={handleDevSign}
+              disabled={signing}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="bug-outline" size={20} color="#FFFFFF" />
+              <Text style={[styles.signBtnText, { color: '#FFFFFF' }]}>
+                Ký (DEV MODE)
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 

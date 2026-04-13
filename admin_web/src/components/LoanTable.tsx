@@ -102,10 +102,7 @@ export default function LoanTable({
 
             <ProTable<LoanTableRow>
                 {...PRO_TABLE_DEFAULTS}
-                cardProps={{
-                    ...(typeof PRO_TABLE_DEFAULTS.cardProps === 'object' ? PRO_TABLE_DEFAULTS.cardProps : {}),
-                    bodyStyle: { padding: '16px 16px 16px 16px' },
-                }}
+                cardProps={PRO_TABLE_DEFAULTS.cardProps}
                 actionRef={actionRef}
                 rowKey={rowKey ?? ((r) => String(r.fineractLoanId ?? r._id ?? ''))}
                 columns={columns}

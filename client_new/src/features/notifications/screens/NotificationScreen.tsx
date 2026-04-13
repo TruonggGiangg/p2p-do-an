@@ -15,7 +15,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { walletAPI, WalletTransaction } from '../../wallet/api/wallet.api';
 import { loanService, AppNotification } from '../../loan/services/loan.service';
 import { formatCurrency } from '../../../shared/utils';
-import { BinanceHeader, CommonCard, Pagination } from '../../../components';
+import { BinanceHeader, CommonCard, FintechPagination } from '../../../components';
 
 // Icon & color map for notification types
 const NOTIF_CONFIG: Record<string, { icon: string; color: string; bg: string }> = {
@@ -273,7 +273,7 @@ export default function NotificationScreen() {
                         />
                     }
                     ListFooterComponent={
-                        <Pagination mode="infinite" loading={notiLoadingMore} hasMore={notiHasMore} />
+                        <FintechPagination mode="infinite" loading={notiLoadingMore} hasMore={notiHasMore} />
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
@@ -302,7 +302,7 @@ export default function NotificationScreen() {
                         />
                     }
                     ListFooterComponent={
-                        <Pagination mode="infinite" loading={txLoadingMore} hasMore={txHasMore} />
+                        <FintechPagination mode="infinite" loading={txLoadingMore} hasMore={txHasMore} />
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>

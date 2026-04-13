@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:bpsim="http://www.bpsim.org/schemas/1.0" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:drools="http://www.jboss.org/drools" id="_ywIKEBmDED-_NK_XQQKJ-A" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL BPMN20.xsd http://www.jboss.org/drools drools.xsd http://www.bpsim.org/schemas/1.0 bpsim.xsd http://www.omg.org/spec/DD/20100524/DC DC.xsd http://www.omg.org/spec/DD/20100524/DI DI.xsd " exporter="jBPM Process Modeler" exporterVersion="2.0" targetNamespace="http://www.omg.org/bpmn20">
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_SkippableInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_PriorityInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_CommentInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_DescriptionInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_CreatedByInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_TaskNameInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_GroupIdInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_ContentInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_NotStartedReassignInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_NotCompletedReassignInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_NotStartedNotifyInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Sign_Borrower_NotCompletedNotifyInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_SkippableInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_PriorityInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_CommentInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_DescriptionInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_CreatedByInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_TaskNameInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_GroupIdInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_ContentInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_NotStartedReassignInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_NotCompletedReassignInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_NotStartedNotifyInputXItem" structureRef="Object"/>
+  <bpmn2:itemDefinition id="_Task_Submit_NotCompletedNotifyInputXItem" structureRef="Object"/>
+  <bpmn2:collaboration id="_A48CF74E-F65A-4EE1-9CCA-104D3D9A9EE4" name="Default Collaboration">
+    <bpmn2:participant id="_EFB18075-092E-4DFE-A6B0-D95EA8036991" name="Pool Participant" processRef="loan_approval_flow"/>
+  </bpmn2:collaboration>
+  <bpmn2:process id="loan_approval_flow" drools:packageName="com.example" drools:version="1.0" drools:adHoc="false" name="loan-approval-flow" processType="Public">
+    <bpmn2:sequenceFlow id="Flow_B1" sourceRef="Start_Borrower" targetRef="Task_Submit"/>
+    <bpmn2:sequenceFlow id="Flow_B2" sourceRef="Task_Submit" targetRef="Event_Wait_Decision"/>
+    <bpmn2:sequenceFlow id="Flow_B3" sourceRef="Event_Wait_Decision" targetRef="Task_Sign_Borrower"/>
+    <bpmn2:sequenceFlow id="Flow_B4" sourceRef="Task_Sign_Borrower" targetRef="Task_Get_Money"/>
+    <bpmn2:sequenceFlow id="Flow_B5" sourceRef="Task_Get_Money" targetRef="End_Borrower"/>
+    <bpmn2:startEvent id="Start_Borrower" name="Bắt đầu">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Bắt đầu]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:outgoing>Flow_B1</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:userTask id="Task_Submit" name="Nộp đơn &amp; Tài liệu">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Nộp đơn & Tài liệu]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>Flow_B1</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_B2</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="Task_Submit_TaskNameInputX" drools:dtype="Object" itemSubjectRef="_Task_Submit_TaskNameInputXItem" name="TaskName"/>
+        <bpmn2:dataInput id="Task_Submit_SkippableInputX" drools:dtype="Object" itemSubjectRef="_Task_Submit_SkippableInputXItem" name="Skippable"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>Task_Submit_TaskNameInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>Task_Submit_SkippableInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>Task_Submit_TaskNameInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[Task]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression"><![CDATA[Task_Submit_TaskNameInputX]]></bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>Task_Submit_SkippableInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[false]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression"><![CDATA[Task_Submit_SkippableInputX]]></bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:userTask>
+    <bpmn2:intermediateCatchEvent id="Event_Wait_Decision" name="Chờ Duyệt">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Chờ Duyệt]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>Flow_B2</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_B3</bpmn2:outgoing>
+      <bpmn2:timerEventDefinition/>
+    </bpmn2:intermediateCatchEvent>
+    <bpmn2:userTask id="Task_Sign_Borrower" name="Ký Hợp đồng (SmartCA)">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Ký Hợp đồng (SmartCA)]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>Flow_B3</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_B4</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="Task_Sign_Borrower_TaskNameInputX" drools:dtype="Object" itemSubjectRef="_Task_Sign_Borrower_TaskNameInputXItem" name="TaskName"/>
+        <bpmn2:dataInput id="Task_Sign_Borrower_SkippableInputX" drools:dtype="Object" itemSubjectRef="_Task_Sign_Borrower_SkippableInputXItem" name="Skippable"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>Task_Sign_Borrower_TaskNameInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>Task_Sign_Borrower_SkippableInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>Task_Sign_Borrower_TaskNameInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[Task]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression"><![CDATA[Task_Sign_Borrower_TaskNameInputX]]></bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>Task_Sign_Borrower_SkippableInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[false]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression"><![CDATA[Task_Sign_Borrower_SkippableInputX]]></bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:userTask>
+    <bpmn2:task id="Task_Get_Money" name="Nhận tiền Giải ngân">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Nhận tiền Giải ngân]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>Flow_B4</bpmn2:incoming>
+      <bpmn2:outgoing>Flow_B5</bpmn2:outgoing>
+    </bpmn2:task>
+    <bpmn2:endEvent id="End_Borrower" name="Hoàn tất">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Hoàn tất]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>Flow_B5</bpmn2:incoming>
+    </bpmn2:endEvent>
+  </bpmn2:process>
+  <bpmndi:BPMNDiagram>
+    <bpmndi:BPMNPlane bpmnElement="loan_approval_flow">
+      <bpmndi:BPMNShape id="shape_End_Borrower" bpmnElement="End_Borrower">
+        <dc:Bounds height="56" width="56" x="1389" y="117"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_Task_Get_Money" bpmnElement="Task_Get_Money">
+        <dc:Bounds height="70" width="120" x="850" y="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_Task_Sign_Borrower" bpmnElement="Task_Sign_Borrower">
+        <dc:Bounds height="70" width="140" x="650" y="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_Event_Wait_Decision" bpmnElement="Event_Wait_Decision">
+        <dc:Bounds height="56" width="56" x="516" y="117"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_Task_Submit" bpmnElement="Task_Submit">
+        <dc:Bounds height="70" width="120" x="300" y="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_Start_Borrower" bpmnElement="Start_Borrower">
+        <dc:Bounds height="56" width="56.000000000000014" x="89.99999999999999" y="117"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_shape_Task_Get_Money_to_shape_End_Borrower" bpmnElement="Flow_B5">
+        <di:waypoint x="970" y="145"/>
+        <di:waypoint x="1389" y="135"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_shape_Task_Sign_Borrower_to_shape_Task_Get_Money" bpmnElement="Flow_B4">
+        <di:waypoint x="790" y="145"/>
+        <di:waypoint x="850" y="145"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_shape_Event_Wait_Decision_to_shape_Task_Sign_Borrower" bpmnElement="Flow_B3">
+        <di:waypoint x="552" y="135"/>
+        <di:waypoint x="650" y="145"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_shape_Task_Submit_to_shape_Event_Wait_Decision" bpmnElement="Flow_B2">
+        <di:waypoint x="420" y="145"/>
+        <di:waypoint x="516" y="135"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_shape_Start_Borrower_to_shape_Task_Submit" bpmnElement="Flow_B1">
+        <di:waypoint x="125.99999999999999" y="135"/>
+        <di:waypoint x="300" y="145"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmn2:relationship type="BPSimData">
+    <bpmn2:extensionElements>
+      <bpsim:BPSimData>
+        <bpsim:Scenario id="default" name="Simulationscenario">
+          <bpsim:ScenarioParameters/>
+          <bpsim:ElementParameters elementRef="Task_Get_Money">
+            <bpsim:TimeParameters>
+              <bpsim:ProcessingTime>
+                <bpsim:NormalDistribution mean="0" standardDeviation="0"/>
+              </bpsim:ProcessingTime>
+            </bpsim:TimeParameters>
+            <bpsim:ResourceParameters>
+              <bpsim:Availability>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Availability>
+              <bpsim:Quantity>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Quantity>
+            </bpsim:ResourceParameters>
+            <bpsim:CostParameters>
+              <bpsim:UnitCost>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:UnitCost>
+            </bpsim:CostParameters>
+          </bpsim:ElementParameters>
+          <bpsim:ElementParameters elementRef="Task_Sign_Borrower">
+            <bpsim:TimeParameters>
+              <bpsim:ProcessingTime>
+                <bpsim:NormalDistribution mean="0" standardDeviation="0"/>
+              </bpsim:ProcessingTime>
+            </bpsim:TimeParameters>
+            <bpsim:ResourceParameters>
+              <bpsim:Availability>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Availability>
+              <bpsim:Quantity>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Quantity>
+            </bpsim:ResourceParameters>
+            <bpsim:CostParameters>
+              <bpsim:UnitCost>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:UnitCost>
+            </bpsim:CostParameters>
+          </bpsim:ElementParameters>
+          <bpsim:ElementParameters elementRef="Task_Submit">
+            <bpsim:TimeParameters>
+              <bpsim:ProcessingTime>
+                <bpsim:NormalDistribution mean="0" standardDeviation="0"/>
+              </bpsim:ProcessingTime>
+            </bpsim:TimeParameters>
+            <bpsim:ResourceParameters>
+              <bpsim:Availability>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Availability>
+              <bpsim:Quantity>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:Quantity>
+            </bpsim:ResourceParameters>
+            <bpsim:CostParameters>
+              <bpsim:UnitCost>
+                <bpsim:FloatingParameter value="0"/>
+              </bpsim:UnitCost>
+            </bpsim:CostParameters>
+          </bpsim:ElementParameters>
+          <bpsim:ElementParameters elementRef="Start_Borrower">
+            <bpsim:TimeParameters>
+              <bpsim:ProcessingTime>
+                <bpsim:NormalDistribution mean="0" standardDeviation="0"/>
+              </bpsim:ProcessingTime>
+            </bpsim:TimeParameters>
+          </bpsim:ElementParameters>
+        </bpsim:Scenario>
+      </bpsim:BPSimData>
+    </bpmn2:extensionElements>
+    <bpmn2:source>_ywIKEBmDED-_NK_XQQKJ-A</bpmn2:source>
+    <bpmn2:target>_ywIKEBmDED-_NK_XQQKJ-A</bpmn2:target>
+  </bpmn2:relationship>
+</bpmn2:definitions>

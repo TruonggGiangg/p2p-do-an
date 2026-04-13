@@ -7,7 +7,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, Pagination } from '../../../components';
+import { BinanceHeader, FintechPagination } from '../../../components';
+import SortBottomSheet from '../components/SortBottomSheet';
 import investService, { InvestmentOrderItem } from '../services/invest.service';
 
 const PAGE_SIZE = 10;
@@ -263,7 +264,7 @@ export default function InvestmentOrderListScreen() {
         mode="standard" title="Lệnh đầu tư" showBack={false}
         rightComponents={
           <TouchableOpacity onPress={() => nav.navigate('InvestmentOrderCreate')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="add" size={28} color={c.text} />
+            <Ionicons name="add" size={24} color={c.text} />
           </TouchableOpacity>
         }
       />
@@ -292,43 +293,11 @@ export default function InvestmentOrderListScreen() {
                     );
                   })}
                 </View>
-                <TouchableOpacity style={[st.sortBtn, { backgroundColor: c.backgroundSecondary, borderColor: c.border || 'transparent', borderWidth: 1 }]} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
+                <TouchableOpacity style={[st.sortBtn, { backgroundColor: c.backgroundSecondary, borderColor: c.border || 'transparent', borderWidth: 1 }]} onPress={() => setShowSort(true)} activeOpacity={0.7}>
                   <Text style={[st.sortBtnText, { color: c.textSecondary }]}>{sortLabel}</Text>
-                  <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={c.textSecondary} />
+                  <Ionicons name="chevron-down" size={14} color={c.textSecondary} />
                 </TouchableOpacity>
               </View>
-
-              {/* Stats - moved BELOW filters */}
-              {/* <View style={st.statsRow}>
-                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderColor: c.border || 'transparent', borderWidth: 1 }]}>
-                  <Text style={[st.statLbl, { color: c.textMuted }]}>TỔNG VỐN</Text>
-                  <Text style={[st.statVal, { color: c.text }]}>{fmtVND(stats.total)}</Text>
-                </View>
-                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(205, 234, 45, 0.05)' : c.primary + '08', borderColor: c.primary + '30', borderWidth: 1 }]}>
-                  <Text style={[st.statLbl, { color: c.primary }]}>ĐÃ GHÉP</Text>
-                  <Text style={[st.statVal, { color: c.primary }]}>{fmtVND(stats.matched)}</Text>
-                </View>
-                <View style={[st.statCard, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderColor: c.border || 'transparent', borderWidth: 1 }]}>
-                  <Text style={[st.statLbl, { color: c.textMuted }]}>LỆNH MỞ</Text>
-                  <Text style={[st.statVal, { color: c.text }]}>{stats.open}</Text>
-                </View>
-              </View> */}
-
-
-              {/* Sort dropdown */}
-              {showSort && (
-                <View style={[st.sortMenu, { backgroundColor: c.backgroundSecondary }]}>
-                  {SORT_OPTIONS.map(opt => {
-                    const active = sortType === opt.key;
-                    return (
-                      <TouchableOpacity key={opt.key} style={[st.sortItem, active && { backgroundColor: c.primary + '12' }]} onPress={() => onSort(opt.key)}>
-                        <Text style={[st.sortItemText, { color: active ? c.primary : c.text }]}>{opt.label}</Text>
-                        {active && <Ionicons name="checkmark" size={16} color={c.primary} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
             </View>
           }
           ListEmptyComponent={renderEmpty}
@@ -337,7 +306,7 @@ export default function InvestmentOrderListScreen() {
           onEndReached={() => { if (!loadingMore && hasMore && !loading) fetchOrders(page + 1); }}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
-            <Pagination
+            <FintechPagination
               mode="infinite"
               loading={loadingMore}
               hasMore={hasMore}
@@ -352,6 +321,14 @@ export default function InvestmentOrderListScreen() {
           <Ionicons name="add" size={28} color={c.onPrimary || '#2C3400'} />
         </TouchableOpacity>
       )}
+      {/* ── Sort Bottom Sheet ── */}
+      <SortBottomSheet
+        visible={showSort}
+        options={SORT_OPTIONS}
+        currentSort={sortType}
+        onSelect={onSort}
+        onClose={() => setShowSort(false)}
+      />
     </View>
   );
 }
@@ -359,7 +336,7 @@ export default function InvestmentOrderListScreen() {
 const st = StyleSheet.create({
   container: { flex: 1 },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 80 },
+  listContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
 
   // Stats

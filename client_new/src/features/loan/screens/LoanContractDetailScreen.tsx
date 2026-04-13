@@ -91,6 +91,8 @@ export default function LoanContractDetailScreen() {
     const successCheckAnim = useRef(new Animated.Value(0)).current;
     const successSlideAnim = useRef(new Animated.Value(40)).current;
 
+    const EXPO_PUBLIC_DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
+
     const fetchContract = useCallback(async () => {
         try {
             setLoading(true);
@@ -177,6 +179,21 @@ export default function LoanContractDetailScreen() {
             modal.alert('Từ chối ký', 'Bạn đã từ chối ký hợp đồng. Bạn có thể ký lại bất kỳ lúc nào.');
         }
         // 'failed' — Error already shown in modal
+    };
+
+    const handleDevSign = async () => {
+        if (!contract) return;
+        setSigning(true);
+        try {
+            await loanService.devSignContract(contract.contractId || contract._id);
+            modal.alert('Thành công', 'Đã ký hợp đồng qua chế độ DEV_MODE. Khoản vay sẽ được giải ngân sớm.');
+            fetchContract();
+            // Show success animation if you want, or just reload
+        } catch (err: any) {
+            modal.error('Lỗi', err?.response?.data?.message || err?.message || 'Không thể ký DEV MODE');
+        } finally {
+            setSigning(false);
+        }
     };
 
     if (loading) {
@@ -457,6 +474,24 @@ export default function LoanContractDetailScreen() {
                             </>
                         )}
                     </TouchableOpacity>
+
+                    {EXPO_PUBLIC_DEV_MODE && isPending && (
+                        <TouchableOpacity
+                            style={[
+                                styles.signBtn,
+                                { backgroundColor: '#FF6B6B', marginTop: 8 },
+                                signing && styles.signBtnDisabled
+                            ]}
+                            onPress={handleDevSign}
+                            disabled={signing}
+                            activeOpacity={0.8}
+                        >
+                            <MaterialCommunityIcons name="bug-outline" size={20} color="#FFFFFF" />
+                            <Text style={[styles.signBtnText, { color: '#FFFFFF' }]}>
+                                Ký (DEV MODE)
+                            </Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
 

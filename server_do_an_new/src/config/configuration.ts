@@ -38,6 +38,7 @@ export default () => ({
     dateFormat: process.env.DEFAULT_DATE_FORMAT || 'dd MMMM yyyy',
     ewalletProductId: parseInt(process.env.DEFAULT_EWALLET_PRODUCT_ID || '1', 10),
     emailDomain: process.env.DEFAULT_EMAIL_DOMAIN || 'p2p.com',
+    platformClientId: parseInt(process.env.PLATFORM_CLIENT_ID || '1', 10),
   },
 
   // BNPL Pay Later Wallet Configuration
@@ -78,6 +79,8 @@ export default () => ({
   invest: {
     baseUnitPrice: parseInt(process.env.INVEST_BASE_UNIT_PRICE || '500000', 10),
   },
+
+  devMode: process.env.DEV_MODE === 'true',
 
   security: {
     corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['*'],

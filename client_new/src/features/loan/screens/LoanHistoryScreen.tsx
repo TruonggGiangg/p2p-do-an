@@ -19,8 +19,15 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { BinanceHeader, Pagination, CommonInput } from '../../../components';
+import { BinanceHeader, FintechPagination, CommonInput } from '../../../components';
+import SortBottomSheet from '../../invest/components/SortBottomSheet';
 import { loanService, LoanHistoryItem, LoanListResponse } from '../services/loan.service';
+import { 
+    formatMoney, 
+    formatDateShort as formatDate, 
+    getStatusInfo, 
+    getPurposeIcon 
+} from '../utils/loanUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -52,64 +59,7 @@ function getSortParams(s: SortType) {
     }
 }
 
-const getStatusInfo = (loan: LoanHistoryItem) => {
-    // Check overdue FIRST (before active)
-    const overdueDays = loan.delinquentDays || 0;
-    if (overdueDays > 0) return { text: `Quá hạn ${overdueDays} ngày`, color: '#EF4444' };
-
-    const sf = loan.statusInfo;
-    if (sf) {
-        if (sf.active) return { text: 'Đang vay', color: '#3B82F6' };
-        if (sf.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981' };
-        if (sf.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280' };
-        if (sf.overpaid) return { text: 'Trả thừa', color: '#10B981' };
-        if (sf.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B' };
-        if (sf.waitingForDisbursal) {
-            if (loan.isFullMatch) return { text: 'Chờ ký', color: '#F59E0B' };
-            return { text: 'Đang gọi vốn', color: '#8B5CF6' };
-        }
-        if (sf.closed) return { text: 'Đã đóng', color: '#6B7280' };
-        if (sf.rejected) return { text: 'Bị từ chối', color: '#EF4444' };
-        if (sf.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF' };
-    }
-    if (loan.status === 'clean' || loan.status === 'closed') return { text: 'Đã tất toán', color: '#10B981' };
-    if (loan.status === 'success' || loan.status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6' };
-    if (loan.status === 'waiting' || loan.status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B' };
-    if (loan.status === 'approved') {
-        if (loan.isFullMatch) return { text: 'Chờ ký', color: '#F59E0B' };
-        return { text: 'Đang gọi vốn', color: '#8B5CF6' };
-    }
-    if (loan.status === 'rejected' || loan.status === 'fail') return { text: 'Bị từ chối', color: '#EF4444' };
-    if (loan.status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF' };
-    if (loan.status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280' };
-    return { text: loan.status || 'N/A', color: '#6B7280' };
-};
-
-const getPurposeIcon = (purpose?: string): any => {
-    const lower = purpose?.toLowerCase() || '';
-    if (lower.includes('học') || lower.includes('giáo') || lower.includes('trường')) return 'school';
-    if (lower.includes('xe')) return 'car';
-    if (lower.includes('nhà') || lower.includes('sửa') || lower.includes('đất')) return 'home-variant';
-    if (lower.includes('doanh') || lower.includes('đầu tư')) return 'briefcase';
-    if (lower.includes('tiêu dùng') || lower.includes('mua sắm')) return 'cart';
-    if (lower.includes('y tế') || lower.includes('sức khỏe')) return 'heart-pulse';
-    if (lower.includes('du lịch')) return 'airplane';
-    return 'cash-multiple';
-};
-
-const formatMoney = (amount?: number | null) => {
-    if (amount == null || isNaN(amount)) return '0';
-    return Math.round(amount).toLocaleString('vi-VN');
-};
-
-const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    if (Array.isArray(dateString) && (dateString as any[]).length >= 3) {
-        const [y, m, d] = dateString as any[];
-        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
-    }
-    return new Date(dateString).toLocaleDateString('vi-VN');
-};
+// ---------- LoanCard component ----------
 
 // ---------- LoanCard component ----------
 interface LoanCardProps {
@@ -279,7 +229,7 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                 )}
 
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', paddingRight: isActive ? 6 : 16 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', paddingRight: 16 }}>
                         <View style={{ flexShrink: 1 }}>
                             <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '500', marginBottom: 4 }} numberOfLines={1}>Kỳ hạn</Text>
                             <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }} numberOfLines={1}>{loan.periodMonth || 0} th</Text>
@@ -294,21 +244,20 @@ const LoanCard = React.memo(({ loan, onPress, onRepayPress, colors, isDark }: Lo
                         </View>
                     </View>
 
-                    {/* Actions */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {isActive && (
-                            <TouchableOpacity
-                                style={{ backgroundColor: '#111827', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
-                                onPress={onRepayPress}
-                            >
-                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Trả nợ</Text>
-                            </TouchableOpacity>
-                        )}
-                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? colors.surfaceLight : '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
-                            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                        </View>
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? colors.surfaceLight : '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
+                        <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
                     </View>
                 </View>
+
+                {/* Nút Trả nợ — hàng riêng */}
+                {isActive && (
+                    <TouchableOpacity
+                        style={{ backgroundColor: '#111827', paddingVertical: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}
+                        onPress={onRepayPress}
+                    >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Trả nợ</Text>
+                    </TouchableOpacity>
+                )}
 
             </View>
         </TouchableOpacity>
@@ -450,30 +399,13 @@ const LoanHistoryScreen = () => {
                         returnKeyType="search"
                     />
                 </View>
-                <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(!showSort)} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSort(true)} activeOpacity={0.7}>
                     <Text style={[styles.sortBtnText, { color: colors.textSecondary }]}>{sortLabel}</Text>
-                    <Ionicons name={showSort ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textSecondary} />
+                    <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
             </View>
 
-            {/* Sort dropdown */}
-            {showSort && (
-                <View style={[styles.sortDropdown, { backgroundColor: colors.backgroundSecondary }]}>
-                    {SORT_OPTIONS.map(opt => {
-                        const active = sortType === opt.key;
-                        return (
-                            <TouchableOpacity
-                                key={opt.key}
-                                style={[styles.sortOption, active && { backgroundColor: colors.primary + '12' }]}
-                                onPress={() => onSort(opt.key)}
-                            >
-                                <Text style={[styles.sortOptionText, { color: active ? colors.primary : colors.text }]}>{opt.label}</Text>
-                                {active && <Ionicons name="checkmark" size={16} color={colors.primary} />}
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-            )}
+
 
             {/* Main Content */}
             {loading && !refreshing ? (
@@ -524,7 +456,7 @@ const LoanHistoryScreen = () => {
                         </View>
                     }
                     ListFooterComponent={totalPages > 1 ? (
-                        <Pagination
+                        <FintechPagination
                             mode="page"
                             currentPage={currentPage}
                             totalPages={totalPages}
@@ -537,6 +469,15 @@ const LoanHistoryScreen = () => {
                 />
             )}
 
+
+            {/* ── Sort Bottom Sheet ── */}
+            <SortBottomSheet
+                visible={showSort}
+                options={SORT_OPTIONS}
+                currentSort={sortType}
+                onSelect={onSort}
+                onClose={() => setShowSort(false)}
+            />
 
         </View>
     );

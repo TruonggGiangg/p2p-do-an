@@ -1,0 +1,1188 @@
+{
+  "version": "2.10",
+  "children": [
+    {
+      "type": "frame",
+      "id": "2J6BC",
+      "x": 15,
+      "y": -2401,
+      "name": "Investment Flow - Step 1",
+      "width": 375,
+      "height": 812,
+      "fill": "#F9FAFB",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": [
+        32,
+        24
+      ],
+      "children": [
+        {
+          "type": "frame",
+          "id": "DQfx9",
+          "name": "header",
+          "width": "fill_container",
+          "gap": 12,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon_font",
+              "id": "Z3OZk",
+              "name": "backIcon",
+              "width": 24,
+              "height": 24,
+              "iconFontName": "chevron-left",
+              "iconFontFamily": "lucide",
+              "fill": "#111827"
+            },
+            {
+              "type": "text",
+              "id": "o4CFI",
+              "name": "titleText",
+              "fill": "#111827",
+              "content": "Chọn số lượng",
+              "fontFamily": "Inter",
+              "fontSize": 20,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "s4NB5",
+              "name": "stepText",
+              "fill": "#111827",
+              "content": "1 / 4",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "jICqc",
+          "name": "stepper",
+          "width": "fill_container",
+          "gap": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "Hbhjq",
+              "name": "s1",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "wrEtq",
+              "name": "s2",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "8mHG5",
+              "name": "s2",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "t0kTC",
+              "name": "s4",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "7bnM3",
+          "name": "loanCard",
+          "width": "fill_container",
+          "fill": "#FFFFFF",
+          "cornerRadius": 16,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "vWI8E",
+              "name": "loanHeader",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "bbCOz",
+                  "name": "loanIcon",
+                  "width": 40,
+                  "height": 40,
+                  "fill": "#F0FDF4",
+                  "cornerRadius": 12,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "UaFIN",
+                      "width": 20,
+                      "height": 20,
+                      "iconFontName": "file-text",
+                      "iconFontFamily": "lucide",
+                      "fill": "#1E3A2F"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "S2xlG",
+                  "name": "loanTitle",
+                  "fill": "#111827",
+                  "content": "Kinh doanh thời trang",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "VxPLj",
+              "name": "metrics",
+              "width": "fill_container",
+              "gap": 40,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "t3IU5",
+                  "name": "m1",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HRGKH",
+                      "fill": "#9CA3AF",
+                      "content": "LÃI SUẤT",
+                      "fontFamily": "Inter",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uUzyh",
+                      "fill": "#1E3A2F",
+                      "content": "12.5%/năm",
+                      "fontFamily": "Inter",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "oLpCw",
+                  "name": "m2",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "lEg1w",
+                      "fill": "#9CA3AF",
+                      "content": "KỲ HẠN",
+                      "fontFamily": "Inter",
+                      "fontSize": 10,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "LLDZx",
+                      "fill": "#111827",
+                      "content": "6 tháng",
+                      "fontFamily": "Inter",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "t2zRC",
+          "name": "counterSection",
+          "width": "fill_container",
+          "gap": 24,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "s7nOu",
+              "fill": "#6B7280",
+              "content": "Số lượng phần đầu tư",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "500"
+            },
+            {
+              "type": "frame",
+              "id": "BP86B",
+              "name": "counter",
+              "gap": 32,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "5cH52",
+                  "name": "minusBtn",
+                  "width": 48,
+                  "height": 48,
+                  "fill": "#F3F4F6",
+                  "cornerRadius": 24,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "nlw2P",
+                      "width": 24,
+                      "height": 24,
+                      "iconFontName": "minus",
+                      "iconFontFamily": "lucide",
+                      "fill": "#9CA3AF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "DViK2",
+                  "fill": "#111827",
+                  "content": "1",
+                  "fontFamily": "Inter",
+                  "fontSize": 32,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "F2hAp",
+                  "name": "plusBtn",
+                  "width": 48,
+                  "height": 48,
+                  "fill": "#1E3A2F",
+                  "cornerRadius": 24,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "92Le0",
+                      "width": 24,
+                      "height": 24,
+                      "iconFontName": "plus",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "RUWON",
+          "name": "summary",
+          "width": "fill_container",
+          "fill": "#F0FDF4",
+          "cornerRadius": 20,
+          "padding": 24,
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "OsPPk",
+              "fill": "#166534",
+              "content": "Tổng vốn đầu tư",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "text",
+              "id": "bS0XY",
+              "fill": "#111827",
+              "content": "500.000 ₫",
+              "textAlign": "right",
+              "fontFamily": "Inter",
+              "fontSize": 24,
+              "fontWeight": "700"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "758Qk",
+          "name": "cta",
+          "width": "fill_container",
+          "fill": "#1E3A2F",
+          "cornerRadius": 16,
+          "padding": 20,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "RXK4o",
+              "fill": "#FFFFFF",
+              "content": "Tiếp tục",
+              "fontFamily": "Inter",
+              "fontSize": 16,
+              "fontWeight": "700"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "uxt2O",
+      "x": 494,
+      "y": -2401,
+      "name": "Investment Flow - Step 2",
+      "width": 375,
+      "height": 812,
+      "fill": "#F9FAFB",
+      "layout": "vertical",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "9lUtg",
+          "name": "header2",
+          "gap": 12,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon_font",
+              "id": "dc2Hy",
+              "name": "backIcon2",
+              "width": 24,
+              "height": 24,
+              "iconFontName": "chevron-left",
+              "iconFontFamily": "lucide",
+              "fill": "#111827"
+            },
+            {
+              "type": "text",
+              "id": "jCxm5",
+              "name": "titleText2",
+              "fill": "#111827",
+              "content": "Lịch thu nhập",
+              "fontFamily": "Inter",
+              "fontSize": 20,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "8VkYT",
+              "name": "stepText2",
+              "fill": "#111827",
+              "content": "2 / 4",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "sOaeM",
+          "name": "stepper2",
+          "width": "fill_container",
+          "gap": 8,
+          "children": [
+            {
+              "type": "frame",
+              "id": "IOEaC",
+              "name": "s2_1",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "Qwh3Z",
+              "name": "s2_2",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "3RoA2",
+              "name": "s2_3",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "ONKol",
+              "name": "s2_4",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Unlba",
+          "name": "summaryCard",
+          "width": "fill_container",
+          "fill": "#1E3A2F",
+          "cornerRadius": 20,
+          "layout": "vertical",
+          "gap": 8,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "x2x7m",
+              "fill": "#A7F3D0",
+              "content": "Tổng lợi nhuận dự kiến",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "500"
+            },
+            {
+              "type": "text",
+              "id": "REUAO",
+              "fill": "#FFFFFF",
+              "content": "+ 62.500 ₫",
+              "fontFamily": "Inter",
+              "fontSize": 28,
+              "fontWeight": "700"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "alLm7",
+          "name": "timelineHeader",
+          "width": "fill_container",
+          "justifyContent": "space_between",
+          "children": [
+            {
+              "type": "text",
+              "id": "lFr5Y",
+              "fill": "#111827",
+              "content": "Chi tiết kỳ thanh toán",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "3FMAQ",
+              "fill": "#6B7280",
+              "content": "6 kỳ",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "500"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "lVj2v",
+          "name": "list",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "#E5E7EB",
+          "cornerRadius": 12,
+          "layout": "vertical",
+          "gap": 1,
+          "children": [
+            {
+              "type": "frame",
+              "id": "u0FGg",
+              "name": "row1",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "padding": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JYjVB",
+                  "name": "c1_1",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "NkG01",
+                      "fill": "#111827",
+                      "content": "Kỳ 1 - 15/05/2024",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "typol",
+                      "fill": "#6B7280",
+                      "content": "Lãi suất",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "Owujf",
+                  "fill": "#059669",
+                  "content": "10.416 ₫",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "DxYCx",
+              "name": "row2",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "padding": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "F9G5c",
+                  "name": "c2_1",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "BAVO4",
+                      "fill": "#111827",
+                      "content": "Kỳ 2 - 15/06/2024",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ICQLK",
+                      "fill": "#6B7280",
+                      "content": "Lãi suất",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "B4i3Q",
+                  "fill": "#059669",
+                  "content": "10.416 ₫",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "fvWzj",
+          "width": 1,
+          "height": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "VpTHc",
+          "name": "cta2",
+          "width": "fill_container",
+          "fill": "#1E3A2F",
+          "cornerRadius": 16,
+          "padding": 16,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "PGPnf",
+              "fill": "#FFFFFF",
+              "content": "Tôi đã hiểu",
+              "fontFamily": "Inter",
+              "fontSize": 16,
+              "fontWeight": "700"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "eNNyr",
+      "x": 954,
+      "y": -2401,
+      "name": "Investment Flow - Step 3",
+      "width": 375,
+      "height": 812,
+      "fill": "#F9FAFB",
+      "layout": "vertical",
+      "gap": 24,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "N1yQ5",
+          "name": "header3",
+          "gap": 12,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon_font",
+              "id": "Mwwp7",
+              "name": "backIcon3",
+              "width": 24,
+              "height": 24,
+              "iconFontName": "chevron-left",
+              "iconFontFamily": "lucide",
+              "fill": "#111827"
+            },
+            {
+              "type": "text",
+              "id": "NtG6P",
+              "name": "titleText3",
+              "fill": "#111827",
+              "content": "Xác nhận đầu tư",
+              "fontFamily": "Inter",
+              "fontSize": 20,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "zJKTg",
+              "name": "stepText3",
+              "fill": "#111827",
+              "content": "3 / 4",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "KZVJq",
+          "name": "stepper3",
+          "width": "fill_container",
+          "gap": 8,
+          "children": [
+            {
+              "type": "frame",
+              "id": "7ZUVi",
+              "name": "s3_1",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "RQWlU",
+              "name": "s3_2",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "hzH9d",
+              "name": "s3_3",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#1E3A2F",
+              "cornerRadius": 2
+            },
+            {
+              "type": "frame",
+              "id": "8vKJD",
+              "name": "s3_4",
+              "width": "fill_container",
+              "height": 4,
+              "fill": "#E5E7EB",
+              "cornerRadius": 2
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "xFa6J",
+          "name": "reviewCard",
+          "width": "fill_container",
+          "fill": "#FFFFFF",
+          "cornerRadius": 20,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": 24,
+          "children": [
+            {
+              "type": "text",
+              "id": "n9CSb",
+              "fill": "#111827",
+              "content": "Thông tin đơn hàng",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "PTrhI",
+              "name": "li1",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "FcR4q",
+                  "fill": "#6B7280",
+                  "content": "Sản phẩm",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "zv0iS",
+                  "fill": "#111827",
+                  "content": "Kinh doanh thời trang",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "O5jDO",
+              "name": "li2",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ib1Iw",
+                  "fill": "#6B7280",
+                  "content": "Số lượng phần",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "Vi4Ne",
+                  "fill": "#111827",
+                  "content": "1 phần",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "TBUzq",
+              "name": "div",
+              "width": "fill_container",
+              "height": 1,
+              "fill": "#F3F4F6"
+            },
+            {
+              "type": "frame",
+              "id": "xHCVK",
+              "name": "li3",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "MKLaf",
+                  "fill": "#111827",
+                  "content": "Tổng thanh toán",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "Tfjih",
+                  "fill": "#1E3A2F",
+                  "content": "500.000 ₫",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "700"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "nSuv3",
+          "name": "walletCard",
+          "width": "fill_container",
+          "fill": "#F0FDF4",
+          "cornerRadius": 16,
+          "gap": 16,
+          "padding": 20,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "gPff8",
+              "name": "walletIcon",
+              "width": 40,
+              "height": 40,
+              "fill": "#1E3A2F",
+              "cornerRadius": 20,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "AXBtl",
+                  "width": 20,
+                  "height": 20,
+                  "iconFontName": "wallet",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "eKHw6",
+              "name": "walletInfo",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "bmYKy",
+                  "fill": "#111827",
+                  "content": "Ví P2P của bạn",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "Gv8fr",
+                  "fill": "#166534",
+                  "content": "Số dư: 5.250.000 ₫",
+                  "fontFamily": "Inter",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ULCHQ",
+          "width": 1,
+          "height": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "hGxtm",
+          "name": "cta3",
+          "width": "fill_container",
+          "fill": "#1E3A2F",
+          "cornerRadius": 16,
+          "padding": 16,
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "O0SkL",
+              "fill": "#FFFFFF",
+              "content": "Xác nhận đầu tư",
+              "fontFamily": "Inter",
+              "fontSize": 16,
+              "fontWeight": "700"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "K0VVc",
+      "x": 1440,
+      "y": -2401,
+      "name": "Investment Flow - Success",
+      "width": 375,
+      "height": 812,
+      "fill": "#F9FAFB",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "5gt8F",
+          "name": "header4",
+          "width": "fit_content(0)",
+          "gap": 12,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "uS4xi",
+              "fill": "#111827",
+              "content": "Hoàn tất",
+              "textAlign": "center",
+              "fontFamily": "Inter",
+              "fontSize": 20,
+              "fontWeight": "700"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "pCWxF",
+          "name": "successIconArea",
+          "width": 330,
+          "height": 204,
+          "gap": 24,
+          "padding": 40,
+          "children": [
+            {
+              "type": "frame",
+              "id": "y9SUJ",
+              "name": "successCircle",
+              "width": 100,
+              "height": 100,
+              "fill": "#D1FAE5",
+              "cornerRadius": 50,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "Dn7N3",
+                  "width": 48,
+                  "height": 48,
+                  "iconFontName": "check",
+                  "iconFontFamily": "lucide",
+                  "fill": "#059669"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "sbWDB",
+              "name": "titleArea",
+              "layout": "vertical",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "SXJeD",
+                  "fill": "#111827",
+                  "content": "Đầu tư thành công!",
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 24,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "T0idP",
+                  "fill": "#6B7280",
+                  "content": "Cảm ơn bạn đã tin tưởng hệ thống P2P của chúng tôi.",
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "QVhjo",
+          "name": "resultCard",
+          "width": "fill_container",
+          "fill": "#FFFFFF",
+          "cornerRadius": 20,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": 24,
+          "children": [
+            {
+              "type": "frame",
+              "id": "Yalb2",
+              "name": "ri1",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "zSsfS",
+                  "fill": "#6B7280",
+                  "content": "Số tiền đầu tư",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "PDE7O",
+                  "fill": "#111827",
+                  "content": "500.000 ₫",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "QnzqT",
+              "name": "ri2",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "GtEe8",
+                  "fill": "#6B7280",
+                  "content": "Mã giao dịch",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "3brhL",
+                  "fill": "#111827",
+                  "content": "INV-20240515-001",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "YIFRl",
+          "width": 1,
+          "height": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "UGESl",
+          "name": "ctaArea",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "vgIkC",
+              "name": "btnHome",
+              "width": "fill_container",
+              "fill": "#1E3A2F",
+              "cornerRadius": 16,
+              "padding": 16,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "uigmo",
+                  "fill": "#FFFFFF",
+                  "content": "Về trang chủ",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "EqPu6",
+              "name": "btnDetail",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "cornerRadius": 16,
+              "stroke": {
+                "thickness": 1,
+                "fill": "#E5E7EB"
+              },
+              "padding": 16,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "8LwRT",
+                  "fill": "#111827",
+                  "content": "Xem hợp đồng",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

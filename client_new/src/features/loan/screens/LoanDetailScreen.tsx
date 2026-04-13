@@ -22,6 +22,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonInput, CommonButton, useConfirmModal } from '../../../components';
 import { loanService, LoanHistoryItem } from '../services/loan.service';
+import { 
+    formatMoney, 
+    formatDateShort as formatDate, 
+    getStatusInfo 
+} from '../utils/loanUtils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 // ---- Type Helpers ----
@@ -73,19 +78,6 @@ interface TransactionItem {
 }
 
 // ---- Format Helpers ----
-const formatMoney = (amount?: number | null) => {
-    if (amount == null || isNaN(amount)) return '0';
-    return Math.round(amount).toLocaleString('vi-VN');
-};
-
-const formatDate = (dateString?: any) => {
-    if (!dateString) return 'N/A';
-    if (Array.isArray(dateString) && dateString.length >= 3) {
-        const [y, m, d] = dateString;
-        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
-    }
-    return new Date(dateString).toLocaleDateString('vi-VN');
-};
 
 const getInstallmentStatus = (period: any): 'paid' | 'overdue' | 'current' | 'upcoming' => {
     const complete = period?.complete === true || (period?.obligationsMetOnDate != null && Array.isArray(period.obligationsMetOnDate));
@@ -112,37 +104,6 @@ const formatInputVND = (text: string) => {
     const number = text.replace(/[^0-9]/g, '');
     if (!number) return '';
     return number.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-};
-
-const getStatusInfo = (statusObj: any, status: string, isFullMatch?: boolean) => {
-    if (statusObj) {
-        if (statusObj.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
-        if (statusObj.closedObligationsMet) return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
-        if (statusObj.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB' };
-        if (statusObj.overpaid) return { text: 'Trả thừa', color: '#10B981', bgColor: '#F0FDF4' };
-        if (statusObj.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
-        if (statusObj.waitingForDisbursal) {
-            if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
-            return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
-        }
-        if (statusObj.approved) {
-            if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
-            return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
-        }
-        if (statusObj.rejected) return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
-        if (statusObj.withdrawnByClient) return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
-    }
-    if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#10B981', bgColor: '#F0FDF4' };
-    if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF' };
-    if (status === 'approved') {
-        if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB' };
-        return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF' };
-    }
-    if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB' };
-    if (status === 'rejected') return { text: 'Bị từ chối', color: '#EF4444', bgColor: '#FEF2F2' };
-    if (status === 'cancelled') return { text: 'Đã hủy', color: '#9CA3AF', bgColor: '#F9FAFB' };
-    if (status === 'written_off') return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB' };
-    return { text: status || 'N/A', color: '#6B7280', bgColor: '#F9FAFB' };
 };
 
 const getTxTypeInfo = (typeObj: any): { text: string; icon: any; color: string } => {
@@ -402,7 +363,10 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     // ---- Render Tabs ----
     const renderInfoTab = () => {
-        const statusDisplay = getStatusInfo(fineractDetails?.status || rawLoan?.statusInfo, loan.status, rawLoan?.isFullMatch);
+        const statusDisplay = getStatusInfo({
+            ...rawLoan,
+            statusInfo: fineractDetails?.status || rawLoan.statusInfo
+        });
         const progressPercent = outstanding && loan.capital > 0
             ? Math.min(100, Math.round((totalPaid / (loan.capital + (outstanding.interestOutstanding + totalPaid - loan.capital > 0 ? outstanding.interestOutstanding + totalPaid - loan.capital : 0))) * 100))
             : 0;
@@ -417,7 +381,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     </View>
                     <InfoRow label="Mục đích vay" value={loan.willing} colors={colors} />
                     <InfoRow label="Ngày giải ngân" value={formatDate(loan.disbursementDate)} colors={colors} />
-                    <InfoRow label="Lãi suất" value={`${loan.rate}%/năm`} colors={colors} />
+                    <InfoRow label="Lãi suất" value={`${Number(loan.rate).toFixed(2)}%/năm`} colors={colors} />
                     <InfoRow label="Thời hạn" value={`${loan.periodMonth} tháng`} colors={colors} />
                     <InfoRow label="Trả hàng tháng" value={`${formatMoney(loan.monthlyPay)} đ`} colors={colors} />
                     <View style={[styles.divider, { backgroundColor: colors.border + '50' }]} />
@@ -666,7 +630,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             {/* Compact Hero Card */}
             <View style={[styles.heroCard, { backgroundColor: '#14342B' }]}>
                 <View style={styles.heroRow}>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, justifyContent: 'center' }}>
                         <Text style={styles.heroLabel}>Số tiền vay</Text>
                         <Text style={styles.heroAmount}>
                             {formatMoney(loan.capital)} <Text style={styles.heroCurrency}>đ</Text>
@@ -680,9 +644,9 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     <View style={styles.heroBottomRow}>
                         <View style={styles.heroPill}>
                             <View style={[styles.heroDot, { backgroundColor: '#CDEA2D' }]} />
-                            <Text style={styles.heroPillText}>Dư nợ: {formatMoney(outstanding.totalOutstanding)} đ</Text>
+                            <Text style={styles.heroPillText}>Dư nợ: {formatMoney(Math.round(outstanding.totalOutstanding * 100) / 100)} đ</Text>
                         </View>
-                        <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
+                        <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {Number(loan.rate).toFixed(2)}%/năm</Text>
                     </View>
                 )}
                 {/* Overdue alert in hero */}
@@ -705,7 +669,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                     </View>
                 )}
                 {(!outstanding || !isActive) && (
-                    <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {loan.rate}%/năm</Text>
+                    <Text style={styles.heroPeriod}>{loan.periodMonth} tháng · {Number(loan.rate).toFixed(2)}%/năm</Text>
                 )}
             </View>
 
@@ -1019,13 +983,13 @@ const styles = StyleSheet.create({
 
     // Compact Hero
     heroCard: { marginHorizontal: 16, marginTop: 8, marginBottom: 4, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14 },
-    heroRow: { flexDirection: 'row', alignItems: 'center' },
+    heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     heroLabel: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginBottom: 2 },
     heroAmount: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
     heroCurrency: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.4)' },
     heroIconCircle: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(205,234,45,0.15)', justifyContent: 'center', alignItems: 'center' },
     heroBottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
-    heroPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    heroPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
     heroDot: { width: 5, height: 5, borderRadius: 3 },
     heroPillText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
     heroPeriod: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 },

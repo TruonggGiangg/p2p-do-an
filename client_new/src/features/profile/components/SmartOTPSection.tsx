@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useSmartOTP } from '../../../shared/hooks';
@@ -28,6 +29,13 @@ export const SmartOTPSection: React.FC = () => {
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authCode, setAuthCode] = useState('');
+  const route = useRoute<any>();
+
+  useEffect(() => {
+    if (route.params?.expandSmartOTP) {
+      setExpanded(true);
+    }
+  }, [route.params?.expandSmartOTP]);
 
   useEffect(() => {
     const check2FA = async () => {

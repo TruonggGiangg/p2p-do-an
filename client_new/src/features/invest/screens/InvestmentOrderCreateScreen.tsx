@@ -339,10 +339,10 @@ function RRow({ icon, label, value, c, valueColor }: any) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { paddingHorizontal: 16, paddingBottom: 120 },
+  scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
 
   // Hero
-  heroSub: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 16, marginBottom: 4 },
+  heroSub: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 0, marginBottom: 4 },
   heroTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16 },
 
   // Section
