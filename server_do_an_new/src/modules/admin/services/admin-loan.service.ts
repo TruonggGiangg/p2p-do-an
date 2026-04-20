@@ -1852,7 +1852,7 @@ export class AdminLoanService {
   async getLoans(filters: {
     page?: number;
     limit?: number;
-    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed' | 'waiting' | 'funded' | 'rejected' | 'cancelled';
     productId?: number;
     classification?: string;
     keyword?: string;
@@ -1946,13 +1946,19 @@ export class AdminLoanService {
     };
 
     const getPendingItems = async () => {
-      const pending = await this.getAllPendingLoans();
-      let items = pending.map(fl => ({
-        _id: fl._id,
+      // Lấy tất cả hồ sơ có trạng thái pending từ Mongo (không lọc fineractLoanId)
+      const pending = await this.loanApplicationModel
+        .find({ status: 'pending' })
+        .populate('userId', 'username profile fineractClientId')
+        .lean()
+        .exec();
+        
+      let items = (pending as any[]).map(fl => ({
+        _id: fl._id.toString(),
         fineractLoanId: fl.fineractLoanId,
-        userId: fl.userId ?? '',
-        customerName: fl.clientName ?? 'â€“',
-        customerUsername: 'â€“',
+        userId: fl.userId?._id?.toString() ?? '',
+        customerName: (fl.clientDisplayName ?? [fl.userId?.profile?.firstName, fl.userId?.profile?.lastName].filter(Boolean).join(' ')) || (fl.userId?.username ?? 'â€“'),
+        customerUsername: fl.userId?.username ?? 'â€“',
         productId: fl.productId,
         productName: fl.productName ?? '',
         productShortName: (fl as any).productShortName ?? '',
@@ -2023,21 +2029,29 @@ export class AdminLoanService {
       return items;
     };
 
-    // Pending: Fineract status 100
     if (status === 'pending') {
       const items = await getPendingItems();
-      const total = items.length;
-      return { total, page, limit, items: paginate(items) };
+      return { total: items.length, page, limit, items: paginate(items) };
     }
-
-    // Approved: Fineract status 200 (waiting for disbursal)
     if (status === 'approved') {
       const items = await getApprovedItems();
-      const total = items.length;
-      return { total, page, limit, items: paginate(items) };
+      return { total: items.length, page, limit, items: paginate(items) };
     }
 
-    // disbursed, overdue, closed, all: query Mongo
+    // Waiting for Investment: status approved, isFullMatch false (Mongo)
+    if (status === 'waiting' || status === 'funded') {
+      const isFullMatch = status === 'funded';
+      const apps = await this.loanApplicationModel
+        .find({ status: 'approved', isFullMatch, fineractLoanId: { $exists: true, $ne: null } })
+        .populate('userId', 'username profile fineractClientId')
+        .lean()
+        .exec();
+      const items = (apps as any[]).map(app => mapAppToItem(app));
+      const filtered = applyProductFilter(applyKeywordFilter(items));
+      return { total: filtered.length, page, limit, items: paginate(filtered) };
+    }
+
+    // disbursed, overdue, closed, rejected, cancelled, all: query Mongo
     const query: any = { fineractLoanId: { $exists: true, $ne: null } };
 
     if (status === 'disbursed') {
@@ -2048,28 +2062,34 @@ export class AdminLoanService {
       query.totalOverdue = { $gt: 0 };
     } else if (status === 'closed') {
       query.status = 'closed';
+    } else if (status === 'rejected') {
+      query.status = 'rejected';
+    } else if (status === 'cancelled') {
+      query.status = 'cancelled';
     } else {
-      query.status = { $in: ['disbursed', 'closed'] };
+      query.status = { $in: ['disbursed', 'closed', 'rejected', 'cancelled'] };
     }
 
     if (filters.productId != null) query.productId = filters.productId;
     if (filters.classification) query.delinquencyClassification = filters.classification;
 
     if (filters.keyword?.trim()) {
-      const search = filters.keyword.trim();
-      const keywordOr: any[] = [{ clientDisplayName: { $regex: search, $options: 'i' } }];
-      const loanIdNum = Number(search);
+      const searchStr = filters.keyword.trim();
+      const keywordOr: any[] = [{ clientDisplayName: { $regex: searchStr, $options: 'i' } }];
+      const loanIdNum = Number(searchStr);
       if (!isNaN(loanIdNum)) keywordOr.push({ fineractLoanId: loanIdNum });
+      
       const matchingUsers = await this.userModel
         .find({
           $or: [
-            { username: { $regex: search, $options: 'i' } },
-            { 'profile.firstName': { $regex: search, $options: 'i' } },
-            { 'profile.lastName': { $regex: search, $options: 'i' } },
+            { username: { $regex: searchStr, $options: 'i' } },
+            { 'profile.firstName': { $regex: searchStr, $options: 'i' } },
+            { 'profile.lastName': { $regex: searchStr, $options: 'i' } },
           ],
         })
         .select('_id')
         .lean();
+        
       if (matchingUsers.length > 0) {
         keywordOr.push({ userId: { $in: matchingUsers.map((u: any) => u._id) } });
       }
@@ -2103,17 +2123,12 @@ export class AdminLoanService {
       if (filters.disbursementDateTo) query.disbursementDate.$lte = filters.disbursementDateTo;
     }
 
-    const mongoQuery = this.loanApplicationModel
+    const apps = await this.loanApplicationModel
       .find(query)
       .sort({ totalOverdue: -1, delinquentDays: -1, lastSyncedAt: -1 })
       .populate('userId', 'username profile fineractClientId')
-      .lean();
-
-    if (status !== 'all') {
-      mongoQuery.skip((page - 1) * limit).limit(limit);
-    }
-
-    const apps = await mongoQuery.exec();
+      .lean()
+      .exec();
 
     const count = status === 'all' ? 0 : await this.loanApplicationModel.countDocuments(query);
 
@@ -2131,9 +2146,13 @@ export class AdminLoanService {
 
     if (status === 'all') {
       const [pendingItems, approvedItems] = await Promise.all([getPendingItems(), getApprovedItems()]);
-      const allItems = [...pendingItems, ...approvedItems, ...mongoItems].sort(
-        (a, b) => Number(b.fineractLoanId ?? 0) - Number(a.fineractLoanId ?? 0),
-      );
+      const allItems = [...pendingItems, ...approvedItems, ...mongoItems].sort((a, b) => {
+          const valA = Number(a.fineractLoanId || 0);
+          const valB = Number(b.fineractLoanId || 0);
+          if (valB !== valA) return valB - valA;
+          return String(b._id || '').localeCompare(String(a._id || ''));
+      });
+      
       return {
         total: allItems.length,
         page,
@@ -2152,16 +2171,38 @@ export class AdminLoanService {
     total: number;
     pending: number;
     approved: number;
+    waitingInvestment: number;
+    fullyFunded: number;
     disbursed: number;
     overdue: number;
     closed: number;
+    rejected: number;
+    cancelled: number;
   }> {
-    const [mongoCounts, pendingCount, approvedCount] = await Promise.all([
+    const [mongoCounts] = await Promise.all([
       this.loanApplicationModel.aggregate([
-        { $match: { fineractLoanId: { $exists: true, $ne: null } } },
         {
           $group: {
             _id: null,
+            pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+            waitingInvestment: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'approved'] }, { $eq: ['$isFullMatch', false] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            fullyFunded: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'approved'] }, { $eq: ['$isFullMatch', true] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
             disbursed: {
               $sum: {
                 $cond: [
@@ -2181,25 +2222,36 @@ export class AdminLoanService {
               },
             },
             closed: { $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] } },
+            rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+            cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
           },
         },
       ]),
-      this.fineractLoanService.getLoansByStatus(100).then(r => r.length),
-      this.fineractLoanService.getLoansByStatus(200).then(r => r.length),
     ]);
 
     const agg = mongoCounts[0] ?? {};
+    const pending = agg.pending ?? 0;
+    const waitingInvestment = agg.waitingInvestment ?? 0;
+    const fullyFunded = agg.fullyFunded ?? 0;
     const disbursed = agg.disbursed ?? 0;
     const overdue = agg.overdue ?? 0;
     const closed = agg.closed ?? 0;
+    const rejected = agg.rejected ?? 0;
+    const cancelled = agg.cancelled ?? 0;
+
+    const approved = waitingInvestment + fullyFunded;
 
     return {
-      total: disbursed + overdue + closed + pendingCount + approvedCount,
-      pending: pendingCount,
-      approved: approvedCount,
+      total: pending + approved + disbursed + overdue + closed + rejected + cancelled,
+      pending,
+      approved,
+      waitingInvestment,
+      fullyFunded,
       disbursed,
       overdue,
       closed,
+      rejected,
+      cancelled,
     };
   }
 

@@ -112,7 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(null);
     };
 
-    const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
+    const login = React.useCallback(async (credentials: LoginRequest): Promise<LoginResponse> => {
         setIsLoading(true);
         try {
             const response = await authAPI.login(credentials);
@@ -131,9 +131,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const register = async (data: RegisterRequest) => {
+    const register = React.useCallback(async (data: RegisterRequest) => {
         setIsLoading(true);
         try {
             await authAPI.register(data);
@@ -145,9 +145,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const logout = async () => {
+    const logout = React.useCallback(async () => {
         setIsLoading(true);
         try {
             await authAPI.logout();
@@ -162,9 +162,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    const refreshUser = async () => {
+    const refreshUser = React.useCallback(async () => {
         try {
             const userData = await authAPI.getMe();
             setUser(userData);
@@ -177,7 +177,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
             throw error;
         }
-    };
+    }, []);
 
     const value: AuthContextData = {
         user,

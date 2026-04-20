@@ -5,3 +5,4 @@ export { AdminProductService } from './admin-product.service';
 export { AdminCustomerService } from './admin-customer.service';
 export { AdminKycService } from './admin-kyc.service';
 export { AdminStaffService } from './admin-staff.service';
+export { AdminMarketService } from './admin-market.service';

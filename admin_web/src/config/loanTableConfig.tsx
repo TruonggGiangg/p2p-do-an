@@ -46,23 +46,31 @@ export type LoanTableRow = {
     isFullMatch?: boolean;
 };
 
-export type TabKey = 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+export type TabKey = 'all' | 'pending' | 'approved' | 'waiting' | 'funded' | 'disbursed' | 'overdue' | 'closed' | 'rejected' | 'cancelled';
 
 export const TAB_LABELS: Record<TabKey, string> = {
     all: 'Tất cả',
     pending: 'Chờ duyệt',
     approved: 'Đã phê duyệt',
+    waiting: 'Chờ đầu tư',
+    funded: 'Đã đủ vốn',
     disbursed: 'Đang hoạt động',
     overdue: 'Quá hạn',
     closed: 'Đã đóng',
+    rejected: 'Bị từ chối',
+    cancelled: 'Đã hủy',
 };
 
 const STATUS_LABEL_MAP: Record<string, string> = {
     pending: 'Chờ duyệt',
     approved: 'Đã phê duyệt',
+    waiting: 'Chờ đầu tư',
+    funded: 'Đã đủ vốn',
     disbursed: 'Đang hoạt động',
     overdue: 'Quá hạn',
     closed: 'Đã đóng',
+    rejected: 'Bị từ chối',
+    cancelled: 'Đã hủy',
 };
 
 function getStatusDisplay(r: LoanTableRow) {
@@ -70,11 +78,19 @@ function getStatusDisplay(r: LoanTableRow) {
     if (!raw) return null;
     const code = typeof raw === 'string' ? raw : (raw?.code ?? raw?.value ?? '');
     const str = String(code).toLowerCase();
+    
     if (str.includes('pending') || str.includes('submitted')) return { code: 'pending', label: STATUS_LABEL_MAP.pending };
-    if (str.includes('approved')) return { code: 'approved', label: STATUS_LABEL_MAP.approved };
+    if (str.includes('approved')) {
+        if (r.isFullMatch === false) return { code: 'waiting', label: STATUS_LABEL_MAP.waiting };
+        if (r.isFullMatch === true) return { code: 'funded', label: STATUS_LABEL_MAP.funded };
+        return { code: 'approved', label: STATUS_LABEL_MAP.approved };
+    }
     if (str.includes('active') || str.includes('disbursed')) return { code: 'disbursed', label: STATUS_LABEL_MAP.disbursed };
     if (str.includes('overdue')) return { code: 'overdue', label: STATUS_LABEL_MAP.overdue };
     if (str.includes('closed') || str.includes('overpaid')) return { code: 'closed', label: STATUS_LABEL_MAP.closed };
+    if (str.includes('rejected')) return { code: 'rejected', label: STATUS_LABEL_MAP.rejected };
+    if (str.includes('cancelled') || str.includes('withdrawn')) return { code: 'cancelled', label: STATUS_LABEL_MAP.cancelled };
+    
     return { code: str || 'unknown', label: code };
 }
 
@@ -263,23 +279,22 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             search: false,
             render: (_, r) => {
                 const statusObj = r.status;
-                if (statusObj && typeof statusObj === 'object' && 'value' in statusObj) {
-                    if (statusObj.code === 'loanStatusType.approved') {
-                        if (r.isFullMatch) return <Tag color="warning">Chờ ký</Tag>;
-                        return <Tag color="blue">Đang gọi vốn</Tag>;
-                    }
-                    return <FineractStatusBadge status={statusObj} />;
-                }
                 const disp = getStatusDisplay(r);
                 if (!disp) return '–';
-                
-                if (disp.code === 'approved') {
-                    if (r.isFullMatch) return <Tag color="warning">Chờ ký</Tag>;
-                    return <Tag color="blue">Đang gọi vốn</Tag>;
-                }
 
-                const color = disp.code === 'overdue' ? 'error' : disp.code === 'pending' ? 'warning' : disp.code === 'closed' ? 'default' : 'success';
-                return <Tag color={color}>{disp.label}</Tag>;
+                const colorMap: Record<string, string> = {
+                    pending: 'warning',
+                    approved: 'processing',
+                    waiting: 'blue',
+                    funded: 'cyan',
+                    disbursed: 'success',
+                    overdue: 'error',
+                    closed: 'default',
+                    rejected: 'error',
+                    cancelled: 'magenta',
+                };
+
+                return <Tag color={colorMap[disp.code] || 'default'}>{disp.label}</Tag>;
             },
         },
         {

@@ -12,9 +12,10 @@ export type LoanFilterFormProps = {
     products: Array<{ id: number; name: string; shortName: string }>;
     ranges: Array<{ id: number; classification: string; minimumAgeDays?: number }>;
     activeTab: string;
+    showStatusSelect?: boolean;
 };
 
-export default function LoanFilterForm({ form, actionRef, products, ranges, activeTab }: LoanFilterFormProps) {
+export default function LoanFilterForm({ form, actionRef, products, ranges, activeTab, showStatusSelect = true }: LoanFilterFormProps) {
     const dateLabel = activeTab === 'pending' || activeTab === 'approved'
         ? 'Ngày nộp hồ sơ'
         : 'Ngày giải ngân';
@@ -45,6 +46,27 @@ export default function LoanFilterForm({ form, actionRef, products, ranges, acti
                             <Select placeholder="Tất cả sản phẩm" allowClear options={products.map((p) => ({ value: p.id, label: p.shortName || p.name }))} />
                         </Form.Item>
                     </Col>
+                    {activeTab === 'all' && showStatusSelect && (
+                        <Col xs={24} sm={12} md={6}>
+                            <Form.Item name="status" label="Trạng thái" style={{ marginBottom: 0 }}>
+                                <Select
+                                    placeholder="Tất cả trạng thái"
+                                    allowClear
+                                    options={[
+                                        { value: 'pending', label: 'Chờ duyệt' },
+                                        { value: 'approved', label: 'Đã phê duyệt' },
+                                        { value: 'waiting', label: 'Chờ đầu tư' },
+                                        { value: 'funded', label: 'Đã đủ vốn' },
+                                        { value: 'disbursed', label: 'Đang hoạt động' },
+                                        { value: 'overdue', label: 'Quá hạn' },
+                                        { value: 'closed', label: 'Đã tất toán' },
+                                        { value: 'rejected', label: 'Từ chối' },
+                                        { value: 'cancelled', label: 'Đã hủy' },
+                                    ]}
+                                />
+                            </Form.Item>
+                        </Col>
+                    )}
                     {activeTab === 'overdue' && (
                         <Col xs={24} sm={12} md={6}>
                             <Form.Item name="classification" label="Nhóm quá hạn" style={{ marginBottom: 0 }}>

@@ -587,6 +587,10 @@ export const adminApi = {
           disbursed: number;
           overdue: number;
           closed: number;
+          waitingInvestment: number;
+          fullyFunded: number;
+          rejected: number;
+          cancelled: number;
         };
       }>("/api/admin/loans/stats")
       .then((r) => r.data.data),
@@ -600,7 +604,11 @@ export const adminApi = {
       | "approved"
       | "disbursed"
       | "overdue"
-      | "closed";
+      | "closed"
+      | "waiting"
+      | "funded"
+      | "rejected"
+      | "cancelled";
     productId?: number;
     classification?: string;
     keyword?: string;

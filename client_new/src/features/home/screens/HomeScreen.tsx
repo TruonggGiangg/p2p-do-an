@@ -54,7 +54,7 @@ const PHOSPHOR_MAP: Record<string, React.ComponentType<IconProps>> = {
     Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
     CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
     UserCircle, Translate, Question, Headset, ArrowUpRight, ArrowDownLeft,
-    DotsThree,
+    DotsThree, ChartBar, LockKey,
 };
 
 function PIcon({ name, size = 22, color = '#CDEA2D', weight = 'duotone' }: {
@@ -360,9 +360,12 @@ export default function HomeScreen() {
     const c = theme.colors;
     const isDark = themeMode === 'dark';
 
-    const fetchWallets = async () => {
+    const fetchWallets = useCallback(async () => {
+        // Chỉ gọi API nếu user đã VERIFIED để tránh 403
+        if (user?.kycStatus !== 'VERIFIED') return;
+        
         setWalletsLoading(true);
-        const minDelay = new Promise((resolve) => setTimeout(resolve, 1700));
+        const minDelay = new Promise((resolve) => setTimeout(resolve, 1200));
         try {
             const [response] = await Promise.all([walletAPI.getWallets(), minDelay]);
             let walletData = response.wallets || [];
@@ -377,7 +380,7 @@ export default function HomeScreen() {
         } finally {
             setWalletsLoading(false);
         }
-    };
+    }, [user?.kycStatus]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -391,12 +394,25 @@ export default function HomeScreen() {
 
     useFocusEffect(
         useCallback(() => {
-            // Only refresh user and wallets if not verified or if we want to ensure latest data
-            if (user?.kycStatus !== 'VERIFIED') {
-                refreshUser().catch(() => {});
-            }
-            fetchWallets();
-        }, [refreshUser])
+            let isMounted = true;
+
+            const init = async () => {
+                if (user?.kycStatus !== 'VERIFIED') {
+                    try {
+                        await refreshUser();
+                    } catch (e) {}
+                }
+                if (isMounted) {
+                    fetchWallets();
+                }
+            };
+
+            init();
+
+            return () => {
+                isMounted = false;
+            };
+        }, [refreshUser, fetchWallets, user?.kycStatus])
     );
 
     const handleItemPress = (item: ShortcutItem) => {
