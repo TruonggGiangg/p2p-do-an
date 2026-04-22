@@ -235,6 +235,10 @@ export interface LoanDto {
     riskFactors: any[];
     scoredAt: string;
   } | null;
+  isFullMatch?: boolean;
+  matchPercentage?: number;
+  investedNotes?: number;
+  totalNotes?: number;
 }
 
 // ── Staff types ──────────────────────────────────────────────────────────────
@@ -647,6 +651,10 @@ export const adminApi = {
             disbursementDate: string | null;
             createdAt?: string;
             lastSyncedAt: string | null;
+            isFullMatch?: boolean;
+            matchPercentage?: number;
+            investedNotes?: number;
+            totalNotes?: number;
           }>;
         };
       }>("/api/admin/loans", { params })

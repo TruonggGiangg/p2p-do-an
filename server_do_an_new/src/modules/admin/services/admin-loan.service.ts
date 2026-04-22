@@ -1885,6 +1885,9 @@ export class AdminLoanService {
       disbursementDate: string | null;
       lastSyncedAt: Date | null;
       isFullMatch?: boolean;
+      matchPercentage?: number;
+      investedNotes?: number;
+      totalNotes?: number;
     }>;
   }> {
     const page = Math.max(1, filters.page ?? 1);
@@ -1926,6 +1929,9 @@ export class AdminLoanService {
         createdAt: app.createdAt ?? null,
         lastSyncedAt: app.lastSyncedAt ?? null,
         isFullMatch: app.isFullMatch ?? false,
+        matchPercentage: app.matchPercentage ?? 0,
+        investedNotes: app.investedNotes ?? 0,
+        totalNotes: app.totalNotes ?? 0,
       };
     };
 
@@ -1977,6 +1983,10 @@ export class AdminLoanService {
         createdAt: (fl as any).createdAt ?? null,
         lastSyncedAt: null,
         aiScore: (fl as any).aiScore ?? null,
+        isFullMatch: false,
+        matchPercentage: 0,
+        investedNotes: 0,
+        totalNotes: 0,
       }));
       items = applyProductFilter(applyKeywordFilter(items));
       return items;
@@ -2023,6 +2033,9 @@ export class AdminLoanService {
           createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
           lastSyncedAt: null,
           isFullMatch: ll?.isFullMatch ?? false,
+          matchPercentage: ll?.matchPercentage ?? 0,
+          investedNotes: ll?.investedNotes ?? 0,
+          totalNotes: ll?.totalNotes ?? 0,
         };
       });
       items = applyProductFilter(applyKeywordFilter(items));

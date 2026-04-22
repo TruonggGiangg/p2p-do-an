@@ -44,6 +44,9 @@ export type LoanTableRow = {
         scoredAt: string;
     } | null;
     isFullMatch?: boolean;
+    matchPercentage?: number;
+    investedNotes?: number;
+    totalNotes?: number;
 };
 
 export type TabKey = 'all' | 'pending' | 'approved' | 'waiting' | 'funded' | 'disbursed' | 'overdue' | 'closed' | 'rejected' | 'cancelled';
@@ -294,7 +297,29 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
                     cancelled: 'magenta',
                 };
 
-                return <Tag color={colorMap[disp.code] || 'default'}>{disp.label}</Tag>;
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                        <Tag color={colorMap[disp.code] || 'default'} style={{ margin: 0, width: 100, textAlign: 'center' }}>
+                            {disp.label}
+                        </Tag>
+                        {(disp.code === 'waiting' || disp.code === 'funded') && r.totalNotes && r.totalNotes > 0 ? (
+                            <Tooltip title={`${r.investedNotes || 0} / ${r.totalNotes} notes`}>
+                                <div style={{ display: 'flex', alignItems: 'center', width: 100, gap: 4 }}>
+                                    <Progress 
+                                        percent={Math.round(r.matchPercentage || 0)} 
+                                        size="small" 
+                                        showInfo={false}
+                                        style={{ margin: 0, flex: 1 }}
+                                        strokeColor={r.isFullMatch ? '#52c41a' : '#1677ff'}
+                                    />
+                                    <span style={{ fontSize: 10, minWidth: 26, textAlign: 'right', color: '#8c8c8c' }}>
+                                        {Math.round(r.matchPercentage || 0)}%
+                                    </span>
+                                </div>
+                            </Tooltip>
+                        ) : null}
+                    </div>
+                );
             },
         },
         {

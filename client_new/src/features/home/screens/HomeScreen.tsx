@@ -33,7 +33,7 @@ import {
     Wallet, HandCoins, CreditCard, FileText, ShieldCheck, BellRinging,
     CurrencyDollar, ArrowsLeftRight, QrCode, ClockCounterClockwise,
     UserCircle, Translate, Question, Headset, ArrowUpRight, ArrowDownLeft,
-    DotsThree,
+    DotsThree, ChartBar, LockKey,
     type IconProps,
 } from 'phosphor-react-native';
 import type { Wallet as WalletType } from '../../../types/auth.types';
