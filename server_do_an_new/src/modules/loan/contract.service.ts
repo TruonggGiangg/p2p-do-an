@@ -208,6 +208,7 @@ export class ContractService {
     return this.contractModel
       .find({ userId: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
+      .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
       .exec() as Promise<LoanContract[]>;
   }
@@ -271,6 +272,7 @@ export class ContractService {
     // Search by app._id (in case loanId param was fineractLoanId)
     let contract = await this.contractModel
       .findOne({ loanId: (app as any)._id, userId: new Types.ObjectId(userId) })
+      .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
       .exec();
 
@@ -278,6 +280,7 @@ export class ContractService {
     if (!contract && app.fineractLoanId) {
       contract = await this.contractModel
         .findOne({ fineractLoanId: app.fineractLoanId, userId: new Types.ObjectId(userId) })
+        .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
         .lean()
         .exec();
     }
