@@ -62,9 +62,8 @@ export default function InvestmentOrdersPage() {
   };
 
   const handleRefresh = useCallback(() => {
-    loadCounts();
     actionRef.current?.reloadAndRest?.();
-  }, [loadCounts]);
+  }, []);
 
   // ── Stat cards ──
   const statCards: StatFilterItem[] = [
@@ -261,6 +260,10 @@ export default function InvestmentOrdersPage() {
         order,
         q: params.keyword?.trim() || undefined,
       });
+      
+      // Update stat card dynamically to avoid cache desync
+      setOpenCount(res.pagination.totalCount);
+      
       return {
         data: res.bids,
         success: true,
@@ -288,6 +291,10 @@ export default function InvestmentOrdersPage() {
         order,
         q: params.keyword?.trim() || undefined,
       });
+      
+      // Update stat card dynamically
+      setClosedCount(res.pagination.totalCount);
+      
       return {
         data: res.bids,
         success: true,

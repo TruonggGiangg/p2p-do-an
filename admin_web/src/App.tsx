@@ -27,6 +27,7 @@ import MarketDashboardPage from './pages/MarketDashboardPage';
 import InvestmentOrdersPage from './pages/InvestmentOrdersPage';
 import InvestmentOrderDetailPage from './pages/InvestmentOrderDetailPage';
 import RolesPermissionsPage from './pages/RolesPermissionsPage';
+import BlockchainExplorerPage from './pages/BlockchainExplorerPage';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from './AbilityContext';
 import { Action, Subject, AppAbility, buildAbilityForRole, buildEmptyAbility } from './ability';
@@ -265,6 +266,7 @@ export default function App() {
                     </ProtectedRoute>
                   } />
                   <Route path="profile" element={<StaffProfilePage />} />
+                  <Route path="blockchain" element={<BlockchainExplorerPage />} />
                   <Route path="background-jobs" element={
                     <ProtectedRoute action={Action.Manage} subject="all">
                       <BackgroundJobsPage />

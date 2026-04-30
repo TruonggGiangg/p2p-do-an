@@ -285,11 +285,14 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
                 const disp = getStatusDisplay(r);
                 if (!disp) return '–';
 
+                const isWaitingForPayment = disp.code === 'waiting' && Math.round(r.matchPercentage || 0) >= 100;
+                
                 const colorMap: Record<string, string> = {
                     pending: 'warning',
                     approved: 'processing',
                     waiting: 'blue',
-                    funded: 'cyan',
+                    paying: 'purple',
+                    funded: 'geekblue',
                     disbursed: 'success',
                     overdue: 'error',
                     closed: 'default',
@@ -297,12 +300,15 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
                     cancelled: 'magenta',
                 };
 
+                const currentCode = isWaitingForPayment ? 'paying' : disp.code;
+                const currentLabel = isWaitingForPayment ? 'Chờ thanh toán' : disp.label;
+
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                        <Tag color={colorMap[disp.code] || 'default'} style={{ margin: 0, width: 100, textAlign: 'center' }}>
-                            {disp.label}
+                        <Tag color={colorMap[currentCode] || 'default'} style={{ margin: 0, minWidth: 100, textAlign: 'center' }}>
+                            {currentLabel}
                         </Tag>
-                        {(disp.code === 'waiting' || disp.code === 'funded') && r.totalNotes && r.totalNotes > 0 ? (
+                        {(disp.code === 'waiting' || disp.code === 'funded' || currentCode === 'paying') && r.totalNotes && r.totalNotes > 0 ? (
                             <Tooltip title={`${r.investedNotes || 0} / ${r.totalNotes} notes`}>
                                 <div style={{ display: 'flex', alignItems: 'center', width: 100, gap: 4 }}>
                                     <Progress 
@@ -310,7 +316,7 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
                                         size="small" 
                                         showInfo={false}
                                         style={{ margin: 0, flex: 1 }}
-                                        strokeColor={r.isFullMatch ? '#52c41a' : '#1677ff'}
+                                        strokeColor={r.isFullMatch ? '#52c41a' : (isWaitingForPayment ? '#722ed1' : '#1677ff')}
                                     />
                                     <span style={{ fontSize: 10, minWidth: 26, textAlign: 'right', color: '#8c8c8c' }}>
                                         {Math.round(r.matchPercentage || 0)}%

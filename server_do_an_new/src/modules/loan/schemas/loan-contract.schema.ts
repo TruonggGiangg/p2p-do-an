@@ -155,5 +155,4 @@ export class LoanContract extends Document {
 
 export const LoanContractSchema = SchemaFactory.createForClass(LoanContract);
 LoanContractSchema.index({ userId: 1, status: 1 });
-LoanContractSchema.index({ contractId: 1 });
 LoanContractSchema.index({ createdAt: -1 });

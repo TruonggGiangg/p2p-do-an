@@ -176,7 +176,4 @@ export class User extends Document {
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Indexes for efficient queries
-UserSchema.index({ fineractClientId: 1 }); // For Fineract client lookup
-UserSchema.index({ username: 1 }); // Already unique, but explicit index for queries
-UserSchema.index({ keycloakId: 1 }); // Already unique, but explicit index for queries
 UserSchema.index({ userType: 1 }); // For filtering by role (borrower/lender)

@@ -209,7 +209,6 @@ export const InvestmentContractSchema = SchemaFactory.createForClass(InvestmentC
 
 // ── Indexes ──
 InvestmentContractSchema.index({ lenderId: 1, status: 1 });
-InvestmentContractSchema.index({ loanApplicationId: 1 });
 InvestmentContractSchema.index({ status: 1, createdAt: -1 });
 
 // ── toJSON ──

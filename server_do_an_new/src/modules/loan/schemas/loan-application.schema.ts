@@ -237,7 +237,6 @@ export class LoanApplication extends Document {
 
 export const LoanApplicationSchema = SchemaFactory.createForClass(LoanApplication);
 LoanApplicationSchema.index({ userId: 1, status: 1 });
-LoanApplicationSchema.index({ productId: 1 });
 LoanApplicationSchema.index({ createdAt: -1 });
 // Index cho query available loans (lọc khoản vay chưa đầu tư đủ)
 LoanApplicationSchema.index({ status: 1, isFullMatch: 1 });

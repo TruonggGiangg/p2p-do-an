@@ -1,638 +1,440 @@
 'use strict';
 
 const { Contract } = require('fabric-contract-api');
+const crypto = require('crypto');
 
-/**
- * P2P Lending Smart Contract - Redesigned for Fineract Integration
- * 
- * DESIGN PRINCIPLES:
- * 1. NO rate calculation on blockchain - rates come from Fineract via server
- * 2. Blockchain stores immutable records for audit trail
- * 3. Fields are synced with Fineract loan structure
- * 4. Simplified data model focusing on essential fields
- * 
- * DATA FLOW:
- * Server (InterestRateCalculator) → Fineract (Loan Management) → Blockchain (Immutable Record)
- */
 class P2PLendingContract extends Contract {
-
-  // ===== INITIALIZATION =====
-
-  async initLedger(ctx) {
-    console.log('P2P Lending Chaincode initialized');
-    return;
-  }
-
-  // ===== LOAN CONTRACT MANAGEMENT =====
-
-  /**
-   * Create a new loan contract
-   * Rates are calculated by server (InterestRateCalculator) and stored on Fineract
-   * Blockchain stores the LEAN immutable record for audit trail
-   * 
-   * OPTIMIZED DATA MODEL:
-   * - NO PII (email, name) stored on blockchain
-   * - dataHash for integrity verification
-   * - Only essential fields for audit
-   * 
-   * @param {Context} ctx - Transaction context
-   * @param {String} loanId - Unique loan ID (e.g., LOAN_1703123456789)
-   * @param {String} borrowerJson - JSON string of borrower info (only ID stored)
-   * @param {String} loanInfoJson - JSON string of loan info (from Fineract)
-   * @param {String} fineractLoanId - Fineract loan ID (optional)
-   * @param {String} dataHash - Hash of full data for integrity verification
-   */
-  async createLoanContract(ctx, loanId, borrowerJson, loanInfoJson, fineractLoanId, dataHash) {
-    const borrower = JSON.parse(borrowerJson);
-    const loanInfo = JSON.parse(loanInfoJson);
-
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    // Validate required fields
-    if (!loanInfo.capital || !loanInfo.periodMonth) {
-      throw new Error('Missing required loan info: capital, periodMonth');
+    
+    // ==========================================
+    // UTILITY FUNCTIONS
+    // ==========================================
+    
+    _hashData(data) {
+        return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
     }
 
-    // Calculate totalNotes (unit: 500,000 VND)
-    const noteUnitPrice = 500000;
-    const totalNotes = Math.ceil(loanInfo.capital / noteUnitPrice);
-
-    // Generate dataHash if not provided
-    const computedHash = dataHash || this._generateHash(JSON.stringify({ borrower, loanInfo, fineractLoanId }));
-
-    // LEAN loan contract object (optimized for blockchain storage)
-    const loanContract = {
-      // === IDENTIFICATION ===
-      contractId: loanId,
-      docType: 'LoanContract',
-      version: '2.0', // Schema version for future migrations
-      
-      // === BORROWER REFERENCE (NO PII) ===
-      borrowerId: borrower._id || borrower.id,
-      borrowerUsername: borrower.username, // Phone number, not sensitive
-      
-      // === LOAN TERMS (Essential for audit) ===
-      terms: {
-        capital: parseInt(loanInfo.capital),
-        periodMonth: parseInt(loanInfo.periodMonth),
-        rate: parseFloat(loanInfo.rate) || 0,
-        annualRate: parseFloat(loanInfo.annualRate) || 0,
-        monthlyPay: parseInt(loanInfo.monthlyPay) || 0,
-        entirelyPay: parseInt(loanInfo.entirelyPay) || 0,
-        disbursementDate: loanInfo.disbursementDate || createdAt,
-        maturityDate: loanInfo.maturityDate || this._calculateMaturityDate(loanInfo.disbursementDate || createdAt, loanInfo.periodMonth),
-      },
-      
-      // === INVESTMENT INFO ===
-      totalNotes: totalNotes,
-      investedNotes: 0,
-      matchPercentage: 0,
-
-      // === STATUS ===
-      status: 'waiting',
-
-      // === FINERACT REFERENCE ===
-      fineractLoanId: fineractLoanId ? parseInt(fineractLoanId) : null,
-
-      // === DATA INTEGRITY ===
-      dataHash: computedHash, // SHA256 hash for verification
-
-      // === METADATA ===
-      createdAt: createdAt,
-      updatedAt: createdAt,
-    };
-
-    const key = `LoanContract_${loanId}`;
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loanContract)));
-
-    console.log(`[Chaincode] Created lean loan contract: ${loanId} (hash: ${computedHash.substring(0, 16)}...)`);
-    return JSON.stringify(loanContract);
-  }
-
-  /**
-   * Update loan with Fineract sync data
-   * Called after Fineract loan is created/updated
-   */
-  async syncLoanWithFineract(ctx, loanId, fineractDataJson) {
-    const key = `LoanContract_${loanId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
+    async _putState(ctx, key, data) {
+        data.updatedAt = this._getTxTime(ctx);
+        await ctx.stub.putState(key, Buffer.from(JSON.stringify(data)));
     }
 
-    const loan = JSON.parse(bytes.toString());
-    const fineractData = JSON.parse(fineractDataJson);
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    // Update Fineract sync info
-    loan.fineract = {
-      ...loan.fineract,
-      loanId: fineractData.fineractLoanId || loan.fineract.loanId,
-      status: fineractData.status || loan.fineract.status,
-      syncedAt: now,
-      productId: fineractData.productId || loan.fineract.productId,
-      // Repayment schedule from Fineract
-      repaymentSchedule: fineractData.repaymentSchedule || null,
-      // Timeline from Fineract
-      timeline: fineractData.timeline || null,
-    };
-
-    // Update rates if provided
-    if (fineractData.interestRate) {
-      loan.info.rate = fineractData.interestRate.perPeriod || loan.info.rate;
-      loan.info.annualRate = fineractData.interestRate.annual || loan.info.annualRate;
+    async _getState(ctx, key) {
+        const dataBytes = await ctx.stub.getState(key);
+        if (!dataBytes || dataBytes.length === 0) {
+            throw new Error(`The asset ${key} does not exist`);
+        }
+        return JSON.parse(dataBytes.toString());
     }
 
-    loan.updatedAt = now;
-
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
-    return JSON.stringify(loan);
-  }
-
-  /**
-   * Update loan status
-   */
-  async updateLoanStatus(ctx, loanId, status) {
-    const key = `LoanContract_${loanId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
-    }
-
-    const loan = JSON.parse(bytes.toString());
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    // Validate status
-    const validStatuses = ['waiting', 'success', 'clean', 'fail'];
-    if (!validStatuses.includes(status)) {
-      throw new Error(`Invalid status: ${status}. Valid: ${validStatuses.join(', ')}`);
-    }
-
-    loan.status = status;
-    loan.updatedAt = now;
-
-    // If success (fully funded), update match status
-    if (status === 'success') {
-      loan.isFullMatch = true;
-      loan.matchPercentage = 100;
-    }
-
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
-    return JSON.stringify(loan);
-  }
-
-  /**
-   * Update investment progress
-   */
-  async updateInvestmentProgress(ctx, loanId, investedNotes) {
-    const key = `LoanContract_${loanId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
-    }
-
-    const loan = JSON.parse(bytes.toString());
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    loan.investedNotes = parseInt(investedNotes);
-    loan.matchPercentage = Math.round((loan.investedNotes / loan.totalNotes) * 100);
-    loan.isFullMatch = loan.investedNotes >= loan.totalNotes;
-    loan.updatedAt = now;
-
-    // Auto-update status if fully funded
-    if (loan.isFullMatch && loan.status === 'waiting') {
-      loan.status = 'success';
-    }
-
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(loan)));
-    return JSON.stringify(loan);
-  }
-
-  // ===== INVESTMENT CONTRACT MANAGEMENT =====
-
-  /**
-   * Create investment contract (LEAN version)
-   * Records lender's investment in a loan - NO PII stored
-   * 
-   * @param {String} dataHash - Hash for integrity verification
-   */
-  async createInvestmentContract(ctx, investId, loanId, lenderJson, investInfoJson, fineractAccountId, dataHash) {
-    const lender = JSON.parse(lenderJson);
-    const investInfo = JSON.parse(investInfoJson);
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    // Verify loan exists
-    const loanKey = `LoanContract_${loanId}`;
-    const loanBytes = await ctx.stub.getState(loanKey);
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
-    }
-
-    // Generate dataHash if not provided
-    const computedHash = dataHash || this._generateHash(JSON.stringify({ lender, investInfo, fineractAccountId }));
-
-    // LEAN investment contract (NO PII)
-    const investmentContract = {
-      contractId: investId,
-      docType: 'InvestmentContract',
-      version: '2.0',
-      loanId: loanId,
-
-      // Lender reference (NO PII - no email, no name)
-      lenderId: lender._id || lender.id,
-      lenderUsername: lender.username, // Phone number, not sensitive
-
-      // Investment terms
-      terms: {
-        capital: parseInt(investInfo.capital),
-        notes: parseInt(investInfo.notes) || Math.ceil(investInfo.capital / 500000),
-        rate: parseFloat(investInfo.lenderRate) || 0,
-        annualRate: parseFloat(investInfo.annualLenderRate) || 0,
-        expectedReturn: parseInt(investInfo.expectedReturn) || 0,
-      },
-
-      // Status
-      status: 'waiting_other',
-
-      // Fineract reference
-      fineractAccountId: fineractAccountId ? parseInt(fineractAccountId) : null,
-
-      // Data integrity
-      dataHash: computedHash,
-
-      // Metadata
-      createdAt: createdAt,
-      updatedAt: createdAt,
-    };
-
-    const key = `InvestmentContract_${investId}`;
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(investmentContract)));
-
-    return JSON.stringify(investmentContract);
-  }
-
-  /**
-   * Update investment status
-   */
-  async updateInvestmentStatus(ctx, investId, status) {
-    const key = `InvestmentContract_${investId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`InvestmentContract ${investId} not found`);
-    }
-
-    const investment = JSON.parse(bytes.toString());
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    investment.status = status;
-    investment.updatedAt = now;
-
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(investment)));
-    return JSON.stringify(investment);
-  }
-
-  // ===== SETTLEMENT (REPAYMENT) MANAGEMENT =====
-
-  /**
-   * Create settlement contract for a repayment period
-   * Synced with Fineract repayment schedule
-   */
-  async createSettlementContract(ctx, settledId, loanId, settlementInfoJson) {
-    const settlementInfo = JSON.parse(settlementInfoJson);
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
-
-    const settlementContract = {
-      contractId: settledId,
-      docType: 'SettlementContract',
-      loanId: loanId,
-
-      // Payment info (from Fineract schedule)
-      info: {
-        principalAmount: parseInt(settlementInfo.principalDue) || 0,
-        interestAmount: parseInt(settlementInfo.interestDue) || 0,
-        feeAmount: parseInt(settlementInfo.feeChargesDue) || 0,
-        penaltyAmount: parseInt(settlementInfo.penaltyChargesDue) || 0,
-        totalAmount: parseInt(settlementInfo.totalDue) || 0,
-        maturityDate: settlementInfo.dueDate,
-        period: parseInt(settlementInfo.period) || 1,
-      },
-
-      // Status
-      status: 'undue', // undue, due, overdue, settled, partially_paid
-
-      // Fineract sync
-      fineract: {
-        transactionId: settlementInfo.transactionId || null,
-        fromPeriod: settlementInfo.fromPeriod || null,
-        toPeriod: settlementInfo.toPeriod || null,
-      },
-
-      // Payments tracking
-      payments: [],
-      totalPaid: 0,
-      remainingAmount: parseInt(settlementInfo.totalDue) || 0,
-
-      // Metadata
-      orderNo: parseInt(settlementInfo.period) || 1,
-      createdAt: createdAt,
-      updatedAt: createdAt,
-    };
-
-    const key = `SettlementContract_${settledId}`;
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlementContract)));
-
-    return JSON.stringify(settlementContract);
-  }
-
-  /**
-   * Record a payment on settlement
-   */
-  async settlePayment(ctx, settledId, amount, paymentType = 'full') {
-    const key = `SettlementContract_${settledId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`SettlementContract ${settledId} not found`);
-    }
-
-    const settlement = JSON.parse(bytes.toString());
-    const txTimestamp = ctx.stub.getTxTimestamp();
-    const now = new Date(txTimestamp.seconds.low * 1000).toISOString();
-    const paymentAmount = parseInt(amount);
-
-    // Add payment record
-    settlement.payments.push({
-      amount: paymentAmount,
-      date: now,
-      type: paymentType, // full, partial, prepay
-    });
-
-    // Update totals
-    settlement.totalPaid += paymentAmount;
-    settlement.remainingAmount = Math.max(0, settlement.info.totalAmount - settlement.totalPaid);
-
-    // Update status
-    if (settlement.totalPaid >= settlement.info.totalAmount) {
-      settlement.status = 'settled';
-      settlement.info.realpaidDate = now;
-    } else if (settlement.totalPaid > 0) {
-      settlement.status = 'partially_paid';
-    }
-
-    settlement.updatedAt = now;
-
-    await ctx.stub.putState(key, Buffer.from(JSON.stringify(settlement)));
-    return JSON.stringify(settlement);
-  }
-
-  // ===== QUERY FUNCTIONS =====
-
-  /**
-   * Query loan contract by ID
-   */
-  async queryLoanContract(ctx, loanId) {
-    const key = `LoanContract_${loanId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
+    _getTxTime(ctx) {
+        const ts = ctx.stub.getTxTimestamp();
+        let seconds = 0;
+        if (ts && ts.seconds) {
+            if (typeof ts.seconds.low === 'number') {
+                seconds = ts.seconds.low;
+            } else if (typeof ts.seconds.toNumber === 'function') {
+                seconds = ts.seconds.toNumber();
+            } else if (typeof ts.seconds === 'number' || typeof ts.seconds === 'string') {
+                seconds = parseInt(ts.seconds, 10);
+            }
+        }
+        if (seconds === 0) {
+            return new Date().toISOString(); // fallback just in case
+        }
+        return new Date(seconds * 1000).toISOString();
     }
     
-    return bytes.toString();
-  }
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
 
-  /**
-   * Query all loan contracts
-   */
-  async queryAllLoanContracts(ctx) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      results.push(JSON.parse(value.toString()));
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query loans by status
-   */
-  async queryLoansByStatus(ctx, status) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      const loan = JSON.parse(value.toString());
-      if (loan.status === status) {
-        results.push(loan);
-      }
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query waiting loans (for lenders)
-   */
-  async queryWaitingLoans(ctx) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      const loan = JSON.parse(value.toString());
-      if (loan.status === 'waiting' && !loan.isFullMatch) {
-        results.push(loan);
-      }
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query loans by borrower ID
-   */
-  async queryLoansByBorrower(ctx, borrowerId) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('LoanContract_', 'LoanContract_~')) {
-      const loan = JSON.parse(value.toString());
-      if (loan.borrower && loan.borrower.id === borrowerId) {
-        results.push(loan);
-      }
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query investment contract by ID
-   */
-  async queryInvestmentContract(ctx, investId) {
-    const key = `InvestmentContract_${investId}`;
-    const bytes = await ctx.stub.getState(key);
-    
-    if (!bytes || bytes.length === 0) {
-      throw new Error(`InvestmentContract ${investId} not found`);
-    }
-    
-    return bytes.toString();
-  }
-
-  /**
-   * Query investments by loan ID
-   */
-  async queryInvestmentsByLoan(ctx, loanId) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('InvestmentContract_', 'InvestmentContract_~')) {
-      const investment = JSON.parse(value.toString());
-      if (investment.loanId === loanId) {
-        results.push(investment);
-      }
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query investments by lender ID
-   */
-  async queryInvestmentsByLender(ctx, lenderId) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('InvestmentContract_', 'InvestmentContract_~')) {
-      const investment = JSON.parse(value.toString());
-      if (investment.lender && investment.lender.id === lenderId) {
-        results.push(investment);
-      }
-    }
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Query settlement contracts by loan ID
-   */
-  async querySettlementsByLoan(ctx, loanId) {
-    const results = [];
-    
-    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-      if (settlement.loanId === loanId) {
-        results.push(settlement);
-      }
-    }
-    
-    // Sort by orderNo
-    results.sort((a, b) => a.orderNo - b.orderNo);
-    
-    return JSON.stringify(results);
-  }
-
-  /**
-   * Get loan statistics
-   */
-  async getLoanStatistics(ctx, loanId) {
-    const loanKey = `LoanContract_${loanId}`;
-    const loanBytes = await ctx.stub.getState(loanKey);
-    
-    if (!loanBytes || loanBytes.length === 0) {
-      throw new Error(`LoanContract ${loanId} not found`);
+    async initLedger(ctx) {
+        console.info('============= START : Initialize Ledger ===========');
+        console.info('P2P Lending Ledger Initialized');
+        console.info('============= END : Initialize Ledger ===========');
     }
 
-    const loan = JSON.parse(loanBytes.toString());
-    
-    // Query settlements
-    let totalPaid = 0;
-    let totalRemaining = 0;
-    let overdueAmount = 0;
-    let settledCount = 0;
-    let totalCount = 0;
+    // ==========================================
+    // LOAN CONTRACTS
+    // ==========================================
 
-    for await (const { key, value } of ctx.stub.getStateByRange('SettlementContract_', 'SettlementContract_~')) {
-      const settlement = JSON.parse(value.toString());
-      if (settlement.loanId === loanId) {
-        totalCount++;
-        totalPaid += settlement.totalPaid || 0;
-        totalRemaining += settlement.remainingAmount || 0;
+    /**
+     * Create a new Loan Contract on the ledger.
+     * @param {Context} ctx
+     * @param {String} contractId 
+     * @param {String} contractDataJson - JSON string matching backend LoanContract schema
+     */
+    async createLoanContract(ctx, contractId, contractDataJson) {
+        console.info('============= START : createLoanContract ===========');
         
-        if (settlement.status === 'settled') {
-          settledCount++;
+        // Check if exists
+        const exists = await ctx.stub.getState(contractId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The loan contract ${contractId} already exists`);
         }
-        if (settlement.status === 'overdue') {
-          overdueAmount += settlement.info.penaltyAmount || 0;
-        }
-      }
+
+        const data = JSON.parse(contractDataJson);
+
+        const loanContract = {
+            docType: 'LoanContract',
+            contractId: contractId,
+            loanId: data.loanId,
+            userId: data.userId,
+            fineractLoanId: data.fineractLoanId || null,
+            borrowerInfo: data.borrowerInfo || {},
+            principalAmount: data.principalAmount,
+            interestRate: data.interestRate,
+            tenure: data.tenure,
+            repaymentSchedule: data.repaymentSchedule || [],
+            totalPayable: data.totalPayable,
+            monthlyPayment: data.monthlyPayment,
+            feeStructure: data.feeStructure || [],
+            delinquencyPolicySnapshot: data.delinquencyPolicySnapshot || [],
+            productName: data.productName || null,
+            status: data.status || 'pending_signature',
+            signedAt: data.signedAt || null,
+            signatureData: data.signatureData || null,
+            smartCASignatureVerified: data.smartCASignatureVerified || false,
+            signatureProvider: data.signatureProvider || null,
+            signatureVerifiedAt: data.signatureVerifiedAt || null,
+            legalApprovalAt: data.legalApprovalAt || null,
+            disbursementDate: data.disbursementDate || null,
+            firstRepaymentDate: data.firstRepaymentDate || null,
+            dataHash: this._hashData(data), // Store hash for data integrity verification
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, contractId, loanContract);
+        console.info('============= END : createLoanContract ===========');
+        return JSON.stringify(loanContract);
     }
 
-    return JSON.stringify({
-      loanId,
-      loan: {
-        capital: loan.terms?.capital || loan.info?.capital,
-        rate: loan.terms?.rate || loan.info?.rate,
-        annualRate: loan.terms?.annualRate || loan.info?.annualRate,
-        entirelyPay: loan.terms?.entirelyPay || loan.info?.entirelyPay,
-        status: loan.status,
-        version: loan.version || '1.0',
-      },
-      funding: {
-        totalNotes: loan.totalNotes,
-        investedNotes: loan.investedNotes,
-        matchPercentage: loan.matchPercentage,
-      },
-      repayment: {
-        totalPaid,
-        totalRemaining,
-        overdueAmount,
-        settledCount,
-        totalCount,
-        progressPercentage: totalCount > 0 ? Math.round((settledCount / totalCount) * 100) : 0,
-      },
-      fineractLoanId: loan.fineractLoanId || loan.fineract?.loanId,
-      dataHash: loan.dataHash,
-    });
-  }
+    /**
+     * Update status and optionally additional fields for a Loan Contract.
+     * @param {Context} ctx 
+     * @param {String} contractId 
+     * @param {String} newStatus 
+     * @param {String} additionalDataJson 
+     */
+    async updateLoanStatus(ctx, contractId, newStatus, additionalDataJson) {
+        console.info('============= START : updateLoanStatus ===========');
+        
+        const loanContract = await this._getState(ctx, contractId);
+        
+        if (loanContract.docType !== 'LoanContract') {
+            throw new Error(`Asset ${contractId} is not a LoanContract`);
+        }
 
-  // ===== HELPER FUNCTIONS =====
+        loanContract.status = newStatus;
 
-  /**
-   * Generate a simple hash for data integrity verification
-   * Note: In production, use crypto.createHash('sha256') but fabric-contract-api
-   * doesn't include Node.js crypto by default in chaincode context
-   */
-  _generateHash(data) {
-    // Simple hash function (djb2 algorithm) - sufficient for demo
-    // For production, use proper SHA256 from server side
-    let hash = 5381;
-    for (let i = 0; i < data.length; i++) {
-      hash = ((hash << 5) + hash) + data.charCodeAt(i);
-      hash = hash & hash; // Convert to 32bit integer
+        if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
+            const data = JSON.parse(additionalDataJson);
+            // Update specific fields if provided
+            if (data.fineractLoanId !== undefined) loanContract.fineractLoanId = data.fineractLoanId;
+            if (data.signedAt !== undefined) loanContract.signedAt = data.signedAt;
+            if (data.signatureData !== undefined) loanContract.signatureData = data.signatureData;
+            if (data.smartCASignatureVerified !== undefined) loanContract.smartCASignatureVerified = data.smartCASignatureVerified;
+            if (data.signatureProvider !== undefined) loanContract.signatureProvider = data.signatureProvider;
+            if (data.signatureVerifiedAt !== undefined) loanContract.signatureVerifiedAt = data.signatureVerifiedAt;
+            if (data.legalApprovalAt !== undefined) loanContract.legalApprovalAt = data.legalApprovalAt;
+            if (data.disbursementDate !== undefined) loanContract.disbursementDate = data.disbursementDate;
+            if (data.firstRepaymentDate !== undefined) loanContract.firstRepaymentDate = data.firstRepaymentDate;
+            if (data.repaymentSchedule !== undefined) loanContract.repaymentSchedule = data.repaymentSchedule;
+            
+            // Re-hash after significant update
+            loanContract.dataHash = this._hashData(loanContract);
+        }
+
+        await this._putState(ctx, contractId, loanContract);
+        console.info('============= END : updateLoanStatus ===========');
+        return JSON.stringify(loanContract);
     }
-    // Return as hex string with prefix
-    return 'hash_' + Math.abs(hash).toString(16).padStart(8, '0');
-  }
 
-  _calculateMaturityDate(disbursementDate, periodMonth) {
-    const date = new Date(disbursementDate);
-    date.setMonth(date.getMonth() + parseInt(periodMonth));
-    return date.toISOString();
-  }
+    async queryLoanContract(ctx, contractId) {
+        return await this._getState(ctx, contractId);
+    }
 
-  _getLoanSizeTier(capital) {
-    if (capital < 10000000) return 'small';
-    if (capital < 50000000) return 'medium';
-    return 'large';
-  }
+    // ==========================================
+    // INVESTMENT CONTRACTS
+    // ==========================================
+
+    /**
+     * Create an Investment Contract on the ledger.
+     * @param {Context} ctx 
+     * @param {String} contractId 
+     * @param {String} contractDataJson - JSON string matching backend InvestmentContract schema
+     */
+    async createInvestmentContract(ctx, contractId, contractDataJson) {
+        console.info('============= START : createInvestmentContract ===========');
+        
+        const exists = await ctx.stub.getState(contractId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The investment contract ${contractId} already exists`);
+        }
+
+        const data = JSON.parse(contractDataJson);
+
+        const investmentContract = {
+            docType: 'InvestmentContract',
+            contractId: contractId,
+            lenderId: data.lenderId,
+            loanApplicationId: data.loanApplicationId,
+            investmentOrderId: data.investmentOrderId || null,
+            capital: data.capital,
+            numNotes: data.numNotes,
+            periodMonth: data.periodMonth,
+            monthlyRatePercent: data.monthlyRatePercent,
+            annualRatePercent: data.annualRatePercent,
+            monthlyIncome: data.monthlyIncome || 0,
+            entirelyProfit: data.entirelyProfit || 0,
+            entirelyPay: data.entirelyPay || 0,
+            serviceFee: data.serviceFee || 0,
+            status: data.status || 'pending',
+            signedAt: data.signedAt || null,
+            signatureData: data.signatureData || null,
+            smartCASignatureVerified: data.smartCASignatureVerified || false,
+            signatureProvider: data.signatureProvider || null,
+            signatureVerifiedAt: data.signatureVerifiedAt || null,
+            legalApprovalAt: data.legalApprovalAt || null,
+            fineractFDAccountId: data.fineractFDAccountId || null,
+            fineractFDAccountNo: data.fineractFDAccountNo || null,
+            fineractFDProductId: data.fineractFDProductId || null,
+            fdInterestRate: data.fdInterestRate || null,
+            fdMaturityDate: data.fdMaturityDate || null,
+            fdStatus: data.fdStatus || 'pending',
+            fdInterestEarned: data.fdInterestEarned || 0,
+            fdBalance: data.fdBalance || 0,
+            lenderSchedule: data.lenderSchedule || [],
+            scheduleTotalPrincipal: data.scheduleTotalPrincipal || 0,
+            scheduleTotalInterest: data.scheduleTotalInterest || 0,
+            scheduleTotalIncome: data.scheduleTotalIncome || 0,
+            schedulePeriodCount: data.schedulePeriodCount || 0,
+            repaymentHistory: data.repaymentHistory || [],
+            totalReceived: data.totalReceived || 0,
+            totalPrincipalReceived: data.totalPrincipalReceived || 0,
+            totalInterestReceived: data.totalInterestReceived || 0,
+            paymentStatus: data.paymentStatus || 'pending',
+            paymentError: data.paymentError || null,
+            dataHash: this._hashData(data),
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, contractId, investmentContract);
+        console.info('============= END : createInvestmentContract ===========');
+        return JSON.stringify(investmentContract);
+    }
+
+    /**
+     * Update status and optionally additional fields for an Investment Contract.
+     * @param {Context} ctx 
+     * @param {String} contractId 
+     * @param {String} newStatus 
+     * @param {String} additionalDataJson 
+     */
+    async updateInvestmentStatus(ctx, contractId, newStatus, additionalDataJson) {
+        console.info('============= START : updateInvestmentStatus ===========');
+        
+        const investmentContract = await this._getState(ctx, contractId);
+        
+        if (investmentContract.docType !== 'InvestmentContract') {
+            throw new Error(`Asset ${contractId} is not an InvestmentContract`);
+        }
+
+        investmentContract.status = newStatus;
+
+        if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
+            const data = JSON.parse(additionalDataJson);
+            
+            // Update financial fields if provided
+            if (data.fineractFDAccountId !== undefined) investmentContract.fineractFDAccountId = data.fineractFDAccountId;
+            if (data.fineractFDAccountNo !== undefined) investmentContract.fineractFDAccountNo = data.fineractFDAccountNo;
+            if (data.fdStatus !== undefined) investmentContract.fdStatus = data.fdStatus;
+            if (data.signedAt !== undefined) investmentContract.signedAt = data.signedAt;
+            if (data.signatureData !== undefined) investmentContract.signatureData = data.signatureData;
+            if (data.smartCASignatureVerified !== undefined) investmentContract.smartCASignatureVerified = data.smartCASignatureVerified;
+            if (data.lenderSchedule !== undefined) investmentContract.lenderSchedule = data.lenderSchedule;
+            if (data.repaymentHistory !== undefined) investmentContract.repaymentHistory = data.repaymentHistory;
+            if (data.paymentStatus !== undefined) investmentContract.paymentStatus = data.paymentStatus;
+            
+            // Counters update
+            if (data.totalReceived !== undefined) investmentContract.totalReceived = data.totalReceived;
+            if (data.totalPrincipalReceived !== undefined) investmentContract.totalPrincipalReceived = data.totalPrincipalReceived;
+            if (data.totalInterestReceived !== undefined) investmentContract.totalInterestReceived = data.totalInterestReceived;
+
+            // Re-hash after significant update
+            investmentContract.dataHash = this._hashData(investmentContract);
+        }
+
+        await this._putState(ctx, contractId, investmentContract);
+        console.info('============= END : updateInvestmentStatus ===========');
+        return JSON.stringify(investmentContract);
+    }
+
+    async queryInvestmentContract(ctx, contractId) {
+        return await this._getState(ctx, contractId);
+    }
+
+    // ==========================================
+    // SETTLEMENT / REPAYMENT CONTRACTS
+    // ==========================================
+
+    /**
+     * Create a Settlement/Repayment record on the ledger to track exactly what was paid.
+     * @param {Context} ctx 
+     * @param {String} settlementId 
+     * @param {String} settlementDataJson 
+     */
+    async createSettlementContract(ctx, settlementId, settlementDataJson) {
+        console.info('============= START : createSettlementContract ===========');
+        
+        const exists = await ctx.stub.getState(settlementId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The settlement ${settlementId} already exists`);
+        }
+
+        const data = JSON.parse(settlementDataJson);
+
+        const settlementContract = {
+            docType: 'SettlementContract',
+            settlementId: settlementId,
+            loanContractId: data.loanContractId, // Reference to LoanContract.contractId
+            fineractTransactionId: data.fineractTransactionId || null,
+            period: data.period, // Which period this settlement is for
+            amountPaid: data.amountPaid,
+            principalPortion: data.principalPortion || 0,
+            interestPortion: data.interestPortion || 0,
+            feePortion: data.feePortion || 0,
+            penaltyPortion: data.penaltyPortion || 0,
+            paymentDate: data.paymentDate || this._getTxTime(ctx),
+            status: data.status || 'completed', // 'pending', 'completed', 'failed'
+            paymentMethod: data.paymentMethod || 'bank_transfer',
+            dataHash: this._hashData(data),
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, settlementId, settlementContract);
+        console.info('============= END : createSettlementContract ===========');
+        return JSON.stringify(settlementContract);
+    }
+
+    async querySettlementContract(ctx, settlementId) {
+        return await this._getState(ctx, settlementId);
+    }
+
+    // ==========================================
+    // RICH QUERIES
+    // ==========================================
+
+    /**
+     * Helper to execute rich queries
+     */
+    async _getQueryResultForQueryString(ctx, queryString) {
+        const iterator = await ctx.stub.getQueryResult(queryString);
+        const allResults = [];
+        while (true) {
+            const res = await iterator.next();
+            if (res.value && res.value.value.toString()) {
+                const Key = res.value.key;
+                let Record;
+                try {
+                    Record = JSON.parse(res.value.value.toString('utf8'));
+                } catch (err) {
+                    console.log(err);
+                    Record = res.value.value.toString('utf8');
+                }
+                allResults.push({ Key, Record });
+            }
+            if (res.done) {
+                await iterator.close();
+                return JSON.stringify(allResults);
+            }
+        }
+    }
+
+    async queryAllLoanContracts(ctx) {
+        return await this._getAllByDocType(ctx, 'LoanContract');
+    }
+
+    async queryLoanContractsByUser(ctx, userId) {
+        const allLoans = await this._getAllByDocType(ctx, 'LoanContract');
+        return JSON.stringify(JSON.parse(allLoans).filter(item => item.Record && item.Record.userId === userId));
+    }
+
+    async queryInvestmentContractsByLoan(ctx, loanApplicationId) {
+        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
+        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.loanApplicationId === loanApplicationId));
+    }
+
+    async queryInvestmentContractsByLender(ctx, lenderId) {
+        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
+        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.lenderId === lenderId));
+    }
+
+    async querySettlementsByLoan(ctx, loanContractId) {
+        const allSettlements = await this._getAllByDocType(ctx, 'SettlementContract');
+        return JSON.stringify(JSON.parse(allSettlements).filter(item => item.Record && item.Record.loanContractId === loanContractId));
+    }
+
+    // Helper for LevelDB compatibility
+    async _getAllByDocType(ctx, docType) {
+        const iterator = await ctx.stub.getStateByRange('', '');
+        const allResults = [];
+        while (true) {
+            const res = await iterator.next();
+            if (res.value && res.value.value.toString()) {
+                let record;
+                try {
+                    record = JSON.parse(res.value.value.toString('utf8'));
+                } catch (err) {
+                    console.log(err);
+                    record = res.value.value.toString('utf8');
+                }
+                if (record && record.docType === docType) {
+                    allResults.push({ Key: res.value.key, Record: record });
+                }
+            }
+            if (res.done) {
+                await iterator.close();
+                return JSON.stringify(allResults);
+            }
+        }
+    }
+
+    async queryAllInvestmentContracts(ctx) {
+        return await this._getAllByDocType(ctx, 'InvestmentContract');
+    }
+
+    async queryAllSettlementContracts(ctx) {
+        return await this._getAllByDocType(ctx, 'SettlementContract');
+    }
+
+    async getContractHistory(ctx, contractId) {
+        const iterator = await ctx.stub.getHistoryForKey(contractId);
+        const allResults = [];
+        while (true) {
+            const res = await iterator.next();
+            if (res.value) {
+                const record = {
+                    txId: res.value.txId,
+                    timestamp: res.value.timestamp,
+                    isDelete: res.value.isDelete,
+                };
+                try {
+                    record.value = JSON.parse(res.value.value.toString('utf8'));
+                } catch (err) {
+                    record.value = res.value.value.toString('utf8');
+                }
+                allResults.push(record);
+            }
+            if (res.done) {
+                await iterator.close();
+                return JSON.stringify(allResults);
+            }
+        }
+    }
 }
 
-module.exports.P2PLendingContract = P2PLendingContract;
-module.exports.contracts = [P2PLendingContract];
+module.exports = P2PLendingContract;

@@ -697,7 +697,29 @@ export class LoanService {
     // Determine initial status: auto_approved → approved, else → pending
     const initialStatus = autoDecision === 'auto_approved' ? 'approved' : 'pending';
 
-    // 5. Create MongoDB record first
+    // 5. Tạo trên Fineract TRƯỚC (Atomicity: không tạo MongoDB nếu Fineract thất bại)
+    let fineractLoanId: number;
+    try {
+      fineractLoanId = await this.fineractLoanService.createLoanApplication({
+        clientId: fineractClientId,
+        productId: dto.productId,
+        principal: dto.capital,
+        numberOfRepayments: dto.periodMonth,
+        interestRatePerPeriod: rateForFineract,
+        expectedDisbursementDate,
+      });
+      this.logger.log(`[createApplication] Fineract loan created id=${fineractLoanId}`);
+    } catch (fineractError: any) {
+      this.logger.error(`[createApplication] Fineract FAILED: ${fineractError.message}`);
+      if (fineractError.response?.data) {
+        this.logger.error(`[createApplication] Fineract response: ${JSON.stringify(fineractError.response.data)}`);
+      }
+      throw new BadRequestException(
+        fineractError.message || `Không thể tạo khoản vay trên Fineract: ${fineractError.message}`,
+      );
+    }
+
+    // 6. Fineract thành công → Tạo MongoDB record (đã có fineractLoanId)
     const doc = await this.loanApplicationModel.create({
       userId: new Types.ObjectId(userId),
       productId: dto.productId,
@@ -710,6 +732,7 @@ export class LoanService {
       disbursementDate: dto.disbursementDate,
       disbursementWalletId: new Types.ObjectId(dto.disbursementWalletId),
       status: initialStatus,
+      fineractLoanId,
       schedulePreview: schedule.schedulePreview,
       monthlyPay: schedule.monthlyPay,
       entirelyPay: schedule.entirelyPay,
@@ -721,52 +744,26 @@ export class LoanService {
       })),
       ...(aiScoreResult ? { aiScore: aiScoreResult } : {}),
     });
-    this.logger.log(`[createApplication] MongoDB doc created id=${doc._id} status=${initialStatus}`);
+    this.logger.log(`[createApplication] MongoDB doc created id=${doc._id} fineractLoanId=${fineractLoanId} status=${initialStatus}`);
 
-    // 6. Create on Fineract
-    try {
-      const fineractLoanId = await this.fineractLoanService.createLoanApplication({
-        clientId: fineractClientId,
-        productId: dto.productId,
-        principal: dto.capital,
-        numberOfRepayments: dto.periodMonth,
-        interestRatePerPeriod: rateForFineract, // theo ràng buộc product (min/max)
-        expectedDisbursementDate,
-      });
-      this.logger.log(`[createApplication] Fineract loan created id=${fineractLoanId}`);
-
-      // 7. Update MongoDB with fineractLoanId
-      doc.fineractLoanId = fineractLoanId;
-      doc.status = initialStatus;
-      await doc.save();
-
-      // 8. Nếu auto_approved → approve trên Fineract luôn
-      if (autoDecision === 'auto_approved') {
-        try {
-          const approvedOnDate = expectedDisbursementDate || new Date().toISOString().split('T')[0];
-          await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
-          this.logger.log(`[createApplication] Auto-approved on Fineract: fineractLoanId=${fineractLoanId}`);
-        } catch (approveErr: any) {
-          this.logger.warn(`[createApplication] Auto-approve on Fineract failed (non-blocking): ${approveErr.message}`);
-          // Rollback status to pending if Fineract auto-approve fails
-          doc.status = 'pending';
-          if (aiScoreResult) aiScoreResult.decision = 'REVIEW';
-          await doc.save();
-        }
+    // 7. Nếu auto_approved → approve trên Fineract luôn
+    if (autoDecision === 'auto_approved') {
+      try {
+        const approvedOnDate = expectedDisbursementDate || new Date().toISOString().split('T')[0];
+        await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
+        this.logger.log(`[createApplication] Auto-approved on Fineract: fineractLoanId=${fineractLoanId}`);
+      } catch (approveErr: any) {
+        this.logger.warn(`[createApplication] Auto-approve on Fineract failed (non-blocking): ${approveErr.message}`);
+        // Rollback status to pending if Fineract auto-approve fails
+        doc.status = 'pending';
+        if (aiScoreResult) aiScoreResult.decision = 'REVIEW';
+        await doc.save();
       }
-
-      this.logger.log(
-        `[createApplication] SUCCESS | mongoId=${doc._id} fineractLoanId=${fineractLoanId} status=${doc.status}`,
-      );
-    } catch (fineractError: any) {
-      this.logger.error(`[createApplication] Fineract FAILED: ${fineractError.message}`);
-      if (fineractError.response?.data) {
-        this.logger.error(`[createApplication] Fineract response: ${JSON.stringify(fineractError.response.data)}`);
-      }
-      throw new BadRequestException(
-        fineractError.message || `Không thể tạo khoản vay trên Fineract: ${fineractError.message}`,
-      );
     }
+
+    this.logger.log(
+      `[createApplication] SUCCESS | mongoId=${doc._id} fineractLoanId=${fineractLoanId} status=${doc.status}`,
+    );
 
     return {
       id: doc._id.toString(),
@@ -1111,6 +1108,16 @@ export class LoanService {
     if (!app.fineractLoanId) throw new BadRequestException('Đơn vay chưa được đồng bộ sang Fineract');
 
     this.logger.log(`[uploadDocument] Uploading file for loan ${app.fineractLoanId}`);
+
+    const isHeic = 
+      file?.mimetype?.includes('heic') || 
+      file?.mimetype?.includes('heif') || 
+      file?.originalname?.toLowerCase().endsWith('.heic') || 
+      file?.originalname?.toLowerCase().endsWith('.heif');
+      
+    if (isHeic) {
+      throw new BadRequestException('Định dạng ảnh HEIC (từ iPhone/iPad) không được hệ thống hỗ trợ. Vui lòng chuyển đổi sang JPG hoặc PNG trước khi tải lên.');
+    }
 
     const normalizeExt = (originalName: string, mimeType?: string) => {
       const originalExt =

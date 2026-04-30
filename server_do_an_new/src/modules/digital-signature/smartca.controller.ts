@@ -508,5 +508,38 @@ export class DigitalSignatureController {
     if (!isInvest) {
       await this.triggerAutoDisburseIfEligible(contract._id, String(contract.userId));
     }
+
+    // Attempt to sync status to Blockchain
+    try {
+      let fabricService: any;
+      try {
+        fabricService = this.moduleRef.get('FabricService', { strict: false });
+      } catch {
+        // Fallback or ignore if FabricService isn't available
+      }
+      
+      if (fabricService && fabricService.isConnected()) {
+        const chaincodeMethod = isInvest ? 'updateInvestmentStatus' : 'updateLoanStatus';
+        const blockchainStatus = isInvest ? 'active' : 'signed';
+        
+        const additionalData = {
+          signedAt: new Date().toISOString(),
+          signatureData: signatureValue || 'DEV_MODE_SIGNATURE',
+          smartCASignatureVerified: true,
+          signatureProvider: 'vnpt_smartca',
+          signatureVerifiedAt: new Date().toISOString()
+        };
+        
+        await fabricService.submitTransaction(
+          chaincodeMethod,
+          contract.contractId,
+          blockchainStatus,
+          JSON.stringify(additionalData)
+        );
+        this.logger.log(`[Blockchain Sync] Updated contract ${contract.contractId} status to ${blockchainStatus}`);
+      }
+    } catch (error: any) {
+      this.logger.warn(`[Blockchain Sync] Failed to update contract ${contract.contractId}: ${error.message}`);
+    }
   }
 }

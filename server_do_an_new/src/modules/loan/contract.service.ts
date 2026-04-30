@@ -16,6 +16,7 @@ import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.sc
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { generateLoanContractHTML } from './templates/loan-contract.template';
 import { SmartCAService } from '../digital-signature/smartca.service';
+import { FabricService } from '../fabric/fabric.service';
 
 @Injectable()
 export class ContractService {
@@ -30,6 +31,7 @@ export class ContractService {
     private readonly fineractLoanService: FineractLoanService,
     private moduleRef: ModuleRef,
     @Optional() private readonly smartCAService: SmartCAService,
+    @Optional() private readonly fabricService: FabricService,
   ) {}
 
   /**
@@ -37,7 +39,7 @@ export class ContractService {
    */
   private generateContractId(): string {
     const ts = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const rand = require('crypto').randomBytes(4).toString('hex').toUpperCase();
     return `P2P-LC-${ts}-${rand}`;
   }
 
@@ -184,6 +186,17 @@ export class ContractService {
         amount: app.capital,
       },
     });
+
+    // 8. Ghi lên blockchain (sau khi các lưu trữ db đã xong)
+    if (this.fabricService) {
+      try {
+        const dataToSave = JSON.stringify(contract.toJSON());
+        await this.fabricService.submitTransaction('createLoanContract', contract.contractId, dataToSave);
+        this.logger.log(`[createContractOnApproval] Successfully synced to Blockchain: ${contract.contractId}`);
+      } catch (err: any) {
+        this.logger.error(`[createContractOnApproval] Failed to sync to Blockchain: ${err?.message}`);
+      }
+    }
 
     return contract;
   }

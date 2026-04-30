@@ -145,26 +145,43 @@ export class MatchingService {
   //  FIND MATCHING ORDERS
   // ═══════════════════════════════════════════════════════
 
-  /** Tìm danh sách InvestmentOrder phù hợp, FIFO theo createdAt */
   async findMatchingOrders(loanData: LoanMatchData): Promise<InvestmentOrder[]> {
+    this.logger.log(`[findMatchingOrders] loanData: rate=${loanData.rate}, period=${loanData.periodMonth}, purpose="${loanData.purpose}"`);
+    
     const orders = await this.investmentOrderModel
       .find({
-        status: 'open',
-        $expr: { $gt: [{ $subtract: ['$totalNodes', '$matchedNodes'] }, 0] },
-        'interestRange.min': { $lte: loanData.rate },
-        'interestRange.max': { $gte: loanData.rate },
-        'periodRange.min': { $lte: loanData.periodMonth },
-        'periodRange.max': { $gte: loanData.periodMonth },
+        $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] },
       })
       .sort({ createdAt: 1 }) // FIFO
       .exec();
 
-    // Filter by purpose match
-    return orders.filter(order => {
+    this.logger.log(`[findMatchingOrders] Found ${orders.length} open orders with available nodes before filters.`);
+
+    const matchingOrders: InvestmentOrder[] = [];
+    for (const order of orders) {
+      const minRate = order.interestRange?.min || 0;
+      const maxRate = order.interestRange?.max || 100;
+      const minPeriod = order.periodRange?.min || 0;
+      const maxPeriod = order.periodRange?.max || 120;
+
+      const rateMatch = loanData.rate >= minRate && loanData.rate <= maxRate;
+      const periodMatch = loanData.periodMonth >= minPeriod && loanData.periodMonth <= maxPeriod;
+      
       const purposes = Array.isArray(order.purpose) ? order.purpose : [];
-      if (purposes.length === 0) return false;
-      return this.checkPurposeMatch(loanData.purpose, purposes);
-    });
+      const purposeMatch = purposes.length > 0 ? this.checkPurposeMatch(loanData.purpose, purposes) : false;
+
+      this.logger.log(
+        `Order ${order._id} - rateMatch: ${rateMatch} (${minRate}-${maxRate} vs ${loanData.rate}), ` +
+        `periodMatch: ${periodMatch} (${minPeriod}-${maxPeriod} vs ${loanData.periodMonth}), ` +
+        `purposeMatch: ${purposeMatch} ("${loanData.purpose}" vs [${purposes.join(',')}])`
+      );
+
+      if (rateMatch && periodMatch && purposeMatch) {
+        matchingOrders.push(order);
+      }
+    }
+    
+    return matchingOrders;
   }
 
   // ═══════════════════════════════════════════════════════

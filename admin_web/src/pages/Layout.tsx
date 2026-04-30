@@ -26,6 +26,7 @@ import {
   SwapOutlined,
   LeftOutlined,
   RightOutlined,
+  BlockOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
@@ -91,6 +92,7 @@ const menuGroups: MenuGroup[] = [
   {
     groupLabel: 'HỆ THỐNG',
     items: [
+      { key: '/blockchain', icon: <BlockOutlined />, label: 'Blockchain Explorer' },
       { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
     ],
   },

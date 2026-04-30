@@ -28,6 +28,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { CreditScoreModule } from './modules/credit-score/credit-score.module';
 import { InvestModule } from './modules/invest/invest.module';
 import { JobsModule } from './modules/jobs/jobs.module';
+import { FabricModule } from './modules/fabric/fabric.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
     CreditScoreModule,
     InvestModule,
     JobsModule,
+    FabricModule,
   ],
 
   controllers: [AppController],

@@ -35,6 +35,7 @@ import { CaslModule } from '../casl/casl.module';
 import { PushNotificationService } from '../loan/services/push-notification.service';
 import { UsersModule } from '../users/users.module';
 import { CreditScoreModule } from '../credit-score/credit-score.module';
+import { InvestModule } from '../invest/invest.module';
 
 import {
   AdminProductService,
@@ -54,6 +55,7 @@ import { AdminMarketService } from './services/admin-market.service';
     UsersModule,
     CreditScoreModule,
     forwardRef(() => LoanModule),
+    forwardRef(() => InvestModule),
     MongooseModule.forFeature([
       { name: DocumentType.name, schema: DocumentTypeSchema },
       { name: LoanProductDocumentType.name, schema: LoanProductDocumentTypeSchema },

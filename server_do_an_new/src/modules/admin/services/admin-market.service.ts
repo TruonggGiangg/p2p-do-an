@@ -75,11 +75,11 @@ export class AdminMarketService {
 
     // Vốn đầu tư sẵn sàng (orders mở, tính phần chưa match)
     const availableAgg = await this.orderModel.aggregate([
-      { $match: { status: 'open' } },
+      { $match: { $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] } } },
       {
         $group: {
           _id: null,
-          total: { $sum: { $multiply: [{ $subtract: ['$totalNodes', '$matchedNodes'] }, this.baseUnitPrice] } },
+          total: { $sum: { $multiply: [{ $subtract: [{ $ifNull: ['$totalNodes', 1] }, { $ifNull: ['$matchedNodes', 0] }] }, this.baseUnitPrice] } },
         },
       },
     ]);
@@ -98,7 +98,9 @@ export class AdminMarketService {
       status: 'approved',
       isFullMatch: false,
     });
-    const activeBids = await this.orderModel.countDocuments({ status: 'open' });
+    const activeBids = await this.orderModel.countDocuments({
+      $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] }
+    });
 
     return {
       totalMatched,
@@ -118,7 +120,13 @@ export class AdminMarketService {
 
     const filter: any = {
       status: 'approved',
-      isFullMatch: false,
+      isFullMatch: { $ne: true },
+      $expr: {
+        $lt: [
+          { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }] },
+          { $ifNull: ['$totalNotes', { $ceil: { $divide: ['$capital', 500000] } }] }
+        ]
+      }
     };
 
     if (q) {
@@ -169,7 +177,9 @@ export class AdminMarketService {
   async getBids(params: MarketQueryParams = {}) {
     const { page = 1, pageSize = 15, sortBy = 'createdAt', order = 'desc', q } = params;
 
-    const filter: any = { status: 'open' };
+    const filter: any = {
+      $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] }
+    };
 
     if (q) {
       // Tìm user trước theo keyword
@@ -304,7 +314,20 @@ export class AdminMarketService {
   async getMatchedAsks(params: MarketQueryParams = {}) {
     const { page = 1, pageSize = 15, sortBy = 'updatedAt', order = 'desc', q } = params;
 
-    const filter: any = { isFullMatch: true };
+    const filter: any = {
+      status: { $in: ['approved', 'disbursed'] },
+      $or: [
+        { isFullMatch: true },
+        {
+          $expr: {
+            $gte: [
+              { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }] },
+              { $ifNull: ['$totalNotes', { $ceil: { $divide: ['$capital', 500000] } }] }
+            ]
+          }
+        }
+      ]
+    };
 
     if (q) {
       filter.$or = [
@@ -351,7 +374,10 @@ export class AdminMarketService {
   async getMatchedBids(params: MarketQueryParams = {}) {
     const { page = 1, pageSize = 15, sortBy = 'updatedAt', order = 'desc', q } = params;
 
-    const filter: any = { status: 'closed' };
+    // Trigger NestJS hot-reload 3
+    const filter: any = {
+      $expr: { $gte: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] }
+    };
 
     if (q) {
       const users = await this.userModel
