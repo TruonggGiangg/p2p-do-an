@@ -179,11 +179,7 @@ export class InvestService {
               },
             },
           },
-          $set: {
-            ...(currentOrder.matchedNodes + nodesToMatch >= currentOrder.totalNodes
-              ? { status: 'closed' as const }
-              : {}),
-          },
+          $set: { updatedAt: new Date() },
         },
         { new: true },
       );
@@ -247,7 +243,17 @@ export class InvestService {
         isFullMatch: newIsFullMatch,
       });
 
-      if (updatedOrder.status === 'closed') {
+      // Kiểm tra order đã đầy chưa dựa trên dữ liệu THỰC TẾ sau atomic update
+      const isOrderFull = updatedOrder.matchedNodes >= updatedOrder.totalNodes;
+      if (isOrderFull && updatedOrder.status !== 'closed') {
+        await this.investmentOrderModel.updateOne(
+          { _id: order._id, matchedNodes: { $gte: updatedOrder.totalNodes } },
+          { $set: { status: 'closed' } },
+        );
+        this.logger.log(`Order ${order._id} closed: matchedNodes=${updatedOrder.matchedNodes} >= totalNodes=${updatedOrder.totalNodes}`);
+      }
+
+      if (isOrderFull) {
         sendProgress('Lệnh đầu tư đã ghép đủ vốn, đóng lệnh.', 95);
         break;
       }

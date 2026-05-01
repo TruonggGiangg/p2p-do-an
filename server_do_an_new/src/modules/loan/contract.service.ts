@@ -358,6 +358,24 @@ export class ContractService {
       },
     });
 
+    // Sync to Blockchain
+    if (this.fabricService?.isConnected()) {
+      try {
+        await this.fabricService.submitTransaction(
+          'updateLoanStatus',
+          contractId,
+          'signed',
+          JSON.stringify({
+            signedAt: new Date().toISOString(),
+            signatureProvider: 'manual',
+          })
+        );
+        this.logger.log(`[signContract] [Blockchain] Synced ${contractId} → signed`);
+      } catch (bcErr: any) {
+        this.logger.warn(`[signContract] [Blockchain] Sync failed: ${bcErr?.message}`);
+      }
+    }
+
     // Trigger auto-disbursement from InvestPaymentService dynamically to avoid circular dependency
     try {
       const investPaymentService = this.moduleRef.get('InvestPaymentService', { strict: false });

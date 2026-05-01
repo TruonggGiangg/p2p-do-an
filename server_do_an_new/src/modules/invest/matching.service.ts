@@ -150,6 +150,7 @@ export class MatchingService {
     
     const orders = await this.investmentOrderModel
       .find({
+        status: 'open',
         $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] },
       })
       .sort({ createdAt: 1 }) // FIFO
@@ -213,10 +214,7 @@ export class MatchingService {
       return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'nodeMatch sẽ vượt giới hạn' };
     }
 
-    const newMatchedNodes = order.matchedNodes + nodesToMatch;
-    const willBeFull = newMatchedNodes >= order.totalNodes;
-
-    // Atomic update with condition check
+    // Atomic update — KHÔNG pre-calculate willBeFull vì order.matchedNodes có thể stale
     const updateOp: any = {
       $inc: {
         matchedNodes: nodesToMatch,
@@ -233,10 +231,6 @@ export class MatchingService {
       $set: { updatedAt: new Date() },
     };
 
-    if (willBeFull) {
-      updateOp.$set.status = 'closed';
-    }
-
     const result = await this.investmentOrderModel.findOneAndUpdate(
       {
         _id: order._id,
@@ -249,6 +243,17 @@ export class MatchingService {
     if (!result) {
       this.logger.warn(`Atomic update failed for order ${order._id} — race condition detected`);
       return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'Race condition — thử lại' };
+    }
+
+    // Kiểm tra willBeFull dựa trên dữ liệu THỰC TẾ sau khi atomic update (không dùng giá trị stale)
+    const actualMatchedNodes = result.matchedNodes;
+    const actualTotalNodes = result.totalNodes;
+    if (actualMatchedNodes >= actualTotalNodes && result.status !== 'closed') {
+      await this.investmentOrderModel.updateOne(
+        { _id: order._id, matchedNodes: { $gte: actualTotalNodes } },
+        { $set: { status: 'closed' } },
+      );
+      this.logger.log(`Order ${order._id} closed: matchedNodes=${actualMatchedNodes} >= totalNodes=${actualTotalNodes}`);
     }
 
     const matchedAmount = nodesToMatch * this.baseUnitPrice;

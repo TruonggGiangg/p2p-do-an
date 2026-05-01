@@ -649,6 +649,25 @@ export class AdminLoanService {
       this.logger.warn(`[disburseLoan] Failed to update credit score: ${err?.message}`);
     }
 
+    // 6. Sync to Blockchain
+    try {
+      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      if (fabricService?.isConnected()) {
+        // Update LoanContract → disbursed
+        if (contract?.contractId) {
+          await fabricService.submitTransaction(
+            'updateLoanStatus',
+            contract.contractId,
+            'disbursed',
+            JSON.stringify({ disbursementDate: new Date().toISOString() })
+          );
+          this.logger.log(`[disburseLoan] [Blockchain] Synced LoanContract ${contract.contractId} → disbursed`);
+        }
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[disburseLoan] [Blockchain] Sync failed: ${bcErr?.message}`);
+    }
+
     // Láº¥y thÃ´ng tin ngÆ°á»i vay
     let borrowerName = '';
     let borrowerUsername = '';

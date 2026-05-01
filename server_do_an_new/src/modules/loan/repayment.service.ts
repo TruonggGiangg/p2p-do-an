@@ -241,6 +241,17 @@ export class RepaymentService {
           };
           await this.fabricService.submitTransaction('createSettlementContract', settlementId, JSON.stringify(settlementData));
           this.logger.log(`[makeRepayment] Successfully synced settlement to Blockchain: ${settlementId}`);
+
+          // Update LoanContract status on Blockchain if loan is closed
+          if (newStatus === 'closed' && loanContract.contractId) {
+            await this.fabricService.submitTransaction(
+              'updateLoanStatus',
+              loanContract.contractId,
+              'closed',
+              JSON.stringify({ closedAt: new Date().toISOString(), closedBy: 'repayment' })
+            );
+            this.logger.log(`[makeRepayment] [Blockchain] Synced LoanContract ${loanContract.contractId} → closed`);
+          }
         }
       } catch (err: any) {
         this.logger.error(`[makeRepayment] Failed to sync settlement to Blockchain: ${err?.message}`);
@@ -463,6 +474,17 @@ export class RepaymentService {
           };
           await this.fabricService.submitTransaction('createSettlementContract', settlementId, JSON.stringify(settlementData));
           this.logger.log(`[prepayLoan] Successfully synced settlement to Blockchain: ${settlementId}`);
+
+          // Update LoanContract status on Blockchain → closed
+          if (loanContract.contractId) {
+            await this.fabricService.submitTransaction(
+              'updateLoanStatus',
+              loanContract.contractId,
+              'closed',
+              JSON.stringify({ closedAt: new Date().toISOString(), closedBy: 'prepayment' })
+            );
+            this.logger.log(`[prepayLoan] [Blockchain] Synced LoanContract ${loanContract.contractId} → closed`);
+          }
         }
       } catch (err: any) {
         this.logger.error(`[prepayLoan] Failed to sync settlement to Blockchain: ${err?.message}`);

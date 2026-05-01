@@ -5,7 +5,7 @@ const path = require('path');
 async function main() {
     try {
         // Create a new file system based wallet for managing identities.
-        const walletPath = path.join('/mnt/d/Project/p2p-do-an/server_do_an_new/src/modules/fabric/wallet');
+        const walletPath = path.join('/mnt/d/Project/p2p-do-an/server_do_an_new/fabric-wallet');
         const wallet = await Wallets.newFileSystemWallet(walletPath);
         console.log(`Wallet path: ${walletPath}`);
 
@@ -21,8 +21,11 @@ async function main() {
 
         // Paths to the cryptogen generated certificates
         const credPath = path.join('/mnt/d/Project/p2p-do-an/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp');
-        const certPath = path.join(credPath, 'signcerts', 'Admin@org1.example.com-cert.pem');
-        const keyPath = path.join(credPath, 'keystore', 'priv_sk');
+        const certPath = path.join(credPath, 'signcerts', 'cert.pem');
+        const keyDir = path.join(credPath, 'keystore');
+        const files = fs.readdirSync(keyDir);
+        const keyFileName = files.find(f => f.endsWith('_sk'));
+        const keyPath = path.join(keyDir, keyFileName);
 
         if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
             console.error('Certificate or Private Key not found at expected path.');
