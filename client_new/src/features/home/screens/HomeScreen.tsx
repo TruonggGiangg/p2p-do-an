@@ -459,7 +459,8 @@ export default function HomeScreen() {
                         <Text style={[styles.greetingSub, { color: c.textMuted }]}>Quản lý tài chính thông minh.</Text>
                     </Animated.View>
 
-                    {/* 2. 3D CARD CAROUSEL */}
+                    {/* 2. 3D CARD CAROUSEL — Chỉ hiển thị khi đã eKYC */}
+                    {user?.kycStatus === 'VERIFIED' && (
                     <Animated.View entering={FadeInDown.delay(200).duration(700)} style={styles.cardCarouselSection}>
                         <ScrollView ref={cardScrollRef} horizontal showsHorizontalScrollIndicator={false}
                             snapToInterval={WALLET_CARD_W + 12} snapToAlignment="start" decelerationRate="fast"
@@ -487,6 +488,7 @@ export default function HomeScreen() {
                             </Text>
                         </View>
                     </Animated.View>
+                    )}
 
 
                     {/* 3, 4, 5. RESTRICTED SECTIONS WRAPPER */}

@@ -270,23 +270,32 @@ export class EkycService {
                 }
             }
 
-            // 2. Update Keycloak Profile (kycStatus to pending)
+            // 2. Overwrite profile name from CCCD (luôn ghi đè tên đăng ký)
+            if (extractedData.fullName) {
+                const nameParts = extractedData.fullName.trim().split(/\s+/);
+                user.profile = {
+                    ...(user.profile || {}),
+                    firstName: nameParts.slice(0, -1).join(' ') || extractedData.fullName,
+                    lastName: nameParts.slice(-1).join(' '),
+                };
+                this.logger.log(`[EkycService] Profile name overwritten: "${user.profile.firstName} ${user.profile.lastName}"`);
+            }
+
+            // 3. Update Keycloak Profile (kycStatus to pending)
             if (user.keycloakId) {
                 try {
                     this.logger.log(`[EkycService] Updating Keycloak profile for: ${user.keycloakId}`);
 
-                    user.profile = {
-                        ...(user.profile || {}),
-                        firstName: extractedData.fullName ? extractedData.fullName.split(' ').slice(0, -1).join(' ') : user.profile?.firstName,
-                        lastName: extractedData.fullName ? extractedData.fullName.split(' ').slice(-1).join(' ') : user.profile?.lastName,
-                    };
-
                     const updateAttributes: any = {
                         kycStatus: "pending",
-                        declared: "true"
+                        declared: "true",
                     };
 
-                    if (extractedData.fullName) updateAttributes.fullName = extractedData.fullName;
+                    if (extractedData.fullName) {
+                        updateAttributes.fullName = extractedData.fullName;
+                        updateAttributes.firstName = user.profile?.firstName;
+                        updateAttributes.lastName = user.profile?.lastName;
+                    }
                     if (extractedData.ssn) updateAttributes.ssn = extractedData.ssn;
                     if (extractedData.dateOfBirth) updateAttributes.dateOfBirth = extractedData.dateOfBirth;
                     if (extractedData.address) updateAttributes.address = extractedData.address;
@@ -302,7 +311,7 @@ export class EkycService {
                 }
             }
 
-            // 3. Update MongoDB User Document
+            // 4. Update MongoDB User Document
             user.kycStatus = 'PENDING';
             user.kycRejectReason = undefined; // Clear any previous reject reason
             const meta = kycMetadata;

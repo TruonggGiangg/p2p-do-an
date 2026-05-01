@@ -112,7 +112,7 @@ export class FineractSavingsService extends FineractBaseService {
      * Create a new savings account (e-wallet) for a client.
      * Nếu productId không truyền: tìm sản phẩm shortName VP2P, fallback ewalletProductId từ config.
      */
-    async createSavingsAccount(clientId: number, productId?: number): Promise<number> {
+    async createSavingsAccount(clientId: number, productId?: number, activationDate?: string): Promise<number> {
         let ewalletProductId = productId;
         if (ewalletProductId == null) {
             const vp2pId = await this.getProductIdByShortName('VP2P');
@@ -122,12 +122,28 @@ export class FineractSavingsService extends FineractBaseService {
             }
         }
 
+        // Use activation date if provided, otherwise fetch from client to avoid timezone mismatch
+        let submittedOnDate = activationDate || this.getTodayFormatted('iso');
+        if (!activationDate) {
+            try {
+                const clientInfo = await this.client.get(`/clients/${clientId}`);
+                const actDate = clientInfo.data?.activationDate;
+                if (Array.isArray(actDate) && actDate.length >= 3) {
+                    const [y, m, d] = actDate;
+                    submittedOnDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    this.logger.log(`[createSavingsAccount] Using client activationDate=${submittedOnDate}`);
+                }
+            } catch (e: any) {
+                this.logger.warn(`[createSavingsAccount] Could not fetch client activation date: ${e.message}`);
+            }
+        }
+
         try {
             // Use strict date format (yyyy-MM-dd) for savings accounts to avoid locale issues
             const response = await this.client.post('/savingsaccounts', {
                 clientId,
                 productId: ewalletProductId,
-                submittedOnDate: this.getTodayFormatted('iso'),
+                submittedOnDate,
                 locale: 'en',
                 dateFormat: 'yyyy-MM-dd',
             });
@@ -135,8 +151,8 @@ export class FineractSavingsService extends FineractBaseService {
             const savingsId = response.data.savingsId || response.data.resourceId;
             this.logger.log(`Created savings account ${savingsId} for client ${clientId}`);
 
-            await this.approveSavingsAccount(savingsId);
-            await this.activateSavingsAccount(savingsId);
+            await this.approveSavingsAccount(savingsId, submittedOnDate);
+            await this.activateSavingsAccount(savingsId, submittedOnDate);
 
             return savingsId;
         } catch (error: any) {
@@ -147,10 +163,10 @@ export class FineractSavingsService extends FineractBaseService {
     /**
      * Approve a savings account
      */
-    async approveSavingsAccount(savingsId: number): Promise<void> {
+    async approveSavingsAccount(savingsId: number, onDate?: string): Promise<void> {
         try {
             await this.client.post(`/savingsaccounts/${savingsId}?command=approve`, {
-                approvedOnDate: this.getTodayFormatted('iso'),
+                approvedOnDate: onDate || this.getTodayFormatted('iso'),
                 locale: 'en',
                 dateFormat: 'yyyy-MM-dd',
             });
@@ -163,10 +179,10 @@ export class FineractSavingsService extends FineractBaseService {
     /**
      * Activate a savings account
      */
-    async activateSavingsAccount(savingsId: number): Promise<void> {
+    async activateSavingsAccount(savingsId: number, onDate?: string): Promise<void> {
         try {
             await this.client.post(`/savingsaccounts/${savingsId}?command=activate`, {
-                activatedOnDate: this.getTodayFormatted('iso'),
+                activatedOnDate: onDate || this.getTodayFormatted('iso'),
                 locale: 'en',
                 dateFormat: 'yyyy-MM-dd',
             });

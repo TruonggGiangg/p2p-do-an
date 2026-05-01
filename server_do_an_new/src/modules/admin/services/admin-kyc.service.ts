@@ -150,7 +150,7 @@ export class AdminKycService {
     if (Types.ObjectId.isValid(userId)) user = await this.userModel.findById(userId);
     if (!user) user = await this.userModel.findOne({ fineractClientId: userId });
     if (!user) throw new NotFoundException('Khách hàng không tồn tại');
-    if (!['PENDING', 'NONE', 'UPDATE_REQUESTED'].includes(user.kycStatus || 'NONE')) {
+    if (!['PENDING', 'NONE', 'UPDATE_REQUESTED', 'VERIFIED'].includes(user.kycStatus || 'NONE')) {
       throw new BadRequestException(`KYC đã ở trạng thái ${user.kycStatus}, không thể phê duyệt`);
     }
 
