@@ -19,6 +19,7 @@ import PrepaymentSuccessScreen from '../features/loan/screens/PrepaymentSuccessS
 import RepaymentConfirmScreen from '../features/loan/screens/RepaymentConfirmScreen';
 import PrepaymentConfirmScreen from '../features/loan/screens/PrepaymentConfirmScreen';
 import LoanBlockedScreen from '../features/loan/screens/LoanBlockedScreen';
+import LoanRejectedScreen from '../features/loan/screens/LoanRejectedScreen';
 import BNPLLoanListScreen from '../features/bnpl/screens/BNPLLoanListScreen';
 import BNPLLoanDetailScreen from '../features/bnpl/screens/BNPLLoanDetailScreen';
 import BNPLEarlyRepayScreen from '../features/bnpl/screens/BNPLEarlyRepayScreen';
@@ -126,7 +127,7 @@ export type RootStackParamList = {
     InvestmentOrderDetail: { orderId: string };
     AvailableLoans: undefined;
     InvestmentContractList: undefined;
-    InvestmentContractDetail: { contractId: string };
+    InvestmentContractDetail: { contractId: string; autoSign?: boolean };
     InvestmentStats: undefined;
     SchedulePreview: { loanApplicationId: string; numNotes: number; loanTitle?: string };
     InvestmentFlow: { loan: any };
@@ -137,6 +138,17 @@ export type RootStackParamList = {
         fineractLoanId?: number;
         policy?: { blockNewLoan?: boolean; freezeAccount?: boolean; permanentBan?: boolean; applyPenalty?: boolean; legalEscalation?: boolean; collectionStage?: string };
         message?: string;
+    };
+    LoanRejected: {
+        message?: string;
+        evaluationScore?: number;
+        grade?: string;
+        subGrade?: string;
+        riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY_HIGH';
+        modelDecision?: string;
+        decisionExplanation?: string;
+        riskFactors?: string[];
+        positiveFactors?: string[];
     };
 };
 
@@ -174,6 +186,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="SigningSuccess" component={SigningSuccessScreen} />
                     <Stack.Screen name="RepaymentConfirm" component={RepaymentConfirmScreen} />
                     <Stack.Screen name="LoanBlocked" component={LoanBlockedScreen} />
+                    <Stack.Screen name="LoanRejected" component={LoanRejectedScreen} />
                     <Stack.Screen name="PrepaymentConfirm" component={PrepaymentConfirmScreen} />
                     <Stack.Screen name="RepaymentSuccess" component={RepaymentSuccessScreen} />
                     <Stack.Screen name="PrepaymentSuccess" component={PrepaymentSuccessScreen} />

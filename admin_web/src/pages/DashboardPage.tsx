@@ -1,5 +1,5 @@
-import React from 'react';
-import { Typography, Button, Tag, Space } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Typography, Button, Tag, Space, Spin, message } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
@@ -12,41 +12,23 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { useTheme } from '../App';
+import { adminApi } from '../api/admin';
 
 const { Title, Text } = Typography;
 
-/* ── Mock Data ─────────────────────────────────────────── */
-const disbursementData = [
-  { date: '16/03', amount: 180 },
-  { date: '17/03', amount: 220 },
-  { date: '18/03', amount: 150 },
-  { date: '19/03', amount: 310 },
-  { date: '20/03', amount: 250 },
-  { date: '21/03', amount: 190 },
-  { date: '22/03', amount: 125 },
-];
+/* ── Helpers ───────────────────────────────────────────── */
+const PIE_COLORS = ['#4d8eff', '#06b6d4', '#a855f7', '#f59e0b', '#10b981', '#ef4444'];
 
-const productDistData = [
-  { name: 'Vay sinh viên', value: 45, color: '#4d8eff' },
-  { name: 'Vay tiêu dùng', value: 30, color: '#06b6d4' },
-  { name: 'Vay kinh doanh', value: 25, color: '#a855f7' },
-];
+const formatVndShort = (n: number): string => {
+  if (n == null || isNaN(n)) return '₫0';
+  if (n >= 1_000_000_000) return `₫${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `₫${(n / 1_000_000).toFixed(0)}M`;
+  if (n >= 1_000) return `₫${(n / 1_000).toFixed(0)}K`;
+  return `₫${n}`;
+};
 
-interface ActivityRow {
-  time: string;
-  activity: string;
-  customer: string;
-  amount: string;
-  status: 'approved' | 'pending' | 'rejected';
-}
-
-const recentActivities: ActivityRow[] = [
-  { time: '14:32', activity: 'Phê duyệt khoản vay', customer: 'Nguyễn Văn An', amount: '₫45,000,000', status: 'approved' },
-  { time: '13:15', activity: 'Yêu cầu giải ngân', customer: 'Lê Thị Bình', amount: '₫120,000,000', status: 'pending' },
-  { time: '12:08', activity: 'Từ chối khoản vay', customer: 'Trần Minh Đức', amount: '₫30,000,000', status: 'rejected' },
-  { time: '11:45', activity: 'KYC được duyệt', customer: 'Phạm Thanh Hà', amount: '₫80,000,000', status: 'approved' },
-  { time: '10:20', activity: 'Yêu cầu hỗ trợ nợ', customer: 'Hoàng Văn Khoa', amount: '₫55,000,000', status: 'pending' },
-];
+const formatVndFull = (n: number): string =>
+  '₫' + (n ?? 0).toLocaleString('vi-VN');
 
 const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
   approved: { label: 'Đã duyệt', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
@@ -128,6 +110,44 @@ function KpiCard({ title, value, badge, badgeColor, subtitle, children, isDarkMo
 export default function DashboardPage() {
   const { isDarkMode } = useTheme();
 
+  const [overview, setOverview] = useState<Awaited<ReturnType<typeof adminApi.getDashboardOverview>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState<'7' | '30' | '90'>('7');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await adminApi.getDashboardOverview();
+        if (!cancelled) setOverview(data);
+      } catch (e: any) {
+        message.error(e?.response?.data?.message || 'Không tải được số liệu Dashboard');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const disbursementData = useMemo(() => {
+    if (!overview) return [] as Array<{ date: string; amount: number }>;
+    if (period === '7') return overview.disbursementSeries.d7;
+    if (period === '30') return overview.disbursementSeries.d30;
+    return overview.disbursementSeries.d90;
+  }, [overview, period]);
+
+  const productDistData = useMemo(() => {
+    if (!overview) return [] as Array<{ name: string; value: number; color: string }>;
+    return overview.productDistribution.map((p, i) => ({
+      name: p.name,
+      value: p.percent,
+      color: PIE_COLORS[i % PIE_COLORS.length],
+    }));
+  }, [overview]);
+
+  const recentActivities = overview?.recentActivities ?? [];
+
   const baseBg = isDarkMode ? '#0c1324' : '#F1F5F9';
   const cardBg = isDarkMode ? '#191f31' : '#FFFFFF';
   const borderColor = isDarkMode ? 'rgba(66, 71, 84, 0.15)' : '#E2E8F0';
@@ -183,13 +203,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards ── */}
+      <Spin spinning={loading} tip="Đang tải số liệu...">
       <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
         <KpiCard
-          title="Tổng khoản vay"
-          value="₫2.45B"
-          badge="+12.5%"
-          badgeColor="green"
-          subtitle="215 khoản đang hoạt động"
+          title="Tổng giải ngân"
+          value={formatVndShort(overview?.kpi.totalDisbursedAmount ?? 0)}
+          badge={`${(overview?.kpi.totalDisbursedTrend ?? 0) >= 0 ? '+' : ''}${(overview?.kpi.totalDisbursedTrend ?? 0).toFixed(1)}%`}
+          badgeColor={(overview?.kpi.totalDisbursedTrend ?? 0) >= 0 ? 'green' : 'orange'}
+          subtitle={`${overview?.kpi.activeLoansCount ?? 0} khoản đang hoạt động`}
           isDarkMode={isDarkMode}
         >
           <div style={{ height: 36 }}>
@@ -209,58 +230,70 @@ export default function DashboardPage() {
 
         <KpiCard
           title="Tỷ lệ nợ xấu"
-          value="3.2%"
-          badge="-0.8%"
-          badgeColor="green"
+          value={`${((overview?.kpi.nplRate ?? 0) * 100).toFixed(1)}%`}
+          badge={`${(overview?.kpi.nplTrend ?? 0) >= 0 ? '+' : ''}${(overview?.kpi.nplTrend ?? 0).toFixed(1)}%`}
+          badgeColor={(overview?.kpi.nplTrend ?? 0) <= 0 ? 'green' : 'orange'}
           subtitle="So với tháng trước"
           isDarkMode={isDarkMode}
         >
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <svg width="48" height="48" viewBox="0 0 48 48">
-              <circle cx="24" cy="24" r="20" fill="none" stroke={isDarkMode ? '#2e3447' : '#e2e8f0'} strokeWidth="5" />
-              <circle
-                cx="24" cy="24" r="20" fill="none"
-                stroke="#10b981" strokeWidth="5" strokeLinecap="round"
-                strokeDasharray={`${(1 - 0.032) * 125.6} 125.6`}
-                transform="rotate(-90 24 24)"
-              />
-              <text x="24" y="27" textAnchor="middle" fontSize="10" fontWeight="700" fill={isDarkMode ? '#dce1fb' : '#0f172a'}>3.2%</text>
-            </svg>
+            {(() => {
+              const npl = overview?.kpi.nplRate ?? 0;
+              const dash = (1 - npl) * 125.6;
+              return (
+                <svg width="48" height="48" viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke={isDarkMode ? '#2e3447' : '#e2e8f0'} strokeWidth="5" />
+                  <circle
+                    cx="24" cy="24" r="20" fill="none"
+                    stroke={npl > 0.05 ? '#ef4444' : '#10b981'} strokeWidth="5" strokeLinecap="round"
+                    strokeDasharray={`${dash} 125.6`}
+                    transform="rotate(-90 24 24)"
+                  />
+                  <text x="24" y="27" textAnchor="middle" fontSize="10" fontWeight="700" fill={isDarkMode ? '#dce1fb' : '#0f172a'}>
+                    {(npl * 100).toFixed(1)}%
+                  </text>
+                </svg>
+              );
+            })()}
           </div>
         </KpiCard>
 
         <KpiCard
           title="Tiền giải ngân hôm nay"
-          value="₫125M"
-          badge="8 khoản"
+          value={formatVndShort(overview?.kpi.disbursedToday ?? 0)}
+          badge={`${overview?.kpi.disbursedTodayCount ?? 0} khoản`}
           badgeColor="orange"
-          subtitle="Tổng giải ngân tháng: ₫1.8B"
+          subtitle={`Tổng giải ngân tháng: ${formatVndShort(overview?.kpi.disbursedThisMonth ?? 0)}`}
           isDarkMode={isDarkMode}
         >
           <div style={{ height: 36, display: 'flex', alignItems: 'flex-end', gap: 3, paddingBottom: 2 }}>
-            {[60, 80, 45, 90, 70, 55, 100].map((h, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  height: `${h}%`,
-                  background: i === 6
-                    ? 'linear-gradient(180deg, #4d8eff 0%, rgba(77,142,255,0.3) 100%)'
-                    : isDarkMode ? '#2e3447' : '#cbd5e1',
-                  borderRadius: 3,
-                  transition: 'all 0.3s ease',
-                }}
-              />
-            ))}
+            {(() => {
+              const last7 = overview?.disbursementSeries.d7 ?? [];
+              const max = Math.max(1, ...last7.map((d) => d.amount));
+              return last7.map((d, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    height: `${Math.max(6, (d.amount / max) * 100)}%`,
+                    background: i === last7.length - 1
+                      ? 'linear-gradient(180deg, #4d8eff 0%, rgba(77,142,255,0.3) 100%)'
+                      : isDarkMode ? '#2e3447' : '#cbd5e1',
+                    borderRadius: 3,
+                    transition: 'all 0.3s ease',
+                  }}
+                />
+              ));
+            })()}
           </div>
         </KpiCard>
 
         <KpiCard
           title="Chờ phê duyệt"
-          value="24"
-          badge="Ưu tiên cao"
-          badgeColor="orange"
-          subtitle="12 khoản ưu tiên cao"
+          value={String(overview?.kpi.pendingApprovals ?? 0)}
+          badge={(overview?.kpi.pendingPriorityCount ?? 0) > 0 ? 'Ưu tiên cao' : 'Bình thường'}
+          badgeColor={(overview?.kpi.pendingPriorityCount ?? 0) > 0 ? 'orange' : 'green'}
+          subtitle={`${overview?.kpi.pendingPriorityCount ?? 0} khoản chờ > 7 ngày`}
           isDarkMode={isDarkMode}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
@@ -291,24 +324,29 @@ export default function DashboardPage() {
               Biểu đồ giải ngân
             </Text>
             <Space size="small">
-              {['7 ngày', '30 ngày', '3 tháng'].map((lbl, i) => (
-                <Button
-                  key={lbl}
-                  size="small"
-                  type={i === 0 ? 'primary' : 'text'}
-                  style={{
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 500,
-                    height: 28,
-                    ...(i === 0
-                      ? { background: '#4d8eff', border: 'none', boxShadow: '0 2px 8px rgba(77,142,255,0.3)' }
-                      : { color: mutedColor }),
-                  }}
-                >
-                  {lbl}
-                </Button>
-              ))}
+              {(['7', '30', '90'] as const).map((key) => {
+                const lbl = key === '7' ? '7 ngày' : key === '30' ? '30 ngày' : '3 tháng';
+                const isActive = period === key;
+                return (
+                  <Button
+                    key={key}
+                    size="small"
+                    type={isActive ? 'primary' : 'text'}
+                    onClick={() => setPeriod(key)}
+                    style={{
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      height: 28,
+                      ...(isActive
+                        ? { background: '#4d8eff', border: 'none', boxShadow: '0 2px 8px rgba(77,142,255,0.3)' }
+                        : { color: mutedColor }),
+                    }}
+                  >
+                    {lbl}
+                  </Button>
+                );
+              })}
             </Space>
           </div>
           <ResponsiveContainer width="100%" height={260}>
@@ -459,7 +497,7 @@ export default function DashboardPage() {
               <Text style={{ fontSize: 12, color: mutedColor, fontWeight: 500 }}>{row.time}</Text>
               <Text style={{ fontSize: 12, color: headingColor, fontWeight: 500 }}>{row.activity}</Text>
               <Text style={{ fontSize: 12, color: headingColor }}>{row.customer}</Text>
-              <Text style={{ fontSize: 12, color: headingColor, fontWeight: 600, fontFamily: "'Manrope', var(--font-sans)" }}>{row.amount}</Text>
+              <Text style={{ fontSize: 12, color: headingColor, fontWeight: 600, fontFamily: "'Manrope', var(--font-sans)" }}>{formatVndFull(row.amount)}</Text>
               <Tag style={{
                 background: st.bg,
                 color: st.color,
@@ -476,6 +514,7 @@ export default function DashboardPage() {
           );
         })}
       </div>
+      </Spin>
 
       {/* Pulse animation */}
       <style>{`

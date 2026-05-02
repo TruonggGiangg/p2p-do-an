@@ -184,9 +184,9 @@ export class FineractService {
 
   async createFixedDeposit(
     clientId: number, productId: number, depositAmount: number,
-    periodMonths: number, externalId?: string,
+    periodMonths: number, externalId?: string, linkedAccountId?: number,
   ): Promise<FDAccountResult> {
-    return this.fdService.createFixedDeposit(clientId, productId, depositAmount, periodMonths, externalId);
+    return this.fdService.createFixedDeposit(clientId, productId, depositAmount, periodMonths, externalId, linkedAccountId);
   }
 
   async getFixedDepositDetails(accountId: number): Promise<FDAccountDetails> {

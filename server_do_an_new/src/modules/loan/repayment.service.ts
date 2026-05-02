@@ -13,6 +13,7 @@ import { User } from '../users/schemas/user.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
 import { FabricService } from '../fabric/fabric.service';
 import { LoanContract } from './schemas/loan-contract.schema';
+import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
 
 /**
  * RepaymentService - Xử lý thanh toán khoản vay (repayment & prepayment)
@@ -40,6 +41,7 @@ export class RepaymentService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private readonly loanContractModel: Model<LoanContract>,
+    @InjectModel(LoanDelinquency.name) private readonly loanDelinquencyModel: Model<LoanDelinquency>,
     private readonly creditScoreService: CreditScoreService,
     @Optional() private readonly fabricService: FabricService,
   ) {}
@@ -188,6 +190,43 @@ export class RepaymentService {
       this.logger.warn(
         `[makeRepayment] Post-repayment sync failed for loan ${fineractLoanId}: ${err?.message}. Loan schedule in Mongo may show unallocated payment until next manual/cron sync.`,
       );
+    }
+
+    // Force-resolve LoanDelinquency nếu loan đã trả hết nợ quá hạn / đã đóng.
+    // Tránh trường hợp Fineract phản hồi chậm khiến user vẫn bị chặn vay mới sau khi đã thanh toán.
+    try {
+      const refreshed = await this.loanApplicationModel
+        .findById(loan._id)
+        .select('totalOverdue delinquentDays status fineractLoanId userId')
+        .lean();
+      const noOverdue = (refreshed?.totalOverdue ?? 0) <= 0 && (refreshed?.delinquentDays ?? 0) <= 0;
+      const isClosed = newStatus === 'closed' || refreshed?.status === 'closed';
+
+      if (noOverdue || isClosed) {
+        const updateRes = await this.loanDelinquencyModel.updateMany(
+          {
+            fineractLoanId,
+            status: { $in: ['overdue', 'defaulted'] },
+          },
+          {
+            $set: {
+              status: 'resolved',
+              resolvedAt: new Date(),
+              debtGroup: 0,
+              overdueAmount: 0,
+              delinquentDays: 0,
+              collectionStage: 'none',
+            },
+          },
+        );
+        if (updateRes.modifiedCount > 0) {
+          this.logger.log(
+            `[makeRepayment] Resolved ${updateRes.modifiedCount} LoanDelinquency record(s) for fineractLoanId=${fineractLoanId} (noOverdue=${noOverdue}, isClosed=${isClosed})`,
+          );
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`[makeRepayment] LoanDelinquency cleanup failed: ${err?.message}`);
     }
 
     await this.notificationModel
@@ -419,6 +458,30 @@ export class RepaymentService {
       this.logger.log(`[prepayLoan] Post-prepayment sync succeeded for loan ${loan.fineractLoanId}`);
     } catch (err: any) {
       this.logger.warn(`[prepayLoan] Post-prepayment sync failed for loan ${loan.fineractLoanId}: ${err?.message}`);
+    }
+
+    // Prepay = tất toán toàn bộ → resolved mọi LoanDelinquency liên quan
+    try {
+      const updateRes = await this.loanDelinquencyModel.updateMany(
+        { fineractLoanId: loan.fineractLoanId, status: { $in: ['overdue', 'defaulted'] } },
+        {
+          $set: {
+            status: 'resolved',
+            resolvedAt: new Date(),
+            debtGroup: 0,
+            overdueAmount: 0,
+            delinquentDays: 0,
+            collectionStage: 'none',
+          },
+        },
+      );
+      if (updateRes.modifiedCount > 0) {
+        this.logger.log(
+          `[prepayLoan] Resolved ${updateRes.modifiedCount} LoanDelinquency record(s) for fineractLoanId=${loan.fineractLoanId}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`[prepayLoan] LoanDelinquency cleanup failed: ${err?.message}`);
     }
 
     await this.notificationModel

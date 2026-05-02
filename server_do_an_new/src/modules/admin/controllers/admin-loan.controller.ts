@@ -39,6 +39,14 @@ export class AdminLoanController {
     return stats ;
   }
 
+  @Get('dashboard/overview')
+  @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
+  @ApiOperation({ summary: 'Dashboard admin: KPI + biểu đồ giải ngân + phân bổ sản phẩm + hoạt động gần đây' })
+  @ApiResponse({ status: 200 })
+  async getDashboardOverview() {
+    return this.adminService.getDashboardOverview();
+  }
+
   @Get('loans')
   @CheckPolicies(ability => ability.can(Action.Read, 'Loan'))
   @ApiOperation({ summary: 'Danh sách khoản vay thống nhất với filter' })

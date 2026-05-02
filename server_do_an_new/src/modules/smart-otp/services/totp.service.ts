@@ -1,14 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
-import { generateSecret, generateSync, verifySync } from 'otplib';
+import { generateSecret, generateSync } from 'otplib';
 
 /**
  * TOTP Configuration
+ * - step  : 30s
+ * - window: ±4 step (±120s) để chịu được clock drift của smartphone
+ *           cộng với độ trễ mạng / user nhập chậm.
  */
 const TOTP_CONFIG = {
   digits: 6,
   step: 30, // 30 seconds
-  window: 2, // Allow ±2 steps for clock drift (±60s)
+  window: 4, // ±2 phút
 };
 
 /**
@@ -106,51 +109,67 @@ export class TotpService {
   }
 
   /**
-   * Verify TOTP code với window tolerance
-   * otplib v13 verifySync KHÔNG hỗ trợ epochTolerance,
-   * nên ta phải tự kiểm tra ±window steps thủ công.
+   * Verify TOTP code với window tolerance.
    *
-   * @param secret Base32 encoded secret
-   * @param token 6-digit OTP code từ user
+   * @param secret           Base32 encoded secret
+   * @param token            6-digit OTP code từ user
+   * @param clientTimestamp  (Optional) timestamp (giây) mà client đã ký kèm —
+   *                         dùng để tính step ở phía client, loại bỏ ảnh hưởng
+   *                         của clock drift giữa thiết bị và server.
+   *                         Nếu không có thì fallback về clock server.
    * @returns true nếu valid
    */
-  verify(secret: string, token: string): boolean {
+  verify(secret: string, token: string, clientTimestamp?: number): boolean {
     try {
-      // Kiểm tra trực tiếp step hiện tại trước
-      const directResult = verifySync({ token, secret });
-      if (directResult.valid) {
-        this.logger.debug(`TOTP valid at current step (delta=${directResult.delta})`);
+      // Xác định step neo: ưu tiên timestamp client (đã được ECDSA verify),
+      // fallback về clock server nếu thiếu.
+      const anchorSec = clientTimestamp && clientTimestamp > 0
+        ? Math.floor(clientTimestamp)
+        : Math.floor(Date.now() / 1000);
+      const anchorStep = Math.floor(anchorSec / TOTP_CONFIG.step);
+
+      // 1) Kiểm tra direct ở step neo
+      const expectedAtAnchor = generateSync({ secret, epoch: anchorStep * TOTP_CONFIG.step });
+      if (token === expectedAtAnchor) {
+        this.logger.debug(`TOTP valid at anchor step=${anchorStep} (delta=0)`);
         return true;
       }
 
-      // verifySync trong otplib v13 KHÔNG hỗ trợ epochTolerance / window
-      // → phải kiểm tra thủ công ±TOTP_CONFIG.window steps
-      const nowSec = Math.floor(Date.now() / 1000);
-      const currentStep = Math.floor(nowSec / TOTP_CONFIG.step);
-
+      // 2) Kiểm tra ±window steps quanh anchor
       for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
-        if (delta === 0) continue; // đã check ở trên
-        const testEpochMs = (currentStep + delta) * TOTP_CONFIG.step * 1000;
-        const expectedToken = generateSync({ secret, epoch: testEpochMs });
+        if (delta === 0) continue;
+        const testEpochSec = (anchorStep + delta) * TOTP_CONFIG.step;
+        const expectedToken = generateSync({ secret, epoch: testEpochSec });
         if (token === expectedToken) {
-          this.logger.debug(`TOTP valid at delta=${delta} (step=${currentStep + delta})`);
+          this.logger.debug(`TOTP valid at delta=${delta} (step=${anchorStep + delta})`);
           return true;
         }
       }
 
       // Log chi tiết để debug
-      const expectedCurrent = generateSync({ secret });
-      this.logger.warn(`TOTP mismatch: received=${token}, expected=${expectedCurrent}, step=${currentStep}`);
+      const nowSec = Math.floor(Date.now() / 1000);
+      const serverStep = Math.floor(nowSec / TOTP_CONFIG.step);
+      const expectedServerNow = generateSync({ secret });
+      this.logger.warn(
+        `TOTP mismatch: received=${token}, ` +
+        `expectedAtAnchor=${expectedAtAnchor} (step=${anchorStep}), ` +
+        `expectedAtServerNow=${expectedServerNow} (step=${serverStep}), ` +
+        `clientTimestamp=${clientTimestamp ?? 'none'}, ` +
+        `drift=${clientTimestamp ? (nowSec - clientTimestamp) + 's' : 'n/a'}, ` +
+        `window=±${TOTP_CONFIG.window} steps (±${TOTP_CONFIG.window * TOTP_CONFIG.step}s)`,
+      );
       return false;
     } catch (error) {
       this.logger.warn('otplib verify failed, using fallback', error);
       // Fallback: tự generate rồi so sánh thủ công (±window)
       try {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const currentStep = Math.floor(nowSec / TOTP_CONFIG.step);
+        const anchorSec = clientTimestamp && clientTimestamp > 0
+          ? Math.floor(clientTimestamp)
+          : Math.floor(Date.now() / 1000);
+        const anchorStep = Math.floor(anchorSec / TOTP_CONFIG.step);
 
         for (let delta = -TOTP_CONFIG.window; delta <= TOTP_CONFIG.window; delta++) {
-          const testEpochMs = (currentStep + delta) * TOTP_CONFIG.step * 1000;
+          const testEpochMs = (anchorStep + delta) * TOTP_CONFIG.step * 1000;
           const expected = this.generateFallback(secret, testEpochMs);
           if (token === expected) {
             this.logger.debug(`verifyTOTP (fallback): valid at delta=${delta}`);

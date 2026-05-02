@@ -141,6 +141,8 @@ export class LoanController {
       disbursementWalletId: dto.disbursementWalletId,
       documents: dto.documents,
       otpSessionId: dto.otpSessionId,
+      personIncome: dto.personIncome,
+      personEmpExp: dto.personEmpExp,
     });
     return result;
   }

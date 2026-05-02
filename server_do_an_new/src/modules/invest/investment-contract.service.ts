@@ -277,6 +277,16 @@ export class InvestmentContractService {
     const contractId = this.generateContractId(String(loan._id));
 
     // 6. Create contract
+    // Business rule: Đầu tư qua order book matching (đặt lệnh) = chuyển tiền bình thường, KHÔNG yêu cầu SmartCA.
+    // Đầu tư trực tiếp vào khoản vay (không qua order) = bắt buộc ký SmartCA → status='pending_signature'.
+    const fromOrderMatching = !!investmentOrderId;
+    const initialStatus: 'active' | 'pending_signature' = fromOrderMatching ? 'active' : 'pending_signature';
+    if (fromOrderMatching) {
+      this.logger.log(`${LOG}    📌 Contract phát sinh từ ORDER MATCHING → bỏ qua SmartCA, status='active' ngay`);
+    } else {
+      this.logger.log(`${LOG}    📌 Contract đầu tư trực tiếp → yêu cầu ký SmartCA, status='pending_signature'`);
+    }
+
     const contract = new this.contractModel({
       contractId,
       lenderId: new Types.ObjectId(lenderId),
@@ -291,7 +301,15 @@ export class InvestmentContractService {
       entirelyProfit,
       entirelyPay,
       serviceFee: 0,
-      status: 'pending_signature',
+      status: initialStatus,
+      // Đối với contract sinh từ order matching: đánh dấu signature không bắt buộc / đã verify
+      ...(fromOrderMatching
+        ? {
+            smartCASignatureVerified: true,
+            signatureProvider: 'order_matching_skip',
+            signatureVerifiedAt: new Date(),
+          }
+        : {}),
       // Lender schedule
       lenderSchedule: schedule,
       scheduleTotalPrincipal: summary.totalPrincipal,
@@ -300,29 +318,71 @@ export class InvestmentContractService {
       schedulePeriodCount: summary.periodCount,
     });
 
-    // 7. Update loan atomically: investedNotes++, nodeMatch-- (if from order)
-    //    We do this BEFORE saving contract to revert easily if constraints fail.
+    // 7. Update loan atomically.
+    // Order matching has already reserved nodeMatch, so confirmed payment moves it into investedNotes.
+    // Direct investment only reserves room here; money is deducted after SmartCA signing.
+    // Lưu ý: một số loan cũ trong DB có totalNotes=0 (legacy) — self-heal trước khi atomic update,
+    // nếu không atomic check `totalNotes >= invested + nodeMatch + numNotes` sẽ luon fail (0 >= 1).
+    const storedTotalNotes = (loan as any).totalNotes || 0;
+    const computedTotalNotes = Math.ceil(Number(loan.capital || 0) / this.baseUnitPrice);
+    if (storedTotalNotes !== computedTotalNotes) {
+      await this.loanModel.updateOne({ _id: loanApplicationId }, { $set: { totalNotes: computedTotalNotes } });
+      this.logger.log(`${LOG}    Self-heal totalNotes: ${storedTotalNotes} → ${computedTotalNotes}`);
+    }
     const nodeMatchDecrement = investmentOrderId ? orderMatchedNodes : 0;
-    this.logger.log(`${LOG}    Atomic update loan: investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`);
+    const directReserve = !fromOrderMatching;
+    const roomExpr = directReserve
+      ? { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }, numNotes] }
+      : { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] };
+    // Effective totalNotes for guard: use whichever is larger (handle legacy zero values)
+    const effectiveTotalExpr = {
+      $max: [
+        { $ifNull: ['$totalNotes', 0] },
+        { $ceil: { $divide: [{ $ifNull: ['$capital', 0] }, this.baseUnitPrice] } },
+      ],
+    };
+    const incPayload = directReserve
+      ? { nodeMatch: numNotes }
+      : {
+          investedNotes: numNotes,
+          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
+        };
+
+    this.logger.log(
+      `${LOG}    Atomic update loan: ${
+        directReserve
+          ? `reserve nodeMatch += ${numNotes}`
+          : `investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`
+      }`,
+    );
     const updateResult = await this.loanModel.findOneAndUpdate(
       {
         _id: loanApplicationId,
         $expr: {
-          $gte: ['$totalNotes', { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }],
+          $gte: [effectiveTotalExpr, roomExpr],
         },
       },
-      {
-        $inc: {
-          investedNotes: numNotes,
-          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
-        },
-      },
+      { $inc: incPayload },
       { new: true },
     );
 
     if (!updateResult) {
-      this.logger.error(`${LOG} ❌ Atomic update FAILED — race condition hoặc hết room`);
-      throw new BadRequestException('Lỗi hệ thống: Khoản vay đã hết room khả dụng (race condition). Vui lòng thử lại.');
+      // Atomic update fail = thực tế đã hết room (không đủ totalNotes để cùng lúc
+      // chứa invested + nodeMatch + numNotes mới). Có thể do lệnh đầu tư khác vừa
+      // ghép trước, hoặc danh sách FE đang stale. Đọc lại loan để cho user thông tin rõ.
+      const fresh = await this.loanModel.findById(loanApplicationId).lean();
+      const total = (fresh as any)?.totalNotes ?? Math.ceil(((fresh as any)?.capital ?? 0) / this.baseUnitPrice);
+      const invested = (fresh as any)?.investedNotes ?? 0;
+      const nodeM = (fresh as any)?.nodeMatch ?? 0;
+      const remaining = Math.max(0, total - invested - nodeM);
+      this.logger.error(
+        `${LOG} ❌ Atomic update FAILED — tình trạng khoản vay: total=${total}, invested=${invested}, nodeMatch=${nodeM}, remaining=${remaining}, requested=${numNotes}`,
+      );
+      throw new BadRequestException(
+        remaining <= 0
+          ? `Khoản vay này đã được giữ chỗ đầy đủ bởi nhà đầu tư khác. Vui lòng làm mới danh sách và chọn khoản vay khác.`
+          : `Chỉ còn ${remaining} notes khả dụng (bạn yêu cầu ${numNotes}). Vui lòng giảm số lượng hoặc làm mới danh sách.`,
+      );
     }
 
     // After atomic increment, update derived fields
@@ -337,6 +397,7 @@ export class InvestmentContractService {
 
     this.logger.log(
       `${LOG}    Loan ${loanApplicationId} updated: investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
+        `nodeMatch ${nodeMatchSoFar}->${(updateResult as any).nodeMatch || 0}, ` +
         `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
         `${isFullMatch ? ' 🎯 (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
     );
@@ -382,7 +443,17 @@ export class InvestmentContractService {
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
 
-    const filters: Record<string, any> = { lenderId: new Types.ObjectId(lenderId) };
+    // Chỉ trả về hợp đồng từ ĐẦU TƯ TRỰC TIẾP vào khoản vay đang mở (cần ký SmartCA).
+    // Loại trừ contract auto-tạo từ order matching ("đặt lệnh") — theo yêu cầu UX:
+    // lệnh đầu tư chỉ rót tiền, không hiển thị như hợp đồng cần quản lý.
+    const filters: Record<string, any> = {
+      lenderId: new Types.ObjectId(lenderId),
+      $or: [
+        { investmentOrderId: { $exists: false } },
+        { investmentOrderId: null },
+      ],
+      signatureProvider: { $ne: 'order_matching_skip' },
+    };
     if (query.status) filters.status = query.status;
 
     const [contracts, totalCount] = await Promise.all([
@@ -406,19 +477,28 @@ export class InvestmentContractService {
   }
 
   async getContractById(contractId: string, lenderId: string): Promise<InvestmentContract> {
-    const query = Types.ObjectId.isValid(contractId)
-      ? { $or: [{ _id: contractId }, { contractId: contractId }] }
-      : { contractId: contractId };
+    const orFilters: any[] = [{ contractId: contractId }];
+    if (Types.ObjectId.isValid(contractId)) {
+      orFilters.push({ _id: new Types.ObjectId(contractId) });
+    }
 
+    // Lookup không lọc lenderId trước để phân biệt "không tồn tại" vs "không thuộc user"
     const contract = await this.contractModel
-      .findOne({
-        ...query,
-        lenderId: new Types.ObjectId(lenderId),
-      })
+      .findOne({ $or: orFilters })
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status disbursementDate')
       .exec();
 
-    if (!contract) throw new NotFoundException('Không tìm thấy hợp đồng đầu tư');
+    if (!contract) {
+      this.logger.warn(`[getContractById] Không tìm thấy hợp đồng với id/contractId=${contractId}`);
+      throw new NotFoundException('Không tìm thấy hợp đồng đầu tư');
+    }
+
+    if (String((contract as any).lenderId) !== String(lenderId)) {
+      this.logger.warn(
+        `[getContractById] Hợp đồng ${contractId} không thuộc về user ${lenderId} (lender thực: ${(contract as any).lenderId})`,
+      );
+      throw new NotFoundException('Hợp đồng không thuộc về tài khoản của bạn');
+    }
     return contract;
   }
 
@@ -470,28 +550,43 @@ export class InvestmentContractService {
     const loan = await this.loanModel.findById(loanApplicationId);
     if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
 
-    // Check available (must consider BOTH nodeMatch and investedNotes)
-    const totalLoanNotes = Math.ceil(loan.capital / this.baseUnitPrice);
-    const investedSoFar = (loan as any).investedNotes || 0;
-    const nodeMatchSoFar = (loan as any).nodeMatch || 0;
-
-    let effectiveNodeMatch = nodeMatchSoFar;
+    // Khi xem lại lịch nhận tiền của một lệnh đầu tư đã ghép (readonly view ở mobile),
+    // số nodes đã được "giữ chỗ" tại thời điểm khớp lệnh. Không cần (và không được)
+    // kiểm tra lại availability — vì sau khi giải ngân nodeMatch của loan có thể đã
+    // được chuyển sang investedNotes của các nhà đầu tư khác. Lúc đó availableNotes ~ 0
+    // và sẽ throw 400 chặn người dùng xem chi tiết lệnh đã đặt.
     if (investmentOrderId) {
       const order = await this.orderModel.findById(investmentOrderId);
-      if (order) {
-        const matchedLoan = order.loans?.find((l: any) => String(l.loanId) === String(loan._id));
-        const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
-        effectiveNodeMatch = Math.max(0, nodeMatchSoFar - Math.min(orderMatchedNodes, numNotes));
+      const matchedLoan = order?.loans?.find((l: any) => String(l.loanId) === String(loan._id));
+      const orderMatchedNodes = matchedLoan?.nodeMatch || 0;
+      if (orderMatchedNodes <= 0) {
+        throw new BadRequestException('Lệnh đầu tư không có khoản vay này trong danh sách đã ghép.');
       }
-    }
-
-    console.log(
-      `[getSchedulePreview calc] invOrdId=${investmentOrderId}, nodeMatchSoFar=${nodeMatchSoFar}, effectiveNodeMatch=${effectiveNodeMatch}, availableNotes=${totalLoanNotes - investedSoFar - effectiveNodeMatch}, numNotes=${numNotes}`,
-    );
-
-    const availableNotes = totalLoanNotes - investedSoFar - effectiveNodeMatch;
-    if (numNotes > availableNotes) {
-      throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
+      // Force numNotes về đúng số đã giữ trong lệnh — caller có thể truyền sai.
+      numNotes = orderMatchedNodes;
+      console.log(
+        `[getSchedulePreview readonly] invOrdId=${investmentOrderId}, loanId=${loan._id}, orderMatchedNodes=${orderMatchedNodes}`,
+      );
+    } else {
+      // Đầu tư trực tiếp vào khoản vay đang mở: phải kiểm tra availability
+      // Lưu ý: một số loan cũ trong DB có totalNotes=0 (legacy data) — phải fallback
+      // sang ceil(capital/baseUnitPrice) và tự self-heal field này để tránh false race-condition.
+      const storedTotal = (loan as any).totalNotes || 0;
+      const computedTotal = Math.ceil(Number(loan.capital || 0) / this.baseUnitPrice);
+      const totalLoanNotes = Math.max(storedTotal, computedTotal);
+      const investedSoFar = (loan as any).investedNotes || 0;
+      const nodeMatchSoFar = (loan as any).nodeMatch || 0;
+      const availableNotes = totalLoanNotes - investedSoFar - nodeMatchSoFar;
+      console.log(
+        `[getSchedulePreview direct] loanId=${loan._id}, storedTotal=${storedTotal}, computedTotal=${computedTotal}, total=${totalLoanNotes}, invested=${investedSoFar}, nodeMatch=${nodeMatchSoFar}, available=${availableNotes}, numNotes=${numNotes}`,
+      );
+      if (numNotes > availableNotes) {
+        throw new BadRequestException(`Chỉ còn ${availableNotes} notes khả dụng (yêu cầu ${numNotes})`);
+      }
+      // Self-heal: nếu DB dính totalNotes=0 thì set lại bằng computedTotal
+      if (storedTotal !== computedTotal) {
+        await this.loanModel.updateOne({ _id: loan._id }, { $set: { totalNotes: computedTotal } });
+      }
     }
 
     const capital = numNotes * this.baseUnitPrice;

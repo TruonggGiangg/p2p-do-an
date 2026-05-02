@@ -29,6 +29,9 @@ export default function LoginPage() {
         return;
       }
       localStorage.setItem('admin_access_token', res.data.accessToken);
+      if ((res.data as any).refreshToken) {
+        localStorage.setItem('admin_refresh_token', (res.data as any).refreshToken);
+      }
       localStorage.setItem('admin_user', JSON.stringify(data));
 
       // Fetch real permissions from server, fallback to role-based

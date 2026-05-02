@@ -85,7 +85,8 @@ export class User extends Document {
   @Prop({
     type: {
       pd: { type: Number }, // Probability of Default (0.0 - 1.0)
-      creditScore: { type: Number }, // 300-850 (= 300 + (1-PD)*550)
+      creditScore: { type: Number }, // 150-750 (raw AI model output, dùng làm input cho lần chấm sau)
+      evaluationScore: { type: Number }, // 0-100 (mapped từ creditScore để hiển thị)
       grade: { type: String }, // A-G
       subGrade: { type: String }, // A1-G5
       tier: { type: String }, // Platinum | Gold | Silver | Basic
@@ -98,6 +99,7 @@ export class User extends Document {
   creditProfile?: {
     pd: number;
     creditScore: number;
+    evaluationScore?: number;
     grade: string;
     subGrade: string;
     tier: string;

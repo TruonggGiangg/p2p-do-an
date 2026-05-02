@@ -153,8 +153,33 @@ export class InvestPaymentService {
     this.logger.log(`${LOG} ✅ Loan OK: id=${loan._id}, capital=${(loan.capital || 0).toLocaleString()}, status=${loan.status}, productId=${loan.productId}, period=${loan.periodMonth}m, rate=${loan.monthlyRatePercent}%/tháng`);
     this.logger.log(`${LOG}    Loan state: investedNotes=${(loan as any).investedNotes || 0}, nodeMatch=${(loan as any).nodeMatch || 0}, totalNotes=${(loan as any).totalNotes || 'N/A'}`);
 
-    // ── 3. Check duplicate investment (DISABLED BY BUSINESS RULE) ──
-    // Người dùng được quyền phân bổ vốn nhiều lần vào một khoản vay nếu muốn
+    // ── 3. Direct-invest guard ──
+    // Nếu KHÔNG truyền investmentOrderId (luồng "đầu tư trực tiếp" từ tab Invest),
+    // phải đảm bảo NĐT KHÔNG có lệnh đặt sẵn (open) đã match khoản vay này.
+    // Trùng 2 luồng = double-reserve nodeMatch → loan vượt 100% match. Block lại,
+    // yêu cầu NĐT thanh toán qua lệnh đã đặt ở tab "Lệnh đầu tư".
+    if (!investmentOrderId) {
+      const conflictingOrder = await this.orderModel
+        .findOne({
+          lenderId: new Types.ObjectId(lenderId),
+          status: 'open',
+          'loans.loanId': String(loan._id),
+        } as any)
+        .select('_id loans')
+        .lean();
+      if (conflictingOrder) {
+        const matched = (conflictingOrder as any).loans?.find(
+          (l: any) => String(l.loanId) === String(loan._id),
+        );
+        const matchedNodes = matched?.nodeMatch || 0;
+        this.logger.warn(
+          `${LOG} ❌ Direct-invest bị chặn: lender ${lenderId} đã có lệnh ${conflictingOrder._id} match ${matchedNodes} nodes vào loan này.`,
+        );
+        throw new BadRequestException(
+          `Bạn đã có lệnh đầu tư đang khớp khoản vay này (${matchedNodes} nodes). Vui lòng thanh toán qua tab "Lệnh đầu tư" thay vì đầu tư trực tiếp.`,
+        );
+      }
+    }
 
     // ── 4. Check available notes (must consider BOTH nodeMatch and investedNotes) ──
     this.logger.log(`${LOG} [Step 4/10] Checking available notes...`);
@@ -214,7 +239,22 @@ export class InvestPaymentService {
       numNotes,
       investmentOrderId,
     );
-    this.logger.log(`${LOG} ✅ Contract created: contractId=${contract.contractId}, _id=${contract._id}, capital=${investAmount.toLocaleString()} VND`);
+    this.logger.log(`${LOG} ✅ Contract created: contractId=${contract.contractId}, _id=${contract._id}, capital=${investAmount.toLocaleString()} VND, status=${contract.status}`);
+
+    // ── 6.5 GATE: Direct invest cần ký SmartCA TRƯỚC khi trừ tiền ──
+    // Hợp đồng từ order matching: status='active' + smartCASignatureVerified=true → tiếp tục step 7-10 ngay.
+    // Hợp đồng đầu tư trực tiếp: status='pending_signature' → DỪNG ở đây, KHÔNG trừ tiền.
+    // Sau khi NĐT ký SmartCA xong, smartca.controller sẽ gọi finalizeInvestmentAfterSigning() để hoàn tất.
+    if (contract.status === 'pending_signature') {
+      this.logger.log(
+        `${LOG} ⏸️  PAUSED for SmartCA signing — contract ${contract.contractId} đang chờ NĐT ký số.\n` +
+          `${LOG}    Sẽ tự động trừ tiền + tạo FD sau khi ký xong qua hook updateContractSigned.`,
+      );
+      this.logger.log(`${LOG} ════════════════════════════════════════════`);
+      // Tra contract da giu cho (createContract chi reserve nodeMatch, chua cong investedNotes).
+      // Mobile sẽ chuyển sang InvestmentContractDetail để hiển thị form + SmartCA modal.
+      return contract;
+    }
 
     // Track payment status for this contract
     let transferSuccess = false;
@@ -287,6 +327,7 @@ export class InvestPaymentService {
           investAmount,
           loan.periodMonth,
           externalId,
+          eWallet.id,
         );
 
         this.logger.log(`${LOG} ✅ FD CREATED: accountId=${fdResult.accountId}, accountNo=${fdResult.accountNo}, status=${fdResult.status}`);
@@ -390,6 +431,265 @@ export class InvestPaymentService {
   }
 
   // ═══════════════════════════════════════════════════════
+  //  FINALIZE AFTER SMARTCA SIGNING (gọi từ smartca.controller)
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Hoàn tất luồng đầu tư SAU KHI NĐT đã ký SmartCA xong:
+   * 1. Trừ tiền ví lender (Fineract withdraw)
+   * 2. Tạo Fixed Deposit (FD) trên Fineract
+   * 3. Check full match → trigger auto-disbursement nếu đủ vốn
+   *
+   * Idempotent: nếu contract đã có paymentStatus='completed' hoặc fineractFDAccountId thì bỏ qua.
+   * Non-throw: chỉ log error, không throw để không làm fail bước ký số.
+   */
+  async finalizeInvestmentAfterSigning(contractId: string | Types.ObjectId): Promise<void> {
+    const LOG = '[finalizeInvestment]';
+    this.logger.log(`${LOG} ── Bắt đầu finalize sau ký SmartCA ──`);
+    this.logger.log(`${LOG} contractId=${contractId}`);
+
+    const contract: any = await this.contractModel.findById(contractId);
+    if (!contract) {
+      this.logger.error(`${LOG} Contract not found: ${contractId}`);
+      throw new BadRequestException('Khong tim thay hop dong dau tu de finalize.');
+    }
+
+    // Idempotency: tránh chạy 2 lần (nếu user ký lại hoặc retry)
+    if (contract.paymentStatus === 'completed' && contract.fineractFDAccountId) {
+      this.logger.log(`${LOG} ✅ Contract ${contract.contractId} đã được finalize trước đó, bỏ qua.`);
+      return;
+    }
+    if (contract.fineractFDAccountId) {
+      this.logger.log(`${LOG} Contract already has FD ${contract.fineractFDAccountId} but is not completed/active.`);
+      throw new BadRequestException('Hop dong da co FD nhung chua active/completed. Can doi soat thu cong.');
+    }
+
+    const lenderId = String(contract.lenderId);
+    const loanApplicationId = String(contract.loanApplicationId);
+    const numNotes = contract.numNotes;
+    const investAmount = contract.capital;
+
+    this.logger.log(
+      `${LOG} contract=${contract.contractId} lender=${lenderId} loan=${loanApplicationId} ` +
+        `notes=${numNotes} amount=${investAmount.toLocaleString()} VND`,
+    );
+
+    // Lấy lender + loan
+    const lender = await this.userModel
+      .findById(lenderId)
+      .select('fineractClientId fullName')
+      .lean();
+    if (!lender || !lender.fineractClientId) {
+      this.logger.error(`${LOG} ❌ Lender ${lenderId} không có fineractClientId — không thể trừ tiền.`);
+      throw new BadRequestException('Lender chua lien ket Fineract. Khong the tru tien.');
+    }
+    const loan = await this.loanModel.findById(loanApplicationId).lean();
+    if (!loan) {
+      this.logger.error(`${LOG} ❌ Loan ${loanApplicationId} không tồn tại.`);
+      throw new BadRequestException('Khoan vay khong ton tai.');
+    }
+
+    const lenderClientId = Number(lender.fineractClientId);
+    const eWallet = await this.fineractService.getActiveEWalletAccount(lenderClientId);
+    if (!eWallet) {
+      this.logger.error(`${LOG} ❌ Lender chưa có ví e-wallet active trên Fineract`);
+      await this.contractModel.updateOne(
+        { _id: contract._id },
+        { $set: { paymentStatus: 'transfer_failed', paymentError: 'Lender chưa có ví Fineract' } },
+      );
+      throw new BadRequestException('Lender chua co vi e-wallet active tren Fineract.');
+    }
+
+    const walletBalance = eWallet.summary?.accountBalance || 0;
+    this.logger.log(
+      `${LOG} Wallet: balance=${walletBalance.toLocaleString()} VND, required=${investAmount.toLocaleString()} VND`,
+    );
+    if (walletBalance < investAmount) {
+      this.logger.error(
+        `${LOG} ❌ Số dư ví không đủ tại thời điểm finalize: cần ${investAmount.toLocaleString()}, có ${walletBalance.toLocaleString()}`,
+      );
+      await this.contractModel.updateOne(
+        { _id: contract._id },
+        {
+          $set: {
+            paymentStatus: 'transfer_failed',
+            paymentError: `Số dư không đủ: cần ${investAmount.toLocaleString()} VND, có ${walletBalance.toLocaleString()} VND`,
+          },
+        },
+      );
+      // KHÔNG rollback notes ở đây vì NĐT đã ký hợp đồng — để admin xử lý sau
+      throw new BadRequestException('So du vi khong du tai thoi diem finalize sau ky SmartCA.');
+    }
+
+    // Step 1: Trừ tiền
+    let transferSuccess = false;
+    let transferError: string | null = null;
+    try {
+      this.logger.log(`${LOG} 💸 Withdraw: walletId=${eWallet.id}, amount=${investAmount.toLocaleString()}`);
+      const withdrawResult = await this.fineractService.withdrawFromSavings(
+        eWallet.id,
+        investAmount,
+        `Đầu tư P2P - HĐ ${contract.contractId}`,
+      );
+      transferSuccess = true;
+      this.logger.log(
+        `${LOG} ✅ Withdraw OK: txnId=${withdrawResult?.transactionId || 'N/A'}`,
+      );
+    } catch (error: any) {
+      transferError = error?.message || 'Unknown';
+      const detail = error?.response?.data ? JSON.stringify(error.response.data) : transferError;
+      this.logger.error(`${LOG} ❌ Withdraw FAILED: ${detail}`);
+      await this.contractModel.updateOne(
+        { _id: contract._id },
+        { $set: { paymentStatus: 'transfer_failed', paymentError: transferError } },
+      );
+      // Không rollback notes — đã ký hợp đồng, để admin xử lý
+      throw new BadRequestException(`Khong the tru tien tu vi sau khi ky SmartCA: ${transferError}`);
+    }
+
+    // Step 2: Tạo FD (non-blocking — nếu fail vẫn tiếp tục vì tiền đã trừ rồi)
+    let fdSuccess = false;
+    let fdError: string | null = null;
+    try {
+      const fdProductId = await this.fineractService.resolveFDProductFromLoanProduct(loan.productId);
+      if (fdProductId) {
+        const externalId = `FD_${contract.contractId}`;
+        const fdResult = await this.fineractService.createFixedDeposit(
+          lenderClientId,
+          fdProductId,
+          investAmount,
+          loan.periodMonth,
+          externalId,
+          eWallet.id,
+        );
+        let fdAnnualRate = 0;
+        try {
+          const fdDetails = await this.fineractService.getFixedDepositDetails(fdResult.accountId);
+          fdAnnualRate = fdDetails.interestRate || 0;
+        } catch {
+          fdAnnualRate = (loan.monthlyRatePercent || 0) * 12;
+        }
+        await this.contractModel.findByIdAndUpdate(contract._id, {
+          $set: {
+            fineractFDAccountId: fdResult.accountId,
+            fineractFDAccountNo: fdResult.accountNo,
+            fineractFDProductId: fdProductId,
+            fdInterestRate: fdAnnualRate,
+            fdStatus: 'active',
+          },
+        });
+        fdSuccess = true;
+        this.logger.log(
+          `${LOG} ✅ FD created: accountId=${fdResult.accountId}, rate=${fdAnnualRate}%/năm`,
+        );
+      } else {
+        fdError = `No FD product matching loan product ${loan.productId}`;
+        this.logger.warn(`${LOG} ⚠️ ${fdError}`);
+      }
+    } catch (error: any) {
+      fdError = error?.message || 'Unknown';
+      this.logger.error(`${LOG} ❌ FD creation FAILED: ${fdError} — tiền đã trừ thành công, contract vẫn sẽ active. Admin xử lý FD sau.`);
+    }
+
+    // Step 3: Update payment status — KHÔNG throw nếu FD fail. Tiền đã trừ thành công,
+    // contract đã được ký, phải convert nodeMatch → investedNotes để tiến độ vốn chính xác.
+    const paymentStatus =
+      transferSuccess && fdSuccess
+        ? 'completed'
+        : transferSuccess
+          ? 'partial_fd_failed'
+          : 'transfer_failed';
+    await this.contractModel.findByIdAndUpdate(contract._id, {
+      $set: {
+        paymentStatus,
+        status: 'active', // Đã ký + trừ tiền thành công → contract active bất kể FD
+        ...(paymentStatus !== 'completed'
+          ? { paymentError: transferError || fdError || 'Unknown error' }
+          : { paymentError: null }),
+      },
+    });
+    if (paymentStatus === 'partial_fd_failed') {
+      this.logger.warn(
+        `${LOG} ⚠️ Contract ${contract.contractId} active nhưng FD chưa tạo (${fdError}). Admin retry sau.`,
+      );
+    }
+
+    // Convert reserved direct-investment notes into real funded notes only after withdraw + FD succeed.
+    const fundedLoan: any = await this.loanModel.findOneAndUpdate(
+      {
+        _id: loanApplicationId,
+        nodeMatch: { $gte: numNotes },
+        $expr: {
+          $gte: ['$totalNotes', { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }],
+        },
+      },
+      { $inc: { investedNotes: numNotes, nodeMatch: -numNotes } },
+      { new: true },
+    );
+
+    if (!fundedLoan) {
+      await this.contractModel.updateOne(
+        { _id: contract._id },
+        {
+          $set: {
+            paymentStatus: 'transfer_failed',
+            paymentError: 'Da tru tien va tao FD nhung khong the chuyen reservation thanh investedNotes. Can doi soat thu cong.',
+          },
+        },
+      );
+      throw new BadRequestException('Khong the chuyen reservation thanh investedNotes sau khi ky SmartCA.');
+    }
+
+    const totalClaimed = Number(fundedLoan.investedNotes || 0) + Number(fundedLoan.nodeMatch || 0);
+    const matchPercentage = Math.min(100, Math.round((totalClaimed / Number(fundedLoan.totalNotes || 1)) * 100));
+    const fundedIsFullMatch = Number(fundedLoan.investedNotes || 0) >= Number(fundedLoan.totalNotes || 1);
+
+    await this.loanModel.updateOne(
+      { _id: loanApplicationId },
+      { $set: { isFullMatch: fundedIsFullMatch, matchPercentage } },
+    );
+
+    await this.contractModel.updateOne(
+      { _id: contract._id },
+      { $set: { status: 'active' } },
+    );
+
+    this.logger.log(
+      `${LOG} Funding confirmed: investedNotes=${fundedLoan.investedNotes}/${fundedLoan.totalNotes}, nodeMatch=${fundedLoan.nodeMatch || 0}, matchPercentage=${matchPercentage}%`,
+    );
+
+    // Step 4: Check full match → trigger auto-disbursement
+    try {
+      const updatedLoan: any = await this.loanModel.findById(loanApplicationId).lean();
+      const isFullMatch = updatedLoan?.isFullMatch || false;
+      this.logger.log(
+        `${LOG} Loan ${loanApplicationId}: isFullMatch=${isFullMatch}, investedNotes=${updatedLoan?.investedNotes}/${updatedLoan?.totalNotes}`,
+      );
+      if (isFullMatch) {
+        const borrowerContract = await this.getLoanContractByLoanId(loanApplicationId);
+        if (borrowerContract) {
+          const smartCAVerified = await this.isSmartCASignatureVerified(borrowerContract);
+          const contractSigned = ['signed', 'active'].includes(String(borrowerContract.status || ''));
+          if (contractSigned && smartCAVerified) {
+            this.logger.log(`${LOG} 🚀 Triggering auto-disbursement...`);
+            this.handleFullMatchDisbursement(loanApplicationId, lenderId).catch(err => {
+              this.logger.error(`${LOG} ❌ Auto-disbursement failed: ${err.message}`);
+            });
+          } else {
+            await this.notifyBorrowerToSignSmartCA(borrowerContract, loanApplicationId);
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`${LOG} Full match check failed: ${err.message}`);
+    }
+
+    this.logger.log(
+      `${LOG} 🏁 Finalize done: contract=${contract.contractId}, transfer=${transferSuccess ? '✅' : '❌'}, fd=${fdSuccess ? '✅' : '❌'}, paymentStatus=${paymentStatus}`,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
   //  LENDER BALANCE
   // ═══════════════════════════════════════════════════════
 
@@ -410,10 +710,10 @@ export class InvestPaymentService {
     const eWallet = await this.fineractService.getActiveEWalletAccount(lenderClientId);
     const walletBalance = eWallet?.summary?.accountBalance || 0;
 
-    // Total invested = sum of active contract capitals
+    // Total invested = only money-backed active contracts.
     const activeContracts = await this.contractModel.find({
       lenderId: new Types.ObjectId(lenderId),
-      status: { $in: ['pending', 'pending_signature', 'active'] },
+      status: { $in: ['active', 'matured', 'closed'] },
     });
     const totalInvested = activeContracts.reduce((sum, c) => sum + c.capital, 0);
 
@@ -493,6 +793,58 @@ export class InvestPaymentService {
         await this.notifyBorrowerToSignSmartCA(borrowerContract, loanApplicationId);
         return;
       }
+
+      // ── Gate: TẤT CẢ hợp đồng đầu tư phải được nhà đầu tư ký SmartCA (status=active + smartCASignatureVerified) ──
+      // Hợp đồng tạo từ order matching tự gán smartCASignatureVerified=true (provider=order_matching_skip);
+      // Hợp đồng đầu tư trực tiếp phải ký SmartCA mới được giải ngân.
+      const investmentContractsCheck = await this.contractModel
+        .find({ loanApplicationId: new Types.ObjectId(loanApplicationId) })
+        .select('_id status smartCASignatureVerified signatureProvider lenderId')
+        .lean();
+
+      const totalInvestmentContracts = investmentContractsCheck.length;
+      const unsignedInvestmentContracts = investmentContractsCheck.filter(
+        (c: any) => c.smartCASignatureVerified !== true || !['active', 'signed'].includes(String(c.status || '')),
+      );
+
+      if (totalInvestmentContracts === 0) {
+        this.logger.warn(
+          `${logPrefix} Loan ${loanApplicationId} chưa có hợp đồng đầu tư nào, không thể giải ngân.`,
+        );
+        return;
+      }
+
+      if (unsignedInvestmentContracts.length > 0) {
+        this.logger.warn(
+          `${logPrefix} Loan ${loanApplicationId} còn ${unsignedInvestmentContracts.length}/${totalInvestmentContracts} hợp đồng đầu tư chưa ký SmartCA. ` +
+            `Pending lenders: ${unsignedInvestmentContracts.map((c: any) => String(c.lenderId)).join(', ')}. Không disburse.`,
+        );
+
+        // Gửi thông báo cho từng nhà đầu tư còn pending
+        try {
+          const notifModel: any = this.loanModel.db.model('Notification');
+          await Promise.all(
+            unsignedInvestmentContracts.map((c: any) =>
+              notifModel.create({
+                userId: c.lenderId,
+                title: 'Yêu cầu ký SmartCA hợp đồng đầu tư',
+                message:
+                  'Khoản vay đã đủ vốn và người vay đã ký. Vui lòng ký SmartCA hợp đồng đầu tư của bạn để hệ thống tiến hành giải ngân.',
+                type: 'investment_contract_pending_signature',
+                metadata: { loanApplicationId, investmentContractId: c._id },
+                isRead: false,
+              }),
+            ),
+          );
+        } catch (notifErr: any) {
+          this.logger.warn(`${logPrefix} Notify investors failed (non-blocking): ${notifErr.message}`);
+        }
+        return;
+      }
+
+      this.logger.log(
+        `${logPrefix} ✅ Tất cả ${totalInvestmentContracts} hợp đồng đầu tư đã ký SmartCA. Tiến hành giải ngân.`,
+      );
 
       // ── Step 1: Approve loan trên Fineract ──
       try {
@@ -579,6 +931,7 @@ export class InvestPaymentService {
         {
           loanApplicationId: new Types.ObjectId(loanApplicationId),
           status: { $in: ['pending', 'pending_signature'] },
+          paymentStatus: { $in: ['completed', 'partial_fd_failed'] },
         },
         {
           $set: { status: 'active' },

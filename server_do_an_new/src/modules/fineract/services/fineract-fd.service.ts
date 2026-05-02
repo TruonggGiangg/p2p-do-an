@@ -188,11 +188,16 @@ export class FineractFDService extends FineractBaseService {
     depositAmount: number,
     periodMonths: number,
     externalId?: string,
+    _linkedAccountId?: number, // deprecated — giữ để tương thích ngược, không sử dụng
   ): Promise<FDAccountResult> {
     this.fdLogger.log(
-      `Creating FD: client=${clientId}, product=${productId}, amount=${depositAmount}, period=${periodMonths}m`,
+      `Creating FD (standalone escrow): client=${clientId}, product=${productId}, amount=${depositAmount}, period=${periodMonths}m`,
     );
 
+    // FD đứng một mình như escrow. Không link savings, không transfer interest — tiền + lãi
+    // đều tích trong FD cho đến khi maturity hoặc giải ngân. Để tránh lỗi
+    // "Unknown data integrity issue with savings account" do Fineract reject linkAccountId
+    // khi savings và FD product không khớp currency/role.
     const payload: Record<string, any> = {
       clientId,
       productId,
@@ -202,6 +207,7 @@ export class FineractFDService extends FineractBaseService {
       depositPeriodFrequencyId: 2, // Months
       locale: 'en',
       dateFormat: 'dd MMMM yyyy',
+      transferInterestToSavings: false,
     };
 
     if (externalId) {

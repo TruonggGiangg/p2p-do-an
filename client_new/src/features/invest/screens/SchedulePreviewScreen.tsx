@@ -96,6 +96,10 @@ export default function SchedulePreviewScreen() {
             numNotes,
             investmentOrderId,
           });
+          if (String((contract as any)?.status || '') === 'pending_signature') {
+            navigation.replace('InvestmentContractDetail', { contractId: contract._id, autoSign: true });
+            return;
+          }
           modal.success('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, () => {
             navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
           });

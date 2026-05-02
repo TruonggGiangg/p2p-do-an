@@ -48,7 +48,7 @@ export class AuthService {
   /**
    * Refresh access token using refresh token
    */
-  async refreshToken(token: string, res: Response): Promise<{ accessToken: string } & UserPayload> {
+  async refreshToken(token: string, res: Response): Promise<{ accessToken: string; refreshToken: string } & UserPayload> {
     if (!token) {
       throw new UnauthorizedException('Token không hợp lệ');
     }
@@ -86,6 +86,7 @@ export class AuthService {
 
     return {
       accessToken,
+      refreshToken: newRefreshToken,
       ...payload,
     };
   }

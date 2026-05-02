@@ -201,7 +201,18 @@ export class LoanApplication extends Document {
       tier: { type: String }, // Platinum | Gold | Silver | Basic
       decision: { type: String }, // APPROVE | REVIEW | REJECT
       riskLevel: { type: String }, // LOW | MEDIUM | HIGH | VERY_HIGH
-      riskFactors: { type: [Object] }, // Danh sách yếu tố rủi ro
+      riskFactors: { type: [Object] }, // Danh sách yếu tố rủi ro (rule-based negatives)
+      positiveFactors: { type: [String] }, // Điểm mạnh hồ sơ (rule-based positives)
+      decisionExplanation: { type: String }, // Diễn giải quyết định cho UI
+      modelDecision: { type: String }, // approve | manual_review | reject_or_strict_review (theo model)
+      modelRiskLevel: { type: String }, // Very low/low/medium/high/Very high risk
+      configVersion: { type: Number },
+      autoRejectScore: { type: Number },
+      autoApproveScore: { type: Number },
+      maxLoanAmount: { type: Number },
+      baseInterestRate: { type: Number },
+      amountWithinGradeLimit: { type: Boolean },
+      featuresResolved: { type: Object }, // 13 features đã được model dùng (đã chuẩn hoá)
       scoredAt: { type: Date }, // Thời điểm chấm điểm
     },
     _id: false,
@@ -216,8 +227,31 @@ export class LoanApplication extends Document {
     decision: string;
     riskLevel: string;
     riskFactors: Array<Record<string, any>>;
+    positiveFactors?: string[];
+    decisionExplanation?: string;
+    modelDecision?: string;
+    modelRiskLevel?: string;
+    configVersion?: number;
+    autoRejectScore?: number;
+    autoApproveScore?: number;
+    maxLoanAmount?: number | null;
+    baseInterestRate?: number | null;
+    amountWithinGradeLimit?: boolean;
+    featuresResolved?: Record<string, any>;
     scoredAt: Date;
   };
+
+  /** Thời điểm khoản vay bị từ chối (manual hoặc AI auto-reject) */
+  @Prop({ required: false })
+  rejectedAt?: Date;
+
+  /** Lý do từ chối (decisionExplanation từ AI hoặc note do admin nhập) */
+  @Prop({ required: false })
+  rejectionReason?: string;
+
+  /** Ai/cái gì từ chối: 'AI_AUTO' | 'ADMIN' | userId admin */
+  @Prop({ required: false })
+  rejectedBy?: string;
 
   @Prop({ type: [Object], default: [] })
   repaymentHistory: Array<{

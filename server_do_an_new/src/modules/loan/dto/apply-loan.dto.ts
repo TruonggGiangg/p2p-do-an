@@ -68,4 +68,19 @@ export class ApplyLoanDto {
   @IsOptional()
   @IsString()
   otpSessionId?: string;
+
+  // ── AI Scoring inputs (bắt buộc cho models_final) ──
+
+  @ApiProperty({ description: 'Thu nhập hàng tháng của người vay (VND)' })
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  personIncome: number;
+
+  @ApiProperty({ description: 'Số năm kinh nghiệm làm việc' })
+  @IsNumber()
+  @Min(0)
+  @Max(60)
+  @Type(() => Number)
+  personEmpExp: number;
 }

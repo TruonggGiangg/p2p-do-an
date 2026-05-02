@@ -12,7 +12,7 @@ import { Role } from './schemas/role.schema';
 import { Permission } from './schemas/permission.schema';
 
 /** All known actions (mirrors actions.enum.ts) */
-export const ALL_ACTIONS = ['manage', 'create', 'read', 'update', 'delete', 'approve', 'disburse'] as const;
+export const ALL_ACTIONS = ['manage', 'create', 'read', 'update', 'delete', 'approve', 'disburse', 'reject'] as const;
 
 /** All known subjects (mirrors subjects.ts) */
 export const ALL_SUBJECTS = [

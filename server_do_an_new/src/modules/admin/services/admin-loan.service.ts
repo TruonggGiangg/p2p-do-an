@@ -29,6 +29,7 @@ import { Wallet } from '../../wallets/schemas/wallet.schema';
 import { Notification } from '../../loan/schemas/notification.schema';
 import { LoanContract } from '../../loan/schemas/loan-contract.schema';
 import { ContractService } from '../../loan/contract.service';
+import { LoanService } from '../../loan/loan.service';
 import { DocumentType } from '../schemas/document-type.schema';
 import { ConfigService } from '@nestjs/config';
 import { CreditScoreService } from '../../credit-score/credit-score.service';
@@ -44,6 +45,7 @@ import { CreditScoreWeightConfigInput, CreditScoreWeightConfigValue } from '../.
 import { AdminProductService } from '../services/admin-product.service';
 import { AdminKycService } from '../services/admin-kyc.service';
 import { AdminStaffService } from '../services/admin-staff.service';
+import { resolveAiscoreVndPerUsd } from '../../../utils/aiscore-exchange-rate';
 
 /** officeId=1 = Head Office in default Fineract setup */
 const HEAD_OFFICE_ID = 1;
@@ -256,67 +258,11 @@ export class AdminLoanService {
       const unscoredLoans = mongoLoans.filter((l: any) => l.fineractLoanId && !l.aiScore);
       if (unscoredLoans.length > 0) {
         this.logger.log(`[getAllPendingLoans] Retroactive AI scoring for ${unscoredLoans.length} un-scored loans`);
-        await Promise.allSettled(
-          unscoredLoans.map(async (loan: any) => {
-            try {
-              const loanCapital = loan.capital ?? 0;
-              if (loanCapital <= 0) return; // skip invalid loans
-              const user = mongoUsers.find((u: any) => u._id?.toString() === loan.userId?.toString());
-              const rawCic = user?.creditProfile?.creditScore ?? 570;
-              const cicScore = Math.max(150, Math.min(750, rawCic));
-              const { default: axios } = await import('axios');
-              const scoreResponse = await axios.post(
-                `${aiscoreConfig.serviceUrl}/api/score`,
-                {
-                  credit_score: cicScore,
-                  loanAmount: loanCapital,
-                  monthly_income: 10_000_000,
-                  monthly_pay: loan.monthlyPay ?? 0,
-                  periodMonth: loan.periodMonth ?? 12,
-                },
-                { timeout: aiscoreConfig.timeout || 15000 },
-              );
-              const aiRiskScore = scoreResponse.data?.ai_risk_score;
-              const defaultProbability = scoreResponse.data?.default_probability;
-              if (aiRiskScore != null) {
-                const evaluationScore = Math.max(0, Math.min(100, 100 - aiRiskScore));
-                const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
-                const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
-                const grade = sortedGrades.find(g => evaluationScore >= g.minScore && evaluationScore <= g.maxScore);
-                const aiScore = {
-                  pd: defaultProbability,
-                  creditScore: evaluationScore,
-                  grade: grade?.grade || 'N/A',
-                  subGrade: grade?.label || 'Chưa xếp hạng',
-                  tier: grade?.grade || 'N/A',
-                  decision:
-                    evaluationScore < (evalConfig.autoRejectScore ?? 0)
-                      ? 'REJECT'
-                      : evaluationScore >= (evalConfig.autoApproveScore ?? 100)
-                        ? 'APPROVE'
-                        : 'REVIEW',
-                  riskLevel:
-                    grade?.grade === 'A'
-                      ? 'LOW'
-                      : grade?.grade === 'B'
-                        ? 'MEDIUM'
-                        : grade?.grade === 'C'
-                          ? 'HIGH'
-                          : 'VERY_HIGH',
-                  riskFactors: [],
-                  scoredAt: new Date(),
-                };
-                await this.loanApplicationModel.updateOne({ _id: loan._id }, { $set: { aiScore } });
-                // Update loanMap so the current response includes the new score
-                loanMap.set(loan.fineractLoanId, { ...loan, aiScore });
-                this.logger.log(
-                  `[getAllPendingLoans] Scored loan ${loan.fineractLoanId}: score=${evaluationScore} grade=${aiScore.grade}`,
-                );
-              }
-            } catch (err: any) {
-              this.logger.warn(`[getAllPendingLoans] Failed to score loan ${loan.fineractLoanId}: ${err.message}`);
-            }
-          }),
+        // Bỏ qua retroactive scoring để tránh chạy với payload sai (chỉ 5 features).
+        // Admin sẽ bấm "Tính lại" trên từng loan để chấm điểm với payload đầy đủ 13 features.
+        this.logger.warn(
+          `[getAllPendingLoans] Retroactive batch scoring DISABLED — admin cần bấm "Tính lại" trên từng loan ` +
+            `để gọi triggerAIScoreForLoan (đầy đủ 13 features + VND→USD scaling).`,
         );
       }
     }
@@ -368,48 +314,193 @@ export class AdminLoanService {
     if (!loan) throw new NotFoundException(`Khoản vay Fineract #${fineractLoanId} không tồn tại`);
     if (!loan.capital || loan.capital <= 0) throw new BadRequestException('Khoản vay không hợp lệ (capital=0)');
 
-    // Get user credit score
-    const user = await this.userModel.findById(loan.userId).select('creditProfile').lean().exec();
-    const rawCic = user?.creditProfile?.creditScore ?? 570;
-    const cicScore = Math.max(150, Math.min(750, rawCic));
+    // Get user KYC + credit profile (cần cho 13 features)
+    const userDoc: any = await this.userModel
+      .findById(loan.userId)
+      .select('kycData creditProfile previousLoanDefaults')
+      .lean()
+      .exec();
+    const rawCic = userDoc?.creditProfile?.creditScore ?? 570;
+    // BUG FIX: cũ ghi nhầm evaluationScore (0-100) vào creditProfile.creditScore. Nếu phát hiện
+    // giá trị < 150 → đó là dữ liệu polluted cũ → reset về default 570 thay vì clamp lên 150
+    // (clamp 150 sẽ kích policy floor "credit score 300 or lower" → tất cả khoản vay ra cùng PD=0.65).
+    const cicScoreInput = rawCic < 150 ? 570 : rawCic;
+    const cicScore = Math.max(150, Math.min(750, cicScoreInput));
+    if (rawCic < 150) {
+      this.logger.warn(
+        `[triggerAIScore] creditProfile.creditScore=${rawCic} (polluted 0-100 từ bug cũ) → reset về 570`,
+      );
+    }
 
-    // Call AI Score service
+    // Derive person_age từ KYC dob
+    const kycData: any = userDoc?.kycData || {};
+    const dob: string | undefined = kycData?.dateOfBirth || kycData?.dob;
+    let personAge = 25;
+    if (dob) {
+      const d = new Date(dob);
+      if (!isNaN(d.getTime())) {
+        const diffMs = Date.now() - d.getTime();
+        personAge = Math.max(18, Math.min(100, Math.floor(diffMs / (365.25 * 24 * 3600 * 1000))));
+      }
+    }
+    const genderRaw = String(kycData?.gender || '').toLowerCase();
+    const personGender: 'male' | 'female' =
+      genderRaw.includes('nữ') || genderRaw === 'female' || genderRaw === 'f' ? 'female' : 'male';
+
+    // person_income / person_emp_exp: ưu tiên giá trị đã lưu trong aiScore.featuresResolved
+    // (do lần createApplication trước đã gửi từ DTO mobile). Fallback về creditProfile hoặc default.
+    const prevResolved: any = loan?.aiScore?.featuresResolved || {};
+    // QUAN TRỌNG: prevResolved.person_income là USD (đã scale từ VND khi createApplication).
+    // Mobile DTO lưu personIncome (VND/tháng) trong featuresResolved có thể là VND chưa scale ở các loan cũ.
+    // Để an toàn lấy từ prev nhưng KHÔNG scale lại nếu < 1000 (USD), scale nếu > 100_000 (chắc chắn VND).
+    const personIncomeMonthlyVnd = Math.max(
+      0,
+      Number(userDoc?.creditProfile?.monthlyIncome) || Number(kycData?.monthlyIncome) || 0,
+    );
+    const personEmpExp = Math.max(
+      0,
+      Number(prevResolved.person_emp_exp) || Number(kycData?.employmentYears) || 0,
+    );
+
+    // === VND → USD scaling ===
+    // Model train trên loan_data.csv (Kaggle) với đơn vị USD: person_income ~10k-200k, loan_amnt ~500-35k.
+    // Backend nhận VND nên phải quy đổi trước khi gọi model, nếu không model sẽ thấy income=2_000_000 USD/năm
+    // (cực giàu) và đưa PD≈0% cho mọi case.
+    const { rate: vndPerUsd, source: exchangeRateSource } = await resolveAiscoreVndPerUsd(
+      aiscoreConfig,
+      this.logger,
+      'triggerAIScore',
+    );
+    // Lấy person_income annual (VND) → USD
+    let personIncomeUsdAnnual = 0;
+    if (prevResolved.person_income && Number(prevResolved.person_income) > 0) {
+      const prev = Number(prevResolved.person_income);
+      // Heuristic: nếu prev > 200_000 → là VND chưa scale (loan cũ trước fix), scale lại.
+      // Nếu prev <= 200_000 → đã là USD annual (loan mới sau fix).
+      personIncomeUsdAnnual = prev > 200_000 ? prev / vndPerUsd : prev;
+    } else if (personIncomeMonthlyVnd > 0) {
+      personIncomeUsdAnnual = (personIncomeMonthlyVnd * 12) / vndPerUsd;
+    }
+    personIncomeUsdAnnual = Math.max(1, Math.round(personIncomeUsdAnnual));
+
+    const loanAmntUsd = Math.max(1, Math.round(Number(loan.capital) / vndPerUsd));
+
+    // loan_int_rate (%/năm) từ monthlyRatePercent đã lưu (loan_application giữ giá trị tháng).
+    const annualRate = Math.max(0, Math.min(100, (Number(loan.monthlyRatePercent) || 0) * 12));
+    // loan_percent_income tính theo VND gốc (cùng đơn vị → ratio đúng) hoặc USD (cũng đúng vì cùng tỉ giá).
+    const annualIncomeVnd = Math.max(personIncomeMonthlyVnd * 12, 1);
+    const loanPercentIncome = Math.max(
+      0,
+      Math.min(5, prevResolved.loan_percent_income ? Number(prevResolved.loan_percent_income) : Number(loan.capital) / annualIncomeVnd),
+    );
+    const loanIntent = LoanService.mapWillingToLoanIntent(loan.willing);
+    const previousDefaults = userDoc?.previousLoanDefaults ? 'Yes' : 'No';
+
+    const aiPayload: Record<string, any> = {
+      person_age: personAge,
+      person_gender: personGender,
+      person_education: prevResolved.person_education || kycData?.education || 'High School',
+      person_income: personIncomeUsdAnnual,
+      person_emp_exp: personEmpExp,
+      person_home_ownership: prevResolved.person_home_ownership || kycData?.homeOwnership || 'RENT',
+      loan_amnt: loanAmntUsd,
+      loan_intent: loanIntent,
+      loan_int_rate: annualRate,
+      loan_percent_income: loanPercentIncome,
+      cb_person_cred_hist_length: prevResolved.cb_person_cred_hist_length || kycData?.creditHistoryYears || 3,
+      credit_score: cicScore,
+      previous_loan_defaults_on_file: previousDefaults,
+    };
+
+    this.logger.log(
+      `[triggerAIScore] === AIScore PAYLOAD ===\n${JSON.stringify(aiPayload, null, 2)}`,
+    );
+    this.logger.log(
+      `[triggerAIScore] VND→USD scaling: vndPerUsd=${vndPerUsd} (${exchangeRateSource}), ` +
+        `incomeMonthlyVND=${personIncomeMonthlyVnd}, incomeAnnualUSD=${personIncomeUsdAnnual}, ` +
+        `loanVND=${loan.capital}, loanUSD=${loanAmntUsd}, pctIncome=${loanPercentIncome.toFixed(3)}`,
+    );
+
     const { default: axios } = await import('axios');
-    const scoreResponse = await axios.post(
-      `${aiscoreConfig.serviceUrl}/api/score`,
-      {
-        credit_score: cicScore,
-        loanAmount: loan.capital,
-        monthly_income: 10_000_000,
-        monthly_pay: loan.monthlyPay ?? 0,
-        periodMonth: loan.periodMonth ?? 12,
-      },
-      { timeout: aiscoreConfig.timeout || 15000 },
+    const scoreResponse = await axios.post(`${aiscoreConfig.serviceUrl}/api/score`, aiPayload, {
+      timeout: aiscoreConfig.timeout || 15000,
+    });
+
+    this.logger.log(
+      `[triggerAIScore] === AIScore RESPONSE ===\n${JSON.stringify(scoreResponse.data, null, 2)}`,
     );
 
     const aiRiskScore = scoreResponse.data?.ai_risk_score;
     const defaultProbability = scoreResponse.data?.default_probability;
     if (aiRiskScore == null) throw new BadRequestException('AI Score service trả về kết quả không hợp lệ');
 
-    const evaluationScore = Math.max(0, Math.min(100, 100 - aiRiskScore));
+    // Map ai_risk_score (150-750, cao=tốt) → evaluationScore (0-100)
+    const SCORE_MIN = 150;
+    const SCORE_MAX = 750;
 
-    // Grade mapping
+    // ──────────────────────────────────────────────────────────────────
+    // BE-side safety floor (defense-in-depth) — giống với loan.service.ts.
+    // Để tránh AI service trả PD~0 do model bias / service chưa restart.
+    let effectivePd = Number(defaultProbability) || 0;
+    let effectiveAiScore = Number(aiRiskScore);
+    const ruleFloors: Array<{ pd: number; reason: string }> = [];
+    if (cicScore <= 300) ruleFloors.push({ pd: 0.70, reason: `CIC ${cicScore} ≤ 300` });
+    else if (cicScore < 500) ruleFloors.push({ pd: 0.45, reason: `CIC ${cicScore} < 500` });
+    else if (cicScore < 600) ruleFloors.push({ pd: 0.25, reason: `CIC ${cicScore} < 600` });
+    if (previousDefaults === 'Yes') ruleFloors.push({ pd: 0.75, reason: 'Có lịch sử default trước' });
+    if (loanPercentIncome >= 1.0) ruleFloors.push({ pd: 0.85, reason: 'Khoản vay ≥ 100% thu nhập năm' });
+    else if (loanPercentIncome >= 0.5) ruleFloors.push({ pd: 0.55, reason: 'Khoản vay ≥ 50% thu nhập năm' });
+    else if (loanPercentIncome >= 0.35) ruleFloors.push({ pd: 0.40, reason: 'Khoản vay ≥ 35% thu nhập năm' });
+    if (personIncomeUsdAnnual <= 1) ruleFloors.push({ pd: 0.85, reason: 'Thu nhập trống' });
+    else if (personIncomeUsdAnnual < 36000) ruleFloors.push({ pd: 0.55, reason: `Thu nhập ${personIncomeUsdAnnual} < 36k (calibrated)` });
+    else if (personIncomeUsdAnnual < 60000) ruleFloors.push({ pd: 0.30, reason: `Thu nhập ${personIncomeUsdAnnual} < 60k (calibrated)` });
+    if (ruleFloors.length > 0) {
+      const maxFloor = Math.max(...ruleFloors.map(f => f.pd));
+      if (maxFloor > effectivePd) {
+        const oldPd = effectivePd;
+        const oldScore = effectiveAiScore;
+        effectivePd = maxFloor;
+        effectiveAiScore = Math.round(SCORE_MAX - (SCORE_MAX - SCORE_MIN) * effectivePd);
+        this.logger.warn(
+          `[triggerAIScore] BE-safety-floor APPLIED: AI PD=${oldPd.toFixed(4)} (score=${oldScore}) ` +
+            `→ PD=${effectivePd.toFixed(4)} (score=${effectiveAiScore}). Reasons: ${ruleFloors.map(f => `${f.reason}→${f.pd}`).join('; ')}`,
+        );
+      }
+    }
+
+    const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, effectiveAiScore));
+    const evaluationScore = Math.round(((clamped - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
+
     const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
     const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
     const matchedGrade = sortedGrades.find(g => evaluationScore >= g.minScore && evaluationScore <= g.maxScore);
+    const gradeMaxLoanAmount = Number(matchedGrade?.maxLoanAmount ?? 0);
+    const withinGradeLimit = !gradeMaxLoanAmount || Number(loan.capital || 0) <= gradeMaxLoanAmount;
+
+    let autoDecision: 'auto_approved' | 'auto_rejected' | 'pending' = 'pending';
+    if (evaluationScore < evalConfig.autoRejectScore) {
+      autoDecision = 'auto_rejected';
+    } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) {
+      autoDecision = 'auto_approved';
+    }
+    this.logger.log(
+      `[triggerAIScoreForLoan] AutoDecision (DB-only) | evalScore=${evaluationScore} ` +
+        `vs autoReject<${evalConfig.autoRejectScore} / autoApprove>=${evalConfig.autoApproveScore} | ` +
+        `withinGradeLimit=${withinGradeLimit} (cap=${gradeMaxLoanAmount || 'unlimited'}) | => ${autoDecision}`,
+    );
 
     const aiScore = {
-      pd: defaultProbability,
+      pd: effectivePd,
+      rawAiPd: defaultProbability,
+      rawAiScore: aiRiskScore,
+      beFloorApplied: ruleFloors.length > 0 && effectivePd > (Number(defaultProbability) || 0),
+      beFloorReasons: ruleFloors.map(f => f.reason),
       creditScore: evaluationScore,
       grade: matchedGrade?.grade || 'N/A',
       subGrade: matchedGrade?.label || 'Chưa xếp hạng',
       tier: matchedGrade?.grade || 'N/A',
       decision:
-        evaluationScore < (evalConfig.autoRejectScore ?? 0)
-          ? 'REJECT'
-          : evaluationScore >= (evalConfig.autoApproveScore ?? 100)
-            ? 'APPROVE'
-            : 'REVIEW',
+        autoDecision === 'auto_approved' ? 'APPROVE' : autoDecision === 'auto_rejected' ? 'REJECT' : 'REVIEW',
       riskLevel:
         matchedGrade?.grade === 'A'
           ? 'LOW'
@@ -418,7 +509,18 @@ export class AdminLoanService {
             : matchedGrade?.grade === 'C'
               ? 'HIGH'
               : 'VERY_HIGH',
-      riskFactors: [],
+      riskFactors: scoreResponse.data?.reasons?.negatives || [],
+      positiveFactors: scoreResponse.data?.reasons?.positives || [],
+      decisionExplanation: scoreResponse.data?.reasons?.decision_explanation || '',
+      modelDecision: scoreResponse.data?.decision || '',
+      modelRiskLevel: scoreResponse.data?.risk_level || '',
+      featuresResolved: scoreResponse.data?.features_resolved || null,
+      configVersion: evalConfig.version,
+      autoRejectScore: evalConfig.autoRejectScore,
+      autoApproveScore: evalConfig.autoApproveScore,
+      maxLoanAmount: matchedGrade?.maxLoanAmount ?? null,
+      baseInterestRate: matchedGrade?.baseInterestRate ?? null,
+      amountWithinGradeLimit: withinGradeLimit,
       scoredAt: new Date(),
     };
 
@@ -426,10 +528,12 @@ export class AdminLoanService {
     await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { aiScore } });
 
     // Update user credit profile
+    // QUAN TRỌNG: lưu raw 150-750 (clamped) vào creditScore, evaluationScore (0-100) vào field riêng.
     await this.userModel.findByIdAndUpdate(loan.userId, {
       $set: {
-        'creditProfile.pd': defaultProbability,
-        'creditProfile.creditScore': evaluationScore,
+        'creditProfile.pd': effectivePd,
+        'creditProfile.creditScore': clamped,
+        'creditProfile.evaluationScore': evaluationScore,
         'creditProfile.grade': matchedGrade?.grade,
         'creditProfile.riskLevel': aiScore.riskLevel,
         'creditProfile.lastScoredAt': new Date(),
@@ -440,10 +544,88 @@ export class AdminLoanService {
       `[triggerAIScore] Done: fineractLoanId=${fineractLoanId} score=${evaluationScore} grade=${aiScore.grade} decision=${aiScore.decision}`,
     );
 
+    // Nếu AI auto-reject → cập nhật trạng thái khoản vay sang 'rejected' để loại khỏi danh sách chờ duyệt.
+    let finalStatus: LoanApplicationStatus = (loan.status as LoanApplicationStatus) || 'pending';
+    if (autoDecision === 'auto_rejected' && loan.status === 'pending') {
+      const rejectionReason =
+        aiScore.decisionExplanation ||
+        `Tự động từ chối bởi AI: ${evaluationScore}/100, hạng ${aiScore.grade}`;
+      try {
+        // Reject trên Fineract trước (idempotent — bỏ qua lỗi nếu đã reject)
+        await this.fineractLoanService
+          .rejectLoan(fineractLoanId, undefined, rejectionReason.slice(0, 500))
+          .catch(err => {
+            this.logger.warn(
+              `[triggerAIScore] Fineract reject failed (có thể đã reject): ${err?.message || err}`,
+            );
+          });
+      } finally {
+        await this.loanApplicationModel.updateOne(
+          { fineractLoanId },
+          {
+            $set: {
+              status: 'rejected',
+              rejectedAt: new Date(),
+              rejectionReason,
+              rejectedBy: 'AI_AUTO',
+            },
+          },
+        );
+        finalStatus = 'rejected';
+        this.logger.log(
+          `[triggerAIScore] Auto-rejected loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade})`,
+        );
+
+        // Notify borrower
+        try {
+          await this.notificationModel.create({
+            userId: loan.userId,
+            title: 'Đơn vay bị từ chối tự động',
+            message: `Đơn vay ${Number(loan.capital).toLocaleString('vi-VN')} đ bị AI từ chối (điểm ${evaluationScore}/100, hạng ${aiScore.grade}).`,
+            type: 'loan_rejected',
+            data: {
+              loanId: loan._id?.toString?.(),
+              fineractLoanId,
+              reason: rejectionReason,
+              evaluationScore,
+              grade: aiScore.grade,
+            },
+          });
+        } catch (err: any) {
+          this.logger.warn(`[triggerAIScore] Notification failed: ${err?.message || err}`);
+        }
+      }
+    }
+
+    // Nếu AI auto-approve → tự động duyệt khoản vay (mirror createApplication flow).
+    // Loại khỏi danh sách chờ duyệt + tạo hợp đồng + auto-matching.
+    if (autoDecision === 'auto_approved' && loan.status === 'pending') {
+      try {
+        await this.approveLoan(fineractLoanId);
+        finalStatus = 'approved';
+        this.logger.log(
+          `[triggerAIScore] Auto-approved loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade})`,
+        );
+      } catch (err: any) {
+        // Có thể fail vì thiếu document hoặc Fineract status không cho phép.
+        // Không throw — vẫn giữ aiScore đã lưu, để admin duyệt thủ công sau.
+        this.logger.warn(
+          `[triggerAIScore] Auto-approve failed (${err?.message || err}). Loan vẫn ở trạng thái pending để admin xử lý thủ công.`,
+        );
+      }
+    }
+
     return {
       fineractLoanId,
       aiScore,
-      message: `Tính điểm AI thành công: ${evaluationScore}/100, Hạng ${aiScore.grade}`,
+      status: finalStatus,
+      autoRejected: autoDecision === 'auto_rejected',
+      message:
+        autoDecision === 'auto_rejected'
+          ? `Đã tự động từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}`
+          : autoDecision === 'auto_approved' && finalStatus === 'approved'
+            ? `Đã tự động duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}`
+            : `Tính điểm AI thành công: ${evaluationScore}/100, hạng ${aiScore.grade}`,
     };
   }
 
@@ -627,6 +809,33 @@ export class AdminLoanService {
       throw new BadRequestException(
         `Khoản vay #${fineractLoanId} chưa được đầu tư đủ (${investedNotes}/${totalNotes} phần). Nhà đầu tư cần rót vốn đủ trước khi giải ngân.`,
       );
+    }
+
+    // 0c. Tất cả nhà đầu tư phải đã ký hợp đồng đầu tư SmartCA
+    // (order_matching_skip vẫn coi là đã verified; investment trực tiếp phải SmartCA)
+    try {
+      const investmentContractModel: any = this.loanApplicationModel.db.model('InvestmentContract');
+      const investmentContracts: any[] = await investmentContractModel
+        .find({ loanApplicationId: loan._id })
+        .select('_id status smartCASignatureVerified lenderId')
+        .lean();
+      if (!investmentContracts || investmentContracts.length === 0) {
+        throw new BadRequestException(
+          `Khoản vay #${fineractLoanId} chưa có hợp đồng đầu tư nào. Không thể giải ngân.`,
+        );
+      }
+      const unsigned = investmentContracts.filter(
+        (c) => c.smartCASignatureVerified !== true || !['active', 'signed'].includes(String(c.status || '')),
+      );
+      if (unsigned.length > 0) {
+        throw new BadRequestException(
+          `Khoản vay #${fineractLoanId} còn ${unsigned.length}/${investmentContracts.length} hợp đồng đầu tư chưa được nhà đầu tư ký SmartCA. Không thể giải ngân.`,
+        );
+      }
+    } catch (gateErr: any) {
+      if (gateErr instanceof BadRequestException) throw gateErr;
+      this.logger.error(`[disburseLoan] Investment contract gate check failed: ${gateErr?.message}`);
+      throw new BadRequestException('Không thể kiểm tra trạng thái ký hợp đồng đầu tư. Vui lòng thử lại.');
     }
 
     // 1. Disburse on Fineract
@@ -2631,5 +2840,277 @@ export class AdminLoanService {
       }
     }
     return { success: true, fixed: fixCount };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DASHBOARD OVERVIEW (cho trang admin Dashboard)
+  // ═══════════════════════════════════════════════════════════════════════════
+  /**
+   * Trả về toàn bộ dữ liệu cho trang Dashboard admin trong 1 lần gọi.
+   *  - kpi: Tổng giải ngân, NPL, Giải ngân hôm nay, Chờ phê duyệt
+   *  - disbursement: chuỗi 7 / 30 / 90 ngày
+   *  - productDistribution: phân bổ theo sản phẩm vay (đếm số khoản đã giải ngân)
+   *  - recentActivities: 10 hoạt động gần nhất từ loan_applications
+   */
+  async getDashboardOverview(): Promise<{
+    kpi: {
+      totalDisbursedAmount: number;
+      activeLoansCount: number;
+      totalDisbursedTrend: number; // % MoM
+      nplRate: number; // 0..1
+      nplTrend: number; // điểm thay đổi MoM
+      disbursedToday: number;
+      disbursedTodayCount: number;
+      disbursedThisMonth: number;
+      pendingApprovals: number;
+      pendingPriorityCount: number;
+    };
+    disbursementSeries: {
+      d7: Array<{ date: string; amount: number }>;
+      d30: Array<{ date: string; amount: number }>;
+      d90: Array<{ date: string; amount: number }>;
+    };
+    productDistribution: Array<{ productId: number; name: string; count: number; percent: number }>;
+    recentActivities: Array<{
+      time: string; // HH:mm
+      timestamp: string; // ISO
+      activity: string;
+      customer: string;
+      amount: number;
+      status: 'approved' | 'pending' | 'rejected';
+    }>;
+  }> {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    // ── 1. KPI: tổng giải ngân & active ──
+    const activeStatuses = ['disbursed'];
+    const todayStr = startOfToday.toISOString().slice(0, 10);
+    const startOfMonthStr = startOfMonth.toISOString().slice(0, 10);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+    // ── KPI gộp 1 truy vấn $facet (tiết kiệm ~10 roundtrip Mongo) ──
+    const [kpiFacet] = await this.loanApplicationModel.aggregate([
+      {
+        $facet: {
+          totalDisbursed: [
+            { $match: { status: { $in: ['disbursed', 'closed'] } } },
+            { $group: { _id: null, total: { $sum: '$capital' } } },
+          ],
+          activeCount: [
+            { $match: { status: { $in: activeStatuses } } },
+            { $count: 'value' },
+          ],
+          prevMonth: [
+            {
+              $match: {
+                status: { $in: ['disbursed', 'closed'] },
+                createdAt: { $gte: startOfPrevMonth, $lt: startOfMonth },
+              },
+            },
+            { $group: { _id: null, total: { $sum: '$capital' } } },
+          ],
+          currMonth: [
+            { $match: { status: { $in: ['disbursed', 'closed'] }, createdAt: { $gte: startOfMonth } } },
+            { $group: { _id: null, total: { $sum: '$capital' } } },
+          ],
+          overdue: [
+            { $match: { status: 'disbursed', totalOverdue: { $gt: 0 } } },
+            { $count: 'value' },
+          ],
+          prevOverdue: [
+            {
+              $match: {
+                status: 'disbursed',
+                totalOverdue: { $gt: 0 },
+                createdAt: { $lt: startOfMonth },
+              },
+            },
+            { $count: 'value' },
+          ],
+          prevActive: [
+            { $match: { status: { $in: activeStatuses }, createdAt: { $lt: startOfMonth } } },
+            { $count: 'value' },
+          ],
+          disbursedToday: [
+            { $match: { status: { $in: ['disbursed', 'closed'] }, disbursementDate: todayStr } },
+            { $group: { _id: null, total: { $sum: '$capital' }, count: { $sum: 1 } } },
+          ],
+          disbursedThisMonth: [
+            {
+              $match: {
+                status: { $in: ['disbursed', 'closed'] },
+                disbursementDate: { $gte: startOfMonthStr },
+              },
+            },
+            { $group: { _id: null, total: { $sum: '$capital' } } },
+          ],
+          pendingApprovals: [
+            { $match: { status: 'pending' } },
+            { $count: 'value' },
+          ],
+          pendingPriority: [
+            { $match: { status: 'pending', createdAt: { $lt: sevenDaysAgo } } },
+            { $count: 'value' },
+          ],
+        },
+      },
+    ]);
+
+    const pickCount = (arr: any[]): number => arr?.[0]?.value ?? 0;
+    const pickTotal = (arr: any[]): number => arr?.[0]?.total ?? 0;
+
+    const totalDisbursedAmount = pickTotal(kpiFacet.totalDisbursed);
+    const activeCount = pickCount(kpiFacet.activeCount);
+    const prevMonthAmount = pickTotal(kpiFacet.prevMonth);
+    const currMonthAmount = pickTotal(kpiFacet.currMonth);
+    const totalDisbursedTrend = prevMonthAmount > 0
+      ? ((currMonthAmount - prevMonthAmount) / prevMonthAmount) * 100
+      : 0;
+
+    const overdueCount = pickCount(kpiFacet.overdue);
+    const prevOverdueCount = pickCount(kpiFacet.prevOverdue);
+    const prevActiveCount = pickCount(kpiFacet.prevActive);
+    const nplRate = activeCount > 0 ? overdueCount / activeCount : 0;
+    const prevNplRate = prevActiveCount > 0 ? prevOverdueCount / prevActiveCount : 0;
+    const nplTrend = (nplRate - prevNplRate) * 100;
+
+    const disbursedToday = pickTotal(kpiFacet.disbursedToday);
+    const disbursedTodayCount = kpiFacet.disbursedToday?.[0]?.count ?? 0;
+    const disbursedThisMonth = pickTotal(kpiFacet.disbursedThisMonth);
+
+    const pendingApprovals = pickCount(kpiFacet.pendingApprovals);
+    const pendingPriorityCount = pickCount(kpiFacet.pendingPriority);
+
+    // ── 5. Disbursement series (7/30/90 ngày) ──
+    // Tối ưu: gộp 3 truy vấn thành 1 (lấy 90 ngày, tự cắt cho 7/30) để giảm roundtrip Mongo.
+    const seriesStart90 = new Date(startOfToday.getTime() - 89 * 24 * 3600 * 1000);
+    const seriesStartStr = seriesStart90.toISOString().slice(0, 10);
+    const seriesRows = await this.loanApplicationModel.aggregate([
+      {
+        $match: {
+          status: { $in: ['disbursed', 'closed'] },
+          disbursementDate: { $gte: seriesStartStr, $lte: todayStr },
+        },
+      },
+      { $group: { _id: '$disbursementDate', amount: { $sum: '$capital' } } },
+    ]);
+    const seriesMap = new Map<string, number>(seriesRows.map((r: any) => [r._id, r.amount]));
+    const buildSeries = (days: number) => {
+      const start = new Date(startOfToday.getTime() - (days - 1) * 24 * 3600 * 1000);
+      const out: Array<{ date: string; amount: number }> = [];
+      for (let i = 0; i < days; i++) {
+        const d = new Date(start.getTime() + i * 24 * 3600 * 1000);
+        const k = d.toISOString().slice(0, 10);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        out.push({ date: `${dd}/${mm}`, amount: Math.round((seriesMap.get(k) ?? 0) / 1_000_000) });
+      }
+      return out;
+    };
+    const d7 = buildSeries(7);
+    const d30 = buildSeries(30);
+    const d90 = buildSeries(90);
+
+    // ── 6. Phân bổ sản phẩm ──
+    const productCounts = await this.loanApplicationModel.aggregate([
+      { $match: { status: { $in: ['disbursed', 'closed', 'approved'] } } },
+      { $group: { _id: '$productId', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 6 },
+    ]);
+    let productNameMap = new Map<number, string>();
+    try {
+      const products = await this.fineractLoanService.getLoanProducts();
+      productNameMap = new Map<number, string>(
+        (products as any[]).map((p: any) => [p.id, p.name as string]),
+      );
+    } catch (err: any) {
+      this.logger.warn(`[Dashboard] getLoanProducts failed: ${err.message}`);
+    }
+    const totalDistCount = productCounts.reduce((s: number, r: any) => s + r.count, 0) || 1;
+    const productDistribution = productCounts.map((r: any) => ({
+      productId: r._id,
+      name: productNameMap.get(r._id) || `Sản phẩm #${r._id}`,
+      count: r.count,
+      percent: Math.round((r.count / totalDistCount) * 1000) / 10,
+    }));
+
+    // ── 7. Hoạt động gần đây ──
+    const recentDocs = await this.loanApplicationModel
+      .find({})
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .populate('userId', 'username profile')
+      .lean()
+      .exec();
+
+    const recentActivities = recentDocs.map((doc: any) => {
+      const u = doc.userId || {};
+      const fullName: string =
+        u?.profile?.fullName ||
+        [u?.profile?.firstname, u?.profile?.lastname].filter(Boolean).join(' ') ||
+        u?.username ||
+        'Khách hàng';
+      let activity = 'Cập nhật khoản vay';
+      let status: 'approved' | 'pending' | 'rejected' = 'pending';
+      switch (doc.status) {
+        case 'pending':
+          activity = 'Đơn vay mới';
+          status = 'pending';
+          break;
+        case 'approved':
+          activity = 'Phê duyệt khoản vay';
+          status = 'approved';
+          break;
+        case 'disbursed':
+          activity = 'Giải ngân khoản vay';
+          status = 'approved';
+          break;
+        case 'closed':
+          activity = 'Khoản vay tất toán';
+          status = 'approved';
+          break;
+        case 'rejected':
+          activity = 'Từ chối khoản vay';
+          status = 'rejected';
+          break;
+        case 'cancelled':
+          activity = 'Hủy đơn vay';
+          status = 'rejected';
+          break;
+      }
+      const ts: Date = doc.updatedAt || doc.createdAt || new Date();
+      const tsDate = new Date(ts);
+      const time = `${String(tsDate.getHours()).padStart(2, '0')}:${String(tsDate.getMinutes()).padStart(2, '0')}`;
+      return {
+        time,
+        timestamp: tsDate.toISOString(),
+        activity,
+        customer: fullName,
+        amount: doc.capital ?? 0,
+        status,
+      };
+    });
+
+    return {
+      kpi: {
+        totalDisbursedAmount,
+        activeLoansCount: activeCount,
+        totalDisbursedTrend: Math.round(totalDisbursedTrend * 10) / 10,
+        nplRate: Math.round(nplRate * 1000) / 1000,
+        nplTrend: Math.round(nplTrend * 10) / 10,
+        disbursedToday,
+        disbursedTodayCount,
+        disbursedThisMonth,
+        pendingApprovals,
+        pendingPriorityCount,
+      },
+      disbursementSeries: { d7, d30, d90 },
+      productDistribution,
+      recentActivities,
+    };
   }
 }

@@ -508,6 +508,10 @@ class LoanService {
     disbursementWalletId: string;
     documents?: Array<{ documentTypeId: string; name: string; uri?: string }>;
     otpSessionId?: string;
+    /** Thu nhập hàng tháng (VND) — bắt buộc cho AI scoring */
+    personIncome: number;
+    /** Số năm kinh nghiệm làm việc — bắt buộc cho AI scoring */
+    personEmpExp: number;
   }): Promise<{
     id: string;
     status: string;
@@ -707,7 +711,11 @@ class LoanService {
       statusCode: number;
       data: { contracts: LoanContract[] };
     }>("/api/loan/contracts");
-    return response.data.data?.contracts ?? [];
+    const body: any = response.data;
+    if (Array.isArray(body?.data?.contracts)) return body.data.contracts;
+    if (Array.isArray(body?.contracts)) return body.contracts;
+    if (Array.isArray(body?.data)) return body.data;
+    return [];
   }
 
   /**

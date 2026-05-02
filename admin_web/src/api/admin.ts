@@ -233,6 +233,11 @@ export interface LoanDto {
     decision: string;
     riskLevel: string;
     riskFactors: any[];
+    positiveFactors?: string[];
+    decisionExplanation?: string;
+    modelDecision?: string;
+    modelRiskLevel?: string;
+    featuresResolved?: Record<string, any>;
     scoredAt: string;
   } | null;
   isFullMatch?: boolean;
@@ -597,6 +602,45 @@ export const adminApi = {
           cancelled: number;
         };
       }>("/api/admin/loans/stats")
+      .then((r) => r.data.data),
+
+  getDashboardOverview: () =>
+    api
+      .get<{
+        data: {
+          kpi: {
+            totalDisbursedAmount: number;
+            activeLoansCount: number;
+            totalDisbursedTrend: number;
+            nplRate: number;
+            nplTrend: number;
+            disbursedToday: number;
+            disbursedTodayCount: number;
+            disbursedThisMonth: number;
+            pendingApprovals: number;
+            pendingPriorityCount: number;
+          };
+          disbursementSeries: {
+            d7: Array<{ date: string; amount: number }>;
+            d30: Array<{ date: string; amount: number }>;
+            d90: Array<{ date: string; amount: number }>;
+          };
+          productDistribution: Array<{
+            productId: number;
+            name: string;
+            count: number;
+            percent: number;
+          }>;
+          recentActivities: Array<{
+            time: string;
+            timestamp: string;
+            activity: string;
+            customer: string;
+            amount: number;
+            status: 'approved' | 'pending' | 'rejected';
+          }>;
+        };
+      }>('/api/admin/dashboard/overview')
       .then((r) => r.data.data),
 
   getLoans: (params?: {
