@@ -140,22 +140,41 @@ def _policy_pd_floor(row: Dict[str, Any]) -> tuple[float, list[str]]:
     emp_exp = float(row.get("person_emp_exp", 0) or 0)
     loan_int_rate = float(row.get("loan_int_rate", 0) or 0)
 
-    if income <= 1:
-        floors.append((0.85, "annual income is missing or effectively zero"))
-    elif income < 5_000:
-        floors.append((0.55, "annual income is below 5,000 USD"))
+    # Ngưỡng đã tune cho ngữ cảnh VN (BE truyền VND/scale_calib với scale=1000 — con số
+    # trông như USD nhưng sức mua khác). Override bằng env nếu cần.
+    #   person_income calibrated:
+    #     - 24000  ~ 24M VND/năm  (2M/tháng) — thu nhập yếu
+    #     - 60000  ~ 60M VND/năm  (5M/tháng) — trung bình
+    #     - 120000 ~ 120M VND/năm (10M/tháng) — khá
+    income_zero_threshold = float(os.environ.get("POLICY_INCOME_ZERO_USD", "1") or 1)
+    income_low_threshold = float(os.environ.get("POLICY_INCOME_LOW_USD", "36000") or 36000)
+    income_weak_threshold = float(os.environ.get("POLICY_INCOME_WEAK_USD", "60000") or 60000)
+    credit_floor_low = float(os.environ.get("POLICY_CREDIT_LOW", "300") or 300)
+    credit_floor_mid = float(os.environ.get("POLICY_CREDIT_MID", "500") or 500)
+    credit_floor_ok = float(os.environ.get("POLICY_CREDIT_OK", "600") or 600)
+
+    if income <= income_zero_threshold:
+        floors.append((0.85, "thu nhập trống hoặc bằng 0"))
+    elif income < income_low_threshold:
+        floors.append((0.55, f"thu nhập năm dưới {int(income_low_threshold):,} (calibrated VND)"))
+    elif income < income_weak_threshold:
+        floors.append((0.30, f"thu nhập năm dưới {int(income_weak_threshold):,} (calibrated VND)"))
 
     if loan_percent_income >= 1.0:
-        floors.append((0.75, "loan amount is at least 100% of annual income"))
+        floors.append((0.85, "khoản vay >= 100% thu nhập năm"))
     elif loan_percent_income >= 0.5:
-        floors.append((0.45, "loan amount is at least 50% of annual income"))
-    elif loan_percent_income >= 0.3 and credit_score < 550:
-        floors.append((0.35, "loan burden is high while credit score is below 550"))
+        floors.append((0.55, "khoản vay >= 50% thu nhập năm"))
+    elif loan_percent_income >= 0.35:
+        floors.append((0.40, "khoản vay >= 35% thu nhập năm"))
+    elif loan_percent_income >= 0.25 and credit_score < credit_floor_ok:
+        floors.append((0.30, f"khoản vay >= 25% thu nhập + credit score dưới {int(credit_floor_ok)}"))
 
-    if credit_score <= 300:
-        floors.append((0.65, "credit score is 300 or lower on the 150-750 scale"))
-    elif credit_score < 450:
-        floors.append((0.35, "credit score is below 450 on the 150-750 scale"))
+    if credit_score <= credit_floor_low:
+        floors.append((0.70, f"credit score <= {int(credit_floor_low)} (thang 150-750)"))
+    elif credit_score < credit_floor_mid:
+        floors.append((0.45, f"credit score dưới {int(credit_floor_mid)} (thang 150-750)"))
+    elif credit_score < credit_floor_ok:
+        floors.append((0.25, f"credit score dưới {int(credit_floor_ok)} (thang 150-750)"))
 
     if previous_default >= 1:
         floors.append((0.75, "previous default exists on file"))
@@ -393,7 +412,14 @@ class CreditScorerFinal:
         raw_proba = self.xgb_model.predict_proba(X)[:, 1]
         model_default_pd = float(self.calibrator.transform(raw_proba)[0])
         row_dict = df.iloc[0].to_dict()
-        policy_floor, policy_overrides = _policy_pd_floor(row_dict)
+        # Policy floor (rule-based) — BẬT mặc định vì model train trên Kaggle USD nhưng BE
+        # truyền VND đã calibrate, không phản ánh đúng sức mua VN. Floor này đảm bảo
+        # không auto-approve cho hồ sơ thu nhập/credit yếu. Tắt bằng POLICY_FLOOR_ENABLED=0.
+        policy_enabled = str(os.environ.get("POLICY_FLOOR_ENABLED", "1")).lower() in ("1", "true", "yes")
+        if policy_enabled:
+            policy_floor, policy_overrides = _policy_pd_floor(row_dict)
+        else:
+            policy_floor, policy_overrides = 0.0, []
         default_pd = max(model_default_pd, policy_floor)
         score = _probability_to_score(default_pd)
         risk_level, decision = _score_to_risk_band(score)

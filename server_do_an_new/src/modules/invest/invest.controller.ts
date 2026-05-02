@@ -10,6 +10,7 @@ import {
   HttpStatus,
   UseGuards,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { InvestService } from './invest.service';
@@ -164,26 +165,32 @@ export class InvestController {
   // ═══════════════════════════════════════════════════════
 
   @Post('contract')
-  @ApiOperation({ summary: 'Tạo hợp đồng ký quỹ đầu tư (với thanh toán Fineract)' })
-  @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo + thanh toán + FD' })
+  @ApiOperation({ summary: 'Tạo hợp đồng ký quỹ đầu tư (chỉ cho đầu tư trực tiếp vào khoản vay đang mở)' })
+  @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo + chờ ký SmartCA' })
   async createContract(
     @CurrentUser('id') userId: string,
     @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string; otpSessionId?: string },
   ) {
-    if (!body.investmentOrderId) {
-      if (!body.otpSessionId) {
-        throw new UnauthorizedException('Vui lòng xác thực Smart OTP trước khi đầu tư');
-      }
-      const consumeResult = await this.smartOtpService.consumeSession(
-        userId,
-        body.otpSessionId,
-        OtpActionType.INVESTMENT,
+    // CHẶN: lệnh đầu tư (đặt lệnh) KHÔNG bao giờ tạo hợp đồng đầu tư qua endpoint này.
+    // Logic ghép lệnh chỉ reserve nodeMatch, không trừ tiền và không sinh contract.
+    // Chỉ "đầu tư trực tiếp" vào khoản vay đang mở mới tạo hợp đồng để ký SmartCA.
+    if (body.investmentOrderId) {
+      throw new BadRequestException(
+        'Lệnh đầu tư không tạo hợp đồng. Hợp đồng chỉ được tạo khi đầu tư trực tiếp vào khoản vay đang mở.',
       );
-      if (!consumeResult.valid) {
-        throw new UnauthorizedException(consumeResult.message);
-      }
     }
-    return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes, body.investmentOrderId);
+    if (!body.otpSessionId) {
+      throw new UnauthorizedException('Vui lòng xác thực Smart OTP trước khi đầu tư');
+    }
+    const consumeResult = await this.smartOtpService.consumeSession(
+      userId,
+      body.otpSessionId,
+      OtpActionType.INVESTMENT,
+    );
+    if (!consumeResult.valid) {
+      throw new UnauthorizedException(consumeResult.message);
+    }
+    return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes);
   }
 
   // ═══════════════════════════════════════════════════════

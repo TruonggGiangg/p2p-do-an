@@ -735,7 +735,50 @@ export class LoanService {
           //    150 → 0  (rủi ro rất cao), 750 → 100 (rủi ro rất thấp).
           const SCORE_MIN = 150;
           const SCORE_MAX = 750;
-          const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, aiRiskScore));
+
+          // ──────────────────────────────────────────────────────────────────
+          // BE-side safety floor (defense-in-depth):
+          // Nếu AI service trả PD quá thấp (≤0.05) cho hồ sơ rõ ràng yếu —
+          // CIC nội bộ thấp / loan vượt khả năng trả / có default trước —
+          // thì BỎ QUA AI và áp PD floor theo rule cứng. Giúp tránh trường hợp
+          // model bias do training data lệch hoặc service cũ chưa restart.
+          let effectivePd = Number(defaultProbability) || 0;
+          let effectiveAiScore = Number(aiRiskScore);
+          const ruleFloors: Array<{ pd: number; reason: string }> = [];
+
+          if (cicScore <= 300) ruleFloors.push({ pd: 0.70, reason: `CIC ${cicScore} ≤ 300` });
+          else if (cicScore < 500) ruleFloors.push({ pd: 0.45, reason: `CIC ${cicScore} < 500` });
+          else if (cicScore < 600) ruleFloors.push({ pd: 0.25, reason: `CIC ${cicScore} < 600` });
+
+          if (previousDefaults === 'Yes') ruleFloors.push({ pd: 0.75, reason: 'Có lịch sử default trước' });
+          if (loanPercentIncome >= 1.0) ruleFloors.push({ pd: 0.85, reason: 'Khoản vay ≥ 100% thu nhập năm' });
+          else if (loanPercentIncome >= 0.5) ruleFloors.push({ pd: 0.55, reason: 'Khoản vay ≥ 50% thu nhập năm' });
+          else if (loanPercentIncome >= 0.35) ruleFloors.push({ pd: 0.40, reason: 'Khoản vay ≥ 35% thu nhập năm' });
+
+          // Income calibrated USD-equivalent (sau quy đổi VND/scale)
+          if (personIncomeUsdAnnual <= 1) ruleFloors.push({ pd: 0.85, reason: 'Thu nhập trống' });
+          else if (personIncomeUsdAnnual < 36000)
+            ruleFloors.push({ pd: 0.55, reason: `Thu nhập năm ${personIncomeUsdAnnual} < 36k (calibrated)` });
+          else if (personIncomeUsdAnnual < 60000)
+            ruleFloors.push({ pd: 0.30, reason: `Thu nhập năm ${personIncomeUsdAnnual} < 60k (calibrated)` });
+
+          if (ruleFloors.length > 0) {
+            const maxFloor = Math.max(...ruleFloors.map(f => f.pd));
+            if (maxFloor > effectivePd) {
+              const oldPd = effectivePd;
+              const oldScore = effectiveAiScore;
+              effectivePd = maxFloor;
+              effectiveAiScore = Math.round(SCORE_MAX - (SCORE_MAX - SCORE_MIN) * effectivePd);
+              this.logger.warn(
+                `[createApplication] BE-safety-floor APPLIED: AI PD=${oldPd.toFixed(4)} (score=${oldScore}) ` +
+                  `→ PD=${effectivePd.toFixed(4)} (score=${effectiveAiScore}). Reasons: ${ruleFloors
+                    .map(f => `${f.reason}→${f.pd}`)
+                    .join('; ')}`,
+              );
+            }
+          }
+
+          const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, effectiveAiScore));
           evaluationScore = Math.round(((clamped - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
 
           // 4. Lấy cấu hình đánh giá (version mới nhất)
@@ -747,7 +790,11 @@ export class LoanService {
           const gradeMaxLoanAmount = Number(matchedGrade?.maxLoanAmount ?? 0);
           const withinGradeLimit = !gradeMaxLoanAmount || dto.capital <= gradeMaxLoanAmount;
 
-          // 6. Xác định decision dựa vào auto thresholds
+          // 6. Xác định decision dựa vào auto thresholds — đọc THẲNG từ DB loan_evaluation_configs.
+          //    AI service CHỈ trả PD + lý do; mọi rule auto-approve/reject là cấu hình ở DB.
+          //    Auto-approve cần đồng thời:
+          //      a) evaluationScore >= autoApproveScore (DB)
+          //      b) loan amount nằm trong maxLoanAmount của hạng (DB)
           if (evaluationScore < evalConfig.autoRejectScore) {
             autoDecision = 'auto_rejected';
           } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) {
@@ -755,9 +802,18 @@ export class LoanService {
           } else {
             autoDecision = 'pending'; // manual review
           }
+          this.logger.log(
+            `[createApplication] AutoDecision (DB-only) | evalScore=${evaluationScore} ` +
+              `vs autoReject<${evalConfig.autoRejectScore} / autoApprove>=${evalConfig.autoApproveScore} | ` +
+              `withinGradeLimit=${withinGradeLimit} (cap=${gradeMaxLoanAmount || 'unlimited'}) | => ${autoDecision}`,
+          );
 
           aiScoreResult = {
-            pd: defaultProbability,
+            pd: effectivePd,
+            rawAiPd: defaultProbability,
+            rawAiScore: aiRiskScore,
+            beFloorApplied: ruleFloors.length > 0 && effectivePd > (Number(defaultProbability) || 0),
+            beFloorReasons: ruleFloors.map(f => f.reason),
             creditScore: evaluationScore,
             grade: matchedGrade?.grade || 'N/A',
             subGrade: matchedGrade?.label || 'Chưa xếp hạng',
@@ -799,8 +855,8 @@ export class LoanService {
           // → bị clamp xuống 150 → policy floor → tất cả khoản vay ra cùng PD=0.65.
           await this.userModel.findByIdAndUpdate(userId, {
             $set: {
-              'creditProfile.pd': defaultProbability,
-              'creditProfile.creditScore': clamped, // 150-750 (raw model output, dùng làm input lần sau)
+              'creditProfile.pd': effectivePd,
+              'creditProfile.creditScore': clamped, // 150-750 (đã apply BE safety floor)
               'creditProfile.evaluationScore': evaluationScore, // 0-100 (hiển thị)
               'creditProfile.grade': matchedGrade?.grade,
               'creditProfile.riskLevel': aiScoreResult.riskLevel,

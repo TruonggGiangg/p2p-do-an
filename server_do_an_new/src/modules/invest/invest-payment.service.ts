@@ -153,8 +153,33 @@ export class InvestPaymentService {
     this.logger.log(`${LOG} ✅ Loan OK: id=${loan._id}, capital=${(loan.capital || 0).toLocaleString()}, status=${loan.status}, productId=${loan.productId}, period=${loan.periodMonth}m, rate=${loan.monthlyRatePercent}%/tháng`);
     this.logger.log(`${LOG}    Loan state: investedNotes=${(loan as any).investedNotes || 0}, nodeMatch=${(loan as any).nodeMatch || 0}, totalNotes=${(loan as any).totalNotes || 'N/A'}`);
 
-    // ── 3. Check duplicate investment (DISABLED BY BUSINESS RULE) ──
-    // Người dùng được quyền phân bổ vốn nhiều lần vào một khoản vay nếu muốn
+    // ── 3. Direct-invest guard ──
+    // Nếu KHÔNG truyền investmentOrderId (luồng "đầu tư trực tiếp" từ tab Invest),
+    // phải đảm bảo NĐT KHÔNG có lệnh đặt sẵn (open) đã match khoản vay này.
+    // Trùng 2 luồng = double-reserve nodeMatch → loan vượt 100% match. Block lại,
+    // yêu cầu NĐT thanh toán qua lệnh đã đặt ở tab "Lệnh đầu tư".
+    if (!investmentOrderId) {
+      const conflictingOrder = await this.orderModel
+        .findOne({
+          lenderId: new Types.ObjectId(lenderId),
+          status: 'open',
+          'loans.loanId': String(loan._id),
+        } as any)
+        .select('_id loans')
+        .lean();
+      if (conflictingOrder) {
+        const matched = (conflictingOrder as any).loans?.find(
+          (l: any) => String(l.loanId) === String(loan._id),
+        );
+        const matchedNodes = matched?.nodeMatch || 0;
+        this.logger.warn(
+          `${LOG} ❌ Direct-invest bị chặn: lender ${lenderId} đã có lệnh ${conflictingOrder._id} match ${matchedNodes} nodes vào loan này.`,
+        );
+        throw new BadRequestException(
+          `Bạn đã có lệnh đầu tư đang khớp khoản vay này (${matchedNodes} nodes). Vui lòng thanh toán qua tab "Lệnh đầu tư" thay vì đầu tư trực tiếp.`,
+        );
+      }
+    }
 
     // ── 4. Check available notes (must consider BOTH nodeMatch and investedNotes) ──
     this.logger.log(`${LOG} [Step 4/10] Checking available notes...`);
@@ -302,6 +327,7 @@ export class InvestPaymentService {
           investAmount,
           loan.periodMonth,
           externalId,
+          eWallet.id,
         );
 
         this.logger.log(`${LOG} ✅ FD CREATED: accountId=${fdResult.accountId}, accountNo=${fdResult.accountNo}, status=${fdResult.status}`);
@@ -521,7 +547,7 @@ export class InvestPaymentService {
       throw new BadRequestException(`Khong the tru tien tu vi sau khi ky SmartCA: ${transferError}`);
     }
 
-    // Step 2: Tạo FD
+    // Step 2: Tạo FD (non-blocking — nếu fail vẫn tiếp tục vì tiền đã trừ rồi)
     let fdSuccess = false;
     let fdError: string | null = null;
     try {
@@ -534,6 +560,7 @@ export class InvestPaymentService {
           investAmount,
           loan.periodMonth,
           externalId,
+          eWallet.id,
         );
         let fdAnnualRate = 0;
         try {
@@ -561,10 +588,11 @@ export class InvestPaymentService {
       }
     } catch (error: any) {
       fdError = error?.message || 'Unknown';
-      this.logger.error(`${LOG} ❌ FD creation FAILED: ${fdError}`);
+      this.logger.error(`${LOG} ❌ FD creation FAILED: ${fdError} — tiền đã trừ thành công, contract vẫn sẽ active. Admin xử lý FD sau.`);
     }
 
-    // Step 3: Update payment status
+    // Step 3: Update payment status — KHÔNG throw nếu FD fail. Tiền đã trừ thành công,
+    // contract đã được ký, phải convert nodeMatch → investedNotes để tiến độ vốn chính xác.
     const paymentStatus =
       transferSuccess && fdSuccess
         ? 'completed'
@@ -574,15 +602,15 @@ export class InvestPaymentService {
     await this.contractModel.findByIdAndUpdate(contract._id, {
       $set: {
         paymentStatus,
+        status: 'active', // Đã ký + trừ tiền thành công → contract active bất kể FD
         ...(paymentStatus !== 'completed'
           ? { paymentError: transferError || fdError || 'Unknown error' }
           : { paymentError: null }),
       },
     });
-
-    if (paymentStatus !== 'completed') {
-      throw new BadRequestException(
-        `Da ky SmartCA nhung chua hoan tat thanh toan/FD: ${transferError || fdError || 'Unknown error'}`,
+    if (paymentStatus === 'partial_fd_failed') {
+      this.logger.warn(
+        `${LOG} ⚠️ Contract ${contract.contractId} active nhưng FD chưa tạo (${fdError}). Admin retry sau.`,
       );
     }
 

@@ -128,8 +128,12 @@ export default function AvailableLoansScreen() {
     const totalClaimed = (item.nodeMatch || 0) + (item.investedNotes || 0);
     const pct = totalNotes > 0 ? Math.min(100, Math.round((totalClaimed / totalNotes) * 100)) : 0;
     
-    // Repayment Probability
-    const repayProb = item.aiScore?.creditScore ? Math.min(99.9, 80 + (item.aiScore.creditScore / 50)).toFixed(1) : null;
+    // Khả năng trả đúng hạn = evaluationScore (0-100) trực tiếp từ aiScore.
+    // creditScore ở đây là evaluationScore đã được loan.service map từ PD model về thang 0-100.
+    const repayProb =
+      typeof item.aiScore?.creditScore === 'number'
+        ? Math.max(0, Math.min(100, item.aiScore.creditScore)).toFixed(0)
+        : null;
 
     return (
       <View style={[styles.card, { backgroundColor: theme.colors.backgroundSecondary }]}>
@@ -175,7 +179,7 @@ export default function AvailableLoansScreen() {
           <View style={[styles.aiInsightBanner, { backgroundColor: theme.colors.surfaceLight || '#1E2D26' }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.aiTitle, { color: theme.colors.primary }]}>
-                Xác suất hoàn sớm: {repayProb}%
+                Khả năng trả đúng hạn: {repayProb}%
               </Text>
               <Text style={[styles.aiSubtitle, { color: theme.colors.textSecondary }]}>
                 Hạng {grade || 'A'} ({riskLevel === 'LOW' ? 'Rủi ro thấp' : 'Ổn định'})

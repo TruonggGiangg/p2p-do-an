@@ -92,17 +92,14 @@ export default function InvestmentOrderDetailScreen() {
   };
 
   const handleLoanPress = async (item: any) => {
-    if (item.isInvested) {
-      try {
-        const contract = await investService.getContractByLoanId(item.loanId);
-        if (contract) navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
-        else modal.alert('Chưa sẵn sàng', 'Hợp đồng đang được tạo, vui lòng thử lại sau.');
-      } catch (e: any) {
-        modal.error('Lỗi', e?.message || 'Không thể mở chi tiết hợp đồng.');
-      }
-    } else {
-      navigation.navigate('SchedulePreview', { loanApplicationId: item.loanId, numNotes: item.nodeMatch, readonly: false, investmentOrderId: orderId });
-    }
+    // Lệnh đầu tư (đặt lệnh) — chỉ rót tiền, KHÔNG tạo/quản lý hợp đồng riêng cho từng match.
+    // Tap vào khoản vay ghép chỉ để xem chi tiết lịch nhận tiền (readonly).
+    navigation.navigate('SchedulePreview', {
+      loanApplicationId: item.loanId,
+      numNotes: item.nodeMatch,
+      readonly: true,
+      investmentOrderId: orderId,
+    });
   };
 
   if (loading) {

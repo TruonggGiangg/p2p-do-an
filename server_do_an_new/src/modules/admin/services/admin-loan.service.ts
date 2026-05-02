@@ -437,7 +437,38 @@ export class AdminLoanService {
     // Map ai_risk_score (150-750, cao=tốt) → evaluationScore (0-100)
     const SCORE_MIN = 150;
     const SCORE_MAX = 750;
-    const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, aiRiskScore));
+
+    // ──────────────────────────────────────────────────────────────────
+    // BE-side safety floor (defense-in-depth) — giống với loan.service.ts.
+    // Để tránh AI service trả PD~0 do model bias / service chưa restart.
+    let effectivePd = Number(defaultProbability) || 0;
+    let effectiveAiScore = Number(aiRiskScore);
+    const ruleFloors: Array<{ pd: number; reason: string }> = [];
+    if (cicScore <= 300) ruleFloors.push({ pd: 0.70, reason: `CIC ${cicScore} ≤ 300` });
+    else if (cicScore < 500) ruleFloors.push({ pd: 0.45, reason: `CIC ${cicScore} < 500` });
+    else if (cicScore < 600) ruleFloors.push({ pd: 0.25, reason: `CIC ${cicScore} < 600` });
+    if (previousDefaults === 'Yes') ruleFloors.push({ pd: 0.75, reason: 'Có lịch sử default trước' });
+    if (loanPercentIncome >= 1.0) ruleFloors.push({ pd: 0.85, reason: 'Khoản vay ≥ 100% thu nhập năm' });
+    else if (loanPercentIncome >= 0.5) ruleFloors.push({ pd: 0.55, reason: 'Khoản vay ≥ 50% thu nhập năm' });
+    else if (loanPercentIncome >= 0.35) ruleFloors.push({ pd: 0.40, reason: 'Khoản vay ≥ 35% thu nhập năm' });
+    if (personIncomeUsdAnnual <= 1) ruleFloors.push({ pd: 0.85, reason: 'Thu nhập trống' });
+    else if (personIncomeUsdAnnual < 36000) ruleFloors.push({ pd: 0.55, reason: `Thu nhập ${personIncomeUsdAnnual} < 36k (calibrated)` });
+    else if (personIncomeUsdAnnual < 60000) ruleFloors.push({ pd: 0.30, reason: `Thu nhập ${personIncomeUsdAnnual} < 60k (calibrated)` });
+    if (ruleFloors.length > 0) {
+      const maxFloor = Math.max(...ruleFloors.map(f => f.pd));
+      if (maxFloor > effectivePd) {
+        const oldPd = effectivePd;
+        const oldScore = effectiveAiScore;
+        effectivePd = maxFloor;
+        effectiveAiScore = Math.round(SCORE_MAX - (SCORE_MAX - SCORE_MIN) * effectivePd);
+        this.logger.warn(
+          `[triggerAIScore] BE-safety-floor APPLIED: AI PD=${oldPd.toFixed(4)} (score=${oldScore}) ` +
+            `→ PD=${effectivePd.toFixed(4)} (score=${effectiveAiScore}). Reasons: ${ruleFloors.map(f => `${f.reason}→${f.pd}`).join('; ')}`,
+        );
+      }
+    }
+
+    const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, effectiveAiScore));
     const evaluationScore = Math.round(((clamped - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
 
     const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
@@ -449,10 +480,21 @@ export class AdminLoanService {
     let autoDecision: 'auto_approved' | 'auto_rejected' | 'pending' = 'pending';
     if (evaluationScore < evalConfig.autoRejectScore) {
       autoDecision = 'auto_rejected';
-    } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) autoDecision = 'auto_approved';
+    } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) {
+      autoDecision = 'auto_approved';
+    }
+    this.logger.log(
+      `[triggerAIScoreForLoan] AutoDecision (DB-only) | evalScore=${evaluationScore} ` +
+        `vs autoReject<${evalConfig.autoRejectScore} / autoApprove>=${evalConfig.autoApproveScore} | ` +
+        `withinGradeLimit=${withinGradeLimit} (cap=${gradeMaxLoanAmount || 'unlimited'}) | => ${autoDecision}`,
+    );
 
     const aiScore = {
-      pd: defaultProbability,
+      pd: effectivePd,
+      rawAiPd: defaultProbability,
+      rawAiScore: aiRiskScore,
+      beFloorApplied: ruleFloors.length > 0 && effectivePd > (Number(defaultProbability) || 0),
+      beFloorReasons: ruleFloors.map(f => f.reason),
       creditScore: evaluationScore,
       grade: matchedGrade?.grade || 'N/A',
       subGrade: matchedGrade?.label || 'Chưa xếp hạng',
@@ -489,7 +531,7 @@ export class AdminLoanService {
     // QUAN TRỌNG: lưu raw 150-750 (clamped) vào creditScore, evaluationScore (0-100) vào field riêng.
     await this.userModel.findByIdAndUpdate(loan.userId, {
       $set: {
-        'creditProfile.pd': defaultProbability,
+        'creditProfile.pd': effectivePd,
         'creditProfile.creditScore': clamped,
         'creditProfile.evaluationScore': evaluationScore,
         'creditProfile.grade': matchedGrade?.grade,

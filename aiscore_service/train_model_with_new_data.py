@@ -142,16 +142,34 @@ RAW_MODEL_INPUT_COLUMNS = [
 ]
 REQUIRED_COLUMNS = RAW_MODEL_INPUT_COLUMNS + [TARGET_COLUMN]
 
-RAW_NUMERIC_INPUT_COLUMNS = [
-    "person_age",
-    "person_income",
-    "person_emp_exp",
-    "loan_amnt",
-    "loan_int_rate",
-    "loan_percent_income",
-    "cb_person_cred_hist_length",
-    "credit_score",
-]
+# Currency-invariant training mode (recommended for VN deployment).
+# When enabled, the model does NOT use absolute monetary features (loan_amnt,
+# person_income) which would otherwise bias the model toward USD scale and
+# auto-approve every VN loan when BE forwards VND/scale_calib values.
+# Only ratios + scale-invariant signals are kept. Set to "0" to fall back to
+# the legacy USD-style training.
+CURRENCY_INVARIANT_MODE = os.environ.get("CURRENCY_INVARIANT_MODE", "1") == "1"
+
+if CURRENCY_INVARIANT_MODE:
+    RAW_NUMERIC_INPUT_COLUMNS = [
+        "person_age",
+        "person_emp_exp",
+        "loan_int_rate",
+        "loan_percent_income",
+        "cb_person_cred_hist_length",
+        "credit_score",
+    ]
+else:
+    RAW_NUMERIC_INPUT_COLUMNS = [
+        "person_age",
+        "person_income",
+        "person_emp_exp",
+        "loan_amnt",
+        "loan_int_rate",
+        "loan_percent_income",
+        "cb_person_cred_hist_length",
+        "credit_score",
+    ]
 
 # One necessary derived model feature: maps Yes/No to 1/0.
 DERIVED_MODEL_FEATURES = [

@@ -23,9 +23,7 @@
   },
   "features": [
     "person_age",
-    "person_income",
     "person_emp_exp",
-    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -53,9 +51,7 @@
   ],
   "raw_numeric_input_columns": [
     "person_age",
-    "person_income",
     "person_emp_exp",
-    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -66,9 +62,7 @@
   ],
   "numeric_features": [
     "person_age",
-    "person_income",
     "person_emp_exp",
-    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -84,9 +78,7 @@
   "explain_only_features": [],
   "processed_feature_names": [
     "person_age",
-    "person_income",
     "person_emp_exp",
-    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -112,20 +104,20 @@
   ],
   "threshold": {
     "metric": "f2",
-    "value": 0.16499999999999998
+    "value": 0.145
   },
   "metrics": {
-    "roc_auc": 0.975773,
-    "average_precision": 0.991954,
-    "brier": 0.049757,
-    "accuracy": 0.915889,
-    "balanced_accuracy": 0.818429,
-    "precision": 0.906922,
-    "recall": 0.993857,
-    "f1": 0.948402,
-    "f2": 0.975162,
-    "mcc": 0.746307,
-    "ks": 0.818643
+    "roc_auc": 0.958657,
+    "average_precision": 0.986326,
+    "brier": 0.064973,
+    "accuracy": 0.897111,
+    "balanced_accuracy": 0.77725,
+    "precision": 0.887966,
+    "recall": 0.993,
+    "f1": 0.937551,
+    "f2": 0.970051,
+    "mcc": 0.684978,
+    "ks": 0.743714
   },
   "risk_bands": [
     {
