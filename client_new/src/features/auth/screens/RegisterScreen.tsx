@@ -316,29 +316,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingBottom: 40,
     },
-    branding: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginTop: 10,
-        marginBottom: 32,
-    },
-    logoBox: {
-        width: 32,
-        height: 32,
-        borderRadius: 4,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    logoChar: {
-        fontSize: 18,
-        fontWeight: '900',
-        color: '#000',
-    },
-    brandName: {
-        fontSize: 18,
-        fontFamily: 'Poppins_700Bold',
-    },
+
     heroSection: {
         alignItems: 'center',
         marginTop: 20,

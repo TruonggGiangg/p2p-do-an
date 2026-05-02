@@ -19,7 +19,7 @@ Required raw fields (matched với metadata.json của models_final):
 import os
 import sys
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, List
 
 import numpy as np
 import pandas as pd
@@ -123,15 +123,15 @@ def _probability_to_score(default_pd: float) -> int:
     return int(round(float(np.clip(score, CREDIT_SCORE_TARGET_MIN, CREDIT_SCORE_TARGET_MAX))))
 
 
-def _score_to_risk_band(score: int) -> tuple[str, str]:
+def _score_to_risk_band(score: int) -> Tuple[str, str]:
     for lo, hi, label, decision in RISK_BANDS:
         if lo <= score <= hi:
             return label, decision
     return ("Very high risk", "reject_or_strict_review") if score < 150 else ("Very low risk", "approve")
 
 
-def _policy_pd_floor(row: Dict[str, Any]) -> tuple[float, list[str]]:
-    floors: list[tuple[float, str]] = []
+def _policy_pd_floor(row: Dict[str, Any]) -> Tuple[float, List[str]]:
+    floors: List[Tuple[float, str]] = []
 
     income = float(row.get("person_income", 0) or 0)
     loan_percent_income = float(row.get("loan_percent_income", 0) or 0)
@@ -262,7 +262,8 @@ class CreditScorerFinal:
         loan_amnt = num("loan_amnt", num("loanAmount", num("capital", 0), 0), 0)
         loan_int_rate = num("loan_int_rate", num("interestRate", 12.0, 0, 100), 0, 100)
         # loan_percent_income = loan_amnt / annual_income
-        annual_income = max(person_income * 12.0, 1.0) if person_income else 1.0
+        # QUAN TRỌNG: person_income từ BE đã là ANNUAL USD (đã scale VND→USD).
+        annual_income = max(person_income, 1.0) if person_income else 1.0
         loan_percent_income_default = float(np.clip(loan_amnt / annual_income, 0.0, 5.0)) if person_income else 0.0
         loan_percent_income = num("loan_percent_income", loan_percent_income_default, 0, 5)
         cb_hist = num("cb_person_cred_hist_length", 3, 0, 30)
@@ -319,8 +320,8 @@ class CreditScorerFinal:
         Trả về { positives, negatives, decision_explanation } để admin web
         có thể hiển thị "Vì sao bị từ chối?" / "Điểm mạnh hồ sơ".
         """
-        positives: list[str] = []
-        negatives: list[str] = []
+        positives: List[str] = []
+        negatives: List[str] = []
 
         # 1. Previous default
         if row["previous_default_bin"] >= 1:
@@ -351,11 +352,14 @@ class CreditScorerFinal:
             positives.append(f"Tỷ lệ khoản vay/thu nhập năm hợp lý ({lpi*100:.0f}%).")
 
         # 4. Income absolute
-        income = float(row["person_income"])
-        if income < 5_000_000:
-            negatives.append(f"Thu nhập tháng thấp ({income:,.0f} ₫).")
-        elif income >= 25_000_000:
-            positives.append(f"Thu nhập tháng cao ({income:,.0f} ₫).")
+        # person_income là USD-scaled annual (VND / 1000). Quy về VND tháng để hiển thị.
+        income_usd_annual = float(row["person_income"])
+        VND_SCALE = 1000  # phải đồng bộ với aiscore-exchange-rate.ts
+        income_vnd_monthly = income_usd_annual * VND_SCALE / 12
+        if income_usd_annual < 36_000:  # ~3M VND/tháng
+            negatives.append(f"Thu nhập tháng thấp ({income_vnd_monthly:,.0f} ₫/tháng).")
+        elif income_usd_annual >= 300_000:  # ~25M VND/tháng
+            positives.append(f"Thu nhập tháng cao ({income_vnd_monthly:,.0f} ₫/tháng).")
 
         # 5. Employment experience
         emp = float(row["person_emp_exp"])

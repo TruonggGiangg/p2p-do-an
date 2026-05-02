@@ -182,18 +182,6 @@ const styles = StyleSheet.create({
         gap: 8,
         marginTop: 16,
     },
-    actionBtn: {
-        flex: 1,
-        height: 36,
-        borderRadius: 4,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    actionBtnText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#000',
-    },
     listSection: {
         marginTop: 10,
         paddingHorizontal: 20,

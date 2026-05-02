@@ -449,8 +449,8 @@ const LoanHistoryScreen = () => {
                                     style={[styles.emptyCta, { backgroundColor: colors.primary }]}
                                     onPress={() => (navigation as any).navigate('Main', { screen: 'Loan' })}
                                 >
-                                    <Text style={styles.emptyCtaText}>Xem gói vay</Text>
-                                    <Ionicons name="arrow-forward" size={18} color="#000" />
+                                    <Text style={[styles.emptyCtaText, { color: colors.onPrimary }]}>Xem gói vay</Text>
+                                    <Ionicons name="arrow-forward" size={18} color={colors.onPrimary} />
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     emptyTitle: { fontSize: 16, fontWeight: '600' },
     emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
     emptyCta: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
-    emptyCtaText: { fontSize: 15, fontWeight: '700', color: '#000' },
+    emptyCtaText: { fontSize: 15, fontWeight: '700' },
 
     // List
     listContent: { paddingBottom: 24, paddingTop: 4 },

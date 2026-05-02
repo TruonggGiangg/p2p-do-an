@@ -537,7 +537,7 @@ export default function BNPLScreen() {
                         disabled={submittingReg}
                     >
                         {submittingReg
-                            ? <ActivityIndicator color="#000" />
+                            ? <ActivityIndicator color={c.onPrimary} />
                             : <Text style={styles.flowBtnText}>Nộp đơn đăng ký</Text>
                         }
                     </TouchableOpacity>
@@ -660,7 +660,7 @@ export default function BNPLScreen() {
                 activeOpacity={0.8}
             >
                 <View style={[styles.checkbox, termsAccepted && { backgroundColor: c.primary, borderColor: c.primary }]}>
-                    {termsAccepted && <MaterialCommunityIcons name="check" size={14} color="#000" />}
+                    {termsAccepted && <MaterialCommunityIcons name="check" size={14} color={c.onPrimary} />}
                 </View>
                 <Text style={[styles.checkLabel, { color: c.textSecondary }]}>
                     Tôi đã đọc và đồng ý với{' '}
@@ -676,7 +676,7 @@ export default function BNPLScreen() {
                 activeOpacity={0.8}
             >
                 <View style={[styles.checkbox, signatureChecked && { backgroundColor: c.primary, borderColor: c.primary }]}>
-                    {signatureChecked && <MaterialCommunityIcons name="check" size={14} color="#000" />}
+                    {signatureChecked && <MaterialCommunityIcons name="check" size={14} color={c.onPrimary} />}
                 </View>
                 <Text style={[styles.checkLabel, { color: c.textSecondary }]}>
                     Tôi xác nhận <Text style={{ fontWeight: '600', color: c.textPrimary }}>chữ ký số</Text> dưới đây là hợp lệ và mang giá trị pháp lý
@@ -699,7 +699,7 @@ export default function BNPLScreen() {
                 activeOpacity={0.85}
                 onPress={handleSignAndActivate}
             >
-                <Text style={[styles.flowBtnText, { color: termsAccepted && signatureChecked ? '#000' : c.textMuted }]}>
+                <Text style={[styles.flowBtnText, { color: termsAccepted && signatureChecked ? c.onPrimary : c.textMuted }]}>
                     Xác nhận & Kích hoạt ví
                 </Text>
             </TouchableOpacity>
@@ -830,8 +830,8 @@ export default function BNPLScreen() {
                                 activeOpacity={0.8}
                                 onPress={() => navigation.navigate('BNPLLoanList', { loans })}
                             >
-                                <MaterialCommunityIcons name="credit-card-refresh-outline" size={16} color="#000" />
-                                <Text style={styles.repayBtnText}>Thanh toán dư nợ</Text>
+                                <MaterialCommunityIcons name="credit-card-refresh-outline" size={16} color={c.onPrimary} />
+                                <Text style={[styles.repayBtnText, { color: c.onPrimary }]}>Thanh toán dư nợ</Text>
                             </TouchableOpacity>
                         </CommonCard>
                     )}
@@ -1054,7 +1054,7 @@ export default function BNPLScreen() {
                         activeOpacity={0.85}
                         onPress={() => setSuccessLoan(null)}
                     >
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#000' }}>Quay lại</Text>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: c.onPrimary }}>Quay lại</Text>
                     </TouchableOpacity>
                 </View>
             )}
@@ -1839,7 +1839,6 @@ const styles = StyleSheet.create({
     repayBtnText: {
         fontSize: 15,
         fontWeight: '700',
-        color: '#000',
     },
 
     // Transaction history styles
@@ -1919,7 +1918,6 @@ const styles = StyleSheet.create({
     flowBtnText: {
         fontSize: 16,
         fontFamily: 'Poppins_700Bold',
-        color: '#000',
     },
 
     // ── Registration form

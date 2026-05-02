@@ -18,6 +18,7 @@ import { UsersModule } from '../users/users.module';
 import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 import { SmartCAModule } from '../digital-signature/smartca.module';
 import { CreditScoreModule } from '../credit-score/credit-score.module';
+import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { CreditScoreModule } from '../credit-score/credit-score.module';
       { name: DelinquencyPolicy.name, schema: DelinquencyPolicySchema },
       { name: LoanDelinquency.name, schema: LoanDelinquencySchema },
       { name: User.name, schema: UserSchema },
+      { name: InvestmentContract.name, schema: InvestmentContractSchema },
     ]),
     FineractModule,
     forwardRef(() => AdminModule),

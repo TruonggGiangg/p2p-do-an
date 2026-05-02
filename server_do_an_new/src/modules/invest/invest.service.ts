@@ -694,9 +694,48 @@ export class InvestService {
     };
   }
 
-  async getOrderById(orderId: string): Promise<InvestmentOrder> {
-    const order = await this.investmentOrderModel.findById(orderId);
+  async getOrderById(orderId: string): Promise<any> {
+    const order = await this.investmentOrderModel.findById(orderId).lean();
     if (!order) throw new NotFoundException('Không tìm thấy lệnh đầu tư');
+
+    // Lấy thông tin hợp đồng cho từng khoản vay đã ghép
+    const loanIds = order.loans.map(l => l.loanId);
+    if (loanIds.length > 0) {
+      const contracts = await this.contractModel.find({
+        lenderId: order.lenderId,
+        loanApplicationId: { $in: loanIds }
+      });
+      const contractMap = new Map(contracts.map(c => [c.loanApplicationId.toString(), c]));
+
+      // Lấy hợp đồng của người vay
+      const loanContractModel = this.connection.model('LoanContract');
+      const borrowerContracts = await loanContractModel.find({ loanId: { $in: loanIds } }).lean();
+      const borrowerContractMap = new Map(borrowerContracts.map((c: any) => [String(c.loanId), c]));
+
+      order.loans = order.loans.map(loan => {
+        const contract = contractMap.get(loan.loanId);
+        if (contract) {
+          (loan as any).contractId = contract.contractId;
+          (loan as any).contract_id = contract._id; // Add Mongo _id
+          (loan as any).contractStatus = contract.status;
+          (loan as any).smartCASignatureVerified = contract.smartCASignatureVerified;
+        }
+
+        const bContract = borrowerContractMap.get(loan.loanId);
+        if (bContract) {
+          const borrowerSignedVerified = Boolean(
+            bContract.smartCASignatureVerified ||
+            (bContract.signatureProvider === 'vnpt_smartca' &&
+              ['signed', 'active'].includes(String(bContract.status || ''))),
+          );
+          (loan as any).borrowerContractStatus = bContract.status;
+          (loan as any).borrowerSignedVerified = borrowerSignedVerified;
+        }
+
+        return loan;
+      });
+    }
+
     return order;
   }
 

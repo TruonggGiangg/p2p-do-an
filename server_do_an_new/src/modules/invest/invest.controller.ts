@@ -174,11 +174,12 @@ export class InvestController {
     // CHẶN: lệnh đầu tư (đặt lệnh) KHÔNG bao giờ tạo hợp đồng đầu tư qua endpoint này.
     // Logic ghép lệnh chỉ reserve nodeMatch, không trừ tiền và không sinh contract.
     // Chỉ "đầu tư trực tiếp" vào khoản vay đang mở mới tạo hợp đồng để ký SmartCA.
-    if (body.investmentOrderId) {
-      throw new BadRequestException(
-        'Lệnh đầu tư không tạo hợp đồng. Hợp đồng chỉ được tạo khi đầu tư trực tiếp vào khoản vay đang mở.',
-      );
-    }
+    // Bỏ chặn: lệnh đầu tư cũng tạo hợp đồng khi thanh toán
+    // if (body.investmentOrderId) {
+    //   throw new BadRequestException(
+    //     'Lệnh đầu tư không tạo hợp đồng. Hợp đồng chỉ được tạo khi đầu tư trực tiếp vào khoản vay đang mở.',
+    //   );
+    // }
     if (!body.otpSessionId) {
       throw new UnauthorizedException('Vui lòng xác thực Smart OTP trước khi đầu tư');
     }
@@ -190,7 +191,7 @@ export class InvestController {
     if (!consumeResult.valid) {
       throw new UnauthorizedException(consumeResult.message);
     }
-    return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes);
+    return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes, body.investmentOrderId);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -221,16 +222,22 @@ export class InvestController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: ['pending', 'pending_signature', 'active', 'matured', 'closed'] })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   async listContracts(
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ) {
     return this.contractService.getContractsByLender(userId, {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       status,
+      sortBy,
+      sortOrder,
     });
   }
 

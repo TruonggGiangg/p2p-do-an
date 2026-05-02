@@ -90,6 +90,22 @@ export default function LoanConfirmScreen() {
     const [personEmpExpStr, setPersonEmpExpStr] = useState('');
     const personIncome = Number(personIncomeStr.replace(/\D/g, '')) || 0;
     const personEmpExp = Number(personEmpExpStr.replace(/\D/g, '')) || 0;
+    const [personEducation, setPersonEducation] = useState<string>('');
+    const [personHomeOwnership, setPersonHomeOwnership] = useState<string>('');
+
+    const EDUCATION_OPTIONS = [
+        { label: 'Trung học phổ thông', value: 'High School' },
+        { label: 'Cao đẳng', value: 'Associate' },
+        { label: 'Đại học', value: 'Bachelor' },
+        { label: 'Thạc sĩ', value: 'Master' },
+        { label: 'Tiến sĩ', value: 'Doctorate' },
+    ];
+    const HOME_OWNERSHIP_OPTIONS = [
+        { label: 'Thuê nhà', value: 'RENT' },
+        { label: 'Sở hữu', value: 'OWN' },
+        { label: 'Thế chấp (trả góp)', value: 'MORTGAGE' },
+        { label: 'Khác', value: 'OTHER' },
+    ];
 
     useEffect(() => {
         if (!schedule) {
@@ -158,6 +174,14 @@ export default function LoanConfirmScreen() {
             modal.error('Thiếu thông tin', 'Số năm kinh nghiệm làm việc phải từ 0 đến 60.');
             return;
         }
+        if (!personEducation) {
+            modal.error('Thiếu thông tin', 'Vui lòng chọn trình độ học vấn.');
+            return;
+        }
+        if (!personHomeOwnership) {
+            modal.error('Thiếu thông tin', 'Vui lòng chọn tình trạng nhà ở.');
+            return;
+        }
         setSubmitting(true);
         try {
             const today = new Date();
@@ -172,6 +196,8 @@ export default function LoanConfirmScreen() {
                 disbursementWalletId: walletId,
                 personIncome,
                 personEmpExp,
+                personEducation,
+                personHomeOwnership,
                 documents: Object.entries(documents)
                     .filter(([, v]) => v?.name)
                     .map(([documentTypeId, v]) => {
@@ -407,6 +433,56 @@ export default function LoanConfirmScreen() {
                             <Text style={styles.aiInputSuffix}>năm</Text>
                         </View>
                     </View>
+
+                    <View style={styles.aiInputBlock}>
+                        <View style={styles.aiInputLabelRow}>
+                            <Text style={styles.aiInputLabel}>Trình độ học vấn</Text>
+                            <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>Bắt buộc</Text></View>
+                        </View>
+                        <View style={styles.chipRow}>
+                            {EDUCATION_OPTIONS.map(opt => (
+                                <TouchableOpacity
+                                    key={opt.value}
+                                    activeOpacity={0.7}
+                                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPersonEducation(opt.value); }}
+                                    style={[
+                                        styles.chip,
+                                        personEducation === opt.value && styles.chipSelected,
+                                    ]}
+                                >
+                                    <Text style={[
+                                        styles.chipText,
+                                        personEducation === opt.value && styles.chipTextSelected,
+                                    ]}>{opt.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    <View style={styles.aiInputBlock}>
+                        <View style={styles.aiInputLabelRow}>
+                            <Text style={styles.aiInputLabel}>Tình trạng nhà ở</Text>
+                            <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>Bắt buộc</Text></View>
+                        </View>
+                        <View style={styles.chipRow}>
+                            {HOME_OWNERSHIP_OPTIONS.map(opt => (
+                                <TouchableOpacity
+                                    key={opt.value}
+                                    activeOpacity={0.7}
+                                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPersonHomeOwnership(opt.value); }}
+                                    style={[
+                                        styles.chip,
+                                        personHomeOwnership === opt.value && styles.chipSelected,
+                                    ]}
+                                >
+                                    <Text style={[
+                                        styles.chipText,
+                                        personHomeOwnership === opt.value && styles.chipTextSelected,
+                                    ]}>{opt.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
                 </View>
 
                 <View style={styles.card}>
@@ -543,6 +619,14 @@ const styles = StyleSheet.create({
     },
     aiInput: { flex: 1, fontSize: 15, fontWeight: '600', color: '#111827', paddingVertical: 12 },
     aiInputSuffix: { fontSize: 13, color: '#6B7280', marginLeft: 8 },
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: {
+        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+        borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB',
+    },
+    chipSelected: { borderColor: '#1E3A2F', backgroundColor: '#1E3A2F' },
+    chipText: { fontSize: 13, fontWeight: '500' as const, color: '#374151' },
+    chipTextSelected: { color: '#FFFFFF' },
     badgeRequiredText: { color: '#DC2626', fontSize: 10, fontWeight: '700' },
     bigCameraBtn: { width: '100%', height: 120, backgroundColor: '#F9FAFB', borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
     docThumbnail: { width: '100%', height: '100%', borderRadius: 12 },

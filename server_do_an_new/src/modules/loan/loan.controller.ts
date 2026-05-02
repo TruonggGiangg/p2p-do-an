@@ -143,6 +143,8 @@ export class LoanController {
       otpSessionId: dto.otpSessionId,
       personIncome: dto.personIncome,
       personEmpExp: dto.personEmpExp,
+      personEducation: dto.personEducation,
+      personHomeOwnership: dto.personHomeOwnership,
     });
     return result;
   }
@@ -254,6 +256,20 @@ export class LoanController {
   ) {
     const result = await this.loanService.submitSupportRequest(userId, loanId, body);
     return result;
+  }
+
+  // =============================================
+  // SIGNING STATUS (multi-party)
+  // =============================================
+
+  @Get(':loanId/signing-status')
+  @ApiOperation({ summary: 'Trạng thái ký hợp đồng đa bên (người vay + nhà đầu tư)' })
+  @ApiResponse({ status: 200, description: 'Trạng thái ký tổng hợp' })
+  async getSigningStatus(
+    @CurrentUser('id') userId: string,
+    @Param('loanId') loanId: string,
+  ) {
+    return this.loanService.getSigningStatus(userId, loanId);
   }
 
   // =============================================

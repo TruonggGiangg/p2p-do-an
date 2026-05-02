@@ -518,12 +518,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  registerBtnText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Poppins_600SemiBold',
-  },
   refreshBtn: {
     width: '100%',
     height: 44,

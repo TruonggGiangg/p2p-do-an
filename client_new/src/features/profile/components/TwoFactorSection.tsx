@@ -742,12 +742,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  enableBtnText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'Poppins_600SemiBold',
-  },
   modalContainer: {
     flex: 1,
   },

@@ -234,8 +234,8 @@ export default function BNPLLoanDetailScreen() {
                             activeOpacity={0.85}
                             onPress={() => navigation.navigate('BNPLEarlyRepay', { loan })}
                         >
-                            <MaterialCommunityIcons name="credit-card-fast-outline" size={18} color="#000" />
-                            <Text style={styles.earlyRepayBtnText}>Trả nợ trước hạn</Text>
+                            <MaterialCommunityIcons name="credit-card-fast-outline" size={18} color={c.onPrimary} />
+                            <Text style={[styles.earlyRepayBtnText, { color: c.onPrimary }]}>Trả nợ trước hạn</Text>
                         </TouchableOpacity>
                     </View>
                 )}
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     paymentAmt: { fontSize: 14, fontWeight: '700', flexShrink: 0, marginLeft: 8 },
     contactSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 20 },
     earlyRepayBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 14 },
-    earlyRepayBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+    earlyRepayBtnText: { fontSize: 15, fontWeight: '700' },
     menuOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 },
     menuBox: { position: 'absolute', top: 60, right: 16, borderRadius: 12, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 10, minWidth: 200 },
     menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14 },

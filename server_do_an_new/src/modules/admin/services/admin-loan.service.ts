@@ -1,4 +1,5 @@
 import { AdminCustomerService } from './admin-customer.service';
+import { InvestmentContract } from '../../invest/schemas/investment-contract.schema';
 import {
   Injectable,
   Logger,
@@ -45,6 +46,7 @@ import { CreditScoreWeightConfigInput, CreditScoreWeightConfigValue } from '../.
 import { AdminProductService } from '../services/admin-product.service';
 import { AdminKycService } from '../services/admin-kyc.service';
 import { AdminStaffService } from '../services/admin-staff.service';
+import { FabricService } from '../../fabric/fabric.service';
 import { resolveAiscoreVndPerUsd } from '../../../utils/aiscore-exchange-rate';
 
 /** officeId=1 = Head Office in default Fineract setup */
@@ -92,6 +94,7 @@ export class AdminLoanService {
     @InjectModel(Wallet.name) private walletModel: Model<Wallet>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(LoanContract.name) private loanContractModel: Model<LoanContract>,
+    @InjectModel(InvestmentContract.name) private investmentContractModel: Model<InvestmentContract>,
     @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
     private readonly fineractLoanService: FineractLoanService,
     private readonly fineractClientService: FineractClientService,
@@ -320,17 +323,28 @@ export class AdminLoanService {
       .select('kycData creditProfile previousLoanDefaults')
       .lean()
       .exec();
-    const rawCic = userDoc?.creditProfile?.creditScore ?? 570;
-    // BUG FIX: cũ ghi nhầm evaluationScore (0-100) vào creditProfile.creditScore. Nếu phát hiện
-    // giá trị < 150 → đó là dữ liệu polluted cũ → reset về default 570 thay vì clamp lên 150
-    // (clamp 150 sẽ kích policy floor "credit score 300 or lower" → tất cả khoản vay ra cùng PD=0.65).
-    const cicScoreInput = rawCic < 150 ? 570 : rawCic;
-    const cicScore = Math.max(150, Math.min(750, cicScoreInput));
-    if (rawCic < 150) {
+    // CIC Score sourcing priority:
+    // 1. Lấy từ loan.aiScore.featuresResolved.credit_score (CIC gốc đã dùng lần tạo đơn đầu tiên)
+    // 2. Fallback creditProfile.creditScore (CIC từ KYC scorecard)
+    // 3. Default 570 nếu không có gì
+    const prevResolved_cic = Number(loan?.aiScore?.featuresResolved?.credit_score);
+    const profileCic = Number(userDoc?.creditProfile?.creditScore);
+    let cicScoreInput: number;
+
+    if (prevResolved_cic && prevResolved_cic >= 150 && prevResolved_cic <= 750) {
+      // Ưu tiên CIC gốc từ lần score đầu tiên (createApplication)
+      cicScoreInput = prevResolved_cic;
+      this.logger.log(`[triggerAIScore] CIC source: featuresResolved.credit_score=${cicScoreInput}`);
+    } else if (profileCic && profileCic >= 150 && profileCic <= 750) {
+      cicScoreInput = profileCic;
+      this.logger.log(`[triggerAIScore] CIC source: creditProfile.creditScore=${cicScoreInput}`);
+    } else {
+      cicScoreInput = 570; // default
       this.logger.warn(
-        `[triggerAIScore] creditProfile.creditScore=${rawCic} (polluted 0-100 từ bug cũ) → reset về 570`,
+        `[triggerAIScore] CIC không hợp lệ (resolved=${prevResolved_cic}, profile=${profileCic}) → default 570`,
       );
     }
+    const cicScore = Math.max(150, Math.min(750, cicScoreInput));
 
     // Derive person_age từ KYC dob
     const kycData: any = userDoc?.kycData || {};
@@ -371,13 +385,12 @@ export class AdminLoanService {
       this.logger,
       'triggerAIScore',
     );
-    // Lấy person_income annual (VND) → USD
+    // Lấy person_income annual (USD) — đã được scale từ VND khi createApplication
     let personIncomeUsdAnnual = 0;
     if (prevResolved.person_income && Number(prevResolved.person_income) > 0) {
-      const prev = Number(prevResolved.person_income);
-      // Heuristic: nếu prev > 200_000 → là VND chưa scale (loan cũ trước fix), scale lại.
-      // Nếu prev <= 200_000 → đã là USD annual (loan mới sau fix).
-      personIncomeUsdAnnual = prev > 200_000 ? prev / vndPerUsd : prev;
+      // prevResolved.person_income đã là USD annual (đã scale từ VND trong createApplication).
+      // KHÔNG scale lại lần nữa — bug cũ gây double-scale khi > 200k.
+      personIncomeUsdAnnual = Number(prevResolved.person_income);
     } else if (personIncomeMonthlyVnd > 0) {
       personIncomeUsdAnnual = (personIncomeMonthlyVnd * 12) / vndPerUsd;
     }
@@ -528,11 +541,12 @@ export class AdminLoanService {
     await this.loanApplicationModel.updateOne({ fineractLoanId }, { $set: { aiScore } });
 
     // Update user credit profile
-    // QUAN TRỌNG: lưu raw 150-750 (clamped) vào creditScore, evaluationScore (0-100) vào field riêng.
+    // QUAN TRỌNG: KHÔNG ghi đè creditProfile.creditScore (CIC gốc 150-750 từ KYC/scorecard).
+    // AI risk score (clamped) lưu riêng vào creditProfile.aiRiskScore để tránh ô nhiễm CIC.
     await this.userModel.findByIdAndUpdate(loan.userId, {
       $set: {
         'creditProfile.pd': effectivePd,
-        'creditProfile.creditScore': clamped,
+        'creditProfile.aiRiskScore': clamped, // AI risk score 150-750 (KHÔNG PHẢI CIC!)
         'creditProfile.evaluationScore': evaluationScore,
         'creditProfile.grade': matchedGrade?.grade,
         'creditProfile.riskLevel': aiScore.riskLevel,
@@ -544,87 +558,32 @@ export class AdminLoanService {
       `[triggerAIScore] Done: fineractLoanId=${fineractLoanId} score=${evaluationScore} grade=${aiScore.grade} decision=${aiScore.decision}`,
     );
 
-    // Nếu AI auto-reject → cập nhật trạng thái khoản vay sang 'rejected' để loại khỏi danh sách chờ duyệt.
+    // AI scoring trên admin CHỈ tính điểm + lưu kết quả — KHÔNG tự động thay đổi trạng thái.
+    // Admin xem kết quả AI → tự quyết định duyệt/từ chối bằng nút riêng.
     let finalStatus: LoanApplicationStatus = (loan.status as LoanApplicationStatus) || 'pending';
-    if (autoDecision === 'auto_rejected' && loan.status === 'pending') {
-      const rejectionReason =
-        aiScore.decisionExplanation ||
-        `Tự động từ chối bởi AI: ${evaluationScore}/100, hạng ${aiScore.grade}`;
-      try {
-        // Reject trên Fineract trước (idempotent — bỏ qua lỗi nếu đã reject)
-        await this.fineractLoanService
-          .rejectLoan(fineractLoanId, undefined, rejectionReason.slice(0, 500))
-          .catch(err => {
-            this.logger.warn(
-              `[triggerAIScore] Fineract reject failed (có thể đã reject): ${err?.message || err}`,
-            );
-          });
-      } finally {
-        await this.loanApplicationModel.updateOne(
-          { fineractLoanId },
-          {
-            $set: {
-              status: 'rejected',
-              rejectedAt: new Date(),
-              rejectionReason,
-              rejectedBy: 'AI_AUTO',
-            },
-          },
-        );
-        finalStatus = 'rejected';
-        this.logger.log(
-          `[triggerAIScore] Auto-rejected loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade})`,
-        );
 
-        // Notify borrower
-        try {
-          await this.notificationModel.create({
-            userId: loan.userId,
-            title: 'Đơn vay bị từ chối tự động',
-            message: `Đơn vay ${Number(loan.capital).toLocaleString('vi-VN')} đ bị AI từ chối (điểm ${evaluationScore}/100, hạng ${aiScore.grade}).`,
-            type: 'loan_rejected',
-            data: {
-              loanId: loan._id?.toString?.(),
-              fineractLoanId,
-              reason: rejectionReason,
-              evaluationScore,
-              grade: aiScore.grade,
-            },
-          });
-        } catch (err: any) {
-          this.logger.warn(`[triggerAIScore] Notification failed: ${err?.message || err}`);
-        }
-      }
-    }
-
-    // Nếu AI auto-approve → tự động duyệt khoản vay (mirror createApplication flow).
-    // Loại khỏi danh sách chờ duyệt + tạo hợp đồng + auto-matching.
-    if (autoDecision === 'auto_approved' && loan.status === 'pending') {
-      try {
-        await this.approveLoan(fineractLoanId);
-        finalStatus = 'approved';
-        this.logger.log(
-          `[triggerAIScore] Auto-approved loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade})`,
-        );
-      } catch (err: any) {
-        // Có thể fail vì thiếu document hoặc Fineract status không cho phép.
-        // Không throw — vẫn giữ aiScore đã lưu, để admin duyệt thủ công sau.
-        this.logger.warn(
-          `[triggerAIScore] Auto-approve failed (${err?.message || err}). Loan vẫn ở trạng thái pending để admin xử lý thủ công.`,
-        );
-      }
+    if (autoDecision === 'auto_rejected') {
+      this.logger.warn(
+        `[triggerAIScore] AI đề xuất TỪ CHỐI loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade}). ` +
+          `Giữ status=${finalStatus} — admin quyết định cuối cùng.`,
+      );
+    } else if (autoDecision === 'auto_approved') {
+      this.logger.log(
+        `[triggerAIScore] AI đề xuất DUYỆT loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade}). ` +
+          `Giữ status=${finalStatus} — admin quyết định cuối cùng.`,
+      );
     }
 
     return {
       fineractLoanId,
       aiScore,
       status: finalStatus,
-      autoRejected: autoDecision === 'auto_rejected',
+      autoRejected: false,
       message:
         autoDecision === 'auto_rejected'
-          ? `Đã tự động từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}`
-          : autoDecision === 'auto_approved' && finalStatus === 'approved'
-            ? `Đã tự động duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}`
+          ? `AI đề xuất từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}. Admin vui lòng xem xét.`
+          : autoDecision === 'auto_approved'
+            ? `AI đề xuất duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}. Admin vui lòng xác nhận.`
             : `Tính điểm AI thành công: ${evaluationScore}/100, hạng ${aiScore.grade}`,
     };
   }
@@ -763,7 +722,7 @@ export class AdminLoanService {
 
     // ── Blockchain: Sync LoanContract → approved ──
     try {
-      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      const fabricService = this.moduleRef.get(FabricService, { strict: false }) as any;
       if (fabricService?.isConnected()) {
         const contract = await this.loanContractModel.findOne({ loanId: app._id }).lean();
         if (contract?.contractId) {
@@ -879,7 +838,7 @@ export class AdminLoanService {
 
     // 6. Sync to Blockchain
     try {
-      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      const fabricService = this.moduleRef.get(FabricService, { strict: false }) as any;
       if (fabricService?.isConnected()) {
         // Update LoanContract → disbursed
         if (contract?.contractId) {
@@ -959,7 +918,7 @@ export class AdminLoanService {
 
     // 5. Sync to Blockchain
     try {
-      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      const fabricService = this.moduleRef.get(FabricService, { strict: false }) as any;
       if (fabricService?.isConnected()) {
         const contract = await this.loanContractModel.findOne({ loanId: app._id }).lean();
         if (contract?.contractId) {
@@ -1010,15 +969,47 @@ export class AdminLoanService {
   async getContractStatus(fineractLoanId: number) {
     this.logger.log(`[getContractStatus] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
-    if (!loan) return { hasContract: false, contractStatus: null, signedAt: null };
+    if (!loan) return { hasContract: false, contractStatus: null, signedAt: null, investmentSigningStatus: null };
 
     const contract = await this.loanContractModel.findOne({ loanId: loan._id }).lean().exec();
-    if (!contract) return { hasContract: false, contractStatus: null, signedAt: null };
+    if (!contract) return { hasContract: false, contractStatus: null, signedAt: null, investmentSigningStatus: null };
+
+    // Query all investment contracts for this loan
+    const investContracts = await this.investmentContractModel
+      .find({ loanApplicationId: loan._id })
+      .select('contractId lenderId status smartCASignatureVerified signatureProvider signedAt')
+      .populate('lenderId', 'fullName email')
+      .lean();
+
+    const totalInvestors = investContracts.length;
+    const signedInvestors = investContracts.filter(
+      (c: any) => c.smartCASignatureVerified === true && ['active', 'signed'].includes(String(c.status || '')),
+    ).length;
+    const pendingInvestors = totalInvestors - signedInvestors;
+
+    const borrowerSigned = Boolean(
+      (contract as any).smartCASignatureVerified ||
+      ((contract as any).signatureProvider === 'vnpt_smartca' && ['signed', 'active'].includes(String(contract.status || ''))),
+    );
 
     return {
       hasContract: true,
       contractStatus: contract.status,
       signedAt: contract.signedAt || null,
+      borrowerSigned,
+      investmentSigningStatus: {
+        totalInvestors,
+        signedInvestors,
+        pendingInvestors,
+        allSigned: pendingInvestors === 0 && totalInvestors > 0,
+        investors: investContracts.map((c: any) => ({
+          contractId: c.contractId,
+          lenderName: c.lenderId?.fullName || c.lenderId?.email || 'N/A',
+          status: c.status,
+          signed: c.smartCASignatureVerified === true,
+          signedAt: c.signedAt || null,
+        })),
+      },
     };
   }
 

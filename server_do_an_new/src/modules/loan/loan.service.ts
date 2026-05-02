@@ -11,6 +11,7 @@ import { User } from '../users/schemas/user.schema';
 import { LoanApplication } from './schemas/loan-application.schema';
 import { LoanContract } from './schemas/loan-contract.schema';
 import { LoanSupportRequest, SupportRequestType } from './schemas/loan-support-request.schema';
+import { InvestmentContract } from '../invest/schemas/investment-contract.schema';
 import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema';
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
@@ -102,6 +103,7 @@ export class LoanService {
     @InjectModel(LoanSupportRequest.name) private readonly supportRequestModel: Model<LoanSupportRequest>,
     @InjectModel(LoanDelinquency.name) private readonly loanDelinquencyModel: Model<LoanDelinquency>,
     @InjectModel(DelinquencyPolicy.name) private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
+    @InjectModel(InvestmentContract.name) private readonly investmentContractModel: Model<InvestmentContract>,
   ) {}
 
   async getLoanProducts() {
@@ -392,6 +394,8 @@ export class LoanService {
       otpSessionId?: string;
       personIncome: number;
       personEmpExp: number;
+      personEducation?: string;
+      personHomeOwnership?: string;
     },
   ) {
     this.logger.log(
@@ -694,10 +698,10 @@ export class LoanService {
         const aiPayload: Record<string, any> = {
           person_age: personAge,
           person_gender: personGender,
-          person_education: kycData?.education || 'High School',
+          person_education: dto.personEducation || kycData?.education || 'High School',
           person_income: personIncomeUsdAnnual,
           person_emp_exp: personEmpExp,
-          person_home_ownership: kycData?.homeOwnership || 'RENT',
+          person_home_ownership: dto.personHomeOwnership || kycData?.homeOwnership || 'RENT',
           loan_amnt: loanAmntUsd,
           loan_intent: loanIntent,
           loan_int_rate: loanIntRate,
@@ -850,13 +854,12 @@ export class LoanService {
           );
 
           // 7. Update user credit profile
-          // QUAN TRỌNG: creditProfile.creditScore phải LƯU theo thang 150-750 (input cho model AI)
-          // KHÔNG được lưu evaluationScore (0-100) vì admin recalc sẽ đọc lại field này làm input
-          // → bị clamp xuống 150 → policy floor → tất cả khoản vay ra cùng PD=0.65.
+          // QUAN TRỌNG: KHÔNG ghi đè creditProfile.creditScore (CIC gốc 150-750).
+          // AI risk score lưu riêng vào creditProfile.aiRiskScore.
           await this.userModel.findByIdAndUpdate(userId, {
             $set: {
               'creditProfile.pd': effectivePd,
-              'creditProfile.creditScore': clamped, // 150-750 (đã apply BE safety floor)
+              'creditProfile.aiRiskScore': clamped, // AI risk score 150-750 (KHÔNG PHẢI CIC!)
               'creditProfile.evaluationScore': evaluationScore, // 0-100 (hiển thị)
               'creditProfile.grade': matchedGrade?.grade,
               'creditProfile.riskLevel': aiScoreResult.riskLevel,
@@ -870,25 +873,17 @@ export class LoanService {
       this.logger.warn(`[createApplication] AIScore FAILED (non-blocking): ${aiError.message}`);
     }
 
-    // Auto-reject: không tạo khoản vay nếu bị AI từ chối
+    // Auto-reject: KHÔNG chặn tạo khoản vay — tạo với status 'pending' để admin review.
+    // AI chỉ đưa ra khuyến nghị, admin có quyền override quyết định cuối cùng.
+    // Dữ liệu AI score vẫn được lưu đầy đủ trong aiScoreResult để admin tham khảo.
     if (autoDecision === 'auto_rejected' && aiScoreResult) {
-      throw new BadRequestException({
-        code: 'LOAN_AUTO_REJECTED',
-        message:
-          `Khoản vay bị từ chối tự động do điểm đánh giá quá thấp (${evaluationScore}/100, ` +
-          `Hạng ${aiScoreResult.grade} - ${aiScoreResult.subGrade}). Vui lòng liên hệ hỗ trợ.`,
-        evaluationScore,
-        grade: aiScoreResult.grade,
-        subGrade: aiScoreResult.subGrade,
-        riskLevel: aiScoreResult.riskLevel,
-        modelDecision: aiScoreResult.modelDecision,
-        decisionExplanation: aiScoreResult.decisionExplanation,
-        riskFactors: aiScoreResult.riskFactors || [],
-        positiveFactors: aiScoreResult.positiveFactors || [],
-      });
+      this.logger.warn(
+        `[createApplication] AI đề xuất từ chối (evalScore=${evaluationScore}/100, Grade=${aiScoreResult.grade}). ` +
+          `Khoản vay vẫn được tạo với status=pending để admin review.`,
+      );
     }
 
-    // Determine initial status: auto_approved → approved, else → pending
+    // Determine initial status: auto_approved → approved, else → pending (bao gồm cả auto_rejected)
     const initialStatus = autoDecision === 'auto_approved' ? 'approved' : 'pending';
 
     // 5. Tạo trên Fineract TRƯỚC (Atomicity: không tạo MongoDB nếu Fineract thất bại)
@@ -1467,5 +1462,53 @@ export class LoanService {
 
     this.logger.log(`[withdrawLoan] SUCCESS loanId=${loanId} fineractLoanId=${loan.fineractLoanId}`);
     return { loanId, fineractLoanId: loan.fineractLoanId, status: 'cancelled', message: 'Đã hủy đơn vay' };
+  }
+
+  /**
+   * Get comprehensive signing status for a loan (borrower + all investors)
+   */
+  async getSigningStatus(userId: string, loanId: string) {
+    const loan = await this.loanApplicationModel.findOne({ _id: loanId, userId });
+    if (!loan) throw new NotFoundException('Không tìm thấy khoản vay');
+
+    // Borrower contract
+    const loanContract = await this.loanContractModel.findOne({ loanId: loan._id }).lean();
+    const borrowerSigned = loanContract
+      ? Boolean(
+          (loanContract as any).smartCASignatureVerified ||
+          ((loanContract as any).signatureProvider === 'vnpt_smartca' &&
+            ['signed', 'active'].includes(String(loanContract.status || ''))),
+        )
+      : false;
+
+    // Investment contracts
+    const investContracts = await this.investmentContractModel
+      .find({ loanApplicationId: loan._id })
+      .select('contractId status smartCASignatureVerified signedAt')
+      .lean();
+
+    const totalInvestors = investContracts.length;
+    const signedInvestors = investContracts.filter(
+      (c: any) => c.smartCASignatureVerified === true && ['active', 'signed'].includes(String(c.status || '')),
+    ).length;
+    const pendingInvestors = totalInvestors - signedInvestors;
+
+    const allPartiesSigned = borrowerSigned && (totalInvestors === 0 || pendingInvestors === 0);
+
+    return {
+      borrower: {
+        hasContract: !!loanContract,
+        hasSigned: borrowerSigned,
+        signedAt: loanContract?.signedAt || null,
+        contractStatus: loanContract?.status || null,
+      },
+      investors: {
+        total: totalInvestors,
+        signed: signedInvestors,
+        pending: pendingInvestors,
+        allSigned: pendingInvestors === 0 && totalInvestors > 0,
+      },
+      readyForDisbursement: allPartiesSigned && totalInvestors > 0,
+    };
   }
 }

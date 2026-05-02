@@ -14,6 +14,9 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, useConfirmModal } from '../../../components';
 import investService from '../services/invest.service';
+import { PinVerifyModal } from '../../../components/common/PinVerifyModal';
+import { OTPVerifyModal } from '../../../components/common/OTPVerifyModal';
+import { OtpActionType } from '../../../types/otp.types';
 
 interface ScheduleItem {
   period: number;
@@ -65,6 +68,8 @@ export default function SchedulePreviewScreen() {
   const [data, setData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [investing, setInvesting] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showOTPModal, setShowOTPModal] = useState(false);
 
   useEffect(() => {
     loadPreview();
@@ -84,32 +89,37 @@ export default function SchedulePreviewScreen() {
   const handleInvest = () => {
     if (!data) return;
     modal.confirm({
-      title: 'Xác nhận đầu tư',
-      message: `Bạn muốn đầu tư ${fmt(data.capital)} vào khoản vay này?\n\nLợi nhuận kỳ vọng: ${fmt(data.entirelyProfit)}`,
+      title: 'Xác nhận thanh toán',
+      message: `Bạn muốn thanh toán ${fmt(data.capital)} cho khoản vay này?\n\nLợi nhuận kỳ vọng: ${fmt(data.entirelyProfit)}`,
       confirmText: 'Đầu tư',
       variant: 'default',
-      onConfirm: async () => {
-        setInvesting(true);
-        try {
-          const contract = await investService.createContract({
-            loanApplicationId,
-            numNotes,
-            investmentOrderId,
-          });
-          if (String((contract as any)?.status || '') === 'pending_signature') {
-            navigation.replace('InvestmentContractDetail', { contractId: contract._id, autoSign: true });
-            return;
-          }
-          modal.success('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, () => {
-            navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
-          });
-        } catch (e: any) {
-          modal.error('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo hợp đồng');
-        } finally {
-          setInvesting(false);
-        }
+      onConfirm: () => {
+        setShowPinModal(true);
       },
     });
+  };
+
+  const submitInvestment = async (otpSessionId: string) => {
+    setInvesting(true);
+    try {
+      const contract = await investService.createContract({
+        loanApplicationId,
+        numNotes,
+        investmentOrderId,
+        otpSessionId,
+      });
+      if (String((contract as any)?.status || '') === 'pending_signature') {
+        navigation.replace('InvestmentContractDetail', { contractId: contract._id, autoSign: true });
+        return;
+      }
+      modal.success('Thành công!', `Hợp đồng ${contract.contractId} đã tạo`, () => {
+        navigation.navigate('InvestmentContractDetail', { contractId: contract._id });
+      });
+    } catch (e: any) {
+      modal.error('Lỗi', e?.response?.data?.message || e?.message || 'Không thể tạo hợp đồng');
+    } finally {
+      setInvesting(false);
+    }
   };
 
   if (loading) {
@@ -248,6 +258,28 @@ export default function SchedulePreviewScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* PIN Verification */}
+      <PinVerifyModal
+        visible={showPinModal}
+        onSuccess={() => { setShowPinModal(false); setShowOTPModal(true); }}
+        onCancel={() => setShowPinModal(false)}
+        onForgotPin={() => { setShowPinModal(false); (navigation as any).navigate('PinChange', { resetMode: true }); }}
+        dismissable
+        title="Xác thực mã PIN"
+        subtitle="Nhập mã PIN để xác nhận thanh toán đầu tư"
+      />
+
+      {/* OTP Verification */}
+      <OTPVerifyModal
+        visible={showOTPModal}
+        actionType={OtpActionType.INVESTMENT}
+        actionData={{ loanId: loanApplicationId, numNotes, capital: data.capital }}
+        title="Xác thực Smart OTP"
+        description={`Xác nhận thanh toán ${fmt(data.capital)} vào khoản vay`}
+        onSuccess={(otpData) => { setShowOTPModal(false); submitInvestment(otpData.sessionId); }}
+        onCancel={() => setShowOTPModal(false)}
+      />
     </View>
   );
 }
@@ -298,5 +330,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 16, borderRadius: 16,
   },
-  ctaText: { color: '#000', fontSize: 14, fontWeight: '700' },
+  ctaText: { fontSize: 14, fontWeight: '700' },
 });

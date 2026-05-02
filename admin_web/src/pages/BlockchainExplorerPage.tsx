@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Card, Typography, Tag, Space, Button, Spin, Drawer, Descriptions,
   Row, Col, Empty, Tooltip, Divider, message, Table, Input, Select,
-  Statistic, Timeline, Badge, Segmented,
+  Statistic, Timeline, Badge, Segmented, Collapse,
 } from 'antd';
 import {
   ReloadOutlined, SafetyCertificateOutlined,
@@ -61,6 +61,8 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   LoanContract: { label: 'Hợp đồng vay', color: 'blue', icon: <FileProtectOutlined /> },
   InvestmentContract: { label: 'Hợp đồng đầu tư', color: 'green', icon: <FundOutlined /> },
   SettlementContract: { label: 'Biên lai tất toán', color: 'orange', icon: <DollarOutlined /> },
+  MatchingEvent: { label: 'Sự kiện ghép nối', color: 'purple', icon: <NodeIndexOutlined /> },
+  InvestmentOrder: { label: 'Lệnh đầu tư', color: 'geekblue', icon: <SafetyCertificateOutlined /> },
 };
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -72,10 +74,14 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   closed: { color: 'default', label: 'Đã đóng' },
   pending: { color: 'warning', label: 'Chờ xử lý' },
   matched: { color: 'geekblue', label: 'Đã khớp' },
+  open: { color: 'processing', label: 'Đang mở' },
+  cancelled: { color: 'error', label: 'Đã hủy' },
+  success: { color: 'success', label: 'Thành công' },
 };
 
-const statusTag = (status: string) => {
-  const cfg = STATUS_CONFIG[status] || { color: 'default', label: status };
+const statusTag = (status: string, type?: string) => {
+  const actualStatus = (!status || status.trim() === '') && type === 'MatchingEvent' ? 'success' : status;
+  const cfg = STATUS_CONFIG[actualStatus] || { color: 'default', label: actualStatus || '—' };
   return <Tag color={cfg.color}>{cfg.label}</Tag>;
 };
 
@@ -154,11 +160,27 @@ export default function BlockchainExplorerPage() {
       title: 'Mã hợp đồng',
       dataIndex: 'contractId',
       key: 'contractId',
-      width: 200,
+      width: 220,
       render: (id: string) => (
-        <Text copyable={{ text: id }} style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-          {id}
-        </Text>
+        <div style={{ display: 'flex', alignItems: 'center', maxWidth: '100%' }}>
+          <Tooltip title={id}>
+            <Text
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                maxWidth: 160,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'inline-block',
+                verticalAlign: 'bottom'
+              }}
+            >
+              {id}
+            </Text>
+          </Tooltip>
+          <Text copyable={{ text: id }} style={{ marginLeft: 8 }} />
+        </div>
       ),
     },
     {
@@ -180,7 +202,7 @@ export default function BlockchainExplorerPage() {
       dataIndex: 'status',
       key: 'status',
       width: 130,
-      render: statusTag,
+      render: (status: string, record: ContractBlock) => statusTag(status, record.type),
     },
     {
       title: 'Giá trị',
@@ -377,6 +399,8 @@ export default function BlockchainExplorerPage() {
                 { label: 'Hợp đồng vay', value: 'LoanContract' },
                 { label: 'Hợp đồng đầu tư', value: 'InvestmentContract' },
                 { label: 'Biên lai tất toán', value: 'SettlementContract' },
+                { label: 'Sự kiện ghép nối', value: 'MatchingEvent' },
+                { label: 'Lệnh đầu tư', value: 'InvestmentOrder' },
               ]}
               suffixIcon={<FilterOutlined />}
             />
@@ -452,12 +476,24 @@ export default function BlockchainExplorerPage() {
                           <div>
                             <Space size={8} style={{ marginBottom: 4 }}>
                               <Tag icon={cfg.icon} color={cfg.color}>{cfg.label}</Tag>
-                              {statusTag(block.status)}
+                              {statusTag(block.status, block.type)}
                             </Space>
-                            <div>
-                              <Text strong style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                                {block.contractId}
-                              </Text>
+                            <div style={{ maxWidth: 300 }}>
+                              <Tooltip title={block.contractId}>
+                                <Text
+                                  strong
+                                  style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: 13,
+                                    display: 'block',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {block.contractId}
+                                </Text>
+                              </Tooltip>
                             </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
@@ -516,7 +552,7 @@ export default function BlockchainExplorerPage() {
                 })()}
               </Descriptions.Item>
               <Descriptions.Item label="Trạng thái">
-                {statusTag(selectedContract.status)}
+                {statusTag(selectedContract.status, selectedContract.type)}
               </Descriptions.Item>
               <Descriptions.Item label="Giá trị">
                 <Text strong style={{ fontSize: 16, fontFamily: 'var(--font-mono)' }}>
@@ -541,7 +577,7 @@ export default function BlockchainExplorerPage() {
             </Descriptions>
 
             {/* History */}
-            <Divider orientation="left" style={{ fontSize: 13 }}>
+            <Divider style={{ fontSize: 13 }}>
               <HistoryOutlined /> Lịch sử biến động trên Sổ cái
             </Divider>
             {historyLoading ? (
@@ -554,7 +590,7 @@ export default function BlockchainExplorerPage() {
                   children: (
                     <div>
                       <Text strong style={{ fontSize: 12 }}>
-                        {h.value?.status || h.Value?.status || `Phiên bản ${history.length - idx}`}
+                        Trạng thái: {h.value?.status || h.Value?.status || `Phiên bản ${history.length - idx}`}
                       </Text>
                       <br />
                       <Text type="secondary" style={{ fontSize: 11 }}>
@@ -568,6 +604,33 @@ export default function BlockchainExplorerPage() {
                           </Text>
                         </>
                       )}
+                      <div style={{ marginTop: 8 }}>
+                        <Collapse
+                          size="small"
+                          ghost
+                          items={[
+                            {
+                              key: '1',
+                              label: <Text style={{ fontSize: 11, color: '#3B82F6' }}><DatabaseOutlined /> Xem dữ liệu version này</Text>,
+                              children: (
+                                <pre style={{
+                                  fontSize: 10,
+                                  fontFamily: 'var(--font-mono)',
+                                  margin: 0,
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                  background: isDarkMode ? '#0F172A' : '#F8FAFC',
+                                  padding: 8,
+                                  borderRadius: 6,
+                                  border: `1px solid ${isDarkMode ? '#334155' : '#E2E8F0'}`,
+                                }}>
+                                  {JSON.stringify(h.value || h.Value, null, 2)}
+                                </pre>
+                              )
+                            }
+                          ]}
+                        />
+                      </div>
                     </div>
                   ),
                 }))}
@@ -577,7 +640,7 @@ export default function BlockchainExplorerPage() {
             )}
 
             {/* Raw JSON */}
-            <Divider orientation="left" style={{ fontSize: 13 }}>
+            <Divider style={{ fontSize: 13 }}>
               <DatabaseOutlined /> Dữ liệu thô trên Ledger
             </Divider>
             <div style={{

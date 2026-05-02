@@ -239,7 +239,7 @@ const FaceDetection: React.FC = () => {
                             style={[styles.primaryButton, { backgroundColor: c.primary }]}
                             onPress={requestPermission}
                         >
-                            <Text style={[styles.buttonText, { color: '#000' }]}>Cấp quyền Camera</Text>
+                            <Text style={[styles.buttonText, { color: c.onPrimary }]}>Cấp quyền Camera</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.secondaryButton, { borderColor: c.border }]}
@@ -339,8 +339,8 @@ const FaceDetection: React.FC = () => {
                         <View style={styles.actionContainer}>
                             {status === 'waiting' && (
                                 <TouchableOpacity style={[styles.startButton, { backgroundColor: c.primary }]} onPress={startCountdown}>
-                                    <Text style={styles.startButtonText}>Bắt đầu quét</Text>
-                                    <Ionicons name="scan-outline" size={22} color="#fff" />
+                                    <Text style={[styles.startButtonText, { color: c.onPrimary }]}>Bắt đầu quét</Text>
+                                    <Ionicons name="scan-outline" size={22} color={c.onPrimary} />
                                 </TouchableOpacity>
                             )}
                             {status === 'completed' && resultStatus === 'failed' && (
@@ -489,7 +489,6 @@ const styles = StyleSheet.create({
         elevation: 6,
     },
     startButtonText: {
-        color: '#fff',
         fontSize: 16,
         fontWeight: '700',
         fontFamily: 'Poppins_700Bold',

@@ -64,8 +64,8 @@ export default function MyQRScreen() {
                             style={[styles.actionBtn, { backgroundColor: c.primary }]}
                             onPress={handleShare}
                         >
-                            <MaterialCommunityIcons name="share-variant" size={20} color="#000" />
-                            <Text style={styles.actionBtnText}>Chia sẻ mã QR</Text>
+                            <MaterialCommunityIcons name="share-variant" size={20} color={c.onPrimary} />
+                            <Text style={[styles.actionBtnText, { color: c.onPrimary }]}>Chia sẻ mã QR</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -115,7 +115,6 @@ const styles = StyleSheet.create({
     actionBtnText: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#000',
     },
     secondaryBtn: {
         flexDirection: 'row',

@@ -92,12 +92,12 @@ export default function InvestmentOrderDetailScreen() {
   };
 
   const handleLoanPress = async (item: any) => {
-    // Lệnh đầu tư (đặt lệnh) — chỉ rót tiền, KHÔNG tạo/quản lý hợp đồng riêng cho từng match.
-    // Tap vào khoản vay ghép chỉ để xem chi tiết lịch nhận tiền (readonly).
+    // Tap vào khoản vay ghép chưa đầu tư sẽ cho phép thanh toán.
+    // Nếu đã đầu tư (isInvested = true) thì readonly.
     navigation.navigate('SchedulePreview', {
       loanApplicationId: item.loanId,
       numNotes: item.nodeMatch,
-      readonly: true,
+      readonly: item.isInvested,
       investmentOrderId: orderId,
     });
   };
@@ -227,18 +227,72 @@ export default function InvestmentOrderDetailScreen() {
               <Text style={[s.loanValue, { color: c.text }]}>{item.nodeMatch}</Text>
             </View>
             <View style={s.loanInfoRow}>
-              <Text style={[s.loanLabel, { color: c.textSecondary }]}>Trạng thái</Text>
+              <Text style={[s.loanLabel, { color: c.textSecondary }]}>Trạng thái Cấp vốn</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <MaterialCommunityIcons
-                  name={item.isInvested ? 'check-circle' : 'clock-outline'}
+                  name={item.isInvested ? 'check-circle' : 'alert-circle-outline'}
                   size={16}
                   color={item.isInvested ? '#2C5D53' : '#F59E0B'}
                 />
                 <Text style={{ fontSize: 14, fontWeight: '600', color: item.isInvested ? '#2C5D53' : '#F59E0B' }}>
-                  {item.isInvested ? 'Đã đầu tư' : 'Chờ xử lý'}
+                  {item.isInvested ? 'Đã thanh toán' : 'Chờ thanh toán'}
                 </Text>
               </View>
             </View>
+
+            {/* Borrower Signature Status */}
+            <View style={s.loanInfoRow}>
+              <Text style={[s.loanLabel, { color: c.textSecondary }]}>Trạng thái Người vay ký</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialCommunityIcons
+                  name={item.borrowerSignedVerified ? 'file-check-outline' : 'file-clock-outline'}
+                  size={16}
+                  color={item.borrowerSignedVerified ? '#10B981' : '#6B7280'}
+                />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: item.borrowerSignedVerified ? '#10B981' : '#6B7280' }}>
+                  {item.borrowerSignedVerified ? 'Đã ký hợp đồng' : 'Chờ người vay ký'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Prompt to pay if not invested */}
+            {!item.isInvested && (
+              <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: 12, borderRadius: 12, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#F59E0B', fontSize: 13, fontWeight: '500' }}>Cần thanh toán để tạo hợp đồng</Text>
+                <View style={{ backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Thanh toán</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Prompt to sign if invested but pending signature */}
+            {item.isInvested && item.contract_id && (!item.smartCASignatureVerified && item.contractStatus !== 'signed' && item.contractStatus !== 'active') && (
+              <TouchableOpacity
+                style={{ backgroundColor: 'rgba(139, 92, 246, 0.1)', padding: 12, borderRadius: 12, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                onPress={() => (navigation as any).navigate('InvestmentContractDetail', { contractId: item.contract_id })}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '500' }}>Cần ký hợp đồng đầu tư</Text>
+                <View style={{ backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Ký ngay</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Prompt to view contract if signed */}
+            {item.isInvested && item.contract_id && (item.smartCASignatureVerified || item.contractStatus === 'signed' || item.contractStatus === 'active') && (
+              <TouchableOpacity
+                style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: 12, borderRadius: 12, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                onPress={() => (navigation as any).navigate('InvestmentContractDetail', { contractId: item.contract_id })}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                   <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                   <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '500' }}>Hợp đồng đã ký</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#10B981" />
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         )}
         ListEmptyComponent={

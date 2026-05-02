@@ -11,6 +11,7 @@ import {
     Text,
     TouchableOpacity,
     View,
+    Modal,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -63,30 +64,78 @@ export default function LoanContractListScreen() {
     const [investContracts, setInvestContracts] = useState<InvestmentContractItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [investPage, setInvestPage] = useState(1);
+    const [investHasMore, setInvestHasMore] = useState(true);
+    const [loadingMoreInvest, setLoadingMoreInvest] = useState(false);
+    const [totalInvestCount, setTotalInvestCount] = useState(0);
 
-    const fetchContracts = useCallback(async () => {
+    const [sortModalVisible, setSortModalVisible] = useState(false);
+    const [sortBy, setSortBy] = useState('capital,createdAt');
+    const [sortOrder, setSortOrder] = useState('desc,desc');
+
+    const fetchContracts = useCallback(async (isRefresh = false) => {
         try {
+            if (isRefresh) {
+                setInvestPage(1);
+                setInvestHasMore(true);
+                setLoading(true); // show loader when sorting changes
+            }
             const [loanData, investResult] = await Promise.all([
                 loanService.getContracts().catch(() => [] as LoanContract[]),
-                investService.getContracts({ pageSize: 50 }).catch(() => ({ contracts: [], totalCount: 0 } as any)),
+                investService.getContracts({
+                    page: 1,
+                    pageSize: 10,
+                    sortBy,
+                    sortOrder,
+                }).catch(() => ({ contracts: [], totalCount: 0 } as any)),
             ]);
             setContracts(loanData);
             setInvestContracts(investResult.contracts || []);
+            setTotalInvestCount(investResult.totalCount || 0);
+            if ((investResult.contracts || []).length < 10) {
+                setInvestHasMore(false);
+            }
         } catch (err) {
             console.error('[ContractList] Error:', err);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, []);
+    }, [sortBy, sortOrder]);
+
+    const loadMoreInvestContracts = async () => {
+        if (!investHasMore || loadingMoreInvest || loading || refreshing) return;
+        try {
+            setLoadingMoreInvest(true);
+            const nextPage = investPage + 1;
+            const investResult = await investService.getContracts({
+                page: nextPage,
+                pageSize: 10,
+                sortBy,
+                sortOrder,
+            });
+            const newContracts = investResult.contracts || [];
+            if (newContracts.length > 0) {
+                setInvestContracts(prev => [...prev, ...newContracts]);
+                setInvestPage(nextPage);
+            }
+            if (newContracts.length < 10) {
+                setInvestHasMore(false);
+            }
+        } catch (error) {
+            console.error('[ContractList] Load more error:', error);
+        } finally {
+            setLoadingMoreInvest(false);
+        }
+    };
 
     useEffect(() => {
-        fetchContracts();
-    }, [fetchContracts]);
+        fetchContracts(true);
+    }, [sortBy, sortOrder]);
 
     const onRefresh = () => {
         setRefreshing(true);
-        fetchContracts();
+        fetchContracts(true);
     };
 
     const renderContract = ({ item }: { item: LoanContract }) => {
@@ -252,10 +301,28 @@ export default function LoanContractListScreen() {
                             { color: activeTab === 'invest' ? colors.primary : colors.textSecondary },
                         ]}
                     >
-                        Hợp đồng đầu tư {investContracts.length > 0 ? `(${investContracts.length})` : ''}
+                        Hợp đồng đầu tư {totalInvestCount > 0 ? `(${totalInvestCount})` : ''}
                     </Text>
                 </TouchableOpacity>
             </View>
+
+            {/* Sort bar for invest tab */}
+            {activeTab === 'invest' && (
+                <View style={[styles.filterBar, { borderBottomColor: colors.border }]}>
+                    <TouchableOpacity 
+                        style={styles.sortBtn} 
+                        onPress={() => setSortModalVisible(true)}
+                    >
+                        <MaterialCommunityIcons name="sort-variant" size={20} color={colors.primary} />
+                        <Text style={[styles.sortBtnText, { color: colors.primary }]}>
+                            {sortBy === 'capital,createdAt' 
+                                ? (sortOrder === 'desc,desc' ? 'Số tiền: Giảm dần' : 'Số tiền: Tăng dần')
+                                : 'Thời gian mới nhất'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={colors.primary} />
+                    </TouchableOpacity>
+                </View>
+            )}
 
             {loading ? (
                 <View style={styles.loader}>
@@ -291,6 +358,15 @@ export default function LoanContractListScreen() {
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
                     }
+                    onEndReached={loadMoreInvestContracts}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={
+                        loadingMoreInvest ? (
+                            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                            </View>
+                        ) : <View style={{ height: 20 }} />
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <MaterialCommunityIcons name="trending-up" size={64} color={colors.textDim} />
@@ -304,6 +380,71 @@ export default function LoanContractListScreen() {
                     }
                 />
             )}
+
+            {/* Sort Modal */}
+            <Modal
+                visible={sortModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setSortModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.modalOverlay} 
+                    activeOpacity={1} 
+                    onPress={() => setSortModalVisible(false)}
+                >
+                    <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Sắp xếp theo</Text>
+                            <TouchableOpacity onPress={() => setSortModalVisible(false)}>
+                                <Ionicons name="close" size={24} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <TouchableOpacity 
+                            style={styles.sortOption} 
+                            onPress={() => {
+                                setSortBy('capital,createdAt');
+                                setSortOrder('desc,desc');
+                                setSortModalVisible(false);
+                            }}
+                        >
+                            <Text style={[styles.sortOptionText, { color: colors.textPrimary }]}>Số tiền: Giảm dần</Text>
+                            {sortBy === 'capital,createdAt' && sortOrder === 'desc,desc' && (
+                                <Ionicons name="checkmark" size={20} color={colors.primary} />
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.sortOption} 
+                            onPress={() => {
+                                setSortBy('capital,createdAt');
+                                setSortOrder('asc,desc');
+                                setSortModalVisible(false);
+                            }}
+                        >
+                            <Text style={[styles.sortOptionText, { color: colors.textPrimary }]}>Số tiền: Tăng dần</Text>
+                            {sortBy === 'capital,createdAt' && sortOrder === 'asc,desc' && (
+                                <Ionicons name="checkmark" size={20} color={colors.primary} />
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.sortOption} 
+                            onPress={() => {
+                                setSortBy('createdAt,capital');
+                                setSortOrder('desc,desc');
+                                setSortModalVisible(false);
+                            }}
+                        >
+                            <Text style={[styles.sortOptionText, { color: colors.textPrimary }]}>Thời gian: Mới nhất</Text>
+                            {sortBy === 'createdAt,capital' && sortOrder === 'desc,desc' && (
+                                <Ionicons name="checkmark" size={20} color={colors.primary} />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 }
@@ -326,6 +467,29 @@ const styles = StyleSheet.create({
         borderBottomColor: 'transparent',
     },
     tabText: { fontSize: 14, fontWeight: '600' },
+
+    filterBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        backgroundColor: 'transparent',
+    },
+    sortBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#10B98110', // primary with opacity
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    sortBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginHorizontal: 6,
+    },
 
     card: {
         borderRadius: 16,
@@ -402,4 +566,40 @@ const styles = StyleSheet.create({
     },
     emptyTitle: { fontSize: 16, fontWeight: '600' },
     emptyDesc: { fontSize: 13, textAlign: 'center', paddingHorizontal: 40 },
+
+    // Modal
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalContent: {
+        width: '90%',
+        borderRadius: 24,
+        padding: 20,
+        paddingBottom: 24,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+    },
+    sortOption: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+    },
+    sortOptionText: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
 });

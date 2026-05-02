@@ -83,4 +83,14 @@ export class ApplyLoanDto {
   @Max(60)
   @Type(() => Number)
   personEmpExp: number;
+
+  @ApiPropertyOptional({ description: 'Trình độ học vấn (High School, Bachelor, Master, Associate, Doctorate)' })
+  @IsOptional()
+  @IsString()
+  personEducation?: string;
+
+  @ApiPropertyOptional({ description: 'Tình trạng sở hữu nhà (RENT, OWN, MORTGAGE, OTHER)' })
+  @IsOptional()
+  @IsString()
+  personHomeOwnership?: string;
 }

@@ -512,6 +512,10 @@ class LoanService {
     personIncome: number;
     /** Số năm kinh nghiệm làm việc — bắt buộc cho AI scoring */
     personEmpExp: number;
+    /** Trình độ học vấn (High School, Bachelor, Master, Associate, Doctorate) */
+    personEducation?: string;
+    /** Tình trạng sở hữu nhà (RENT, OWN, MORTGAGE, OTHER) */
+    personHomeOwnership?: string;
   }): Promise<{
     id: string;
     status: string;
@@ -942,6 +946,16 @@ class LoanService {
   async getTransactions(loanId: string): Promise<any> {
     return api.get(`/api/loan/${loanId}/transactions`);
   }
+
+  /**
+   * Get multi-party signing status (borrower + investors)
+   */
+  async getSigningStatus(loanId: string): Promise<SigningStatusResponse> {
+    const response = await api.get<{ statusCode: number; data: SigningStatusResponse }>(
+      `/api/loan/${loanId}/signing-status`,
+    );
+    return response.data.data;
+  }
 }
 
 // =============================================
@@ -1025,6 +1039,22 @@ export interface ProductCharge {
   chargeTimeType: string;
   chargeCalculationType: string;
   percentage: number | null;
+}
+
+export interface SigningStatusResponse {
+  borrower: {
+    hasContract: boolean;
+    hasSigned: boolean;
+    signedAt: string | null;
+    contractStatus: string | null;
+  };
+  investors: {
+    total: number;
+    signed: number;
+    pending: number;
+    allSigned: boolean;
+  };
+  readyForDisbursement: boolean;
 }
 
 export const loanService = new LoanService();

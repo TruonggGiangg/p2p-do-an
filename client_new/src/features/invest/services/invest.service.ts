@@ -23,6 +23,12 @@ export interface InvestmentOrderItem {
     nodeMatch: number;
     isInvested: boolean;
     matchedAt: string;
+    contractId?: string;
+    contract_id?: string;
+    contractStatus?: string;
+    smartCASignatureVerified?: boolean;
+    borrowerContractStatus?: string;
+    borrowerSignedVerified?: boolean;
   }>;
   matchedCapital: number;
   status: "open" | "closed";
@@ -315,11 +321,15 @@ class InvestService {
     page?: number;
     pageSize?: number;
     status?: string;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<InvestmentContractListResponse> {
     const query = new URLSearchParams();
     if (params?.page) query.append("page", String(params.page));
     if (params?.pageSize) query.append("pageSize", String(params.pageSize));
     if (params?.status) query.append("status", params.status);
+    if (params?.sortBy) query.append("sortBy", params.sortBy);
+    if (params?.sortOrder) query.append("sortOrder", params.sortOrder);
     const qs = query.toString() ? `?${query.toString()}` : "";
 
     const response = await api.get<{

@@ -57,7 +57,7 @@ export default function LoanDetailDrawer({
     const [loadingDocuments, setLoadingDocuments] = useState(false);
     const [canApprove, setCanApprove] = useState(true);
     const [missingRequired, setMissingRequired] = useState<string[]>([]);
-    const [contractStatus, setContractStatus] = useState<{ hasContract: boolean; contractStatus: string | null; signedAt: string | null } | null>(null);
+    const [contractStatus, setContractStatus] = useState<{ hasContract: boolean; contractStatus: string | null; signedAt: string | null; borrowerSigned?: boolean; investmentSigningStatus?: { totalInvestors: number; signedInvestors: number; pendingInvestors: number; allSigned: boolean; investors: Array<{ contractId: string; lenderName: string; status: string; signed: boolean; signedAt: string | null }> } | null } | null>(null);
     const [documentReviewing, setDocumentReviewing] = useState<Set<number>>(new Set());
     const [approving, setApproving] = useState(false);
     const [disbursing, setDisbursing] = useState(false);
@@ -298,7 +298,7 @@ export default function LoanDetailDrawer({
                             </Button>
                         </Tooltip>
                     ))}
-                    {ability.can(Action.Disburse, 'Loan') && (contractStatus?.hasContract && contractStatus.contractStatus === 'signed' ? (
+                    {ability.can(Action.Disburse, 'Loan') && (contractStatus?.hasContract && contractStatus.borrowerSigned && (contractStatus.investmentSigningStatus?.allSigned || contractStatus.investmentSigningStatus?.totalInvestors === 0) ? (
                         <Popconfirm
                             title="Giải ngân khoản vay"
                             description="Xác nhận giải ngân ngay bây giờ?"
@@ -315,9 +315,11 @@ export default function LoanDetailDrawer({
                         <Tooltip title={
                             !contractStatus?.hasContract
                                 ? 'Chưa có hợp đồng cho khoản vay này'
-                                : contractStatus?.contractStatus === 'pending_signature'
-                                    ? 'Người vay chưa ký hợp đồng. Cần ký trước khi giải ngân.'
-                                    : `Trạng thái hợp đồng: ${contractStatus?.contractStatus}`
+                                : !contractStatus?.borrowerSigned
+                                    ? 'Người vay chưa ký hợp đồng'
+                                    : contractStatus?.investmentSigningStatus && !contractStatus.investmentSigningStatus.allSigned
+                                        ? `Còn ${contractStatus.investmentSigningStatus.pendingInvestors}/${contractStatus.investmentSigningStatus.totalInvestors} NĐT chưa ký`
+                                        : `Trạng thái hợp đồng: ${contractStatus?.contractStatus}`
                         }>
                             <Button size="middle" icon={<SendOutlined />} disabled style={{ borderRadius: 10, fontWeight: 600 }}>
                                 Giải ngân
@@ -409,9 +411,46 @@ export default function LoanDetailDrawer({
                                         </div>
                                     </Space>
                                     {mode === 'approval' && contractStatus?.hasContract && (
-                                        <Tag color={contractStatus.contractStatus === 'signed' ? 'blue' : contractStatus.contractStatus === 'active' ? 'green' : contractStatus.contractStatus === 'pending_signature' ? 'orange' : 'default'}>
-                                            {contractStatus.contractStatus === 'pending_signature' ? '📝 Chờ ký hợp đồng' : contractStatus.contractStatus === 'signed' ? ' Đã ký hợp đồng' : contractStatus.contractStatus === 'active' ? '📄 HĐ đang hiệu lực' : `HĐ: ${contractStatus.contractStatus}`}
-                                        </Tag>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            <Tag color={contractStatus.borrowerSigned ? 'green' : 'orange'} style={{ margin: 0 }}>
+                                                {contractStatus.borrowerSigned ? '✅ Người vay đã ký' : '⏳ Chờ người vay ký'}
+                                            </Tag>
+                                            {contractStatus.investmentSigningStatus && contractStatus.investmentSigningStatus.totalInvestors > 0 && (
+                                                <Tag color={contractStatus.investmentSigningStatus.allSigned ? 'green' : 'orange'} style={{ margin: 0 }}>
+                                                    {contractStatus.investmentSigningStatus.allSigned
+                                                        ? `✅ ${contractStatus.investmentSigningStatus.totalInvestors}/${contractStatus.investmentSigningStatus.totalInvestors} NĐT đã ký`
+                                                        : `⚠️ ${contractStatus.investmentSigningStatus.signedInvestors}/${contractStatus.investmentSigningStatus.totalInvestors} NĐT đã ký`
+                                                    }
+                                                </Tag>
+                                            )}
+                                            {contractStatus.borrowerSigned && contractStatus.investmentSigningStatus?.allSigned && (
+                                                <Tag color='cyan' style={{ margin: 0 }}>🚀 Đủ điều kiện giải ngân</Tag>
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Investor signing detail table */}
+                                    {mode === 'approval' && contractStatus?.investmentSigningStatus && contractStatus.investmentSigningStatus.pendingInvestors > 0 && (
+                                        <Alert
+                                            type="warning"
+                                            showIcon
+                                            style={{ marginTop: 12, borderRadius: 10 }}
+                                            message={`${contractStatus.investmentSigningStatus.pendingInvestors} nhà đầu tư chưa ký hợp đồng`}
+                                            description={
+                                                <div style={{ marginTop: 8 }}>
+                                                    {contractStatus.investmentSigningStatus.investors
+                                                        .filter(inv => !inv.signed)
+                                                        .map((inv, idx) => (
+                                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                                <ClockCircleOutlined style={{ color: token.colorWarning }} />
+                                                                <Text style={{ fontSize: 13 }}>
+                                                                    <strong>{inv.lenderName}</strong> — HĐ: {inv.contractId} — Trạng thái: {inv.status === 'pending_signature' ? 'Chờ ký' : inv.status}
+                                                                </Text>
+                                                            </div>
+                                                        ))
+                                                    }
+                                                </div>
+                                            }
+                                        />
                                     )}
                                     <Row gutter={32}>
                                         <Col>
@@ -687,6 +726,267 @@ export default function LoanDetailDrawer({
                                 />
                             </div>
                         ),
+                    },
+                    {
+                        key: 'aiScore',
+                        label: 'Đánh giá AI',
+                        children: (() => {
+                            const ai = loanDetails?.aiScore;
+                            if (!ai) return <Empty description="Chưa có kết quả đánh giá AI cho khoản vay này" style={{ padding: 48 }} />;
+
+                            const FEATURE_LABELS: Record<string, string> = {
+                                person_age: 'Tuổi',
+                                person_gender: 'Giới tính',
+                                person_education: 'Trình độ học vấn',
+                                person_income: 'Thu nhập hàng tháng',
+                                person_emp_exp: 'Kinh nghiệm làm việc (năm)',
+                                person_home_ownership: 'Sở hữu nhà',
+                                loan_amnt: 'Số tiền vay',
+                                loan_intent: 'Mục đích vay',
+                                loan_int_rate: 'Lãi suất (%/năm)',
+                                loan_percent_income: 'Tỷ lệ vay/thu nhập',
+                                credit_score: 'Điểm CIC (150–750)',
+                                previous_loan_defaults_on_file: 'Lịch sử nợ xấu',
+                                previous_default_bin: 'Lịch sử nợ xấu',
+                            };
+
+                            // Hệ số scale VND→USD dùng khi gửi AI model (xem aiscore-exchange-rate.ts)
+                            const VND_SCALE = 1000;
+
+                            const formatFeatureValue = (key: string, raw: any): string => {
+                                const val = Number(raw);
+                                switch (key) {
+                                    case 'person_income':
+                                        // USD annual → VND monthly: val * VND_SCALE / 12
+                                        return `${Math.round(val * VND_SCALE / 12).toLocaleString('vi-VN')} ₫/tháng`;
+                                    case 'loan_amnt':
+                                        // USD → VND: val * VND_SCALE
+                                        return `${Math.round(val * VND_SCALE).toLocaleString('vi-VN')} ₫`;
+                                    case 'person_gender':
+                                        return String(raw) === 'male' ? '👨 Nam' : '👩 Nữ';
+                                    case 'loan_int_rate':
+                                        return `${val}%`;
+                                    case 'loan_percent_income':
+                                        return `${(val * 100).toFixed(1)}%`;
+                                    case 'person_home_ownership': {
+                                        const map: Record<string, string> = { RENT: 'Thuê', OWN: 'Sở hữu', MORTGAGE: 'Thế chấp', OTHER: 'Khác' };
+                                        return map[String(raw)] || String(raw);
+                                    }
+                                    case 'previous_loan_defaults_on_file':
+                                        return String(raw) === 'Yes' ? '⚠️ Có' : '✅ Không';
+                                    case 'previous_default_bin':
+                                        return val === 1 ? '⚠️ Có' : '✅ Không';
+                                    default:
+                                        return String(raw);
+                                }
+                            };
+
+                            const scoreColor = ai.creditScore >= 70 ? token.colorSuccess : ai.creditScore >= 40 ? token.colorWarning : token.colorError;
+                            const riskColorMap: Record<string, string> = { LOW: token.colorSuccess, MEDIUM: token.colorWarning, HIGH: token.colorError, VERY_HIGH: token.colorError };
+                            const riskLabelMap: Record<string, string> = { LOW: 'Thấp', MEDIUM: 'Trung bình', HIGH: 'Cao', VERY_HIGH: 'Rất cao' };
+                            const decisionColorMap: Record<string, string> = { APPROVE: token.colorSuccess, REJECT: token.colorError, REVIEW: token.colorWarning };
+                            const decisionLabelMap: Record<string, string> = { APPROVE: '✅ Đề xuất duyệt', REJECT: '❌ Đề xuất từ chối', REVIEW: '⚠️ Cần xem xét thêm' };
+
+                            const HIDDEN_FEATURES = ['cb_person_cred_hist_length'];
+                            const featuresData = Object.entries(ai.featuresResolved || {})
+                                .filter(([key]) => !HIDDEN_FEATURES.includes(key))
+                                .map(([key, value]) => ({
+                                    key,
+                                    label: FEATURE_LABELS[key] || key,
+                                    value: formatFeatureValue(key, value),
+                                }));
+
+                            return (
+                                <div style={{ padding: 0 }}>
+                                    {/* ── Score Header ── */}
+                                    <div style={{
+                                        background: isDarkMode
+                                            ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)'
+                                            : 'linear-gradient(135deg, #f0f5ff 0%, #e6f7ff 100%)',
+                                        padding: '28px 32px',
+                                        borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                                    }}>
+                                        <Row gutter={24} align="middle">
+                                            <Col>
+                                                <div style={{ position: 'relative', width: 88, height: 88 }}>
+                                                    <Progress
+                                                        type="circle"
+                                                        percent={ai.creditScore}
+                                                        size={88}
+                                                        strokeColor={scoreColor}
+                                                        trailColor={isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}
+                                                        format={p => <span style={{ fontSize: 22, fontWeight: 800, color: scoreColor }}>{p}</span>}
+                                                    />
+                                                </div>
+                                            </Col>
+                                            <Col flex="auto">
+                                                <div style={{ marginBottom: 4 }}>
+                                                    <Text style={{ fontSize: 20, fontWeight: 700 }}>
+                                                        Hạng {ai.grade}
+                                                    </Text>
+                                                    <Tag color={ai.decision === 'APPROVE' ? 'success' : ai.decision === 'REJECT' ? 'error' : 'warning'} style={{ marginLeft: 12, fontSize: 13, padding: '2px 12px' }}>
+                                                        {decisionLabelMap[ai.decision] || ai.decision}
+                                                    </Tag>
+                                                </div>
+                                                <Text type="secondary" style={{ fontSize: 13 }}>
+                                                    {ai.subGrade} · Rủi ro: {riskLabelMap[ai.riskLevel] || ai.riskLevel} · PD: {(ai.pd * 100).toFixed(2)}%
+                                                    {ai.rawAiPd != null && ai.beFloorApplied && <span> (AI gốc: {(Number(ai.rawAiPd) * 100).toFixed(2)}%)</span>}
+                                                </Text>
+                                                {ai.decisionExplanation && (
+                                                    <div style={{ marginTop: 6 }}>
+                                                        <Text type="secondary" style={{ fontSize: 12, fontStyle: 'italic' }}>{ai.decisionExplanation}</Text>
+                                                    </div>
+                                                )}
+                                            </Col>
+                                            <Col>
+                                                <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+                                                    <Text type="secondary" style={{ fontSize: 11 }}>Chấm điểm lúc</Text>
+                                                    <Text style={{ fontSize: 13 }}>{ai.scoredAt ? new Date(ai.scoredAt).toLocaleString('vi-VN') : '–'}</Text>
+                                                </Space>
+                                            </Col>
+                                        </Row>
+                                    </div>
+
+                                    <div style={{ padding: 24 }}>
+                                        {/* ── KPI Cards ── */}
+                                        <Row gutter={16} style={{ marginBottom: 24 }}>
+                                            {[
+                                                { title: 'Điểm tín dụng', value: `${ai.creditScore}/100`, color: scoreColor },
+                                                { title: 'Xác suất vỡ nợ', value: `${(ai.pd * 100).toFixed(2)}%`, color: ai.pd > 0.5 ? token.colorError : ai.pd > 0.3 ? token.colorWarning : token.colorSuccess },
+                                                { title: 'Mức rủi ro', value: riskLabelMap[ai.riskLevel] || ai.riskLevel, color: riskColorMap[ai.riskLevel] || 'inherit' },
+                                                { title: 'Quyết định AI', value: decisionLabelMap[ai.decision]?.replace(/[✅❌⚠️]\s*/, '') || ai.decision, color: decisionColorMap[ai.decision] || 'inherit' },
+                                            ].map((kpi, i) => (
+                                                <Col span={6} key={i}>
+                                                    <Card size="small" bordered={false} style={{
+                                                        borderRadius: 12,
+                                                        background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+                                                        textAlign: 'center',
+                                                    }}>
+                                                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>{kpi.title}</Text>
+                                                        <Text strong style={{ fontSize: 18, color: kpi.color }}>{kpi.value}</Text>
+                                                    </Card>
+                                                </Col>
+                                            ))}
+                                        </Row>
+
+                                        {/* ── BE Safety Floor Warning ── */}
+                                        {ai.beFloorApplied && (
+                                            <Alert
+                                                type="warning"
+                                                showIcon
+                                                style={{ marginBottom: 24, borderRadius: 10 }}
+                                                message="Quy tắc an toàn đã điều chỉnh kết quả"
+                                                description={
+                                                    <Space direction="vertical" size={2}>
+                                                        <Text type="secondary" style={{ fontSize: 12 }}>
+                                                            AI gốc: PD={((Number(ai.rawAiPd) || 0) * 100).toFixed(2)}%, Score={ai.rawAiScore} → Sau điều chỉnh: PD={(ai.pd * 100).toFixed(2)}%
+                                                        </Text>
+                                                        {ai.beFloorReasons?.map((r: string, i: number) => (
+                                                            <Text key={i} style={{ fontSize: 13 }}>• {r}</Text>
+                                                        ))}
+                                                    </Space>
+                                                }
+                                            />
+                                        )}
+
+                                        {/* ── Factors: Positive + Risk ── */}
+                                        <Row gutter={16} style={{ marginBottom: 24 }}>
+                                            <Col span={12}>
+                                                <Card
+                                                    size="small"
+                                                    title={<Space><CheckOutlined style={{ color: token.colorSuccess }} /><span>Yếu tố tích cực</span></Space>}
+                                                    bordered={false}
+                                                    style={{ borderRadius: 12, height: '100%', boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)' }}
+                                                >
+                                                    {ai.positiveFactors?.length > 0 ? (
+                                                        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                                            {ai.positiveFactors.map((f: string, i: number) => (
+                                                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                                                    <CheckOutlined style={{ color: token.colorSuccess, marginTop: 4, flexShrink: 0 }} />
+                                                                    <Text style={{ fontSize: 13 }}>{f}</Text>
+                                                                </div>
+                                                            ))}
+                                                        </Space>
+                                                    ) : (
+                                                        <Text type="secondary" style={{ fontSize: 13 }}>Không có yếu tố nổi bật</Text>
+                                                    )}
+                                                </Card>
+                                            </Col>
+                                            <Col span={12}>
+                                                <Card
+                                                    size="small"
+                                                    title={<Space><ExclamationCircleOutlined style={{ color: token.colorError }} /><span>Yếu tố rủi ro</span></Space>}
+                                                    bordered={false}
+                                                    style={{ borderRadius: 12, height: '100%', boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)' }}
+                                                >
+                                                    {ai.riskFactors?.length > 0 ? (
+                                                        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                                            {ai.riskFactors.map((f: string, i: number) => (
+                                                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                                                    <CloseCircleOutlined style={{ color: token.colorError, marginTop: 4, flexShrink: 0 }} />
+                                                                    <Text style={{ fontSize: 13 }}>{f}</Text>
+                                                                </div>
+                                                            ))}
+                                                        </Space>
+                                                    ) : (
+                                                        <Text type="secondary" style={{ fontSize: 13 }}>Không phát hiện rủi ro cao</Text>
+                                                    )}
+                                                </Card>
+                                            </Col>
+                                        </Row>
+
+                                        {/* ── Features Table ── */}
+                                        <Card
+                                            size="small"
+                                            title="Dữ liệu đầu vào mô hình (13 đặc trưng)"
+                                            bordered={false}
+                                            style={{ borderRadius: 12, boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.04)' }}
+                                        >
+                                            <Table
+                                                dataSource={featuresData}
+                                                pagination={false}
+                                                size="small"
+                                                rowKey="key"
+                                                columns={[
+                                                    {
+                                                        title: 'Đặc trưng',
+                                                        dataIndex: 'label',
+                                                        width: '45%',
+                                                        render: (label: string, record: any) => (
+                                                            <Space direction="vertical" size={0}>
+                                                                <Text strong style={{ fontSize: 13 }}>{label}</Text>
+                                                                <Text type="secondary" style={{ fontSize: 11 }}>{record.key}</Text>
+                                                            </Space>
+                                                        ),
+                                                    },
+                                                    {
+                                                        title: 'Giá trị',
+                                                        dataIndex: 'value',
+                                                        width: '55%',
+                                                        render: (val: string, record: any) => {
+                                                            // Format numbers nicely
+                                                            const num = Number(val);
+                                                            let display = val;
+                                                            if (!isNaN(num) && val.trim() !== '') {
+                                                                if (record.key === 'loan_percent_income') display = `${(num * 100).toFixed(1)}%`;
+                                                                else if (record.key === 'loan_int_rate') display = `${num}%`;
+                                                                else if (record.key === 'person_income' || record.key === 'loan_amnt') display = `$${num.toLocaleString('en-US')}`;
+                                                                else display = num.toLocaleString('en-US');
+                                                            }
+                                                            if (val === 'Yes') display = '✅ Có';
+                                                            if (val === 'No') display = '❌ Không';
+                                                            if (val === 'male') display = '👨 Nam';
+                                                            if (val === 'female') display = '👩 Nữ';
+                                                            return <Text strong style={{ fontSize: 14 }}>{display}</Text>;
+                                                        },
+                                                    },
+                                                ]}
+                                            />
+                                        </Card>
+                                    </div>
+                                </div>
+                            );
+                        })(),
                     },
                     {
                         key: 'documents',

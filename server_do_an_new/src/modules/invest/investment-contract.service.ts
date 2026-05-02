@@ -277,12 +277,12 @@ export class InvestmentContractService {
     const contractId = this.generateContractId(String(loan._id));
 
     // 6. Create contract
-    // Business rule: Đầu tư qua order book matching (đặt lệnh) = chuyển tiền bình thường, KHÔNG yêu cầu SmartCA.
-    // Đầu tư trực tiếp vào khoản vay (không qua order) = bắt buộc ký SmartCA → status='pending_signature'.
+    // Business rule: TẤT CẢ các hợp đồng đầu tư (dù là đầu tư trực tiếp hay qua auto matching)
+    // đều phải được nhà đầu tư ký bằng SmartCA thì mới được giải ngân.
     const fromOrderMatching = !!investmentOrderId;
-    const initialStatus: 'active' | 'pending_signature' = fromOrderMatching ? 'active' : 'pending_signature';
+    const initialStatus: 'active' | 'pending_signature' = 'pending_signature';
     if (fromOrderMatching) {
-      this.logger.log(`${LOG}    📌 Contract phát sinh từ ORDER MATCHING → bỏ qua SmartCA, status='active' ngay`);
+      this.logger.log(`${LOG}    📌 Contract phát sinh từ ORDER MATCHING → VẪN YÊU CẦU SmartCA, status='pending_signature'`);
     } else {
       this.logger.log(`${LOG}    📌 Contract đầu tư trực tiếp → yêu cầu ký SmartCA, status='pending_signature'`);
     }
@@ -302,14 +302,7 @@ export class InvestmentContractService {
       entirelyPay,
       serviceFee: 0,
       status: initialStatus,
-      // Đối với contract sinh từ order matching: đánh dấu signature không bắt buộc / đã verify
-      ...(fromOrderMatching
-        ? {
-            smartCASignatureVerified: true,
-            signatureProvider: 'order_matching_skip',
-            signatureVerifiedAt: new Date(),
-          }
-        : {}),
+      // Đã loại bỏ logic auto-verify signature cho order matching. TẤT CẢ phải ký SmartCA.
       // Lender schedule
       lenderSchedule: schedule,
       scheduleTotalPrincipal: summary.totalPrincipal,
@@ -438,28 +431,32 @@ export class InvestmentContractService {
   //  QUERY CONTRACTS
   // ═══════════════════════════════════════════════════════
 
-  async getContractsByLender(lenderId: string, query: { page?: number; pageSize?: number; status?: string } = {}) {
+  async getContractsByLender(lenderId: string, query: { page?: number; pageSize?: number; status?: string; sortBy?: string; sortOrder?: string } = {}) {
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
 
-    // Chỉ trả về hợp đồng từ ĐẦU TƯ TRỰC TIẾP vào khoản vay đang mở (cần ký SmartCA).
-    // Loại trừ contract auto-tạo từ order matching ("đặt lệnh") — theo yêu cầu UX:
-    // lệnh đầu tư chỉ rót tiền, không hiển thị như hợp đồng cần quản lý.
     const filters: Record<string, any> = {
       lenderId: new Types.ObjectId(lenderId),
-      $or: [
-        { investmentOrderId: { $exists: false } },
-        { investmentOrderId: null },
-      ],
-      signatureProvider: { $ne: 'order_matching_skip' },
     };
     if (query.status) filters.status = query.status;
+
+    const sort: any = {};
+    if (query.sortBy) {
+      const sortFields = query.sortBy.split(',');
+      const sortOrders = query.sortOrder ? query.sortOrder.split(',') : [];
+      sortFields.forEach((field, index) => {
+        const order = sortOrders[index] === 'asc' ? 1 : -1;
+        sort[field.trim()] = order;
+      });
+    } else {
+      sort.createdAt = -1;
+    }
 
     const [contracts, totalCount] = await Promise.all([
       this.contractModel
         .find(filters)
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip(skip)
         .limit(pageSize)
         .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status')

@@ -932,6 +932,20 @@ export const adminApi = {
           hasContract: boolean;
           contractStatus: string | null;
           signedAt: string | null;
+          borrowerSigned?: boolean;
+          investmentSigningStatus?: {
+            totalInvestors: number;
+            signedInvestors: number;
+            pendingInvestors: number;
+            allSigned: boolean;
+            investors: Array<{
+              contractId: string;
+              lenderName: string;
+              status: string;
+              signed: boolean;
+              signedAt: string | null;
+            }>;
+          } | null;
         };
       }>(`/api/admin/loans/${fineractLoanId}/contract-status`)
       .then((r) => r.data.data),

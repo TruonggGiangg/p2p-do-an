@@ -111,7 +111,7 @@ export default function BNPLEarlyRepayScreen() {
                         onPress={() => navigation.goBack()}
                         activeOpacity={0.85}
                     >
-                        <Text style={styles.successBtnText}>Quay lại</Text>
+                        <Text style={[styles.successBtnText, { color: c.onPrimary }]}>Quay lại</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -193,9 +193,9 @@ export default function BNPLEarlyRepayScreen() {
                         ]}
                     >
                         {processing ? (
-                            <MaterialCommunityIcons name="loading" size={20} color="#000" />
+                            <MaterialCommunityIcons name="loading" size={20} color={c.onPrimary} />
                         ) : (
-                            <MaterialCommunityIcons name="arrow-right" size={20} color="#000" />
+                            <MaterialCommunityIcons name="arrow-right" size={20} color={c.onPrimary} />
                         )}
                     </Animated.View>
                 </View>
@@ -263,5 +263,5 @@ const styles = StyleSheet.create({
     successTitle: { fontSize: 22, fontWeight: '800', marginBottom: 10 },
     successSub: { fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 32 },
     successBtn: { paddingVertical: 16, paddingHorizontal: 40, borderRadius: 14 },
-    successBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+    successBtnText: { fontSize: 15, fontWeight: '700' },
 });

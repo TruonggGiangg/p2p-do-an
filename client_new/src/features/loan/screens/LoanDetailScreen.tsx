@@ -22,6 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader, CommonInput, CommonButton, useConfirmModal } from '../../../components';
 import { loanService, LoanHistoryItem } from '../services/loan.service';
+import type { SigningStatusResponse } from '../services/loan.service';
 import { 
     formatMoney, 
     formatDateShort as formatDate, 
@@ -166,6 +167,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const [supportReason, setSupportReason] = useState('');
     const [rescheduleDate, setRescheduleDate] = useState('');
     const [submittingSupport, setSubmittingSupport] = useState(false);
+    const [signingStatus, setSigningStatus] = useState<SigningStatusResponse | null>(null);
 
     const isActive = useMemo(() =>
         fineractDetails?.status?.active === true ||
@@ -273,6 +275,14 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
             console.error('[LoanDetail] Error:', err);
         } finally {
             setLoading(false);
+        }
+
+        // Fetch signing status for approved/waiting loans
+        try {
+            const sigStatus = await loanService.getSigningStatus(loan.id);
+            setSigningStatus(sigStatus);
+        } catch (sigErr) {
+            console.warn('[LoanDetail] getSigningStatus failed (optional)', sigErr);
         }
     }, [loan.id, isActive]);
 
@@ -392,6 +402,77 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
                         </View>
                     </View>
                 </View>
+
+                {/* Signing Status Card (multi-party) */}
+                {signingStatus && (isPending || loan.status === 'approved') && (
+                    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <View style={styles.cardTitleRow}>
+                            <View style={[styles.cardTitleDot, { backgroundColor: '#8B5CF6' }]} />
+                            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>TRẠNG THÁI KÝ HỢP ĐỒNG</Text>
+                        </View>
+                        {/* Borrower row */}
+                        <View style={signingStyles.sigRow}>
+                            <View style={[signingStyles.sigIcon, { backgroundColor: signingStatus.borrower.hasSigned ? '#10B981' : '#F59E0B' }]}>
+                                <Ionicons name={signingStatus.borrower.hasSigned ? 'checkmark' : 'time-outline'} size={14} color="#fff" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[signingStyles.sigLabel, { color: colors.textPrimary }]}>Người vay (Bạn)</Text>
+                                <Text style={[signingStyles.sigSub, { color: colors.textMuted }]}>
+                                    {signingStatus.borrower.hasSigned ? 'Đã ký hợp đồng' : 'Chưa ký — Vui lòng ký hợp đồng'}
+                                </Text>
+                            </View>
+                            {!signingStatus.borrower.hasSigned && (
+                                <TouchableOpacity
+                                    style={signingStyles.signBtn}
+                                    onPress={() => navigation.navigate('LoanContractList' as any)}
+                                >
+                                    <Text style={signingStyles.signBtnText}>Ký ngay</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        {/* Investors row */}
+                        {signingStatus.investors.total > 0 && (
+                            <View style={signingStyles.sigRow}>
+                                <View style={[signingStyles.sigIcon, { backgroundColor: signingStatus.investors.allSigned ? '#10B981' : '#F59E0B' }]}>
+                                    <Ionicons name={signingStatus.investors.allSigned ? 'checkmark-done' : 'people-outline'} size={14} color="#fff" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[signingStyles.sigLabel, { color: colors.textPrimary }]}>Nhà đầu tư</Text>
+                                    <Text style={[signingStyles.sigSub, { color: colors.textMuted }]}>
+                                        {signingStatus.investors.allSigned
+                                            ? `Tất cả ${signingStatus.investors.total} NĐT đã ký`
+                                            : `${signingStatus.investors.signed}/${signingStatus.investors.total} NĐT đã ký · Chờ ${signingStatus.investors.pending} NĐT`
+                                        }
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+                        {/* Progress bar */}
+                        {signingStatus.investors.total > 0 && (
+                            <View style={signingStyles.progressWrap}>
+                                <View style={[signingStyles.progressBg, { backgroundColor: colors.border + '40' }]}>
+                                    <View style={[
+                                        signingStyles.progressFill,
+                                        {
+                                            width: `${Math.round(((signingStatus.borrower.hasSigned ? 1 : 0) + signingStatus.investors.signed) / (1 + signingStatus.investors.total) * 100)}%`,
+                                            backgroundColor: signingStatus.readyForDisbursement ? '#10B981' : '#F59E0B',
+                                        },
+                                    ]} />
+                                </View>
+                                <Text style={[signingStyles.progressText, { color: colors.textMuted }]}>
+                                    {(signingStatus.borrower.hasSigned ? 1 : 0) + signingStatus.investors.signed}/{1 + signingStatus.investors.total} bên đã ký
+                                </Text>
+                            </View>
+                        )}
+                        {/* Ready badge */}
+                        {signingStatus.readyForDisbursement && (
+                            <View style={signingStyles.readyBadge}>
+                                <Ionicons name="rocket" size={16} color="#10B981" />
+                                <Text style={signingStyles.readyText}>Đủ điều kiện giải ngân — Hệ thống sẽ tự động xử lý</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
 
                 {/* Finance Overview Card */}
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1109,6 +1190,21 @@ const styles = StyleSheet.create({
     modalActions: { flexDirection: 'row', gap: 12, marginTop: 12 },
     modalBtn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     btnCancelText: { fontSize: 14, fontWeight: '600' },
+});
+
+const signingStyles = StyleSheet.create({
+    sigRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    sigIcon: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    sigLabel: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+    sigSub: { fontSize: 12 },
+    signBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+    signBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+    progressWrap: { marginTop: 4, marginBottom: 12 },
+    progressBg: { height: 6, borderRadius: 3, width: '100%', overflow: 'hidden', marginBottom: 6 },
+    progressFill: { height: '100%', borderRadius: 3 },
+    progressText: { fontSize: 11, textAlign: 'right', fontWeight: '600' },
+    readyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', padding: 10, borderRadius: 8, gap: 8 },
+    readyText: { color: '#10B981', fontSize: 12, fontWeight: '600', flex: 1 },
 });
 
 export default LoanDetailScreen;
