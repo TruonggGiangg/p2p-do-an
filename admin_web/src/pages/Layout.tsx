@@ -23,8 +23,10 @@ import {
   AuditOutlined,
   ThunderboltOutlined,
   DashboardOutlined,
+  SwapOutlined,
   LeftOutlined,
   RightOutlined,
+  BlockOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../App';
 import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
@@ -51,6 +53,8 @@ const menuGroups: MenuGroup[] = [
     groupLabel: 'TỔNG QUAN',
     items: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+      { key: '/market', icon: <SwapOutlined />, label: 'Bảng khớp lệnh' },
+      { key: '/investment-orders', icon: <FundOutlined />, label: 'Lệnh đầu tư' },
     ],
   },
   {
@@ -88,6 +92,7 @@ const menuGroups: MenuGroup[] = [
   {
     groupLabel: 'HỆ THỐNG',
     items: [
+      { key: '/blockchain', icon: <BlockOutlined />, label: 'Blockchain Explorer' },
       { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
     ],
   },

@@ -23,7 +23,11 @@ import StaffPage from './pages/StaffPage';
 import StaffDetailPage from './pages/StaffDetailPage';
 import StaffProfilePage from './pages/StaffProfilePage';
 import BackgroundJobsPage from './pages/BackgroundJobsPage';
+import MarketDashboardPage from './pages/MarketDashboardPage';
+import InvestmentOrdersPage from './pages/InvestmentOrdersPage';
+import InvestmentOrderDetailPage from './pages/InvestmentOrderDetailPage';
 import RolesPermissionsPage from './pages/RolesPermissionsPage';
+import BlockchainExplorerPage from './pages/BlockchainExplorerPage';
 import { useAbility } from '@casl/react';
 import { AbilityContext } from './AbilityContext';
 import { Action, Subject, AppAbility, buildAbilityForRole, buildEmptyAbility } from './ability';
@@ -227,6 +231,9 @@ export default function App() {
                 >
                   <Route index element={<DashboardPage />} />
                   <Route path="dashboard" element={<DashboardPage />} />
+                  <Route path="market" element={<MarketDashboardPage />} />
+                  <Route path="investment-orders" element={<InvestmentOrdersPage />} />
+                  <Route path="investment-orders/:id" element={<InvestmentOrderDetailPage />} />
                   <Route path="document-types" element={<DocumentTypesPage />} />
                   <Route path="loan-products" element={<LoanProductsPage />} />
                   <Route path="savings-products" element={<SavingsProductsPage />} />
@@ -259,6 +266,7 @@ export default function App() {
                     </ProtectedRoute>
                   } />
                   <Route path="profile" element={<StaffProfilePage />} />
+                  <Route path="blockchain" element={<BlockchainExplorerPage />} />
                   <Route path="background-jobs" element={
                     <ProtectedRoute action={Action.Manage} subject="all">
                       <BackgroundJobsPage />

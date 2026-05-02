@@ -179,11 +179,7 @@ export class InvestService {
               },
             },
           },
-          $set: {
-            ...(currentOrder.matchedNodes + nodesToMatch >= currentOrder.totalNodes
-              ? { status: 'closed' as const }
-              : {}),
-          },
+          $set: { updatedAt: new Date() },
         },
         { new: true },
       );
@@ -193,24 +189,50 @@ export class InvestService {
         continue;
       }
 
-      // Cập nhật nodeMatch trên loan (atomic) — giống HD-AMC P2P
-      const finalNodeMatch = existingNodeMatch + nodesToMatch;
-      const newTotalClaimed = finalNodeMatch + existingInvestedNotes;
+      // Cập nhật nodeMatch trên loan (atomic có guard)
+      const loanUpdateResult = await this.loanModel.findOneAndUpdate(
+        {
+          _id: loan._id,
+          $expr: {
+            $gte: [
+              '$totalNotes',
+              { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }, nodesToMatch] }
+            ]
+          }
+        },
+        {
+          $inc: { nodeMatch: nodesToMatch },
+          $set: { totalNotes: totalLoanNotes }
+        },
+        { new: true }
+      );
+
+      if (!loanUpdateResult) {
+        this.logger.warn(`Atomic lock on Loan ${loan._id} failed. Reverting order ${order._id}.`);
+        await this.investmentOrderModel.findByIdAndUpdate(order._id, {
+          $inc: { matchedNodes: -nodesToMatch, matchedCapital: -matchedAmount },
+          $pull: { loans: { loanId: String(loan._id) } },
+          $set: { status: 'open' }
+        });
+        sendProgress(`Bỏ qua — Khoản vay đã đủ người giữ chỗ, thử lại sau (Race condition)`, stepPct);
+        continue;
+      }
+
+      const finalInvestedNotes = (loanUpdateResult as any).investedNotes || 0;
+      const finalNodeMatch = (loanUpdateResult as any).nodeMatch || 0;
+      const newTotalClaimed = finalNodeMatch + finalInvestedNotes;
       const newMatchPercentage = Math.min(100, Math.round((newTotalClaimed / totalLoanNotes) * 100));
       // CRITICAL: isFullMatch = TRUE CHỈ KHI tiền thật đã thanh toán (investedNotes) >= totalNotes
-      const newIsFullMatch = existingInvestedNotes >= totalLoanNotes;
-      await this.loanModel.findByIdAndUpdate(loan._id, {
-        $inc: { nodeMatch: nodesToMatch },
-        $set: {
-          totalNotes: totalLoanNotes,
-          isFullMatch: newIsFullMatch,
-          matchPercentage: newMatchPercentage,
-        },
-      });
+      const newIsFullMatch = finalInvestedNotes >= totalLoanNotes;
+      
+      await this.loanModel.updateOne(
+        { _id: loan._id },
+        { $set: { isFullMatch: newIsFullMatch, matchPercentage: newMatchPercentage } }
+      );
 
       this.logger.log(
         `Loan ${loan._id}: nodeMatch ${existingNodeMatch}→${finalNodeMatch}, ` +
-          `investedNotes=${existingInvestedNotes}, totalClaimed=${newTotalClaimed}/${totalLoanNotes}, ` +
+          `investedNotes=${finalInvestedNotes}, totalClaimed=${newTotalClaimed}/${totalLoanNotes}, ` +
           `matchPercentage=${newMatchPercentage}%, isFullMatch=${newIsFullMatch}`,
       );
 
@@ -221,7 +243,17 @@ export class InvestService {
         isFullMatch: newIsFullMatch,
       });
 
-      if (updatedOrder.status === 'closed') {
+      // Kiểm tra order đã đầy chưa dựa trên dữ liệu THỰC TẾ sau atomic update
+      const isOrderFull = updatedOrder.matchedNodes >= updatedOrder.totalNodes;
+      if (isOrderFull && updatedOrder.status !== 'closed') {
+        await this.investmentOrderModel.updateOne(
+          { _id: order._id, matchedNodes: { $gte: updatedOrder.totalNodes } },
+          { $set: { status: 'closed' } },
+        );
+        this.logger.log(`Order ${order._id} closed: matchedNodes=${updatedOrder.matchedNodes} >= totalNodes=${updatedOrder.totalNodes}`);
+      }
+
+      if (isOrderFull) {
         sendProgress('Lệnh đầu tư đã ghép đủ vốn, đóng lệnh.', 95);
         break;
       }

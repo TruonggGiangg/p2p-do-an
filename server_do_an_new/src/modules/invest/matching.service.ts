@@ -145,26 +145,44 @@ export class MatchingService {
   //  FIND MATCHING ORDERS
   // ═══════════════════════════════════════════════════════
 
-  /** Tìm danh sách InvestmentOrder phù hợp, FIFO theo createdAt */
   async findMatchingOrders(loanData: LoanMatchData): Promise<InvestmentOrder[]> {
+    this.logger.log(`[findMatchingOrders] loanData: rate=${loanData.rate}, period=${loanData.periodMonth}, purpose="${loanData.purpose}"`);
+    
     const orders = await this.investmentOrderModel
       .find({
         status: 'open',
-        $expr: { $gt: [{ $subtract: ['$totalNodes', '$matchedNodes'] }, 0] },
-        'interestRange.min': { $lte: loanData.rate },
-        'interestRange.max': { $gte: loanData.rate },
-        'periodRange.min': { $lte: loanData.periodMonth },
-        'periodRange.max': { $gte: loanData.periodMonth },
+        $expr: { $lt: [{ $ifNull: ['$matchedNodes', 0] }, { $ifNull: ['$totalNodes', 1] }] },
       })
       .sort({ createdAt: 1 }) // FIFO
       .exec();
 
-    // Filter by purpose match
-    return orders.filter(order => {
+    this.logger.log(`[findMatchingOrders] Found ${orders.length} open orders with available nodes before filters.`);
+
+    const matchingOrders: InvestmentOrder[] = [];
+    for (const order of orders) {
+      const minRate = order.interestRange?.min || 0;
+      const maxRate = order.interestRange?.max || 100;
+      const minPeriod = order.periodRange?.min || 0;
+      const maxPeriod = order.periodRange?.max || 120;
+
+      const rateMatch = loanData.rate >= minRate && loanData.rate <= maxRate;
+      const periodMatch = loanData.periodMonth >= minPeriod && loanData.periodMonth <= maxPeriod;
+      
       const purposes = Array.isArray(order.purpose) ? order.purpose : [];
-      if (purposes.length === 0) return false;
-      return this.checkPurposeMatch(loanData.purpose, purposes);
-    });
+      const purposeMatch = purposes.length > 0 ? this.checkPurposeMatch(loanData.purpose, purposes) : false;
+
+      this.logger.log(
+        `Order ${order._id} - rateMatch: ${rateMatch} (${minRate}-${maxRate} vs ${loanData.rate}), ` +
+        `periodMatch: ${periodMatch} (${minPeriod}-${maxPeriod} vs ${loanData.periodMonth}), ` +
+        `purposeMatch: ${purposeMatch} ("${loanData.purpose}" vs [${purposes.join(',')}])`
+      );
+
+      if (rateMatch && periodMatch && purposeMatch) {
+        matchingOrders.push(order);
+      }
+    }
+    
+    return matchingOrders;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -196,10 +214,7 @@ export class MatchingService {
       return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'nodeMatch sẽ vượt giới hạn' };
     }
 
-    const newMatchedNodes = order.matchedNodes + nodesToMatch;
-    const willBeFull = newMatchedNodes >= order.totalNodes;
-
-    // Atomic update with condition check
+    // Atomic update — KHÔNG pre-calculate willBeFull vì order.matchedNodes có thể stale
     const updateOp: any = {
       $inc: {
         matchedNodes: nodesToMatch,
@@ -216,10 +231,6 @@ export class MatchingService {
       $set: { updatedAt: new Date() },
     };
 
-    if (willBeFull) {
-      updateOp.$set.status = 'closed';
-    }
-
     const result = await this.investmentOrderModel.findOneAndUpdate(
       {
         _id: order._id,
@@ -232,6 +243,17 @@ export class MatchingService {
     if (!result) {
       this.logger.warn(`Atomic update failed for order ${order._id} — race condition detected`);
       return { success: false, nodeMatch: 0, matchedAmount: 0, matchPercentage: 0, isFullMatch: false, message: 'Race condition — thử lại' };
+    }
+
+    // Kiểm tra willBeFull dựa trên dữ liệu THỰC TẾ sau khi atomic update (không dùng giá trị stale)
+    const actualMatchedNodes = result.matchedNodes;
+    const actualTotalNodes = result.totalNodes;
+    if (actualMatchedNodes >= actualTotalNodes && result.status !== 'closed') {
+      await this.investmentOrderModel.updateOne(
+        { _id: order._id, matchedNodes: { $gte: actualTotalNodes } },
+        { $set: { status: 'closed' } },
+      );
+      this.logger.log(`Order ${order._id} closed: matchedNodes=${actualMatchedNodes} >= totalNodes=${actualTotalNodes}`);
     }
 
     const matchedAmount = nodesToMatch * this.baseUnitPrice;

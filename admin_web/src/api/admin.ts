@@ -235,6 +235,10 @@ export interface LoanDto {
     riskFactors: any[];
     scoredAt: string;
   } | null;
+  isFullMatch?: boolean;
+  matchPercentage?: number;
+  investedNotes?: number;
+  totalNotes?: number;
 }
 
 // ── Staff types ──────────────────────────────────────────────────────────────
@@ -587,6 +591,10 @@ export const adminApi = {
           disbursed: number;
           overdue: number;
           closed: number;
+          waitingInvestment: number;
+          fullyFunded: number;
+          rejected: number;
+          cancelled: number;
         };
       }>("/api/admin/loans/stats")
       .then((r) => r.data.data),
@@ -600,7 +608,11 @@ export const adminApi = {
       | "approved"
       | "disbursed"
       | "overdue"
-      | "closed";
+      | "closed"
+      | "waiting"
+      | "funded"
+      | "rejected"
+      | "cancelled";
     productId?: number;
     classification?: string;
     keyword?: string;
@@ -639,6 +651,10 @@ export const adminApi = {
             disbursementDate: string | null;
             createdAt?: string;
             lastSyncedAt: string | null;
+            isFullMatch?: boolean;
+            matchPercentage?: number;
+            investedNotes?: number;
+            totalNotes?: number;
           }>;
         };
       }>("/api/admin/loans", { params })

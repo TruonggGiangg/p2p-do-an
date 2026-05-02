@@ -712,6 +712,13 @@ export class FineractLoanService extends FineractBaseService {
       return response.data;
     } catch (error: any) {
       this.logger.error(`[uploadDocument] FAILED loanId=${loanId}: ${error.message}`);
+      
+      // Bắt lỗi Fineract từ chối file do định dạng ẩn (vd: gửi file .jpg nhưng ruột là HEIC)
+      const errStr = JSON.stringify(error.response?.data || '');
+      if (errStr.includes('image/heic') || errStr.includes('image/heif') || errStr.includes('mime type')) {
+        throw new BadRequestException('Định dạng ảnh tải lên không được hỗ trợ (có thể là ảnh HEIC từ iPhone bị đổi đuôi sai). Vui lòng dùng ảnh JPG chuẩn.');
+      }
+      
       this.handleError(error, `Failed to upload document for loan ${loanId}`);
     }
   }

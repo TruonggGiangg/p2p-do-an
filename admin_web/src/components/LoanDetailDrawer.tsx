@@ -8,7 +8,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Drawer, Tabs, Table, Descriptions, Row, Col, Statistic, Tag, Typography, Badge, Select,
-    Skeleton, Empty, Button, Space, Card, Alert, message, theme, Avatar, Popconfirm, Tooltip
+    Skeleton, Empty, Button, Space, Card, Alert, message, theme, Avatar, Popconfirm, Tooltip, Progress
 } from 'antd';
 import {
     CloseOutlined, EyeOutlined, ClockCircleOutlined, DollarOutlined,
@@ -420,6 +420,23 @@ export default function LoanDetailDrawer({
                                         <Col>
                                             <Statistic title="Tiền quá hạn" value={loanDetails.summary?.totalOverdue} formatter={v => fmtVND(Number(v))} valueStyle={{ color: (loanDetails.summary?.totalOverdue || 0) > 0 ? token.colorError : 'inherit', fontWeight: 700 }} />
                                         </Col>
+                                        {loanDetails.totalNotes > 0 && (
+                                            <Col>
+                                                <div className="ant-statistic">
+                                                    <div className="ant-statistic-title" style={{ marginBottom: 4 }}>Tiến độ gọi vốn</div>
+                                                    <div className="ant-statistic-content" style={{ display: 'flex', alignItems: 'center', height: '32px' }}>
+                                                        <Tooltip title={`${loanDetails.investedNotes || 0} / ${loanDetails.totalNotes} notes`}>
+                                                            <Progress 
+                                                                percent={Math.round(loanDetails.matchPercentage || 0)} 
+                                                                size="small" 
+                                                                style={{ width: 150, margin: 0 }}
+                                                                strokeColor={loanDetails.isFullMatch ? '#52c41a' : '#1677ff'}
+                                                            />
+                                                        </Tooltip>
+                                                    </div>
+                                                </div>
+                                            </Col>
+                                        )}
                                     </Row>
                                 </div>
 

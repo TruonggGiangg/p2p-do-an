@@ -16,6 +16,7 @@ import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.sc
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { generateLoanContractHTML } from './templates/loan-contract.template';
 import { SmartCAService } from '../digital-signature/smartca.service';
+import { FabricService } from '../fabric/fabric.service';
 
 @Injectable()
 export class ContractService {
@@ -30,6 +31,7 @@ export class ContractService {
     private readonly fineractLoanService: FineractLoanService,
     private moduleRef: ModuleRef,
     @Optional() private readonly smartCAService: SmartCAService,
+    @Optional() private readonly fabricService: FabricService,
   ) {}
 
   /**
@@ -37,7 +39,7 @@ export class ContractService {
    */
   private generateContractId(): string {
     const ts = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const rand = require('crypto').randomBytes(4).toString('hex').toUpperCase();
     return `P2P-LC-${ts}-${rand}`;
   }
 
@@ -185,6 +187,17 @@ export class ContractService {
       },
     });
 
+    // 8. Ghi lên blockchain (sau khi các lưu trữ db đã xong)
+    if (this.fabricService) {
+      try {
+        const dataToSave = JSON.stringify(contract.toJSON());
+        await this.fabricService.submitTransaction('createLoanContract', contract.contractId, dataToSave);
+        this.logger.log(`[createContractOnApproval] Successfully synced to Blockchain: ${contract.contractId}`);
+      } catch (err: any) {
+        this.logger.error(`[createContractOnApproval] Failed to sync to Blockchain: ${err?.message}`);
+      }
+    }
+
     return contract;
   }
 
@@ -195,6 +208,7 @@ export class ContractService {
     return this.contractModel
       .find({ userId: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
+      .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
       .exec() as Promise<LoanContract[]>;
   }
@@ -258,6 +272,7 @@ export class ContractService {
     // Search by app._id (in case loanId param was fineractLoanId)
     let contract = await this.contractModel
       .findOne({ loanId: (app as any)._id, userId: new Types.ObjectId(userId) })
+      .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
       .exec();
 
@@ -265,6 +280,7 @@ export class ContractService {
     if (!contract && app.fineractLoanId) {
       contract = await this.contractModel
         .findOne({ fineractLoanId: app.fineractLoanId, userId: new Types.ObjectId(userId) })
+        .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
         .lean()
         .exec();
     }
@@ -341,6 +357,24 @@ export class ContractService {
         contractObjectId: contract._id?.toString(),
       },
     });
+
+    // Sync to Blockchain
+    if (this.fabricService?.isConnected()) {
+      try {
+        await this.fabricService.submitTransaction(
+          'updateLoanStatus',
+          contractId,
+          'signed',
+          JSON.stringify({
+            signedAt: new Date().toISOString(),
+            signatureProvider: 'manual',
+          })
+        );
+        this.logger.log(`[signContract] [Blockchain] Synced ${contractId} → signed`);
+      } catch (bcErr: any) {
+        this.logger.warn(`[signContract] [Blockchain] Sync failed: ${bcErr?.message}`);
+      }
+    }
 
     // Trigger auto-disbursement from InvestPaymentService dynamically to avoid circular dependency
     try {

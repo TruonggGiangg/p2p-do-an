@@ -485,6 +485,24 @@ p {
   border-radius: 10px !important;
 }
 
+/* Fix Input.Search & Input.Group rounded corners */
+.ant-input-group .ant-input {
+  border-radius: 0 !important;
+}
+.ant-input-group > .ant-input:first-child,
+.ant-input-search > .ant-input-group > .ant-input-affix-wrapper {
+  border-top-left-radius: 10px !important;
+  border-bottom-left-radius: 10px !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+.ant-input-search > .ant-input-group > .ant-input-group-addon:last-child .ant-btn {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: 10px !important;
+  border-bottom-right-radius: 10px !important;
+}
+
 .ant-pagination-item,
 .ant-pagination-prev .ant-pagination-item-link,
 .ant-pagination-next .ant-pagination-item-link {

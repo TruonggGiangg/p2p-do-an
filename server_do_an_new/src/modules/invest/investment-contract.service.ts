@@ -4,7 +4,7 @@
  * Tạo và quản lý hợp đồng ký quỹ đầu tư cho lender.
  * Tham khảo HD-AMC InvestContractService.js — NestJS type-safe.
  */
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +14,7 @@ import { InvestmentOrder } from './schemas/investment-order.schema';
 import { User } from '../users/schemas/user.schema';
 import { FineractFDService } from '../fineract/services/fineract-fd.service';
 import { generateInvestmentContractHTML } from './templates/investment-contract.template';
+import { FabricService } from '../fabric/fabric.service';
 
 @Injectable()
 export class InvestmentContractService {
@@ -27,6 +28,7 @@ export class InvestmentContractService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly fineractFDService: FineractFDService,
     private readonly configService: ConfigService,
+    @Optional() private readonly fabricService: FabricService,
   ) {
     this.baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
   }
@@ -355,6 +357,18 @@ export class InvestmentContractService {
     // Return contract + isFullMatch flag (để payment service trigger disbursement)
     (contract as any)._isFullMatch = isFullMatch;
     (contract as any)._loanApplicationId = loanApplicationId;
+
+    // Ghi lên blockchain
+    if (this.fabricService) {
+      try {
+        const dataToSave = JSON.stringify(contract.toJSON());
+        await this.fabricService.submitTransaction('createInvestmentContract', contract.contractId, dataToSave);
+        this.logger.log(`${LOG} Successfully synced to Blockchain: ${contract.contractId}`);
+      } catch (err: any) {
+        this.logger.error(`${LOG} Failed to sync to Blockchain: ${err?.message}`);
+      }
+    }
+
     this.logger.log(`${LOG} ── KẾT THÚC tạo hợp đồng ──`);
     return contract;
   }

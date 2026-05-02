@@ -339,7 +339,7 @@ function RRow({ icon, label, value, c, valueColor }: any) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
+  scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 180 },
 
   // Hero
   heroSub: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 0, marginBottom: 4 },
@@ -391,7 +391,7 @@ const s = StyleSheet.create({
   ctaBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 16, paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 95 : 75,
   },
   ctaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18, borderRadius: 28 },
   ctaText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },

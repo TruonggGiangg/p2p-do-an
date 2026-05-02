@@ -17,4 +17,3 @@ export const WalletSchema = SchemaFactory.createForClass(Wallet);
 
 // Compound index for fast lookup
 WalletSchema.index({ userId: 1, fineractSavingsId: 1 }); // For user's wallet lookup by Fineract ID
-WalletSchema.index({ userId: 1 }); // For getting all wallets of a user

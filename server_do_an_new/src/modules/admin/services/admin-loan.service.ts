@@ -8,11 +8,13 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { FineractLoanService } from '../../fineract/services/fineract-loan.service';
 import { FineractClientService } from '../../fineract/services/fineract-client.service';
 import { FineractSavingsService } from '../../fineract/services/fineract-savings.service';
+import { MatchingService } from '../../invest/matching.service';
 import { LoanProductDocumentType } from '../schemas/loan-product-document-type.schema';
 import { LoanSyncRun, type LoanSyncRunDetailItem, type LoanSyncChangeItem } from '../schemas/loan-sync-run.schema';
 import {
@@ -96,6 +98,7 @@ export class AdminLoanService {
     private readonly customerService: AdminCustomerService,
     private readonly creditScoreService: CreditScoreService,
     private readonly configService: ConfigService,
+    private readonly moduleRef: ModuleRef,
   ) {}
   private parseAnyDate(value: any): Date | null {
     if (!value) return null;
@@ -506,19 +509,36 @@ export class AdminLoanService {
       this.logger.warn(`[approveLoan] Could not fetch loan details, using today: ${(err as Error).message}`);
     }
 
+    // Approve trên Fineract trước
     await this.fineractLoanService.approveLoan(fineractLoanId, approvedOnDate);
+    this.logger.log(`[approveLoan] Fineract approved: ${fineractLoanId}`);
+
+    // Update MongoDB status — nếu fail thì undo Fineract approve
     const totalNotes = app.totalNotes || Math.ceil((app.capital || 0) / 500000);
-    await this.loanApplicationModel.updateOne(
-      { fineractLoanId },
-      { $set: { status: 'approved', totalNotes } }
-    );
+    try {
+      await this.loanApplicationModel.updateOne(
+        { fineractLoanId },
+        { $set: { status: 'approved', totalNotes } }
+      );
+    } catch (mongoErr: any) {
+      this.logger.error(`[approveLoan] MongoDB update FAILED after Fineract approve. Rolling back: ${mongoErr.message}`);
+      try {
+        await this.fineractLoanService.undoApproval(fineractLoanId, 'MongoDB sync failed - auto rollback');
+      } catch (rollbackErr: any) {
+        this.logger.error(`[approveLoan] Fineract rollback ALSO failed: ${rollbackErr.message}`);
+      }
+      throw new BadRequestException(`Không thể cập nhật trạng thái khoản vay: ${mongoErr.message}`);
+    }
 
     // Táº¡o há»£p Ä‘á»“ng vay + gá»­i thÃ´ng bÃ¡o cho ngÆ°á»i vay
     try {
       await this.contractService.createContractOnApproval(fineractLoanId);
-    } catch (err) {
-      this.logger.warn(`[approveLoan] Failed to create contract: ${err?.message}`);
-      // Không block việc approve nếu tạo contract thất bại
+    } catch (err: any) {
+      this.logger.error(`[approveLoan] Failed to create contract (flagged for retry): ${err?.message}`);
+      await this.loanApplicationModel.updateOne(
+        { fineractLoanId },
+        { $set: { 'metadata.contractCreationFailed': true, 'metadata.contractError': err?.message } },
+      ).catch(() => {});
     }
 
     // Láº¥y thÃ´ng tin ngÆ°á»i vay
@@ -533,6 +553,30 @@ export class AdminLoanService {
       }
     } catch {
       /* ignore */
+    }
+
+    // --- AUTO MATCHING ---
+    // Ngay khi khoản vay được duyệt, tìm kiếm các lệnh đầu tư đang mở để tự động khớp vốn
+    try {
+      const matchingService = this.moduleRef.get(MatchingService, { strict: false });
+      if (matchingService) {
+        this.logger.log(`[approveLoan] Triggering auto-matching for loan ${app._id}`);
+        const loanData = {
+          loanId: app._id.toString(),
+          capital: app.capital || 0,
+          rate: app.monthlyRatePercent || 0,
+          periodMonth: app.periodMonth || 0,
+          purpose: app.willing || (app as any).purpose || '',
+          existingNodeMatch: (app as any).nodeMatch || 0,
+          existingInvestedNotes: (app as any).investedNotes || 0,
+        };
+        // Run matching asynchronously so it doesn't block the API response
+        matchingService.performSequentialMatching(loanData)
+          .then((res: any) => this.logger.log(`[approveLoan] Auto-matching completed for loan ${app._id}: ${res.message}`))
+          .catch((err: any) => this.logger.error(`[approveLoan] Auto-matching failed for loan ${app._id}: ${err.message}`));
+      }
+    } catch (err: any) {
+      this.logger.warn(`[approveLoan] MatchingService not found or failed to load: ${err.message}`);
     }
 
     return { fineractLoanId, status: 'approved', borrowerName, borrowerUsername };
@@ -603,6 +647,25 @@ export class AdminLoanService {
       await this.creditScoreService.applyDisbursementEvent(loan.userId);
     } catch (err) {
       this.logger.warn(`[disburseLoan] Failed to update credit score: ${err?.message}`);
+    }
+
+    // 6. Sync to Blockchain
+    try {
+      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      if (fabricService?.isConnected()) {
+        // Update LoanContract → disbursed
+        if (contract?.contractId) {
+          await fabricService.submitTransaction(
+            'updateLoanStatus',
+            contract.contractId,
+            'disbursed',
+            JSON.stringify({ disbursementDate: new Date().toISOString() })
+          );
+          this.logger.log(`[disburseLoan] [Blockchain] Synced LoanContract ${contract.contractId} → disbursed`);
+        }
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[disburseLoan] [Blockchain] Sync failed: ${bcErr?.message}`);
     }
 
     // Láº¥y thÃ´ng tin ngÆ°á»i vay
@@ -781,7 +844,7 @@ export class AdminLoanService {
       await this.syncLoanFromFineract(fineractLoanId);
     }
     const fl = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
-    const app = await this.loanApplicationModel.findOne({ fineractLoanId });
+    const app = await this.loanApplicationModel.findOne({ fineractLoanId }).populate('userId', 'username profile fineractClientId');
     if (app) {
       const appObj = app.toObject() as any;
       const periods = Array.isArray(appObj.repaymentSchedule)
@@ -789,10 +852,14 @@ export class AdminLoanService {
         : fl.repaymentSchedule?.periods || appObj.repaymentSchedule?.periods || [];
       const referenceDate = app.lastSyncedAt ? new Date(app.lastSyncedAt) : new Date();
       const periodDelinquency = await this.computePeriodDelinquency(periods, referenceDate);
+      
+      const userNameFromProfile = appObj.userId ? [appObj.userId.profile?.firstName, appObj.userId.profile?.lastName].filter(Boolean).join(' ') : '';
+      const clientName = app.clientDisplayName || userNameFromProfile || appObj.userId?.username || fl.clientName;
+
       return {
         ...fl,
         ...appObj,
-        clientName: app.clientDisplayName ?? fl.clientName ?? appObj.clientDisplayName,
+        clientName,
         repaymentSchedule: { periods },
         delinquentDays: app.delinquentDays,
         delinquencyClassification: app.delinquencyClassification,
@@ -1852,7 +1919,7 @@ export class AdminLoanService {
   async getLoans(filters: {
     page?: number;
     limit?: number;
-    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed';
+    status?: 'all' | 'pending' | 'approved' | 'disbursed' | 'overdue' | 'closed' | 'waiting' | 'funded' | 'rejected' | 'cancelled';
     productId?: number;
     classification?: string;
     keyword?: string;
@@ -1885,6 +1952,9 @@ export class AdminLoanService {
       disbursementDate: string | null;
       lastSyncedAt: Date | null;
       isFullMatch?: boolean;
+      matchPercentage?: number;
+      investedNotes?: number;
+      totalNotes?: number;
     }>;
   }> {
     const page = Math.max(1, filters.page ?? 1);
@@ -1926,6 +1996,9 @@ export class AdminLoanService {
         createdAt: app.createdAt ?? null,
         lastSyncedAt: app.lastSyncedAt ?? null,
         isFullMatch: app.isFullMatch ?? false,
+        matchPercentage: app.matchPercentage ?? 0,
+        investedNotes: app.investedNotes ?? 0,
+        totalNotes: app.totalNotes ?? 0,
       };
     };
 
@@ -1946,18 +2019,29 @@ export class AdminLoanService {
     };
 
     const getPendingItems = async () => {
-      const pending = await this.getAllPendingLoans();
-      let items = pending.map(fl => ({
-        _id: fl._id,
-        fineractLoanId: fl.fineractLoanId,
-        userId: fl.userId ?? '',
-        customerName: fl.clientName ?? 'â€“',
-        customerUsername: 'â€“',
-        productId: fl.productId,
-        productName: fl.productName ?? '',
-        productShortName: (fl as any).productShortName ?? '',
-        capital: fl.capital ?? 0,
-        periodMonth: fl.periodMonth ?? 0,
+      // Lấy tất cả hồ sơ có trạng thái pending từ Mongo (không lọc fineractLoanId)
+      const pending = await this.loanApplicationModel
+        .find({ status: 'pending' })
+        .populate('userId', 'username profile fineractClientId')
+        .lean()
+        .exec();
+        
+      const products: any[] = await this.fineractLoanService.getLoanProducts().catch(() => []);
+      const productMap = new Map(products.map((p: any) => [p.id, p]));
+
+      let items = (pending as any[]).map(fl => {
+        const p: any = productMap.get(fl.productId) ?? {};
+        return {
+          _id: fl._id.toString(),
+          fineractLoanId: fl.fineractLoanId,
+          userId: fl.userId?._id?.toString() ?? '',
+          customerName: (fl.clientDisplayName ?? [fl.userId?.profile?.firstName, fl.userId?.profile?.lastName].filter(Boolean).join(' ')) || (fl.userId?.username ?? 'â€“'),
+          customerUsername: fl.userId?.username ?? 'â€“',
+          productId: fl.productId,
+          productName: fl.productName || p.name || '',
+          productShortName: (fl as any).productShortName || p.shortName || '',
+          capital: fl.capital ?? 0,
+          periodMonth: fl.periodMonth ?? 0,
         monthlyPay: (fl as any).monthlyPay ?? 0,
         entirelyPay: (fl as any).entirelyPay ?? 0,
         monthlyRatePercent: (fl as any).monthlyRatePercent ?? 0,
@@ -1971,7 +2055,12 @@ export class AdminLoanService {
         createdAt: (fl as any).createdAt ?? null,
         lastSyncedAt: null,
         aiScore: (fl as any).aiScore ?? null,
-      }));
+          isFullMatch: false,
+          matchPercentage: 0,
+          investedNotes: 0,
+          totalNotes: 0,
+        };
+      });
       items = applyProductFilter(applyKeywordFilter(items));
       return items;
     };
@@ -2017,27 +2106,38 @@ export class AdminLoanService {
           createdAt: fl.timeline?.submittedOnDate ?? ll?.createdAt ?? null,
           lastSyncedAt: null,
           isFullMatch: ll?.isFullMatch ?? false,
+          matchPercentage: ll?.matchPercentage ?? 0,
+          investedNotes: ll?.investedNotes ?? 0,
+          totalNotes: ll?.totalNotes ?? 0,
         };
       });
       items = applyProductFilter(applyKeywordFilter(items));
       return items;
     };
 
-    // Pending: Fineract status 100
     if (status === 'pending') {
       const items = await getPendingItems();
-      const total = items.length;
-      return { total, page, limit, items: paginate(items) };
+      return { total: items.length, page, limit, items: paginate(items) };
     }
-
-    // Approved: Fineract status 200 (waiting for disbursal)
     if (status === 'approved') {
       const items = await getApprovedItems();
-      const total = items.length;
-      return { total, page, limit, items: paginate(items) };
+      return { total: items.length, page, limit, items: paginate(items) };
     }
 
-    // disbursed, overdue, closed, all: query Mongo
+    // Waiting for Investment: status approved, isFullMatch false (Mongo)
+    if (status === 'waiting' || status === 'funded') {
+      const isFullMatch = status === 'funded';
+      const apps = await this.loanApplicationModel
+        .find({ status: 'approved', isFullMatch, fineractLoanId: { $exists: true, $ne: null } })
+        .populate('userId', 'username profile fineractClientId')
+        .lean()
+        .exec();
+      const items = (apps as any[]).map(app => mapAppToItem(app));
+      const filtered = applyProductFilter(applyKeywordFilter(items));
+      return { total: filtered.length, page, limit, items: paginate(filtered) };
+    }
+
+    // disbursed, overdue, closed, rejected, cancelled, all: query Mongo
     const query: any = { fineractLoanId: { $exists: true, $ne: null } };
 
     if (status === 'disbursed') {
@@ -2048,28 +2148,34 @@ export class AdminLoanService {
       query.totalOverdue = { $gt: 0 };
     } else if (status === 'closed') {
       query.status = 'closed';
+    } else if (status === 'rejected') {
+      query.status = 'rejected';
+    } else if (status === 'cancelled') {
+      query.status = 'cancelled';
     } else {
-      query.status = { $in: ['disbursed', 'closed'] };
+      query.status = { $in: ['disbursed', 'closed', 'rejected', 'cancelled'] };
     }
 
     if (filters.productId != null) query.productId = filters.productId;
     if (filters.classification) query.delinquencyClassification = filters.classification;
 
     if (filters.keyword?.trim()) {
-      const search = filters.keyword.trim();
-      const keywordOr: any[] = [{ clientDisplayName: { $regex: search, $options: 'i' } }];
-      const loanIdNum = Number(search);
+      const searchStr = filters.keyword.trim();
+      const keywordOr: any[] = [{ clientDisplayName: { $regex: searchStr, $options: 'i' } }];
+      const loanIdNum = Number(searchStr);
       if (!isNaN(loanIdNum)) keywordOr.push({ fineractLoanId: loanIdNum });
+      
       const matchingUsers = await this.userModel
         .find({
           $or: [
-            { username: { $regex: search, $options: 'i' } },
-            { 'profile.firstName': { $regex: search, $options: 'i' } },
-            { 'profile.lastName': { $regex: search, $options: 'i' } },
+            { username: { $regex: searchStr, $options: 'i' } },
+            { 'profile.firstName': { $regex: searchStr, $options: 'i' } },
+            { 'profile.lastName': { $regex: searchStr, $options: 'i' } },
           ],
         })
         .select('_id')
         .lean();
+        
       if (matchingUsers.length > 0) {
         keywordOr.push({ userId: { $in: matchingUsers.map((u: any) => u._id) } });
       }
@@ -2103,17 +2209,12 @@ export class AdminLoanService {
       if (filters.disbursementDateTo) query.disbursementDate.$lte = filters.disbursementDateTo;
     }
 
-    const mongoQuery = this.loanApplicationModel
+    const apps = await this.loanApplicationModel
       .find(query)
       .sort({ totalOverdue: -1, delinquentDays: -1, lastSyncedAt: -1 })
       .populate('userId', 'username profile fineractClientId')
-      .lean();
-
-    if (status !== 'all') {
-      mongoQuery.skip((page - 1) * limit).limit(limit);
-    }
-
-    const apps = await mongoQuery.exec();
+      .lean()
+      .exec();
 
     const count = status === 'all' ? 0 : await this.loanApplicationModel.countDocuments(query);
 
@@ -2131,9 +2232,13 @@ export class AdminLoanService {
 
     if (status === 'all') {
       const [pendingItems, approvedItems] = await Promise.all([getPendingItems(), getApprovedItems()]);
-      const allItems = [...pendingItems, ...approvedItems, ...mongoItems].sort(
-        (a, b) => Number(b.fineractLoanId ?? 0) - Number(a.fineractLoanId ?? 0),
-      );
+      const allItems = [...pendingItems, ...approvedItems, ...mongoItems].sort((a, b) => {
+          const valA = Number(a.fineractLoanId || 0);
+          const valB = Number(b.fineractLoanId || 0);
+          if (valB !== valA) return valB - valA;
+          return String(b._id || '').localeCompare(String(a._id || ''));
+      });
+      
       return {
         total: allItems.length,
         page,
@@ -2152,16 +2257,38 @@ export class AdminLoanService {
     total: number;
     pending: number;
     approved: number;
+    waitingInvestment: number;
+    fullyFunded: number;
     disbursed: number;
     overdue: number;
     closed: number;
+    rejected: number;
+    cancelled: number;
   }> {
-    const [mongoCounts, pendingCount, approvedCount] = await Promise.all([
+    const [mongoCounts] = await Promise.all([
       this.loanApplicationModel.aggregate([
-        { $match: { fineractLoanId: { $exists: true, $ne: null } } },
         {
           $group: {
             _id: null,
+            pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+            waitingInvestment: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'approved'] }, { $eq: ['$isFullMatch', false] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            fullyFunded: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'approved'] }, { $eq: ['$isFullMatch', true] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
             disbursed: {
               $sum: {
                 $cond: [
@@ -2181,25 +2308,36 @@ export class AdminLoanService {
               },
             },
             closed: { $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] } },
+            rejected: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
+            cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
           },
         },
       ]),
-      this.fineractLoanService.getLoansByStatus(100).then(r => r.length),
-      this.fineractLoanService.getLoansByStatus(200).then(r => r.length),
     ]);
 
     const agg = mongoCounts[0] ?? {};
+    const pending = agg.pending ?? 0;
+    const waitingInvestment = agg.waitingInvestment ?? 0;
+    const fullyFunded = agg.fullyFunded ?? 0;
     const disbursed = agg.disbursed ?? 0;
     const overdue = agg.overdue ?? 0;
     const closed = agg.closed ?? 0;
+    const rejected = agg.rejected ?? 0;
+    const cancelled = agg.cancelled ?? 0;
+
+    const approved = waitingInvestment + fullyFunded;
 
     return {
-      total: disbursed + overdue + closed + pendingCount + approvedCount,
-      pending: pendingCount,
-      approved: approvedCount,
+      total: pending + approved + disbursed + overdue + closed + rejected + cancelled,
+      pending,
+      approved,
+      waitingInvestment,
+      fullyFunded,
       disbursed,
       overdue,
       closed,
+      rejected,
+      cancelled,
     };
   }
 

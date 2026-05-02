@@ -525,6 +525,21 @@ export class WalletsService {
         description = txn.transactionType.value;
       }
 
+      // Dịch các nhãn tiếng Anh mặc định của Fineract sang tiếng Việt
+      const FINERACT_VI: Record<string, string> = {
+        'Interest posting': 'Ghi nhận lãi suất',
+        'Interest Posting': 'Ghi nhận lãi suất',
+        'Withdrawal': 'Rút tiền',
+        'Deposit': 'Nạp tiền',
+        'Account Transfer': 'Chuyển khoản nội bộ',
+        'Withdrawal Fee': 'Phí rút tiền',
+        'Annual Fee': 'Phí thường niên',
+        'Pay Charge': 'Thanh toán phí',
+        'Overdraft Interest': 'Lãi thấu chi',
+        'Withhold Tax': 'Thuế khấu trừ',
+      };
+      description = FINERACT_VI[description] || description;
+
       // Parse date from Fineract format [year, month, day]
       let date: string;
       if (txn.date && Array.isArray(txn.date) && txn.date.length === 3) {
@@ -533,15 +548,19 @@ export class WalletsService {
         date = new Date().toISOString();
       }
 
+      // Fineract luôn trả amount dương — đảo dấu cho giao dịch rút/chuyển ra
+      const rawAmount = txn.amount || 0;
+      const signedAmount = (type === 'withdrawal' || type === 'transfer_out') ? -rawAmount : rawAmount;
+
       return {
         id: String(txn.id),
         type: type,
-        amount: txn.amount || 0,
+        amount: signedAmount,
         date: date,
         description: description,
         balance: txn.runningBalance || 0,
-        context: description, // Alias for grouping in Frontend if needed
-        transferId: txn.transfer?.id, // Include transfer ID for detail fetching
+        context: description,
+        transferId: txn.transfer?.id,
       };
     });
 

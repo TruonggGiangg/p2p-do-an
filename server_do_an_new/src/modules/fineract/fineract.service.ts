@@ -51,8 +51,8 @@ export class FineractService {
     return this.savingsService.getWalletType(savingsData);
   }
 
-  async createSavingsAccount(clientId: number, productId?: number): Promise<number> {
-    return this.savingsService.createSavingsAccount(clientId, productId);
+  async createSavingsAccount(clientId: number, productId?: number, activationDate?: string): Promise<number> {
+    return this.savingsService.createSavingsAccount(clientId, productId, activationDate);
   }
 
   async approveSavingsAccount(savingsId: number): Promise<void> {

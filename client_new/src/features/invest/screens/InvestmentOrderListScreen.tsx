@@ -337,7 +337,7 @@ const st = StyleSheet.create({
   container: { flex: 1 },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
-  emptyListContent: { flexGrow: 1, justifyContent: 'center' },
+  emptyListContent: { flexGrow: 1 },
 
   // Stats
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
@@ -400,7 +400,7 @@ const st = StyleSheet.create({
   filledBtnText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 
   // Empty
-  emptyWrap: { alignItems: 'center', paddingHorizontal: 32, marginTop: -40 },
+  emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingBottom: 100 },
   emptyIcon: { width: 96, height: 96, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
   emptySub: { fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
@@ -410,7 +410,7 @@ const st = StyleSheet.create({
 
 
   fab: {
-    position: 'absolute', right: 20, bottom: 24,
+    position: 'absolute', right: 20, bottom: 120,
     width: 56, height: 56, borderRadius: 28,
     justifyContent: 'center', alignItems: 'center',
     elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8,

@@ -145,11 +145,20 @@ export default function NotificationScreen() {
     }, [notiHasMore, notiLoading, notiRefreshing, fetchNotifications]);
 
     // ── Render Transaction Item ──
+    const TX_TYPE_LABEL: Record<string, string> = {
+        deposit: 'Nạp tiền',
+        withdrawal: 'Rút tiền',
+        transfer_in: 'Nhận chuyển khoản',
+        transfer_out: 'Chuyển khoản đi',
+    };
+
     const renderTransactionItem = ({ item }: { item: WalletTransaction }) => {
         const isIncome = item.amount >= 0;
         const date = new Date(item.date);
         const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+        const typeLabel = TX_TYPE_LABEL[item.type] || item.type || 'Giao dịch';
 
         return (
             <TouchableOpacity activeOpacity={0.7} style={styles.notificationWrapper}>
@@ -165,14 +174,14 @@ export default function NotificationScreen() {
                         <View style={styles.contentContainer}>
                             <View style={styles.headerRow}>
                                 <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>
-                                    {item.description || item.type || 'Giao dịch'}
+                                    {item.description || typeLabel}
                                 </Text>
                                 <Text style={[styles.amount, { color: isIncome ? '#0ECB81' : '#F6465D' }]}>
-                                    {isIncome ? '+' : ''}{formatCurrency(Math.abs(item.amount))}
+                                    {isIncome ? '+' : '-'}{formatCurrency(Math.abs(item.amount))}
                                 </Text>
                             </View>
                             <Text style={[styles.description, { color: c.textSecondary }]} numberOfLines={1}>
-                                {item.type || 'Ví điện tử'}
+                                {typeLabel}
                             </Text>
                             <Text style={[styles.time, { color: c.textDim }]}>{timeStr} • {dateStr}</Text>
                         </View>

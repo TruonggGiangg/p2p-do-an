@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
@@ -11,6 +11,8 @@ import { LoanApplication } from './schemas/loan-application.schema';
 import { Notification } from './schemas/notification.schema';
 import { User } from '../users/schemas/user.schema';
 import { CreditScoreService } from '../credit-score/credit-score.service';
+import { FabricService } from '../fabric/fabric.service';
+import { LoanContract } from './schemas/loan-contract.schema';
 
 /**
  * RepaymentService - Xử lý thanh toán khoản vay (repayment & prepayment)
@@ -37,7 +39,9 @@ export class RepaymentService {
     @InjectModel(LoanApplication.name) private readonly loanApplicationModel: Model<LoanApplication>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
+    @InjectModel(LoanContract.name) private readonly loanContractModel: Model<LoanContract>,
     private readonly creditScoreService: CreditScoreService,
+    @Optional() private readonly fabricService: FabricService,
   ) {}
 
   /**
@@ -215,6 +219,44 @@ export class RepaymentService {
       .catch(err => this.logger.warn(`[makeRepayment] Credit score update failed: ${err?.message}`));
 
     this.logger.log(`[makeRepayment] SUCCESS | loanId=${loanId} amount=${amount}`);
+
+    // Ghi nhận lịch sử giao dịch thanh toán vào Blockchain
+    if (this.fabricService) {
+      try {
+        const loanContract = await this.loanContractModel.findOne({ loanId: loan._id }).lean();
+        if (loanContract) {
+          const settlementId = `SETTLE_${fineractResult.transactionId}_${Date.now()}`;
+          const settlementData = {
+            loanContractId: loanContract.contractId,
+            fineractTransactionId: String(fineractResult.transactionId),
+            period: 0, // Period determination left as 0 or handled later
+            amountPaid: amount,
+            principalPortion: 0,
+            interestPortion: 0,
+            feePortion: 0,
+            penaltyPortion: 0,
+            paymentDate: date,
+            status: 'completed',
+            paymentMethod: 'e_wallet',
+          };
+          await this.fabricService.submitTransaction('createSettlementContract', settlementId, JSON.stringify(settlementData));
+          this.logger.log(`[makeRepayment] Successfully synced settlement to Blockchain: ${settlementId}`);
+
+          // Update LoanContract status on Blockchain if loan is closed
+          if (newStatus === 'closed' && loanContract.contractId) {
+            await this.fabricService.submitTransaction(
+              'updateLoanStatus',
+              loanContract.contractId,
+              'closed',
+              JSON.stringify({ closedAt: new Date().toISOString(), closedBy: 'repayment' })
+            );
+            this.logger.log(`[makeRepayment] [Blockchain] Synced LoanContract ${loanContract.contractId} → closed`);
+          }
+        }
+      } catch (err: any) {
+        this.logger.error(`[makeRepayment] Failed to sync settlement to Blockchain: ${err?.message}`);
+      }
+    }
 
     return {
       success: true,
@@ -410,6 +452,44 @@ export class RepaymentService {
       .catch(err => this.logger.warn(`[prepayLoan] Credit score update failed: ${err?.message}`));
 
     this.logger.log(`[prepayLoan] SUCCESS | loanId=${loanId} amount=${prepayInfo.amount}`);
+
+    // Ghi nhận lịch sử giao dịch tất toán vào Blockchain
+    if (this.fabricService) {
+      try {
+        const loanContract = await this.loanContractModel.findOne({ loanId: loan._id }).lean();
+        if (loanContract) {
+          const settlementId = `SETTLE_PREPAY_${fineractResult.transactionId}_${Date.now()}`;
+          const settlementData = {
+            loanContractId: loanContract.contractId,
+            fineractTransactionId: String(fineractResult.transactionId),
+            period: 0, // Prepayment covers remaining periods
+            amountPaid: prepayInfo.amount,
+            principalPortion: prepayInfo.principalPortion || 0,
+            interestPortion: prepayInfo.interestPortion || 0,
+            feePortion: prepayInfo.feesPortion || 0,
+            penaltyPortion: prepayInfo.penaltyPortion || 0,
+            paymentDate: date,
+            status: 'completed',
+            paymentMethod: 'e_wallet',
+          };
+          await this.fabricService.submitTransaction('createSettlementContract', settlementId, JSON.stringify(settlementData));
+          this.logger.log(`[prepayLoan] Successfully synced settlement to Blockchain: ${settlementId}`);
+
+          // Update LoanContract status on Blockchain → closed
+          if (loanContract.contractId) {
+            await this.fabricService.submitTransaction(
+              'updateLoanStatus',
+              loanContract.contractId,
+              'closed',
+              JSON.stringify({ closedAt: new Date().toISOString(), closedBy: 'prepayment' })
+            );
+            this.logger.log(`[prepayLoan] [Blockchain] Synced LoanContract ${loanContract.contractId} → closed`);
+          }
+        }
+      } catch (err: any) {
+        this.logger.error(`[prepayLoan] Failed to sync settlement to Blockchain: ${err?.message}`);
+      }
+    }
 
     return {
       success: true,

@@ -5,7 +5,7 @@ import { Button, Form, message, Tooltip } from 'antd';
 import {
     SyncOutlined, FilterOutlined, ReloadOutlined,
     DollarOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
-    ExclamationCircleOutlined, FileDoneOutlined,
+    ExclamationCircleOutlined, FileDoneOutlined, SearchOutlined, ThunderboltOutlined, StopOutlined,
 } from '@ant-design/icons';
 import { adminApi } from '../api/admin';
 import LoanDetailDrawer from '../components/LoanDetailDrawer';
@@ -20,15 +20,24 @@ const STATUS_MAP: Record<string, TabKey> = {
     all: 'all',
     pending: 'pending',
     approved: 'approved',
+    waiting: 'waiting',
+    funded: 'funded',
     disbursed: 'disbursed',
     overdue: 'overdue',
     closed: 'closed',
+    rejected: 'rejected',
+    cancelled: 'cancelled',
 };
 
 export default function LoansPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const actionRef = useRef<ActionType>();
-    const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, disbursed: 0, overdue: 0, closed: 0 });
+    const [stats, setStats] = useState({ 
+        total: 0, pending: 0, approved: 0, 
+        disbursed: 0, overdue: 0, closed: 0,
+        waitingInvestment: 0, fullyFunded: 0,
+        rejected: 0, cancelled: 0
+    });
     const [products, setProducts] = useState<Array<{ id: number; name: string; shortName: string }>>([]);
     const [ranges, setRanges] = useState<Array<{ id: number; classification: string; minimumAgeDays?: number }>>([]);
     const [showFilters, setShowFilters] = useState(false);
@@ -44,24 +53,39 @@ export default function LoansPage() {
     const [initialLoading, setInitialLoading] = useState(true);
 
     useEffect(() => {
+        const loanIdParam = searchParams.get('loanId');
+        if (loanIdParam) {
+            setDrawerLoanId(Number(loanIdParam));
+        }
+
         Promise.all([
             adminApi.getLoansStats().then(setStats).catch(() => { }),
             adminApi.getLoanProducts().then(setProducts).catch(() => []),
             adminApi.getDelinquencyRanges().then(setRanges).catch(() => []),
         ]).finally(() => setInitialLoading(false));
-    }, []);
+    }, [searchParams]);
 
     const handleTabChange = (key: string) => {
         const k = key as TabKey;
         setActiveTab(k);
+        // Cập nhật URL
         setSearchParams((p) => {
             const next = new URLSearchParams(p);
             if (k === 'all') next.delete('tab');
             else next.set('tab', k);
             return next;
         });
-        actionRef.current?.reloadAndRest?.();
+        
+        // Đồng bộ field status trong form nếu đang ở tab all
+        if (k !== 'all') {
+            form.setFieldValue('status', undefined);
+        }
     };
+
+    // Reload bảng khi activeTab thay đổi hoặc searchParams thay đổi
+    useEffect(() => {
+        actionRef.current?.reloadAndRest?.();
+    }, [activeTab]);
 
     const handleSync = useCallback(async () => {
         setSyncing(true);
@@ -85,11 +109,15 @@ export default function LoansPage() {
     const fetchData = useCallback(async (params: any) => {
         const currentPage = Number(params.current ?? 1) || 1;
         const pageSize = Number(params.pageSize ?? 20) || 20;
+        
+        // Ưu tiên status từ form (nếu ở tab all), nếu không thì dùng activeTab
+        const formStatus = form.getFieldValue('status');
         const filters: any = {
             page: currentPage,
             limit: pageSize,
-            status: activeTab,
+            status: activeTab === 'all' && formStatus ? formStatus : activeTab,
         };
+
         const formValues = form.getFieldsValue();
         if (formValues.keyword) filters.keyword = formValues.keyword;
         if (formValues.productId) filters.productId = formValues.productId;
@@ -115,9 +143,13 @@ export default function LoansPage() {
         { filterKey: 'all', title: 'Tổng khoản vay', value: stats.total, color: '#1E40AF', gradient: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', icon: <DollarOutlined /> },
         { filterKey: 'pending', title: 'Chờ duyệt', value: stats.pending, color: '#D97706', gradient: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)', icon: <ClockCircleOutlined /> },
         { filterKey: 'approved', title: 'Đã phê duyệt', value: stats.approved, color: '#7C3AED', gradient: 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)', icon: <FileDoneOutlined /> },
+        { filterKey: 'waiting', title: 'Chờ đầu tư', value: stats.waitingInvestment, color: '#2563EB', gradient: 'linear-gradient(135deg, #2563EB 0%, #60A5FA 100%)', icon: <SearchOutlined /> },
+        { filterKey: 'funded', title: 'Đã đủ vốn', value: stats.fullyFunded, color: '#0891B2', gradient: 'linear-gradient(135deg, #0891B2 0%, #22D3EE 100%)', icon: <ThunderboltOutlined /> },
         { filterKey: 'disbursed', title: 'Đang hoạt động', value: stats.disbursed, color: '#059669', gradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', icon: <CheckCircleOutlined /> },
         { filterKey: 'overdue', title: 'Quá hạn', value: stats.overdue, color: '#DC2626', gradient: 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', icon: <ExclamationCircleOutlined /> },
-        { filterKey: 'closed', title: 'Đã đóng', value: stats.closed, color: '#6B7280', gradient: 'linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%)', icon: <CloseCircleOutlined /> },
+        { filterKey: 'rejected', title: 'Bị từ chối', value: stats.rejected, color: '#991B1B', gradient: 'linear-gradient(135deg, #991B1B 0%, #F87171 100%)', icon: <StopOutlined /> },
+        { filterKey: 'cancelled', title: 'Đã hủy', value: stats.cancelled, color: '#BE185D', gradient: 'linear-gradient(135deg, #BE185D 0%, #F472B6 100%)', icon: <CloseCircleOutlined /> },
+        { filterKey: 'closed', title: 'Đã đóng', value: stats.closed, color: '#4B5563', gradient: 'linear-gradient(135deg, #4B5563 0%, #9CA3AF 100%)', icon: <CheckCircleOutlined /> },
     ];
 
     if (initialLoading) {
@@ -128,7 +160,7 @@ export default function LoansPage() {
                     description="Quản lý toàn bộ khoản vay theo từng giai đoạn: chờ duyệt, đã phê duyệt, đang hoạt động, quá hạn, đã đóng."
                     breadcrumb={[{ label: 'Quản lý khoản vay' }]}
                 />
-                <PageWithStatsSkeleton statCount={6} tableRows={6} tableColumns={6} />
+                <PageWithStatsSkeleton statCount={10} tableRows={6} tableColumns={6} />
             </div>
         );
     }
@@ -138,7 +170,7 @@ export default function LoansPage() {
             {contextHolder}
             <PageHeader
                 title="Quản lý khoản vay"
-                description="Quản lý toàn bộ khoản vay theo từng giai đoạn: chờ duyệt, đã phê duyệt, đang hoạt động, quá hạn, đã đóng."
+                description="Hệ thống quản lý vòng đời khoản vay: từ Chờ duyệt, Chờ đầu tư, Đã đủ vốn đến Đang hoạt động, Quá hạn và Tất toán."
                 breadcrumb={[{ label: 'Quản lý khoản vay' }]}
             />
             <StatFilterCards

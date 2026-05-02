@@ -39,4 +39,3 @@ export class CreditScore extends Document {
 }
 
 export const CreditScoreSchema = SchemaFactory.createForClass(CreditScore);
-CreditScoreSchema.index({ userId: 1 }, { unique: true });

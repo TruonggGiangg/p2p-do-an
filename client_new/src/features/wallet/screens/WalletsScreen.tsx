@@ -98,7 +98,7 @@ export const WalletsScreen = () => {
                                 title="Nạp tiền"
                                 variant="primary"
                                 style={{ flex: 1, height: 40 }}
-                                textStyle={{ fontSize: 13, color: '#14342B' }}
+                                textStyle={{ fontSize: 13 }}
                                 onPress={() => { }}
                             />
                             <CommonButton

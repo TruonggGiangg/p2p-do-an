@@ -8,6 +8,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 
 import { InvestmentContract } from './schemas/investment-contract.schema';
 import { InvestmentOrder } from './schemas/investment-order.schema';
@@ -32,6 +33,7 @@ export class InvestPaymentService {
     private readonly contractService: InvestmentContractService,
     private readonly fineractService: FineractService,
     private readonly configService: ConfigService,
+    private readonly moduleRef: ModuleRef,
   ) {
     this.baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
   }
@@ -576,7 +578,7 @@ export class InvestPaymentService {
       const updateResult = await this.contractModel.updateMany(
         {
           loanApplicationId: new Types.ObjectId(loanApplicationId),
-          status: 'pending',
+          status: { $in: ['pending', 'pending_signature'] },
         },
         {
           $set: { status: 'active' },
@@ -585,6 +587,57 @@ export class InvestPaymentService {
       this.logger.log(`${logPrefix} ✅ ${updateResult.modifiedCount} InvestmentContracts → active`);
 
       this.logger.log(`${logPrefix} 🎉 Auto-disbursement completed for loan ${loanApplicationId}`);
+
+      // ── Step 6: Sync status to Blockchain ──
+      try {
+        let fabricService: any;
+        try {
+          // FabricModule is @Global — resolve class token via require (avoid TS import issues with fabric-network)
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { FabricService: FabricSvc } = require('../fabric/fabric.service');
+          fabricService = this.moduleRef.get(FabricSvc, { strict: false });
+        } catch (e: any) {
+          this.logger.warn(`${logPrefix} [Blockchain] Cannot resolve FabricService: ${e.message}`);
+        }
+
+        if (!fabricService) {
+          this.logger.warn(`${logPrefix} [Blockchain] FabricService not available, skipping sync`);
+        } else if (!fabricService.isConnected()) {
+          this.logger.warn(`${logPrefix} [Blockchain] FabricService not connected, skipping sync`);
+        } else {
+          // Sync LoanContract
+          if (borrowerContract?.contractId) {
+            await fabricService.submitTransaction(
+              'updateLoanStatus',
+              borrowerContract.contractId,
+              'disbursed',
+              JSON.stringify({ disbursementDate: new Date().toISOString() })
+            );
+            this.logger.log(`${logPrefix} [Blockchain] ✅ Synced LoanContract ${borrowerContract.contractId} → disbursed`);
+          }
+
+          // Sync InvestmentContracts
+          const activatedContracts = await this.contractModel.find({
+            loanApplicationId: new Types.ObjectId(loanApplicationId),
+            status: 'active'
+          }).select('contractId').lean();
+
+          for (const invContract of activatedContracts) {
+            if (invContract.contractId) {
+              await fabricService.submitTransaction(
+                'updateInvestmentStatus',
+                invContract.contractId,
+                'active',
+                JSON.stringify({})
+              );
+            }
+          }
+          this.logger.log(`${logPrefix} [Blockchain] ✅ Synced ${activatedContracts.length} InvestmentContracts → active`);
+        }
+      } catch (bcError: any) {
+        this.logger.warn(`${logPrefix} [Blockchain] Failed to sync status: ${bcError.message}`);
+      }
+
     } catch (error: any) {
       this.logger.error(`${logPrefix} ❌ Auto-disbursement failed for loan ${loanApplicationId}: ${error.message}`);
       // Non-blocking — investment vẫn thành công, disbursement sẽ retry manual

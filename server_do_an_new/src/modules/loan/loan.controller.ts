@@ -24,6 +24,7 @@ import { ContractService } from './contract.service';
 import { RatePreviewDto } from './dto/rate-preview.dto';
 import { ApplyLoanDto } from './dto/apply-loan.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { SkipKycCheck } from '../../common/decorators/skip-kyc-check.decorator';
 
 @ApiTags('loan')
 @ApiBearerAuth()
@@ -305,6 +306,7 @@ export class LoanController {
   // NOTIFICATIONS
   // =============================================
 
+  @SkipKycCheck()
   @Get('notifications')
   @ApiOperation({ summary: 'Lấy danh sách thông báo' })
   @ApiResponse({ status: 200 })
@@ -322,6 +324,7 @@ export class LoanController {
     );
   }
 
+  @SkipKycCheck()
   @Post('notifications/:id/read')
   @ApiOperation({ summary: 'Đánh dấu thông báo đã đọc' })
   @ApiResponse({ status: 200 })
@@ -330,6 +333,7 @@ export class LoanController {
     return null;
   }
 
+  @SkipKycCheck()
   @Post('notifications/read-all')
   @ApiOperation({ summary: 'Đánh dấu tất cả thông báo đã đọc' })
   @ApiResponse({ status: 200 })
