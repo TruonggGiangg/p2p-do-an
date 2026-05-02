@@ -112,13 +112,10 @@ class P2PLendingContract extends Contract {
 
     /**
      * Update status and optionally additional fields for a Loan Contract.
-     * @param {Context} ctx 
-     * @param {String} contractId 
-     * @param {String} newStatus 
-     * @param {String} additionalDataJson 
+     * Supports: pending_signature → signed → disbursed → closed / written_off / rejected
      */
     async updateLoanStatus(ctx, contractId, newStatus, additionalDataJson) {
-        console.info('============= START : updateLoanStatus ===========');
+        console.info(`============= START : updateLoanStatus → ${newStatus} ===========`);
         
         const loanContract = await this._getState(ctx, contractId);
         
@@ -126,7 +123,17 @@ class P2PLendingContract extends Contract {
             throw new Error(`Asset ${contractId} is not a LoanContract`);
         }
 
+        const previousStatus = loanContract.status;
         loanContract.status = newStatus;
+
+        // Track status history for audit trail
+        if (!loanContract.statusHistory) loanContract.statusHistory = [];
+        loanContract.statusHistory.push({
+            from: previousStatus,
+            to: newStatus,
+            timestamp: this._getTxTime(ctx),
+            actor: ctx.clientIdentity.getID()
+        });
 
         if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
             const data = JSON.parse(additionalDataJson);
@@ -141,13 +148,21 @@ class P2PLendingContract extends Contract {
             if (data.disbursementDate !== undefined) loanContract.disbursementDate = data.disbursementDate;
             if (data.firstRepaymentDate !== undefined) loanContract.firstRepaymentDate = data.firstRepaymentDate;
             if (data.repaymentSchedule !== undefined) loanContract.repaymentSchedule = data.repaymentSchedule;
+            // Close/reject/write-off fields
+            if (data.closedAt !== undefined) loanContract.closedAt = data.closedAt;
+            if (data.closedBy !== undefined) loanContract.closedBy = data.closedBy;
+            if (data.rejectedAt !== undefined) loanContract.rejectedAt = data.rejectedAt;
+            if (data.rejectReason !== undefined) loanContract.rejectReason = data.rejectReason;
+            if (data.writtenOffAt !== undefined) loanContract.writtenOffAt = data.writtenOffAt;
+            if (data.writeOffReason !== undefined) loanContract.writeOffReason = data.writeOffReason;
+            if (data.approvedAt !== undefined) loanContract.approvedAt = data.approvedAt;
             
             // Re-hash after significant update
             loanContract.dataHash = this._hashData(loanContract);
         }
 
         await this._putState(ctx, contractId, loanContract);
-        console.info('============= END : updateLoanStatus ===========');
+        console.info(`============= END : updateLoanStatus ${previousStatus} → ${newStatus} ===========`);
         return JSON.stringify(loanContract);
     }
 
@@ -161,9 +176,6 @@ class P2PLendingContract extends Contract {
 
     /**
      * Create an Investment Contract on the ledger.
-     * @param {Context} ctx 
-     * @param {String} contractId 
-     * @param {String} contractDataJson - JSON string matching backend InvestmentContract schema
      */
     async createInvestmentContract(ctx, contractId, contractDataJson) {
         console.info('============= START : createInvestmentContract ===========');
@@ -228,13 +240,10 @@ class P2PLendingContract extends Contract {
 
     /**
      * Update status and optionally additional fields for an Investment Contract.
-     * @param {Context} ctx 
-     * @param {String} contractId 
-     * @param {String} newStatus 
-     * @param {String} additionalDataJson 
+     * Supports: pending → pending_signature → active → payment_received → completed
      */
     async updateInvestmentStatus(ctx, contractId, newStatus, additionalDataJson) {
-        console.info('============= START : updateInvestmentStatus ===========');
+        console.info(`============= START : updateInvestmentStatus → ${newStatus} ===========`);
         
         const investmentContract = await this._getState(ctx, contractId);
         
@@ -242,7 +251,17 @@ class P2PLendingContract extends Contract {
             throw new Error(`Asset ${contractId} is not an InvestmentContract`);
         }
 
+        const previousStatus = investmentContract.status;
         investmentContract.status = newStatus;
+
+        // Track status history
+        if (!investmentContract.statusHistory) investmentContract.statusHistory = [];
+        investmentContract.statusHistory.push({
+            from: previousStatus,
+            to: newStatus,
+            timestamp: this._getTxTime(ctx),
+            actor: ctx.clientIdentity.getID()
+        });
 
         if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
             const data = JSON.parse(additionalDataJson);
@@ -254,6 +273,8 @@ class P2PLendingContract extends Contract {
             if (data.signedAt !== undefined) investmentContract.signedAt = data.signedAt;
             if (data.signatureData !== undefined) investmentContract.signatureData = data.signatureData;
             if (data.smartCASignatureVerified !== undefined) investmentContract.smartCASignatureVerified = data.smartCASignatureVerified;
+            if (data.signatureProvider !== undefined) investmentContract.signatureProvider = data.signatureProvider;
+            if (data.signatureVerifiedAt !== undefined) investmentContract.signatureVerifiedAt = data.signatureVerifiedAt;
             if (data.lenderSchedule !== undefined) investmentContract.lenderSchedule = data.lenderSchedule;
             if (data.repaymentHistory !== undefined) investmentContract.repaymentHistory = data.repaymentHistory;
             if (data.paymentStatus !== undefined) investmentContract.paymentStatus = data.paymentStatus;
@@ -263,12 +284,18 @@ class P2PLendingContract extends Contract {
             if (data.totalPrincipalReceived !== undefined) investmentContract.totalPrincipalReceived = data.totalPrincipalReceived;
             if (data.totalInterestReceived !== undefined) investmentContract.totalInterestReceived = data.totalInterestReceived;
 
+            // FD lifecycle
+            if (data.fdMaturityDate !== undefined) investmentContract.fdMaturityDate = data.fdMaturityDate;
+            if (data.fdInterestEarned !== undefined) investmentContract.fdInterestEarned = data.fdInterestEarned;
+            if (data.fdBalance !== undefined) investmentContract.fdBalance = data.fdBalance;
+            if (data.completedAt !== undefined) investmentContract.completedAt = data.completedAt;
+
             // Re-hash after significant update
             investmentContract.dataHash = this._hashData(investmentContract);
         }
 
         await this._putState(ctx, contractId, investmentContract);
-        console.info('============= END : updateInvestmentStatus ===========');
+        console.info(`============= END : updateInvestmentStatus ${previousStatus} → ${newStatus} ===========`);
         return JSON.stringify(investmentContract);
     }
 
@@ -277,14 +304,148 @@ class P2PLendingContract extends Contract {
     }
 
     // ==========================================
+    // INVESTMENT ORDERS
+    // ==========================================
+
+    /**
+     * Create an Investment Order on the ledger to track lender's investment intention.
+     */
+    async createInvestmentOrder(ctx, orderId, orderDataJson) {
+        console.info('============= START : createInvestmentOrder ===========');
+        
+        const exists = await ctx.stub.getState(orderId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The investment order ${orderId} already exists`);
+        }
+
+        const data = JSON.parse(orderDataJson);
+
+        const investmentOrder = {
+            docType: 'InvestmentOrder',
+            orderId: orderId,
+            lenderId: data.lenderId,
+            name: data.name || '',
+            capital: data.capital,
+            maxCapital: data.maxCapital || data.capital,
+            totalNodes: data.totalNodes,
+            matchedNodes: data.matchedNodes || 0,
+            matchedCapital: data.matchedCapital || 0,
+            interestRange: data.interestRange || {},
+            periodRange: data.periodRange || {},
+            purpose: data.purpose || '',
+            loans: data.loans || [],
+            status: data.status || 'open',
+            dataHash: this._hashData(data),
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, orderId, investmentOrder);
+        console.info('============= END : createInvestmentOrder ===========');
+        return JSON.stringify(investmentOrder);
+    }
+
+    /**
+     * Update an Investment Order status and fields.
+     * Supports: open → closed / cancelled
+     */
+    async updateInvestmentOrder(ctx, orderId, newStatus, additionalDataJson) {
+        console.info(`============= START : updateInvestmentOrder → ${newStatus} ===========`);
+        
+        const order = await this._getState(ctx, orderId);
+        
+        if (order.docType !== 'InvestmentOrder') {
+            throw new Error(`Asset ${orderId} is not an InvestmentOrder`);
+        }
+
+        const previousStatus = order.status;
+        order.status = newStatus;
+
+        if (!order.statusHistory) order.statusHistory = [];
+        order.statusHistory.push({
+            from: previousStatus,
+            to: newStatus,
+            timestamp: this._getTxTime(ctx),
+            actor: ctx.clientIdentity.getID()
+        });
+
+        if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
+            const data = JSON.parse(additionalDataJson);
+            if (data.matchedNodes !== undefined) order.matchedNodes = data.matchedNodes;
+            if (data.matchedCapital !== undefined) order.matchedCapital = data.matchedCapital;
+            if (data.loans !== undefined) order.loans = data.loans;
+            order.dataHash = this._hashData(order);
+        }
+
+        await this._putState(ctx, orderId, order);
+        console.info(`============= END : updateInvestmentOrder ${previousStatus} → ${newStatus} ===========`);
+        return JSON.stringify(order);
+    }
+
+    async queryInvestmentOrder(ctx, orderId) {
+        return await this._getState(ctx, orderId);
+    }
+
+    // ==========================================
+    // MATCHING EVENTS
+    // ==========================================
+
+    /**
+     * Create a Matching Event on the ledger to trace each node-matching operation.
+     * Each time an investment order matches with a loan, one event is created.
+     */
+    async createMatchingEvent(ctx, eventId, eventDataJson) {
+        console.info('============= START : createMatchingEvent ===========');
+        
+        const exists = await ctx.stub.getState(eventId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The matching event ${eventId} already exists`);
+        }
+
+        const data = JSON.parse(eventDataJson);
+
+        const matchingEvent = {
+            docType: 'MatchingEvent',
+            eventId: eventId,
+            investmentOrderId: data.investmentOrderId,
+            loanApplicationId: data.loanApplicationId,
+            direction: data.direction || 'order_to_loan', // order_to_loan | loan_to_order
+            nodesMatched: data.nodesMatched || 0,
+            amountMatched: data.amountMatched || 0,
+            loanNodeMatchBefore: data.loanNodeMatchBefore || 0,
+            loanNodeMatchAfter: data.loanNodeMatchAfter || 0,
+            loanTotalNodes: data.loanTotalNodes || 0,
+            loanMatchPercentage: data.loanMatchPercentage || 0,
+            isLoanFullMatch: data.isLoanFullMatch || false,
+            orderMatchedNodesBefore: data.orderMatchedNodesBefore || 0,
+            orderMatchedNodesAfter: data.orderMatchedNodesAfter || 0,
+            orderTotalNodes: data.orderTotalNodes || 0,
+            isOrderClosed: data.isOrderClosed || false,
+            lenderId: data.lenderId || null,
+            borrowerId: data.borrowerId || null,
+            loanCapital: data.loanCapital || 0,
+            loanRate: data.loanRate || 0,
+            loanPeriod: data.loanPeriod || 0,
+            dataHash: this._hashData(data),
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, eventId, matchingEvent);
+        console.info('============= END : createMatchingEvent ===========');
+        return JSON.stringify(matchingEvent);
+    }
+
+    async queryMatchingEvent(ctx, eventId) {
+        return await this._getState(ctx, eventId);
+    }
+
+    // ==========================================
     // SETTLEMENT / REPAYMENT CONTRACTS
     // ==========================================
 
     /**
      * Create a Settlement/Repayment record on the ledger to track exactly what was paid.
-     * @param {Context} ctx 
-     * @param {String} settlementId 
-     * @param {String} settlementDataJson 
      */
     async createSettlementContract(ctx, settlementId, settlementDataJson) {
         console.info('============= START : createSettlementContract ===========');
@@ -325,60 +486,10 @@ class P2PLendingContract extends Contract {
     }
 
     // ==========================================
-    // RICH QUERIES
+    // RICH QUERIES (LevelDB Compatible)
     // ==========================================
 
-    /**
-     * Helper to execute rich queries
-     */
-    async _getQueryResultForQueryString(ctx, queryString) {
-        const iterator = await ctx.stub.getQueryResult(queryString);
-        const allResults = [];
-        while (true) {
-            const res = await iterator.next();
-            if (res.value && res.value.value.toString()) {
-                const Key = res.value.key;
-                let Record;
-                try {
-                    Record = JSON.parse(res.value.value.toString('utf8'));
-                } catch (err) {
-                    console.log(err);
-                    Record = res.value.value.toString('utf8');
-                }
-                allResults.push({ Key, Record });
-            }
-            if (res.done) {
-                await iterator.close();
-                return JSON.stringify(allResults);
-            }
-        }
-    }
-
-    async queryAllLoanContracts(ctx) {
-        return await this._getAllByDocType(ctx, 'LoanContract');
-    }
-
-    async queryLoanContractsByUser(ctx, userId) {
-        const allLoans = await this._getAllByDocType(ctx, 'LoanContract');
-        return JSON.stringify(JSON.parse(allLoans).filter(item => item.Record && item.Record.userId === userId));
-    }
-
-    async queryInvestmentContractsByLoan(ctx, loanApplicationId) {
-        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
-        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.loanApplicationId === loanApplicationId));
-    }
-
-    async queryInvestmentContractsByLender(ctx, lenderId) {
-        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
-        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.lenderId === lenderId));
-    }
-
-    async querySettlementsByLoan(ctx, loanContractId) {
-        const allSettlements = await this._getAllByDocType(ctx, 'SettlementContract');
-        return JSON.stringify(JSON.parse(allSettlements).filter(item => item.Record && item.Record.loanContractId === loanContractId));
-    }
-
-    // Helper for LevelDB compatibility
+    // Helper for LevelDB compatibility — scan all by docType
     async _getAllByDocType(ctx, docType) {
         const iterator = await ctx.stub.getStateByRange('', '');
         const allResults = [];
@@ -403,14 +514,67 @@ class P2PLendingContract extends Contract {
         }
     }
 
+    // Loan queries
+    async queryAllLoanContracts(ctx) {
+        return await this._getAllByDocType(ctx, 'LoanContract');
+    }
+
+    async queryLoanContractsByUser(ctx, userId) {
+        const allLoans = await this._getAllByDocType(ctx, 'LoanContract');
+        return JSON.stringify(JSON.parse(allLoans).filter(item => item.Record && item.Record.userId === userId));
+    }
+
+    // Investment queries
     async queryAllInvestmentContracts(ctx) {
         return await this._getAllByDocType(ctx, 'InvestmentContract');
     }
 
+    async queryInvestmentContractsByLoan(ctx, loanApplicationId) {
+        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
+        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.loanApplicationId === loanApplicationId));
+    }
+
+    async queryInvestmentContractsByLender(ctx, lenderId) {
+        const allInvestments = await this._getAllByDocType(ctx, 'InvestmentContract');
+        return JSON.stringify(JSON.parse(allInvestments).filter(item => item.Record && item.Record.lenderId === lenderId));
+    }
+
+    // Investment Order queries
+    async queryAllInvestmentOrders(ctx) {
+        return await this._getAllByDocType(ctx, 'InvestmentOrder');
+    }
+
+    async queryInvestmentOrdersByLender(ctx, lenderId) {
+        const all = await this._getAllByDocType(ctx, 'InvestmentOrder');
+        return JSON.stringify(JSON.parse(all).filter(item => item.Record && item.Record.lenderId === lenderId));
+    }
+
+    // Matching Event queries
+    async queryAllMatchingEvents(ctx) {
+        return await this._getAllByDocType(ctx, 'MatchingEvent');
+    }
+
+    async queryMatchingEventsByLoan(ctx, loanApplicationId) {
+        const all = await this._getAllByDocType(ctx, 'MatchingEvent');
+        return JSON.stringify(JSON.parse(all).filter(item => item.Record && item.Record.loanApplicationId === loanApplicationId));
+    }
+
+    async queryMatchingEventsByOrder(ctx, investmentOrderId) {
+        const all = await this._getAllByDocType(ctx, 'MatchingEvent');
+        return JSON.stringify(JSON.parse(all).filter(item => item.Record && item.Record.investmentOrderId === investmentOrderId));
+    }
+
+    // Settlement queries
     async queryAllSettlementContracts(ctx) {
         return await this._getAllByDocType(ctx, 'SettlementContract');
     }
 
+    async querySettlementsByLoan(ctx, loanContractId) {
+        const allSettlements = await this._getAllByDocType(ctx, 'SettlementContract');
+        return JSON.stringify(JSON.parse(allSettlements).filter(item => item.Record && item.Record.loanContractId === loanContractId));
+    }
+
+    // History for any contract/order/event
     async getContractHistory(ctx, contractId) {
         const iterator = await ctx.stub.getHistoryForKey(contractId);
         const allResults = [];

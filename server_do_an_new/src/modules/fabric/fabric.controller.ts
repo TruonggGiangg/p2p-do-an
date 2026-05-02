@@ -9,6 +9,11 @@ export class FabricController {
 
   constructor(private readonly fabricService: FabricService) {}
 
+  private safeParse(raw: any): any[] {
+    if (Array.isArray(raw)) return raw;
+    try { return JSON.parse(raw || '[]'); } catch { return []; }
+  }
+
   @Get('status')
   async getNetworkStatus() {
     const status = this.fabricService.getNetworkStatus();
@@ -18,13 +23,19 @@ export class FabricController {
   @Get('stats')
   async getStats() {
     try {
-      const [loans, investments] = await Promise.allSettled([
+      const [loans, investments, orders, matchingEvents, settlements] = await Promise.allSettled([
         this.fabricService.evaluateTransaction('queryAllLoanContracts'),
         this.fabricService.evaluateTransaction('queryAllInvestmentContracts'),
+        this.fabricService.evaluateTransaction('queryAllInvestmentOrders'),
+        this.fabricService.evaluateTransaction('queryAllMatchingEvents'),
+        this.fabricService.evaluateTransaction('queryAllSettlementContracts'),
       ]);
 
-      const loanContracts = loans.status === 'fulfilled' ? (Array.isArray(loans.value) ? loans.value : JSON.parse(loans.value || '[]')) : [];
-      const investmentContracts = investments.status === 'fulfilled' ? (Array.isArray(investments.value) ? investments.value : JSON.parse(investments.value || '[]')) : [];
+      const loanContracts = loans.status === 'fulfilled' ? this.safeParse(loans.value) : [];
+      const investmentContracts = investments.status === 'fulfilled' ? this.safeParse(investments.value) : [];
+      const investmentOrders = orders.status === 'fulfilled' ? this.safeParse(orders.value) : [];
+      const matchEvents = matchingEvents.status === 'fulfilled' ? this.safeParse(matchingEvents.value) : [];
+      const settlementContracts = settlements.status === 'fulfilled' ? this.safeParse(settlements.value) : [];
 
       const totalLoanVolume = loanContracts.reduce((sum: number, c: any) => {
         const record = c.Record || c;
@@ -36,13 +47,22 @@ export class FabricController {
         return sum + (record.capital || 0);
       }, 0);
 
+      const totalSettlementVolume = settlementContracts.reduce((sum: number, c: any) => {
+        const record = c.Record || c;
+        return sum + (record.amountPaid || 0);
+      }, 0);
+
       return {
         data: {
           totalLoanContracts: loanContracts.length,
           totalInvestmentContracts: investmentContracts.length,
-          totalTransactions: loanContracts.length + investmentContracts.length,
+          totalInvestmentOrders: investmentOrders.length,
+          totalMatchingEvents: matchEvents.length,
+          totalSettlements: settlementContracts.length,
+          totalTransactions: loanContracts.length + investmentContracts.length + investmentOrders.length + matchEvents.length + settlementContracts.length,
           totalLoanVolume,
           totalInvestmentVolume,
+          totalSettlementVolume,
           networkConnected: this.fabricService.isConnected(),
         },
       };
@@ -50,11 +70,9 @@ export class FabricController {
       this.logger.warn(`[getStats] ${error.message}`);
       return {
         data: {
-          totalLoanContracts: 0,
-          totalInvestmentContracts: 0,
-          totalTransactions: 0,
-          totalLoanVolume: 0,
-          totalInvestmentVolume: 0,
+          totalLoanContracts: 0, totalInvestmentContracts: 0, totalInvestmentOrders: 0,
+          totalMatchingEvents: 0, totalSettlements: 0, totalTransactions: 0,
+          totalLoanVolume: 0, totalInvestmentVolume: 0, totalSettlementVolume: 0,
           networkConnected: this.fabricService.isConnected(),
         },
       };
@@ -64,45 +82,36 @@ export class FabricController {
   @Get('contracts')
   async getAllContracts() {
     try {
-      const [loans, investments, allSettlements] = await Promise.allSettled([
+      const [loans, investments, orders, matchEvents, settlements] = await Promise.allSettled([
         this.fabricService.evaluateTransaction('queryAllLoanContracts'),
         this.fabricService.evaluateTransaction('queryAllInvestmentContracts'),
-        Promise.resolve([]), // settlements need a specific loanContractId
+        this.fabricService.evaluateTransaction('queryAllInvestmentOrders'),
+        this.fabricService.evaluateTransaction('queryAllMatchingEvents'),
+        this.fabricService.evaluateTransaction('queryAllSettlementContracts'),
       ]);
 
-      const loanList = loans.status === 'fulfilled' ? (Array.isArray(loans.value) ? loans.value : JSON.parse(loans.value || '[]')) : [];
-      const investList = investments.status === 'fulfilled' ? (Array.isArray(investments.value) ? investments.value : JSON.parse(investments.value || '[]')) : [];
+      const normalize = (list: any[], type: string, idField: string, amountField: string) =>
+        list.map((c: any) => {
+          const r = c.Record || c;
+          return {
+            key: c.Key || r[idField],
+            type,
+            contractId: r[idField],
+            status: r.status,
+            amount: r[amountField] || 0,
+            dataHash: r.dataHash,
+            createdAt: r.createdAt,
+            updatedAt: r.updatedAt,
+            details: r,
+          };
+        });
 
-      // Normalize to unified format
       const allContracts = [
-        ...loanList.map((c: any) => {
-          const r = c.Record || c;
-          return {
-            key: c.Key || r.contractId,
-            type: 'LoanContract',
-            contractId: r.contractId,
-            status: r.status,
-            amount: r.principalAmount || 0,
-            dataHash: r.dataHash,
-            createdAt: r.createdAt,
-            updatedAt: r.updatedAt,
-            details: r,
-          };
-        }),
-        ...investList.map((c: any) => {
-          const r = c.Record || c;
-          return {
-            key: c.Key || r.contractId,
-            type: 'InvestmentContract',
-            contractId: r.contractId,
-            status: r.status,
-            amount: r.capital || 0,
-            dataHash: r.dataHash,
-            createdAt: r.createdAt,
-            updatedAt: r.updatedAt,
-            details: r,
-          };
-        }),
+        ...normalize(loans.status === 'fulfilled' ? this.safeParse(loans.value) : [], 'LoanContract', 'contractId', 'principalAmount'),
+        ...normalize(investments.status === 'fulfilled' ? this.safeParse(investments.value) : [], 'InvestmentContract', 'contractId', 'capital'),
+        ...normalize(orders.status === 'fulfilled' ? this.safeParse(orders.value) : [], 'InvestmentOrder', 'orderId', 'capital'),
+        ...normalize(matchEvents.status === 'fulfilled' ? this.safeParse(matchEvents.value) : [], 'MatchingEvent', 'eventId', 'amountMatched'),
+        ...normalize(settlements.status === 'fulfilled' ? this.safeParse(settlements.value) : [], 'SettlementContract', 'settlementId', 'amountPaid'),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return { data: allContracts };
@@ -114,8 +123,8 @@ export class FabricController {
 
   @Get('contracts/:id')
   async getContract(@Param('id') id: string) {
-    // Try loan first, then investment, then settlement
-    for (const fn of ['queryLoanContract', 'queryInvestmentContract', 'querySettlementContract']) {
+    // Try all docTypes
+    for (const fn of ['queryLoanContract', 'queryInvestmentContract', 'queryInvestmentOrder', 'queryMatchingEvent', 'querySettlementContract']) {
       try {
         const result = await this.fabricService.evaluateTransaction(fn, id);
         return { data: result };
@@ -133,6 +142,74 @@ export class FabricController {
       return { data: result };
     } catch (error: any) {
       this.logger.warn(`[getContractHistory] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  // ── Dedicated query endpoints ──
+
+  @Get('orders')
+  async getAllOrders() {
+    try {
+      const result = await this.fabricService.evaluateTransaction('queryAllInvestmentOrders');
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getAllOrders] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  @Get('matching-events')
+  async getAllMatchingEvents() {
+    try {
+      const result = await this.fabricService.evaluateTransaction('queryAllMatchingEvents');
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getAllMatchingEvents] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  @Get('matching-events/loan/:loanId')
+  async getMatchingEventsByLoan(@Param('loanId') loanId: string) {
+    try {
+      const result = await this.fabricService.evaluateTransaction('queryMatchingEventsByLoan', loanId);
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getMatchingEventsByLoan] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  @Get('matching-events/order/:orderId')
+  async getMatchingEventsByOrder(@Param('orderId') orderId: string) {
+    try {
+      const result = await this.fabricService.evaluateTransaction('queryMatchingEventsByOrder', orderId);
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getMatchingEventsByOrder] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  @Get('settlements')
+  async getAllSettlements() {
+    try {
+      const result = await this.fabricService.evaluateTransaction('queryAllSettlementContracts');
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getAllSettlements] ${error.message}`);
+      return { data: [] };
+    }
+  }
+
+  @Get('settlements/loan/:loanContractId')
+  async getSettlementsByLoan(@Param('loanContractId') loanContractId: string) {
+    try {
+      const result = await this.fabricService.evaluateTransaction('querySettlementsByLoan', loanContractId);
+      return { data: this.safeParse(result) };
+    } catch (error: any) {
+      this.logger.warn(`[getSettlementsByLoan] ${error.message}`);
       return { data: [] };
     }
   }

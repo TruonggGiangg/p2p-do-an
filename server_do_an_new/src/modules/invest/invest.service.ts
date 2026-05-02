@@ -2,6 +2,7 @@
  * InvestService — Business logic for InvestmentOrder CRUD + auto-matching + available loans
  */
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -42,7 +43,17 @@ export class InvestService {
     private readonly configService: ConfigService,
     private readonly fineractFDService: FineractFDService,
     @InjectModel(InvestmentContract.name) private readonly contractModel: Model<InvestmentContract>,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Resolve FabricService lazily to avoid circular dependency */
+  private getFabricService(): any {
+    try {
+      const { FabricService } = require('../fabric/fabric.service');
+      const svc = this.moduleRef.get(FabricService, { strict: false });
+      return svc?.isConnected() ? svc : null;
+    } catch { return null; }
+  }
 
   // ═══════════════════════════════════════════════════════
   //  CREATE + AUTO-MATCH
@@ -76,6 +87,28 @@ export class InvestService {
       periodRange,
       loans: [],
     });
+
+    // ── Blockchain: ghi Investment Order ──
+    try {
+      const fabric = this.getFabricService();
+      if (fabric) {
+        const orderId = `ORDER_${order._id}`;
+        await fabric.submitTransaction('createInvestmentOrder', orderId, JSON.stringify({
+          lenderId,
+          name: name || '',
+          capital,
+          maxCapital,
+          totalNodes,
+          interestRange,
+          periodRange,
+          purpose,
+          status: 'open',
+        }));
+        this.logger.log(`[Blockchain] ✅ Created InvestmentOrder ${orderId}`);
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[Blockchain] Failed to create InvestmentOrder: ${bcErr?.message}`);
+    }
 
     sendProgress('Đang tìm khoản vay phù hợp...', 10);
     this.logger.log(`[InvestService] createOrderWithMatching - Start finding loans for order ${order._id}`);
@@ -243,6 +276,37 @@ export class InvestService {
         isFullMatch: newIsFullMatch,
       });
 
+      // ── Blockchain: ghi Matching Event ──
+      try {
+        const fabric = this.getFabricService();
+        if (fabric) {
+          const eventId = `MATCH_${order._id}_${loan._id}_${Date.now()}`;
+          await fabric.submitTransaction('createMatchingEvent', eventId, JSON.stringify({
+            investmentOrderId: `ORDER_${order._id}`,
+            loanApplicationId: String(loan._id),
+            direction: 'order_to_loan',
+            nodesMatched: nodesToMatch,
+            amountMatched: matchedAmount,
+            loanNodeMatchBefore: existingNodeMatch,
+            loanNodeMatchAfter: finalNodeMatch,
+            loanTotalNodes: totalLoanNotes,
+            loanMatchPercentage: newMatchPercentage,
+            isLoanFullMatch: newIsFullMatch,
+            orderMatchedNodesBefore: updatedOrder.matchedNodes - nodesToMatch,
+            orderMatchedNodesAfter: updatedOrder.matchedNodes,
+            orderTotalNodes: updatedOrder.totalNodes,
+            isOrderClosed: updatedOrder.matchedNodes >= updatedOrder.totalNodes,
+            lenderId,
+            loanCapital: loan.capital,
+            loanRate: loan.monthlyRatePercent,
+            loanPeriod: loan.periodMonth,
+          }));
+          this.logger.log(`[Blockchain] ✅ MatchingEvent ${eventId}: ${nodesToMatch} nodes → loan ${loan._id}`);
+        }
+      } catch (bcErr: any) {
+        this.logger.warn(`[Blockchain] Failed to create MatchingEvent: ${bcErr?.message}`);
+      }
+
       // Kiểm tra order đã đầy chưa dựa trên dữ liệu THỰC TẾ sau atomic update
       const isOrderFull = updatedOrder.matchedNodes >= updatedOrder.totalNodes;
       if (isOrderFull && updatedOrder.status !== 'closed') {
@@ -251,6 +315,20 @@ export class InvestService {
           { $set: { status: 'closed' } },
         );
         this.logger.log(`Order ${order._id} closed: matchedNodes=${updatedOrder.matchedNodes} >= totalNodes=${updatedOrder.totalNodes}`);
+
+        // ── Blockchain: ghi Order closed ──
+        try {
+          const fabric = this.getFabricService();
+          if (fabric) {
+            await fabric.submitTransaction('updateInvestmentOrder', `ORDER_${order._id}`, 'closed', JSON.stringify({
+              matchedNodes: updatedOrder.matchedNodes,
+              matchedCapital: updatedOrder.matchedCapital,
+            }));
+            this.logger.log(`[Blockchain] ✅ InvestmentOrder ORDER_${order._id} → closed`);
+          }
+        } catch (bcErr: any) {
+          this.logger.warn(`[Blockchain] Failed to close InvestmentOrder: ${bcErr?.message}`);
+        }
       }
 
       if (isOrderFull) {

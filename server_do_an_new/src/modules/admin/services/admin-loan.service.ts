@@ -579,6 +579,25 @@ export class AdminLoanService {
       this.logger.warn(`[approveLoan] MatchingService not found or failed to load: ${err.message}`);
     }
 
+    // ── Blockchain: Sync LoanContract → approved ──
+    try {
+      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      if (fabricService?.isConnected()) {
+        const contract = await this.loanContractModel.findOne({ loanId: app._id }).lean();
+        if (contract?.contractId) {
+          await fabricService.submitTransaction(
+            'updateLoanStatus',
+            contract.contractId,
+            'approved',
+            JSON.stringify({ approvedAt: new Date().toISOString(), fineractLoanId })
+          );
+          this.logger.log(`[approveLoan] [Blockchain] ✅ Synced LoanContract ${contract.contractId} → approved`);
+        }
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[approveLoan] [Blockchain] Sync failed: ${bcErr?.message}`);
+    }
+
     return { fineractLoanId, status: 'approved', borrowerName, borrowerUsername };
   }
 
@@ -727,6 +746,25 @@ export class AdminLoanService {
       }
     } catch {
       /* ignore */
+    }
+
+    // 5. Sync to Blockchain
+    try {
+      const fabricService = this.moduleRef.get('FabricService', { strict: false }) as any;
+      if (fabricService?.isConnected()) {
+        const contract = await this.loanContractModel.findOne({ loanId: app._id }).lean();
+        if (contract?.contractId) {
+          await fabricService.submitTransaction(
+            'updateLoanStatus',
+            contract.contractId,
+            'rejected',
+            JSON.stringify({ rejectedAt: new Date().toISOString(), rejectReason: note || '' })
+          );
+          this.logger.log(`[rejectLoan] [Blockchain] ✅ Synced LoanContract ${contract.contractId} → rejected`);
+        }
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[rejectLoan] [Blockchain] Sync failed: ${bcErr?.message}`);
     }
 
     return { fineractLoanId, status: 'rejected', borrowerName, borrowerUsername };

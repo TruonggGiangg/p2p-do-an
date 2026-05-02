@@ -5,6 +5,7 @@
  * thành 1 Injectable NestJS service, type-safe, DRY.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -47,8 +48,18 @@ export class MatchingService {
     @InjectModel(InvestmentOrder.name) private readonly investmentOrderModel: Model<InvestmentOrder>,
     @InjectModel(LoanApplication.name) private readonly loanModel: Model<LoanApplication>,
     private readonly configService: ConfigService,
+    private readonly moduleRef: ModuleRef,
   ) {
     this.baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
+  }
+
+  /** Resolve FabricService lazily to avoid circular dependency */
+  private getFabricService(): any {
+    try {
+      const { FabricService } = require('../fabric/fabric.service');
+      const svc = this.moduleRef.get(FabricService, { strict: false });
+      return svc?.isConnected() ? svc : null;
+    } catch { return null; }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -313,6 +324,55 @@ export class MatchingService {
     };
   }
 
+  /** Ghi MatchingEvent lên blockchain sau khi processMatch thành công */
+  private async syncMatchToBlockchain(
+    order: InvestmentOrder,
+    loanData: LoanMatchData,
+    nodesToMatch: number,
+    matchedAmount: number,
+    matchPercentage: number,
+    isFullMatch: boolean,
+    orderResult: any,
+  ): Promise<void> {
+    try {
+      const fabric = this.getFabricService();
+      if (!fabric) return;
+
+      const eventId = `MATCH_${order._id}_${loanData.loanId}_${Date.now()}`;
+      await fabric.submitTransaction('createMatchingEvent', eventId, JSON.stringify({
+        investmentOrderId: `ORDER_${order._id}`,
+        loanApplicationId: loanData.loanId,
+        direction: 'loan_to_order',
+        nodesMatched: nodesToMatch,
+        amountMatched: matchedAmount,
+        loanNodeMatchBefore: loanData.existingNodeMatch || 0,
+        loanNodeMatchAfter: (loanData.existingNodeMatch || 0) + nodesToMatch,
+        loanTotalNodes: this.calculateNodes(loanData.capital),
+        loanMatchPercentage: matchPercentage,
+        isLoanFullMatch: isFullMatch,
+        orderMatchedNodesBefore: orderResult.matchedNodes - nodesToMatch,
+        orderMatchedNodesAfter: orderResult.matchedNodes,
+        orderTotalNodes: orderResult.totalNodes,
+        isOrderClosed: orderResult.matchedNodes >= orderResult.totalNodes,
+        loanCapital: loanData.capital,
+        loanRate: loanData.rate,
+        loanPeriod: loanData.periodMonth,
+      }));
+      this.logger.log(`[Blockchain] ✅ MatchingEvent ${eventId}: ${nodesToMatch} nodes (loan→order)`);
+
+      // If order closed, sync on blockchain too
+      if (orderResult.matchedNodes >= orderResult.totalNodes) {
+        await fabric.submitTransaction('updateInvestmentOrder', `ORDER_${order._id}`, 'closed', JSON.stringify({
+          matchedNodes: orderResult.matchedNodes,
+          matchedCapital: orderResult.matchedCapital || matchedAmount,
+        }));
+        this.logger.log(`[Blockchain] ✅ InvestmentOrder ORDER_${order._id} → closed`);
+      }
+    } catch (bcErr: any) {
+      this.logger.warn(`[Blockchain] Failed to create MatchingEvent: ${bcErr?.message}`);
+    }
+  }
+
   // ═══════════════════════════════════════════════════════
   //  SEQUENTIAL MATCHING (MULTI-ORDER)
   // ═══════════════════════════════════════════════════════
@@ -345,6 +405,12 @@ export class MatchingService {
           matchedOrderIds.push(result.investmentOrderId);
         }
         remainingNotes = Math.max(0, remainingNotes - result.nodeMatch);
+
+        // Blockchain: ghi MatchingEvent cho mỗi match thành công
+        await this.syncMatchToBlockchain(
+          order, loanData, result.nodeMatch, result.matchedAmount,
+          result.matchPercentage, result.isFullMatch, order,
+        );
       }
     }
 
