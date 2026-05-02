@@ -169,7 +169,7 @@ export class SmartOtpService {
       this.logger.log(`Client timestamp: ${new Date(timestamp * 1000).toISOString()}`);
       this.logger.log('==========================================');
 
-      const totpValid = this.totpService.verify(device.totpSecret, otp);
+      const totpValid = this.totpService.verify(device.totpSecret, otp, timestamp);
       this.logger.log(`Verification Results: signatureValid=${signatureValid}, totpValid=${totpValid}`);
 
       if (!totpValid) {

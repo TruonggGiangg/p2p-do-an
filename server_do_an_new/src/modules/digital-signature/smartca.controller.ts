@@ -494,7 +494,7 @@ export class DigitalSignatureController {
       { _id: contract._id },
       {
         $set: {
-          status: isInvest ? 'active' : 'signed',
+          ...(isInvest ? {} : { status: 'signed' }),
           signedAt: new Date(),
           signatureData: signatureValue,
           smartCASignatureVerified: true,
@@ -507,6 +507,29 @@ export class DigitalSignatureController {
     // Only trigger auto-disburse for loan contracts
     if (!isInvest) {
       await this.triggerAutoDisburseIfEligible(contract._id, String(contract.userId));
+    }
+
+    // Sau khi NDT ky SmartCA xong, finalize dau tu dong bo:
+    // tru tien -> tao FD -> chuyen nodeMatch thanh investedNotes -> active contract.
+    if (isInvest) {
+      try {
+        const investPaymentService = this.moduleRef.get(InvestPaymentService, { strict: false });
+        if (investPaymentService?.finalizeInvestmentAfterSigning) {
+          this.logger.log(
+            `[updateContractSigned] 💸 Triggering finalizeInvestmentAfterSigning for contract ${contract._id}`,
+          );
+          await investPaymentService.finalizeInvestmentAfterSigning(contract._id);
+        } else {
+          this.logger.warn('[updateContractSigned] InvestPaymentService.finalizeInvestmentAfterSigning unavailable');
+          throw new BadRequestException('Khong the hoan tat dau tu sau khi ky SmartCA.');
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[updateContractSigned] Could not get InvestPaymentService: ${err?.message || err}`,
+        );
+        if (err instanceof BadRequestException) throw err;
+        throw new BadRequestException(`Ky SmartCA thanh cong nhung finalize dau tu that bai: ${err?.message || err}`);
+      }
     }
 
     // Attempt to sync status to Blockchain

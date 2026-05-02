@@ -14,6 +14,7 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { Wallet, WalletSchema } from '../wallets/schemas/wallet.schema';
 import { LoanDelinquency, LoanDelinquencySchema } from '../delinquency/entities/loan-delinquency.schema';
 import { FineractModule } from '../fineract/fineract.module';
+import { SmartOtpModule } from '../smart-otp/smart-otp.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { FineractModule } from '../fineract/fineract.module';
     ]),
     forwardRef(() => LoanModule),
     FineractModule,
+    SmartOtpModule,
   ],
   controllers: [InvestController],
   providers: [InvestService, InvestmentContractService, InvestPaymentService, InvestStatsService, MatchingService],

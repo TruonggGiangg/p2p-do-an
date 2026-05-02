@@ -63,6 +63,7 @@ export default function InvestmentContractDetailScreen() {
   const modal = useConfirmModal();
 
   const contractId = route.params?.contractId;
+  const autoSign = route.params?.autoSign === true;
 
   const [contract, setContract] = useState<InvestmentContractItem | null>(null);
   const [contractHTML, setContractHTML] = useState('');
@@ -71,6 +72,7 @@ export default function InvestmentContractDetailScreen() {
   const [showContract, setShowContract] = useState(false);
   const [showSignConfirm, setShowSignConfirm] = useState(false);
   const [showSmartCA, setShowSmartCA] = useState(false);
+  const [autoSignConsumed, setAutoSignConsumed] = useState(false);
   const [showSignSuccess, setShowSignSuccess] = useState(false);
 
   const EXPO_PUBLIC_DEV_MODE = process.env.EXPO_PUBLIC_DEV_MODE === 'true';
@@ -79,6 +81,7 @@ export default function InvestmentContractDetailScreen() {
   const successPageAnim = useRef(new Animated.Value(0)).current;
   const successCheckAnim = useRef(new Animated.Value(0)).current;
   const successSlideAnim = useRef(new Animated.Value(40)).current;
+  const autoSignOpenedRef = useRef(false);
 
   const fetchContract = useCallback(async () => {
     try {
@@ -104,6 +107,36 @@ export default function InvestmentContractDetailScreen() {
   }, [contractId]);
 
   useEffect(() => { fetchContract(); }, [fetchContract]);
+
+  useEffect(() => {
+    autoSignOpenedRef.current = false;
+    setAutoSignConsumed(false);
+  }, [contractId]);
+
+  // Tự động mở SmartCA modal nếu được điều hướng từ luồng đầu tư trực tiếp (autoSign=true)
+  // và hợp đồng đang ở trạng thái pending_signature.
+  useEffect(() => {
+    if (
+      autoSign &&
+      contract?.status === 'pending_signature' &&
+      !autoSignOpenedRef.current &&
+      !autoSignConsumed &&
+      !showSmartCA &&
+      !signing
+    ) {
+      autoSignOpenedRef.current = true;
+      setAutoSignConsumed(true);
+      navigation.setParams?.({ autoSign: false });
+      setShowSmartCA(true);
+    }
+  }, [autoSign, autoSignConsumed, contract?.status, navigation, showSmartCA, signing]);
+
+  const handleSmartCAClose = useCallback(() => {
+    autoSignOpenedRef.current = true;
+    setAutoSignConsumed(true);
+    navigation.setParams?.({ autoSign: false });
+    setShowSmartCA(false);
+  }, [navigation]);
 
   // SmartCA complete callback
   const handleSmartCAComplete = (status: 'signed' | 'failed' | 'rejected') => {
@@ -422,7 +455,7 @@ export default function InvestmentContractDetailScreen() {
       <SmartCASigningModal
         visible={showSmartCA}
         contractId={contract.contractId || contract._id}
-        onClose={() => setShowSmartCA(false)}
+        onClose={handleSmartCAClose}
         onSigningComplete={handleSmartCAComplete}
       />
 
@@ -440,9 +473,9 @@ export default function InvestmentContractDetailScreen() {
               </View>
             </Animated.View>
 
-            <Text style={[styles.successTitle, { color: colors.text }]}>Ký số thành công!</Text>
+            <Text style={[styles.successTitle, { color: colors.text }]}>Ký số thành công, hợp đồng đang hoạt động</Text>
             <Text style={[styles.successDesc, { color: colors.textSecondary }]}>
-              Hợp đồng đầu tư đã được ký số bằng chứng thư VNPT SmartCA. Hợp đồng giờ đang hoạt động.
+              Hợp đồng đầu tư đã được ký số bằng chứng thư VNPT SmartCA, tiền đã được ghi nhận và FD đã được tạo.
             </Text>
 
             <View style={[styles.successInfoCard, { backgroundColor: (colors.primary || '#14342B') + '10', borderColor: (colors.primary || '#14342B') + '30' }]}>

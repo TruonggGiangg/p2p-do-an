@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     ActivityIndicator, LayoutAnimation, Platform, UIManager,
-    Image, StatusBar,
+    Image, StatusBar, TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -85,6 +85,12 @@ export default function LoanConfirmScreen() {
     const [showPinVerify, setShowPinVerify] = useState(false);
     const otpTriggerRef = useRef<(() => void) | null>(null);
 
+    // ── AI Scoring fields (bắt buộc cho models_final) ──
+    const [personIncomeStr, setPersonIncomeStr] = useState('');
+    const [personEmpExpStr, setPersonEmpExpStr] = useState('');
+    const personIncome = Number(personIncomeStr.replace(/\D/g, '')) || 0;
+    const personEmpExp = Number(personEmpExpStr.replace(/\D/g, '')) || 0;
+
     useEffect(() => {
         if (!schedule) {
             const fetchSchedule = async () => {
@@ -144,6 +150,14 @@ export default function LoanConfirmScreen() {
             modal.error('Lỗi', `Vui lòng cung cấp tài liệu: ${requiredMissing.map((d) => d.name).join(', ')}`);
             return;
         }
+        if (personIncome < 1_000_000) {
+            modal.error('Thiếu thông tin', 'Vui lòng nhập thu nhập hàng tháng (tối thiểu 1.000.000 ₫).');
+            return;
+        }
+        if (personEmpExp < 0 || personEmpExp > 60) {
+            modal.error('Thiếu thông tin', 'Số năm kinh nghiệm làm việc phải từ 0 đến 60.');
+            return;
+        }
         setSubmitting(true);
         try {
             const today = new Date();
@@ -156,6 +170,8 @@ export default function LoanConfirmScreen() {
                 willing,
                 disbursementDate,
                 disbursementWalletId: walletId,
+                personIncome,
+                personEmpExp,
                 documents: Object.entries(documents)
                     .filter(([, v]) => v?.name)
                     .map(([documentTypeId, v]) => {
@@ -189,6 +205,23 @@ export default function LoanConfirmScreen() {
             const errData = e?.response?.data;
             const msg = typeof errData?.message === 'string' ? errData.message : 'Không thể tạo đơn vay. Vui lòng thử lại sau.';
             const blockData = errData?.data;
+            const code = blockData?.code;
+
+            if (code === 'LOAN_AUTO_REJECTED') {
+                navigation.navigate('LoanRejected' as any, {
+                    message: msg,
+                    evaluationScore: blockData?.evaluationScore,
+                    grade: blockData?.grade,
+                    subGrade: blockData?.subGrade,
+                    riskLevel: blockData?.riskLevel,
+                    modelDecision: blockData?.modelDecision,
+                    decisionExplanation: blockData?.decisionExplanation,
+                    riskFactors: blockData?.riskFactors,
+                    positiveFactors: blockData?.positiveFactors,
+                });
+                return;
+            }
+
             navigation.navigate('LoanBlocked' as any, {
                 message: msg,
                 debtGroup: blockData?.debtGroup,
@@ -328,6 +361,55 @@ export default function LoanConfirmScreen() {
                 )}
 
                 <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>THÔNG TIN HỒ SƠ TÍN DỤNG</Text>
+                    <Text style={styles.aiHelperText}>
+                        Hai mục dưới đây dùng để chấm điểm tín dụng tự động (AI). Vui lòng điền chính xác.
+                    </Text>
+
+                    <View style={styles.aiInputBlock}>
+                        <View style={styles.aiInputLabelRow}>
+                            <Text style={styles.aiInputLabel}>Thu nhập hàng tháng</Text>
+                            <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>Bắt buộc</Text></View>
+                        </View>
+                        <View style={styles.aiInputBox}>
+                            <TextInput
+                                style={styles.aiInput}
+                                value={personIncomeStr}
+                                onChangeText={(t) => {
+                                    const digits = t.replace(/\D/g, '');
+                                    setPersonIncomeStr(digits === '' ? '' : Number(digits).toLocaleString('vi-VN'));
+                                }}
+                                keyboardType="numeric"
+                                placeholder="VD: 15.000.000"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                            <Text style={styles.aiInputSuffix}>₫</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.aiInputBlock}>
+                        <View style={styles.aiInputLabelRow}>
+                            <Text style={styles.aiInputLabel}>Số năm kinh nghiệm làm việc</Text>
+                            <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>Bắt buộc</Text></View>
+                        </View>
+                        <View style={styles.aiInputBox}>
+                            <TextInput
+                                style={styles.aiInput}
+                                value={personEmpExpStr}
+                                onChangeText={(t) => {
+                                    const digits = t.replace(/\D/g, '').slice(0, 2);
+                                    setPersonEmpExpStr(digits);
+                                }}
+                                keyboardType="numeric"
+                                placeholder="VD: 3"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                            <Text style={styles.aiInputSuffix}>năm</Text>
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.card}>
                     <Text style={styles.sectionTitle}>THÔNG TIN NHẬN GIẢI NGÂN</Text>
                     {loading ? <ActivityIndicator color="#1E3A2F" /> : (
                         <TouchableOpacity style={styles.walletSelect} onPress={() => setShowWalletModal(true)}>
@@ -451,6 +533,16 @@ const styles = StyleSheet.create({
     docHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
     docName: { fontSize: 14, fontWeight: '600' },
     badgeRequired: { backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    aiHelperText: { fontSize: 12, color: '#6B7280', marginBottom: 12, marginTop: -8, lineHeight: 18 },
+    aiInputBlock: { marginBottom: 16 },
+    aiInputLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+    aiInputLabel: { fontSize: 13, fontWeight: '600', color: '#111827' },
+    aiInputBox: {
+        flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB',
+        borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF',
+    },
+    aiInput: { flex: 1, fontSize: 15, fontWeight: '600', color: '#111827', paddingVertical: 12 },
+    aiInputSuffix: { fontSize: 13, color: '#6B7280', marginLeft: 8 },
     badgeRequiredText: { color: '#DC2626', fontSize: 10, fontWeight: '700' },
     bigCameraBtn: { width: '100%', height: 120, backgroundColor: '#F9FAFB', borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
     docThumbnail: { width: '100%', height: '100%', borderRadius: 12 },

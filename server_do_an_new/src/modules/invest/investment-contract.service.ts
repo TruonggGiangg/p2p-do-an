@@ -277,6 +277,16 @@ export class InvestmentContractService {
     const contractId = this.generateContractId(String(loan._id));
 
     // 6. Create contract
+    // Business rule: Đầu tư qua order book matching (đặt lệnh) = chuyển tiền bình thường, KHÔNG yêu cầu SmartCA.
+    // Đầu tư trực tiếp vào khoản vay (không qua order) = bắt buộc ký SmartCA → status='pending_signature'.
+    const fromOrderMatching = !!investmentOrderId;
+    const initialStatus: 'active' | 'pending_signature' = fromOrderMatching ? 'active' : 'pending_signature';
+    if (fromOrderMatching) {
+      this.logger.log(`${LOG}    📌 Contract phát sinh từ ORDER MATCHING → bỏ qua SmartCA, status='active' ngay`);
+    } else {
+      this.logger.log(`${LOG}    📌 Contract đầu tư trực tiếp → yêu cầu ký SmartCA, status='pending_signature'`);
+    }
+
     const contract = new this.contractModel({
       contractId,
       lenderId: new Types.ObjectId(lenderId),
@@ -291,7 +301,15 @@ export class InvestmentContractService {
       entirelyProfit,
       entirelyPay,
       serviceFee: 0,
-      status: 'pending_signature',
+      status: initialStatus,
+      // Đối với contract sinh từ order matching: đánh dấu signature không bắt buộc / đã verify
+      ...(fromOrderMatching
+        ? {
+            smartCASignatureVerified: true,
+            signatureProvider: 'order_matching_skip',
+            signatureVerifiedAt: new Date(),
+          }
+        : {}),
       // Lender schedule
       lenderSchedule: schedule,
       scheduleTotalPrincipal: summary.totalPrincipal,
@@ -300,23 +318,36 @@ export class InvestmentContractService {
       schedulePeriodCount: summary.periodCount,
     });
 
-    // 7. Update loan atomically: investedNotes++, nodeMatch-- (if from order)
-    //    We do this BEFORE saving contract to revert easily if constraints fail.
+    // 7. Update loan atomically.
+    // Order matching has already reserved nodeMatch, so confirmed payment moves it into investedNotes.
+    // Direct investment only reserves room here; money is deducted after SmartCA signing.
     const nodeMatchDecrement = investmentOrderId ? orderMatchedNodes : 0;
-    this.logger.log(`${LOG}    Atomic update loan: investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`);
+    const directReserve = !fromOrderMatching;
+    const roomExpr = directReserve
+      ? { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }, numNotes] }
+      : { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] };
+    const incPayload = directReserve
+      ? { nodeMatch: numNotes }
+      : {
+          investedNotes: numNotes,
+          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
+        };
+
+    this.logger.log(
+      `${LOG}    Atomic update loan: ${
+        directReserve
+          ? `reserve nodeMatch += ${numNotes}`
+          : `investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`
+      }`,
+    );
     const updateResult = await this.loanModel.findOneAndUpdate(
       {
         _id: loanApplicationId,
         $expr: {
-          $gte: ['$totalNotes', { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] }],
+          $gte: ['$totalNotes', roomExpr],
         },
       },
-      {
-        $inc: {
-          investedNotes: numNotes,
-          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
-        },
-      },
+      { $inc: incPayload },
       { new: true },
     );
 
@@ -337,6 +368,7 @@ export class InvestmentContractService {
 
     this.logger.log(
       `${LOG}    Loan ${loanApplicationId} updated: investedNotes ${investedSoFar}→${(updateResult as any).investedNotes}, ` +
+        `nodeMatch ${nodeMatchSoFar}->${(updateResult as any).nodeMatch || 0}, ` +
         `totalClaimed ${totalClaimed}/${updateResult.totalNotes}, matchPercentage=${newMatchPercentage}%` +
         `${isFullMatch ? ' 🎯 (FULL MATCH — READY FOR DISBURSEMENT)' : ''}`,
     );
@@ -382,7 +414,17 @@ export class InvestmentContractService {
     const pageSize = Math.min(50, Math.max(1, query.pageSize || 10));
     const skip = (page - 1) * pageSize;
 
-    const filters: Record<string, any> = { lenderId: new Types.ObjectId(lenderId) };
+    // Chỉ trả về hợp đồng từ ĐẦU TƯ TRỰC TIẾP vào khoản vay đang mở (cần ký SmartCA).
+    // Loại trừ contract auto-tạo từ order matching ("đặt lệnh") — theo yêu cầu UX:
+    // lệnh đầu tư chỉ rót tiền, không hiển thị như hợp đồng cần quản lý.
+    const filters: Record<string, any> = {
+      lenderId: new Types.ObjectId(lenderId),
+      $or: [
+        { investmentOrderId: { $exists: false } },
+        { investmentOrderId: null },
+      ],
+      signatureProvider: { $ne: 'order_matching_skip' },
+    };
     if (query.status) filters.status = query.status;
 
     const [contracts, totalCount] = await Promise.all([
@@ -406,19 +448,28 @@ export class InvestmentContractService {
   }
 
   async getContractById(contractId: string, lenderId: string): Promise<InvestmentContract> {
-    const query = Types.ObjectId.isValid(contractId)
-      ? { $or: [{ _id: contractId }, { contractId: contractId }] }
-      : { contractId: contractId };
+    const orFilters: any[] = [{ contractId: contractId }];
+    if (Types.ObjectId.isValid(contractId)) {
+      orFilters.push({ _id: new Types.ObjectId(contractId) });
+    }
 
+    // Lookup không lọc lenderId trước để phân biệt "không tồn tại" vs "không thuộc user"
     const contract = await this.contractModel
-      .findOne({
-        ...query,
-        lenderId: new Types.ObjectId(lenderId),
-      })
+      .findOne({ $or: orFilters })
       .populate('loanApplicationId', 'willing capital periodMonth monthlyRatePercent status disbursementDate')
       .exec();
 
-    if (!contract) throw new NotFoundException('Không tìm thấy hợp đồng đầu tư');
+    if (!contract) {
+      this.logger.warn(`[getContractById] Không tìm thấy hợp đồng với id/contractId=${contractId}`);
+      throw new NotFoundException('Không tìm thấy hợp đồng đầu tư');
+    }
+
+    if (String((contract as any).lenderId) !== String(lenderId)) {
+      this.logger.warn(
+        `[getContractById] Hợp đồng ${contractId} không thuộc về user ${lenderId} (lender thực: ${(contract as any).lenderId})`,
+      );
+      throw new NotFoundException('Hợp đồng không thuộc về tài khoản của bạn');
+    }
     return contract;
   }
 

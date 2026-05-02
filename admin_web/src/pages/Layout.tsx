@@ -127,13 +127,36 @@ export default function AppLayout() {
   const roleLabel = userRoles.includes('admin') ? 'Quản trị viên' : 'Nhân viên';
 
   /* ── Permission filter ── */
+  // Mỗi entry: route key → các (Action, Subject) cần thoả mãn (ANY).
+  // Nếu user có quyền bất kỳ trong danh sách → menu hiển thị.
+  // Admin (Manage 'all') tự động pass tất cả.
+  const MENU_PERMISSIONS: Record<string, Array<[Action, Subject]>> = {
+    '/dashboard':                [[Action.Read, 'Loan'], [Action.Read, 'LoanApplication'], [Action.Read, 'Customer']],
+    '/market':                   [[Action.Read, 'LoanApplication'], [Action.Read, 'Loan']],
+    '/investment-orders':        [[Action.Read, 'LoanApplication'], [Action.Read, 'Loan']],
+    '/document-types':           [[Action.Read, 'DocumentType']],
+    '/loan-products':            [[Action.Read, 'LoanProduct']],
+    '/savings-products':         [[Action.Read, 'SavingsProduct']],
+    '/fd-products':              [[Action.Read, 'SavingsProduct']],
+    '/loans':                    [[Action.Read, 'Loan']],
+    '/loan-approvals':           [[Action.Approve, 'Loan'], [Action.Read, 'Loan']],
+    '/loan-support-requests':    [[Action.Read, 'LoanApplication']],
+    '/delinquency-policies':     [[Action.Update, 'Loan'], [Action.Manage, 'all']],
+    '/loan-evaluation-config':   [[Action.Manage, 'all']],
+    '/customers':                [[Action.Read, 'Customer']],
+    '/staff':                    [[Action.Read, 'Staff']],
+    '/roles-permissions':        [[Action.Manage, 'all']],
+    '/blockchain':               [[Action.Manage, 'all']],
+    '/background-jobs':          [[Action.Manage, 'all']],
+  };
+
   const canSee = (key: string): boolean => {
-    if (key === '/staff') return ability.can(Action.Read, 'Staff');
-    if (key === '/roles-permissions') return ability.can(Action.Manage, 'all');
-    if (key === '/background-jobs') return ability.can(Action.Manage, 'all');
-    if (key === '/loan-support-requests') return ability.can(Action.Read, 'LoanApplication');
     if (key === '/profile') return !userRoles.includes('admin');
-    return true;
+    // Admin (Manage 'all') luôn thấy mọi menu
+    if (ability.can(Action.Manage, 'all')) return true;
+    const rules = MENU_PERMISSIONS[key];
+    if (!rules || rules.length === 0) return true; // route không cấu hình → mặc định cho phép
+    return rules.some(([action, subject]) => ability.can(action, subject as any));
   };
 
   /* ── Active key resolution ── */
@@ -151,6 +174,7 @@ export default function AppLayout() {
 
   const logout = () => {
     localStorage.removeItem('admin_access_token');
+    localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
     ability.update([]);
     navigate('/login', { replace: true });

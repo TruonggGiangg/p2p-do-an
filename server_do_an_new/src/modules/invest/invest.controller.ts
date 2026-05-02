@@ -23,6 +23,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { KycVerifiedGuard } from '../../common/guards/kyc-verified.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { SmartOtpService } from '../smart-otp/services/smart-otp.service';
+import { OtpActionType } from '../smart-otp/enums/otp-action-type.enum';
 
 @ApiTags('invest')
 @ApiBearerAuth()
@@ -35,6 +37,7 @@ export class InvestController {
     private readonly contractService: InvestmentContractService,
     private readonly paymentService: InvestPaymentService,
     private readonly statsService: InvestStatsService,
+    private readonly smartOtpService: SmartOtpService,
   ) {}
 
   // ═══════════════════════════════════════════════════════
@@ -165,8 +168,21 @@ export class InvestController {
   @ApiResponse({ status: 201, description: 'Hợp đồng đã tạo + thanh toán + FD' })
   async createContract(
     @CurrentUser('id') userId: string,
-    @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string },
+    @Body() body: { loanApplicationId: string; numNotes: number; investmentOrderId?: string; otpSessionId?: string },
   ) {
+    if (!body.investmentOrderId) {
+      if (!body.otpSessionId) {
+        throw new UnauthorizedException('Vui lòng xác thực Smart OTP trước khi đầu tư');
+      }
+      const consumeResult = await this.smartOtpService.consumeSession(
+        userId,
+        body.otpSessionId,
+        OtpActionType.INVESTMENT,
+      );
+      if (!consumeResult.valid) {
+        throw new UnauthorizedException(consumeResult.message);
+      }
+    }
     return this.paymentService.processInvestment(userId, body.loanApplicationId, body.numNotes, body.investmentOrderId);
   }
 

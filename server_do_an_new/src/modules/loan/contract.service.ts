@@ -205,8 +205,36 @@ export class ContractService {
    * Lấy danh sách hợp đồng của user
    */
   async getUserContracts(userId: string): Promise<LoanContract[]> {
+    const userObjectId = new Types.ObjectId(userId);
+    const eligibleStatuses = ['approved', 'pending_signature', 'disbursed', 'closed', 'success'];
+    const existingContracts = await this.contractModel
+      .find({ userId: userObjectId })
+      .select('loanId')
+      .lean();
+    const existingLoanIds = new Set(existingContracts.map((c: any) => String(c.loanId)));
+
+    const approvedLoansWithoutContract = await this.loanApplicationModel
+      .find({
+        userId: userObjectId,
+        status: { $in: eligibleStatuses },
+        fineractLoanId: { $exists: true, $ne: null },
+      })
+      .select('_id fineractLoanId')
+      .lean();
+
+    for (const loan of approvedLoansWithoutContract) {
+      if (existingLoanIds.has(String((loan as any)._id))) continue;
+      try {
+        await this.createContractOnApproval(Number((loan as any).fineractLoanId));
+      } catch (err: any) {
+        this.logger.warn(
+          `[getUserContracts] Auto-create missing contract failed for loan ${(loan as any)._id}: ${err?.message || err}`,
+        );
+      }
+    }
+
     return this.contractModel
-      .find({ userId: new Types.ObjectId(userId) })
+      .find({ userId: userObjectId })
       .sort({ createdAt: -1 })
       .populate('loanId', 'isFullMatch investedNotes totalNotes capital')
       .lean()
@@ -288,7 +316,7 @@ export class ContractService {
     if (contract) return contract as LoanContract;
 
     // 3. Auto-create contract if loan is approved/disbursed but contract is missing
-    const eligibleStatuses = ['approved', 'pending_signature', 'disbursed', 'success'];
+    const eligibleStatuses = ['approved', 'pending_signature', 'disbursed', 'closed', 'success'];
     if (app.fineractLoanId && eligibleStatuses.includes(app.status)) {
       this.logger.warn(
         `[getContractByLoanId] No contract found for loan ${loanId} (fineract #${app.fineractLoanId}). Auto-creating...`,

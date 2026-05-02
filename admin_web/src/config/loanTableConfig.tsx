@@ -41,6 +41,11 @@ export type LoanTableRow = {
         decision: string;
         riskLevel: string;
         riskFactors: any[];
+        positiveFactors?: string[];
+        decisionExplanation?: string;
+        modelDecision?: string;
+        modelRiskLevel?: string;
+        featuresResolved?: Record<string, any>;
         scoredAt: string;
     } | null;
     isFullMatch?: boolean;
@@ -470,7 +475,42 @@ export function buildLoanColumns(options: BuildColumnsOptions): ProColumns<LoanT
             render: (_, r) => {
                 const ai = r.aiScore;
                 if (!ai) return '–';
-                return getDecisionTag(ai.decision);
+                const negatives = ai.riskFactors || [];
+                const positives = ai.positiveFactors || [];
+                const explanation = ai.decisionExplanation;
+                const tooltipContent = (
+                    <div style={{ maxWidth: 360, fontSize: 12, lineHeight: 1.5 }}>
+                        {explanation && (
+                            <div style={{ marginBottom: 6, fontWeight: 600 }}>{explanation}</div>
+                        )}
+                        {negatives.length > 0 && (
+                            <>
+                                <div style={{ color: '#ef4444', fontWeight: 600, marginTop: 4 }}>Rủi ro:</div>
+                                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                    {negatives.map((n: any, i: number) => (
+                                        <li key={`n${i}`}>{typeof n === 'string' ? n : JSON.stringify(n)}</li>
+                                    ))}
+                                </ul>
+                            </>
+                        )}
+                        {positives.length > 0 && (
+                            <>
+                                <div style={{ color: '#10b981', fontWeight: 600, marginTop: 6 }}>Điểm mạnh:</div>
+                                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                    {positives.map((p, i) => (<li key={`p${i}`}>{p}</li>))}
+                                </ul>
+                            </>
+                        )}
+                        {negatives.length === 0 && positives.length === 0 && !explanation && (
+                            <span style={{ color: '#9ca3af' }}>Chưa có giải thích chi tiết</span>
+                        )}
+                    </div>
+                );
+                return (
+                    <Tooltip title={tooltipContent} placement="left">
+                        <span>{getDecisionTag(ai.decision)}</span>
+                    </Tooltip>
+                );
             },
         },
     ] : [];

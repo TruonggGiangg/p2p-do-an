@@ -64,6 +64,11 @@ export default () => ({
     serviceUrl: process.env.AISCORE_SERVICE_URL || 'http://localhost:8001',
     timeout: parseInt(process.env.AISCORE_TIMEOUT || '15000', 10),
     enabled: process.env.AISCORE_ENABLED === 'true', // false by default, bật khi cần
+    // Model được train trên loan_data.csv (Kaggle) với đơn vị USD: person_income ~10k-200k,
+    // loan_amnt ~500-35k. Backend nhận VND nên cần quy đổi trước khi gọi model.
+    // Nest resolves the live VND/USD rate from AIScore /api/exchange-rate.
+    // AISCORE_VND_PER_USD is only an explicit fallback/override, not a hard-coded default.
+    vndPerUsd: process.env.AISCORE_VND_PER_USD ? Number(process.env.AISCORE_VND_PER_USD) : undefined,
   },
 
   // VNPT SmartCA Digital Signature

@@ -384,6 +384,9 @@ export class AdminService implements OnModuleInit {
   async getLoansStats() {
     return this.loanService.getLoansStats();
   }
+  async getDashboardOverview() {
+    return this.loanService.getDashboardOverview();
+  }
   async getLoanDocuments(fineractLoanId: number) {
     return this.loanService.getLoanDocuments(fineractLoanId);
   }

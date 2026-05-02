@@ -42,6 +42,7 @@ const ACTION_LABELS: Record<string, string> = {
     delete: 'Xóa',
     approve: 'Phê duyệt',
     disburse: 'Giải ngân',
+    reject: 'Từ chối',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -52,6 +53,7 @@ const ACTION_COLORS: Record<string, string> = {
     delete: '#dc2626',
     approve: '#0891b2',
     disburse: '#ca8a04',
+    reject: '#be123c',
 };
 
 const ACTION_DESCRIPTIONS: Record<string, string> = {
@@ -62,6 +64,7 @@ const ACTION_DESCRIPTIONS: Record<string, string> = {
     delete: 'Xóa tài nguyên',
     approve: 'Phê duyệt yêu cầu',
     disburse: 'Giải ngân khoản vay',
+    reject: 'Từ chối yêu cầu',
 };
 
 /**
@@ -75,7 +78,7 @@ const SUBJECT_AVAILABLE_ACTIONS: Record<string, string[]> = {
     DocumentType: ['manage', 'create', 'read', 'update', 'delete'],
     SyncDrift: ['manage', 'read'],
     Customer: ['manage', 'read', 'update'],
-    Loan: ['manage', 'read', 'update', 'approve', 'disburse'],
+    Loan: ['manage', 'read', 'update', 'approve', 'disburse', 'reject'],
     LoanDocument: ['manage', 'read', 'update', 'approve'],
     Kyc: ['manage', 'create', 'read', 'update', 'approve'],
     Staff: ['manage', 'create', 'read', 'update', 'delete'],

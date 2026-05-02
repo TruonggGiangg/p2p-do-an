@@ -122,6 +122,18 @@ export default function InvestmentFlowScreen() {
         numNotes,
         ...(otpSessionId ? { otpSessionId } : {}),
       });
+      // Nếu hợp đồng cần ký SmartCA (đầu tư trực tiếp) → KHÔNG hiển thị "thành công",
+      // điều hướng ngay sang InvestmentContractDetail với autoSign=true để mở SmartCA modal.
+      // Tiền sẽ chỉ bị trừ SAU KHI ký xong (server hook finalizeInvestmentAfterSigning).
+      const status = String((contract as any)?.status || '');
+      if (status === 'pending_signature') {
+        (navigation as any).replace('InvestmentContractDetail', {
+          contractId: contract._id,
+          autoSign: true,
+        });
+        return;
+      }
+      // Hợp đồng từ order matching: tự động active + đã trừ tiền → hiển thị màn thành công như cũ.
       setResult({ success: true, contractId: contract.contractId, _id: contract._id });
     } catch (e: any) {
       setResult({ success: false, error: e?.response?.data?.message || e?.message || 'Đầu tư thất bại' });

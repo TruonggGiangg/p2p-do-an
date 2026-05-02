@@ -33,47 +33,52 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
-from scorer import CreditScorer
+from scorer_final import CreditScorerFinal
 
-# ── Pydantic models ──
+# ── Pydantic models (models_final v1) ──
 
 class ScoreRequest(BaseModel):
-    credit_score: float = Field(..., ge=150, le=750, description="Diem tin dung he thong (CIC 150-750) → tu dong chuyen thanh grade/sub_grade")
-    grade: Optional[str] = Field(default=None, description="Tu dong tu credit_score: A-G. Truyen truc tiep de ghi de.")
-    sub_grade: Optional[str] = Field(default=None, description="Tu dong tu credit_score: A1-G5. Truyen truc tiep de ghi de.")
-    capital: float = Field(..., gt=0, description="So tien vay (VND)", alias="loanAmount")
-    monthly_income: float = Field(default=0, ge=0, description="Thu nhap hang thang (VND)")
-    monthly_pay: float = Field(default=0, ge=0, description="Tra gop hang thang (VND)")
-    revolving_balance: float = Field(default=0, ge=0, description="Du no tin dung quay vong (VND)")
-    total_current_balance: float = Field(default=0, ge=0, description="Tong du no tat ca tai khoan (VND)")
-    dti: float = Field(default=0, ge=0, le=100, description="Ty le No/Thu nhap (%)")
-    revolving_util_percent: float = Field(default=50, ge=0, le=150, description="% su dung han muc tin dung")
-    emp_length_years: float = Field(default=3, ge=0, le=10, description="So nam di lam (0.5-10)")
-    active_bad_debts: int = Field(default=0, ge=0, le=20, description="So ho so no xau (pub_rec)")
-    bankruptcies: int = Field(default=0, ge=0, le=10, description="So lan pha san")
-    active_loans: int = Field(default=5, ge=0, le=50, description="So khoan vay dang mo")
-    total_loans_history: int = Field(default=10, ge=0, le=100, description="Tong so khoan vay lich su")
-    credit_history_months: float = Field(default=120, ge=0, le=600, description="Tuoi tin dung (thang)")
-    recent_inquiries: int = Field(default=0, ge=0, le=20, description="So lan truy van TD 6 thang")
-    delinquencies_2yr: int = Field(default=0, ge=0, le=20, description="So lan tre han 2 nam")
-    accounts_delinquent: int = Field(default=0, ge=0, le=10, description="So tai khoan dang qua han hien tai")
-    severe_delinquencies_24m: int = Field(default=0, ge=0, le=20, description="So lan qua han 90+ ngay trong 24 thang (nhom no 3-5)")
-    pct_never_delinquent: float = Field(default=100, ge=0, le=100, description="Ty le khoan vay chua tung qua han (%)")
-    collections_12m: int = Field(default=0, ge=0, le=10, description="So lan xu ly thu hoi no 12 thang qua")
-    term: Optional[int] = Field(default=36, description="Ky han vay (thang)", alias="periodMonth")
-    home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE / OTHER")
-    verification_status: Optional[str] = Field(default="Not Verified", description="Muc xac minh eKYC")
-    purpose: Optional[str] = Field(default="other", description="Muc dich vay")
+    """Schema mapping sang 13 raw input columns của model models_final.
+
+    BE NestJS đẩy tất cả các trường này; trường không có → để default.
+    Cho phép truyền alias (loanAmount, periodMonth…) để backward-compat.
+    """
+
+    # 13 raw inputs của model
+    person_age: Optional[float] = Field(default=25, ge=18, le=100, description="Tuổi người vay")
+    person_gender: Optional[str] = Field(default="male", description="male / female")
+    person_education: Optional[str] = Field(default="High School", description="High School / Associate / Bachelor / Master / Doctorate")
+    person_income: float = Field(default=0, ge=0, description="Thu nhập hàng tháng (VND)")
+    person_emp_exp: float = Field(default=0, ge=0, le=60, description="Số năm kinh nghiệm làm việc")
+    person_home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE / OTHER")
+    loan_amnt: float = Field(default=0, ge=0, description="Số tiền vay", alias="loanAmount")
+    loan_intent: Optional[str] = Field(default="PERSONAL", description="PERSONAL / EDUCATION / MEDICAL / VENTURE / HOMEIMPROVEMENT / DEBTCONSOLIDATION")
+    loan_int_rate: Optional[float] = Field(default=12.0, ge=0, le=100, description="Lãi suất %/năm")
+    loan_percent_income: Optional[float] = Field(default=None, ge=0, le=5, description="loan_amnt / (income*12); nếu không truyền sẽ tự tính")
+    cb_person_cred_hist_length: Optional[float] = Field(default=3, ge=0, le=30, description="Số năm lịch sử tín dụng")
+    credit_score: float = Field(..., ge=150, le=850, description="Điểm tín dụng (CIC 150-750 hoặc FICO 300-850)")
+    previous_loan_defaults_on_file: Optional[str] = Field(default="No", description="Yes / No")
+
+    # Backward-compat aliases (BE cũ có thể đang đẩy)
+    capital: Optional[float] = Field(default=None, description="Alias của loan_amnt")
+    monthly_income: Optional[float] = Field(default=None, ge=0, description="Alias của person_income")
 
     model_config = {"populate_by_name": True}
 
 class ScoreResponse(BaseModel):
     ai_risk_score: int
     default_probability: float
-    input_grade: str = Field(description="Grade (A-G) duoc su dung lam input cho model, derive tu credit_score")
-    input_sub_grade: str = Field(description="Sub-grade (A1-G5) duoc su dung lam input cho model, derive tu credit_score")
+    model_default_probability: Optional[float] = None
+    policy_pd_floor: Optional[float] = None
+    policy_overrides: Optional[List[str]] = None
+    risk_level: Optional[str] = None
+    decision: Optional[str] = None
+    reasons: Optional[Dict[str, Any]] = None
+    features_resolved: Optional[Dict[str, Any]] = None
+    input_grade: str = ""
+    input_sub_grade: str = ""
     status: str
 
 class BatchRequest(BaseModel):
@@ -94,7 +99,7 @@ async def fetch_exchange_rate() -> Tuple[float, str]:
       1. Env var USD_TO_VND
       2. open.er-api.com
       3. exchangerate-api.com
-      4. Fallback 25000
+      4. Raise error if no live/env rate is available
     """
     env_rate = os.environ.get("USD_TO_VND")
     if env_rate:
@@ -116,31 +121,32 @@ async def fetch_exchange_rate() -> Tuple[float, str]:
             except Exception:
                 continue
 
-    return 25000.0, "default_fallback"
+    raise RuntimeError("Cannot fetch USD->VND exchange rate from env or live APIs")
 
 
 # ── App lifecycle ──
 
-scorer: Optional[CreditScorer] = None
+scorer: Optional[CreditScorerFinal] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global scorer, _EXCHANGE_RATE_CACHE
-    # Startup: load model
+    # Startup: load models_final/
     try:
-        scorer = CreditScorer()
-        print("[AIScore] Model loaded successfully (Stacking: XGB+SVM→LR, 25 features).")
-    except FileNotFoundError:
-        print("[AIScore] Model not found. Training now...")
-        from train_model import train_model
-        train_model()
-        scorer = CreditScorer()
-        print("[AIScore] Model trained and loaded.")
+        scorer = CreditScorerFinal()
+        print("[AIScore] models_final loaded (XGB + Isotonic, 13 raw features).")
+    except FileNotFoundError as e:
+        print(f"[AIScore] models_final not found: {e}. Service starts but /api/score will 503.")
+        scorer = None
 
     # Fetch exchange rate on startup
-    rate, source = await fetch_exchange_rate()
-    _EXCHANGE_RATE_CACHE = {"rate": rate, "source": source}
-    print(f"[AIScore] Exchange rate: 1 USD = {rate:,.0f} VND (source: {source})")
+    try:
+        rate, source = await fetch_exchange_rate()
+        _EXCHANGE_RATE_CACHE = {"rate": rate, "source": source}
+        print(f"[AIScore] Exchange rate: 1 USD = {rate:,.0f} VND (source: {source})")
+    except Exception as e:
+        _EXCHANGE_RATE_CACHE = {"rate": None, "source": "unavailable", "error": str(e)}
+        print(f"[AIScore] Exchange rate unavailable: {e}")
 
     yield
     # Shutdown
@@ -168,31 +174,31 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     metrics = scorer.metadata.get("metrics", {}) if scorer else {}
-    test_metrics = scorer.metadata.get("test_metrics", metrics) if scorer else metrics
     return {
         "status": "ok",
-        "service": "aiscore-service-v17-hybrid",
-        "model_loaded": scorer is not None and scorer.xgb_model is not None,
-        "model_type": "Explainable Hybrid (Scorecard + XGB + LGBM → Meta-LR → Isotonic)",
-        "architecture": "Nhánh 1: WOE-LR Scorecard | Nhánh 2: XGBoost | Nhánh 3: LightGBM → Meta-LR",
-        "data_source": "Lending Club accepted + rejected (2007-2018 Q4)",
-        "n_features": len(scorer.metadata.get("all_features", scorer.metadata.get("features", []))) if scorer else 47,
-        "auc_roc": test_metrics.get("stacking_auc", test_metrics.get("auc_roc", "N/A")),
+        "service": "aiscore-service-models-final",
+        "model_loaded": scorer is not None,
+        "model_type": "XGBoost + IsotonicRegression (models_final v1)",
+        "data_source": "loan_data.csv (45k rows)",
+        "n_features": len(scorer.metadata.get("features", [])) if scorer else 13,
+        "auc_roc": metrics.get("roc_auc", "N/A"),
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }
 
 
 @app.post("/api/score", response_model=ScoreResponse)
 async def predict_score(req: ScoreRequest):
-    """
-    Score 1 borrower. Input nhan tu NestJS (VND context).
-    Returns ai_risk_score (0-100) + default_probability (PD 0.0-1.0).
-    """
-    if scorer is None or scorer.lr_model is None:
+    """Score 1 borrower với models_final (13 raw features)."""
+    if scorer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
-        features = req.model_dump(by_alias=False)
+        features = req.model_dump(by_alias=False, exclude_none=False)
+        # Backward-compat: chuyển alias cũ sang tên mới nếu cần
+        if not features.get("loan_amnt") and features.get("capital"):
+            features["loan_amnt"] = features["capital"]
+        if not features.get("person_income") and features.get("monthly_income"):
+            features["person_income"] = features["monthly_income"]
         result = scorer.predict(features)
         return result
     except ValueError as e:
@@ -207,7 +213,7 @@ async def predict_batch(req: BatchRequest):
     """
     Score nhieu borrower cung luc (max 100).
     """
-    if scorer is None or scorer.lr_model is None:
+    if scorer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     if len(req.applicants) > 100:
@@ -251,21 +257,26 @@ async def model_info():
 @app.get("/api/exchange-rate", response_model=ExchangeRateResponse)
 async def get_exchange_rate():
     """Lay ty gia USD→VND hien tai (cached hoac live)."""
-    rate, source = await fetch_exchange_rate()
+    try:
+        rate, source = await fetch_exchange_rate()
+    except Exception as e:
+        cached_rate = _EXCHANGE_RATE_CACHE.get("rate")
+        if cached_rate:
+            return {"usd_to_vnd": cached_rate, "source": f"cached:{_EXCHANGE_RATE_CACHE.get('source', 'unknown')}"}
+        raise HTTPException(status_code=503, detail=str(e))
     _EXCHANGE_RATE_CACHE["rate"] = rate
     _EXCHANGE_RATE_CACHE["source"] = source
+    _EXCHANGE_RATE_CACHE.pop("error", None)
     return {"usd_to_vnd": rate, "source": source}
 
 
-@app.post("/api/model/retrain")
-async def retrain_model():
-    """Retrain model (call during off-peak)."""
+@app.post("/api/model/reload")
+async def reload_model():
+    """Reload models_final/ artifacts từ đĩa (sau khi train lại offline)."""
     global scorer
     try:
-        from train_model import train_model
-        train_model()
-        scorer = CreditScorer()
-        return {"status": "success", "message": "Model retrained and reloaded (Stacking: XGB+SVM→LR, 25 features)"}
+        scorer = CreditScorerFinal()
+        return {"status": "success", "message": "models_final reloaded"}
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Retrain failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reload failed: {str(e)}")

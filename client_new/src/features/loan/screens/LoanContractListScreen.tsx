@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { BinanceHeader } from '../../../components';
 import { loanService, LoanContract, LoanContractStatus } from '../services/loan.service';
+import investService, { InvestmentContractItem } from '../../invest/services/invest.service';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 
 // --- Helpers ---
@@ -57,14 +58,20 @@ export default function LoanContractListScreen() {
     const { theme } = useTheme();
     const colors = theme.colors;
 
+    const [activeTab, setActiveTab] = useState<'loan' | 'invest'>('loan');
     const [contracts, setContracts] = useState<LoanContract[]>([]);
+    const [investContracts, setInvestContracts] = useState<InvestmentContractItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchContracts = useCallback(async () => {
         try {
-            const data = await loanService.getContracts();
-            setContracts(data);
+            const [loanData, investResult] = await Promise.all([
+                loanService.getContracts().catch(() => [] as LoanContract[]),
+                investService.getContracts({ pageSize: 50 }).catch(() => ({ contracts: [], totalCount: 0 } as any)),
+            ]);
+            setContracts(loanData);
+            setInvestContracts(investResult.contracts || []);
         } catch (err) {
             console.error('[ContractList] Error:', err);
         } finally {
@@ -146,15 +153,115 @@ export default function LoanContractListScreen() {
         );
     };
 
+    const renderInvestContract = ({ item }: { item: InvestmentContractItem }) => {
+        const investStatusMap: Record<string, { label: string; color: string }> = {
+            pending: { label: 'Chờ xử lý', color: '#F59E0B' },
+            pending_signature: { label: 'Chờ ký số', color: '#8B5CF6' },
+            active: { label: 'Đang hoạt động', color: '#10B981' },
+            matured: { label: 'Đáo hạn', color: '#3B82F6' },
+            closed: { label: 'Đã đóng', color: '#6B7280' },
+            cancelled: { label: 'Đã hủy', color: '#EF4444' },
+        };
+        const statusCfg = investStatusMap[item.status] || investStatusMap.pending;
+        const loanInfo: any = item.loanApplicationId;
+        const purpose = typeof loanInfo === 'object' ? loanInfo?.willing : '';
+        return (
+            <TouchableOpacity
+                activeOpacity={0.7}
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => (navigation as any).navigate('InvestmentContractDetail', { contractId: item._id })}
+            >
+                <View style={styles.cardHeader}>
+                    <View style={styles.cardHeaderLeft}>
+                        <MaterialCommunityIcons name="trending-up" size={20} color={colors.primary} />
+                        <Text style={[styles.contractId, { color: colors.textPrimary }]} numberOfLines={1}>
+                            {item.contractId}
+                        </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusCfg.color + '20' }]}>
+                        <Text style={[styles.statusText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+                    </View>
+                </View>
+                <View style={styles.cardBody}>
+                    {purpose ? (
+                        <View style={styles.infoRow}>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>Mục đích vay</Text>
+                            <Text style={[styles.value, { color: colors.textPrimary }]} numberOfLines={1}>{purpose}</Text>
+                        </View>
+                    ) : null}
+                    <View style={styles.infoRow}>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Vốn đầu tư</Text>
+                        <Text style={[styles.value, { color: colors.textPrimary, fontWeight: '700' }]}>
+                            {formatMoney(item.capital)} đ
+                        </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Lãi suất</Text>
+                        <Text style={[styles.value, { color: colors.primary }]}>
+                            {item.monthlyRatePercent}%/tháng
+                        </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Kỳ hạn</Text>
+                        <Text style={[styles.value, { color: colors.textPrimary }]}>{item.periodMonth} tháng</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={[styles.label, { color: colors.textSecondary }]}>Lợi nhuận dự kiến</Text>
+                        <Text style={[styles.value, { color: '#10B981', fontWeight: '700' }]}>
+                            {formatMoney(item.entirelyProfit)} đ
+                        </Text>
+                    </View>
+                </View>
+                {item.status === 'pending_signature' && (
+                    <View style={[styles.actionHint, { borderTopColor: colors.border }]}>
+                        <Ionicons name="alert-circle" size={16} color="#F59E0B" />
+                        <Text style={styles.actionHintText}>Cần ký SmartCA để hoàn tất đầu tư</Text>
+                        <Ionicons name="chevron-forward" size={16} color="#F59E0B" />
+                    </View>
+                )}
+            </TouchableOpacity>
+        );
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <BinanceHeader title="Hợp đồng vay" mode="standard" />
+            <BinanceHeader title="Hợp đồng" mode="standard" />
+
+            {/* Tabs */}
+            <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
+                <TouchableOpacity
+                    style={[styles.tabBtn, activeTab === 'loan' && { borderBottomColor: colors.primary }]}
+                    onPress={() => setActiveTab('loan')}
+                >
+                    <Text
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'loan' ? colors.primary : colors.textSecondary },
+                        ]}
+                    >
+                        Hợp đồng vay {contracts.length > 0 ? `(${contracts.length})` : ''}
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tabBtn, activeTab === 'invest' && { borderBottomColor: colors.primary }]}
+                    onPress={() => setActiveTab('invest')}
+                >
+                    <Text
+                        style={[
+                            styles.tabText,
+                            { color: activeTab === 'invest' ? colors.primary : colors.textSecondary },
+                        ]}
+                    >
+                        Hợp đồng đầu tư {investContracts.length > 0 ? `(${investContracts.length})` : ''}
+                    </Text>
+                </TouchableOpacity>
+            </View>
 
             {loading ? (
                 <View style={styles.loader}>
                     <ActivityIndicator size="large" color={colors.primary} />
                 </View>
-            ) : (
+            ) : activeTab === 'loan' ? (
                 <FlatList
                     data={contracts}
                     keyExtractor={(item) => item._id || item.contractId}
@@ -167,10 +274,31 @@ export default function LoanContractListScreen() {
                         <View style={styles.emptyContainer}>
                             <MaterialCommunityIcons name="file-document-outline" size={64} color={colors.textDim} />
                             <Text style={[styles.emptyTitle, { color: colors.textDim }]}>
-                                Chưa có hợp đồng nào
+                                Chưa có hợp đồng vay nào
                             </Text>
                             <Text style={[styles.emptyDesc, { color: colors.textDim }]}>
-                                Hợp đồng sẽ được tạo khi khoản vay được phê duyệt
+                                Hợp đồng vay sẽ được tạo khi khoản vay được phê duyệt
+                            </Text>
+                        </View>
+                    }
+                />
+            ) : (
+                <FlatList
+                    data={investContracts}
+                    keyExtractor={(item) => item._id}
+                    renderItem={renderInvestContract}
+                    contentContainerStyle={styles.listContent}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <MaterialCommunityIcons name="trending-up" size={64} color={colors.textDim} />
+                            <Text style={[styles.emptyTitle, { color: colors.textDim }]}>
+                                Chưa có hợp đồng đầu tư nào
+                            </Text>
+                            <Text style={[styles.emptyDesc, { color: colors.textDim }]}>
+                                Đầu tư trực tiếp vào khoản vay đang mở để tạo hợp đồng đầu tư
                             </Text>
                         </View>
                     }
@@ -184,6 +312,20 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     listContent: { padding: 16, paddingBottom: 32 },
+
+    tabsContainer: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        paddingHorizontal: 16,
+    },
+    tabBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        alignItems: 'center',
+        borderBottomWidth: 2,
+        borderBottomColor: 'transparent',
+    },
+    tabText: { fontSize: 14, fontWeight: '600' },
 
     card: {
         borderRadius: 16,
