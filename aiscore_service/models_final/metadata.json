@@ -1,0 +1,192 @@
+{
+  "version": "new_data_v1",
+  "data_csv": "/content/drive/MyDrive/Colab Notebooks/loan_data.csv",
+  "rows": 45000,
+  "target": "is_default",
+  "target_mode": "status_0_is_default",
+  "positive_class": "Default",
+  "negative_class": "Non-Default",
+  "target_mapping": {
+    "loan_status=0": "Default",
+    "loan_status=1": "Non-Default",
+    "is_default=1": "Default",
+    "is_default=0": "Non-Default"
+  },
+  "target_note": "Default mode: loan_status=0 -> Default, loan_status=1 -> Non-Default. If your data uses loan_status=1 as Default, set TARGET_MODE_NEW_DATA=as_is.",
+  "credit_score_normalization": {
+    "source_column": "credit_score",
+    "source_min": 390.0,
+    "source_max": 850.0,
+    "target_min": 150.0,
+    "target_max": 750.0,
+    "formula": "150 + (raw_score - source_min) * 600 / (source_max - source_min), clipped to 150-750"
+  },
+  "features": [
+    "person_age",
+    "person_income",
+    "person_emp_exp",
+    "loan_amnt",
+    "loan_int_rate",
+    "loan_percent_income",
+    "cb_person_cred_hist_length",
+    "credit_score",
+    "previous_default_bin",
+    "person_gender",
+    "person_education",
+    "person_home_ownership",
+    "loan_intent"
+  ],
+  "required_raw_input_columns": [
+    "person_age",
+    "person_gender",
+    "person_education",
+    "person_income",
+    "person_emp_exp",
+    "person_home_ownership",
+    "loan_amnt",
+    "loan_intent",
+    "loan_int_rate",
+    "loan_percent_income",
+    "cb_person_cred_hist_length",
+    "credit_score",
+    "previous_loan_defaults_on_file"
+  ],
+  "raw_numeric_input_columns": [
+    "person_age",
+    "person_income",
+    "person_emp_exp",
+    "loan_amnt",
+    "loan_int_rate",
+    "loan_percent_income",
+    "cb_person_cred_hist_length",
+    "credit_score"
+  ],
+  "derived_model_features": [
+    "previous_default_bin"
+  ],
+  "numeric_features": [
+    "person_age",
+    "person_income",
+    "person_emp_exp",
+    "loan_amnt",
+    "loan_int_rate",
+    "loan_percent_income",
+    "cb_person_cred_hist_length",
+    "credit_score",
+    "previous_default_bin"
+  ],
+  "categorical_features": [
+    "person_gender",
+    "person_education",
+    "person_home_ownership",
+    "loan_intent"
+  ],
+  "explain_only_features": [],
+  "processed_feature_names": [
+    "person_age",
+    "person_income",
+    "person_emp_exp",
+    "loan_amnt",
+    "loan_int_rate",
+    "loan_percent_income",
+    "cb_person_cred_hist_length",
+    "credit_score",
+    "previous_default_bin",
+    "person_gender_female",
+    "person_gender_male",
+    "person_education_Associate",
+    "person_education_Bachelor",
+    "person_education_Doctorate",
+    "person_education_High School",
+    "person_education_Master",
+    "person_home_ownership_MORTGAGE",
+    "person_home_ownership_OTHER",
+    "person_home_ownership_OWN",
+    "person_home_ownership_RENT",
+    "loan_intent_DEBTCONSOLIDATION",
+    "loan_intent_EDUCATION",
+    "loan_intent_HOMEIMPROVEMENT",
+    "loan_intent_MEDICAL",
+    "loan_intent_PERSONAL",
+    "loan_intent_VENTURE"
+  ],
+  "threshold": {
+    "metric": "f2",
+    "value": 0.16499999999999998
+  },
+  "metrics": {
+    "roc_auc": 0.975773,
+    "average_precision": 0.991954,
+    "brier": 0.049757,
+    "accuracy": 0.915889,
+    "balanced_accuracy": 0.818429,
+    "precision": 0.906922,
+    "recall": 0.993857,
+    "f1": 0.948402,
+    "f2": 0.975162,
+    "mcc": 0.746307,
+    "ks": 0.818643
+  },
+  "risk_bands": [
+    {
+      "min_score": 700,
+      "max_score": 750,
+      "level": "Very low risk",
+      "decision": "approve"
+    },
+    {
+      "min_score": 650,
+      "max_score": 699,
+      "level": "Low risk",
+      "decision": "approve"
+    },
+    {
+      "min_score": 550,
+      "max_score": 649,
+      "level": "Medium risk",
+      "decision": "manual_review"
+    },
+    {
+      "min_score": 450,
+      "max_score": 549,
+      "level": "High risk",
+      "decision": "manual_review"
+    },
+    {
+      "min_score": 150,
+      "max_score": 449,
+      "level": "Very high risk",
+      "decision": "reject_or_strict_review"
+    }
+  ],
+  "outputs": {
+    "model_dir": "/content/drive/MyDrive/Colab Notebooks/models_final",
+    "chart_dir": "/content/drive/MyDrive/Colab Notebooks/charts_final",
+    "report_dir": "/content/drive/MyDrive/Colab Notebooks/reports_final",
+    "split_dir": "/content/drive/MyDrive/Colab Notebooks/reports_final/splits",
+    "train_split_csv": "/content/drive/MyDrive/Colab Notebooks/reports_final/splits/train_split.csv",
+    "validation_split_csv": "/content/drive/MyDrive/Colab Notebooks/reports_final/splits/validation_split.csv",
+    "test_split_csv": "/content/drive/MyDrive/Colab Notebooks/reports_final/splits/test_split.csv"
+  },
+  "split": {
+    "train_rows": 29250,
+    "validation_rows": 6750,
+    "test_rows": 9000,
+    "train_default_rate": 0.777778,
+    "validation_default_rate": 0.777778,
+    "test_default_rate": 0.777778
+  },
+  "config": {
+    "random_state": 42,
+    "test_size": 0.2,
+    "val_size": 0.15,
+    "xgb_n_estimators": 500,
+    "xgb_max_depth": 4,
+    "xgb_learning_rate": 0.05,
+    "xgb_early_stopping_rounds": 35,
+    "xgb_tree_method": "hist",
+    "xgb_device_request": "auto",
+    "xgb_resolved_device": "cpu",
+    "permutation_importance_enabled": false
+  }
+}
