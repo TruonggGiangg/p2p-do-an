@@ -4,6 +4,7 @@ import {
     Card,
     Form,
     Input,
+    InputNumber,
     Modal,
     Popconfirm,
     Select,
@@ -67,6 +68,13 @@ const STAGE_OPTIONS: Array<{ label: string; value: CollectionStage }> = [
     { label: 'LEGAL - Xử lý pháp lý', value: 'LEGAL' },
     { label: 'WRITE_OFF - Nợ mất vốn', value: 'WRITE_OFF' },
 ];
+
+const normalizeRetentionMonths = (value: unknown): number | null => {
+    if (value === '' || value == null) return null;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    return Math.trunc(numeric);
+};
 
 export default function DelinquencyPoliciesPage() {
     const formatDebtGroupDayRange = (minDays?: number | null, maxDays?: number | null) => {
@@ -176,13 +184,17 @@ export default function DelinquencyPoliciesPage() {
             legal_escalation: false,
             collection_stage: 'REMINDER',
             is_active: true,
+            retention_months: null,
         });
         setIsModalOpen(true);
     };
 
     const openEditModal = (policy: Policy) => {
         setEditingPolicy(policy);
-        form.setFieldsValue({ ...policy });
+        form.setFieldsValue({
+            ...policy,
+            retention_months: normalizeRetentionMonths(policy.retention_months),
+        });
         setIsModalOpen(true);
     };
 
@@ -215,6 +227,7 @@ export default function DelinquencyPoliciesPage() {
 
             const payload = {
                 ...values,
+                retention_months: normalizeRetentionMonths(values.retention_months),
                 loan_product_id: productId,
                 loan_product_name: editingPolicy?.loan_product_name ?? selectedProduct?.name,
             };
@@ -413,7 +426,7 @@ export default function DelinquencyPoliciesPage() {
                             dataIndex: 'retention_months',
                             width: 150,
                             render: (value: number | null | undefined) => (
-                                <Text>{value != null ? `${value} tháng` : 'Vĩnh viễn'}</Text>
+                                <Text>{normalizeRetentionMonths(value) != null ? `${normalizeRetentionMonths(value)} tháng` : 'Vĩnh viễn'}</Text>
                             ),
                         },
                         {
@@ -508,9 +521,24 @@ export default function DelinquencyPoliciesPage() {
                     <Form.Item
                         label="Lưu vết quá hạn (tháng)"
                         name="retention_months"
-                        tooltip="Số tháng lưu vết nợ quá hạn trong database. Sau khi hết hạn, bản ghi loan_delinquency sẽ chuyển isDeleted: true. Để trống = lưu vĩnh viễn (dùng train AI)."
+                        tooltip="Số tháng lưu vết nợ quá hạn. Hết hạn chỉ ẩn khỏi danh sách vận hành bằng isDeleted, không xóa vật lý dữ liệu đánh giá. Để trống = lưu vĩnh viễn."
+                        rules={[
+                            {
+                                validator: (_, value) => {
+                                    if (value === '' || value == null) return Promise.resolve();
+                                    return Number(value) > 0
+                                        ? Promise.resolve()
+                                        : Promise.reject(new Error('Để trống để lưu vĩnh viễn hoặc nhập số tháng lớn hơn 0'));
+                                },
+                            },
+                        ]}
                     >
-                        <Input type="number" min={0} placeholder="VD: 12, 24, 60... (để trống = vĩnh viễn)" />
+                        <InputNumber
+                            style={{ width: '100%' }}
+                            min={1}
+                            precision={0}
+                            placeholder="VD: 12, 24, 60... (để trống = vĩnh viễn)"
+                        />
                     </Form.Item>
 
                     <Form.Item label="Mô tả policy" name="description">

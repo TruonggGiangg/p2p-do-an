@@ -1,8 +1,10 @@
 """
-AIScore training script for loan_data.csv.
+AIScore training script for credit default risk data.
 
 Goal:
-- Train a default-risk model from the Kaggle-style loan approval dataset.
+- Train a default-risk model from the Kaggle-style loan approval dataset first
+    so all mobile/admin form fields are used. LendingClub-style data is supported
+    only when explicitly selected or when loan_data.csv is unavailable.
 - Normalize input credit_score from the observed 390-850 scale to the P2P/CIC
   150-750 scale.
 - Export probabilities, 150-750 model scores, rule-based explanations, model
@@ -10,7 +12,7 @@ Goal:
 
 Colab quick start:
 1. Upload loan_data.csv and this file to the same Colab folder, or set
-   DATA_CSV_NEW_DATA=/path/to/loan_data.csv.
+    DATA_CSV_NEW_DATA=/path/to/your.csv.
 2. Run: python train_model_with_new_data.py
 3. On Colab, outputs are written to:
    /content/drive/MyDrive/Colab Notebooks/charts_final
@@ -18,15 +20,17 @@ Colab quick start:
    /content/drive/MyDrive/Colab Notebooks/reports_final
 
 Target note:
-- Default mode: loan_status=0 -> Default, loan_status=1 -> Non-Default.
+- Default mode: loan_status=1 -> Default, loan_status=0 -> Non-Default.
 - The model target is is_default: 1=Default, 0=Non-Default.
-- If your dataset already uses loan_status=1 as Default, set
-  TARGET_MODE_NEW_DATA=as_is.
+- If your dataset uses loan_status=0 as Default, set
+    TARGET_MODE_NEW_DATA=status_0_is_default.
 """
 
 from __future__ import annotations
 
 import json
+import importlib
+import importlib.util
 import os
 import subprocess
 import warnings
@@ -45,6 +49,7 @@ import seaborn as sns
 from sklearn.calibration import calibration_curve
 from sklearn.compose import ColumnTransformer
 from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -62,6 +67,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
@@ -76,7 +82,7 @@ sns.set_theme(style="whitegrid", font_scale=0.95)
 
 
 RANDOM_STATE = int(os.environ.get("RANDOM_STATE_NEW_DATA", "42"))
-TARGET_MODE = os.environ.get("TARGET_MODE_NEW_DATA", "status_0_is_default").lower()
+TARGET_MODE = os.environ.get("TARGET_MODE_NEW_DATA", "as_is").lower()
 THRESHOLD_METRIC = os.environ.get("THRESHOLD_METRIC_NEW_DATA", "f2").lower()
 MAX_SAMPLES_ENV = os.environ.get("MAX_SAMPLES_NEW_DATA", "").strip()
 MAX_SAMPLES = int(MAX_SAMPLES_ENV) if MAX_SAMPLES_ENV else None
@@ -123,9 +129,11 @@ LABEL_DEFAULT = "Default"
 LABEL_NON_DEFAULT = "Non-Default"
 TARGET_COLUMN = "loan_status"
 
-# Only these columns are required from loan_data.csv. Do not add old Lending
-# Club columns here unless loan_data.csv actually contains them.
-RAW_MODEL_INPUT_COLUMNS = [
+# These columns are required from loan_data.csv. Do not add old LendingClub
+# columns here unless loan_data.csv actually contains them. loan_term_months is
+# configured separately because the 45k canonical dataset does not contain a
+# real term/duration column.
+BASE_RAW_MODEL_INPUT_COLUMNS = [
     "person_age",
     "person_gender",
     "person_education",
@@ -140,18 +148,45 @@ RAW_MODEL_INPUT_COLUMNS = [
     "credit_score",
     "previous_loan_defaults_on_file",
 ]
+
+TERM_RAW_INPUT_COLUMNS = ["loan_term_months"]
+OPTIONAL_RUNTIME_INPUT_COLUMNS = ["loan_term_months", "loan_monthly_payment_ratio"]
+
+# auto: use loan_term_months only when the selected training source really has
+# it. required: fail if there is no real term column. off: never train on term.
+TERM_FEATURE_MODE = os.environ.get("TERM_FEATURE_MODE_NEW_DATA", "auto").strip().lower()
+TERM_ADJUSTMENT_ENABLED = os.environ.get("TERM_ADJUSTMENT_ENABLED_NEW_DATA", "1") == "1"
+TERM_ADJUSTMENT_WEIGHT = float(os.environ.get("TERM_ADJUSTMENT_WEIGHT_NEW_DATA", "0.40"))
+TERM_ADJUSTMENT_BASELINE_MONTHS = float(os.environ.get("TERM_ADJUSTMENT_BASELINE_MONTHS_NEW_DATA", "36"))
+MAX_TERM_SAMPLES_ENV = os.environ.get("MAX_TERM_SAMPLES_NEW_DATA", "120000").strip()
+MAX_TERM_SAMPLES = int(MAX_TERM_SAMPLES_ENV) if MAX_TERM_SAMPLES_ENV else None
+
+# These globals are finalized by configure_feature_contract() after the data is
+# loaded and canonicalized. Keeping them global preserves the rest of the script
+# and the exported metadata contract used by scorer_final.py.
+RAW_MODEL_INPUT_COLUMNS = BASE_RAW_MODEL_INPUT_COLUMNS.copy()
 REQUIRED_COLUMNS = RAW_MODEL_INPUT_COLUMNS + [TARGET_COLUMN]
 
-# Currency-invariant training mode (recommended for VN deployment).
-# When enabled, the model does NOT use absolute monetary features (loan_amnt,
-# person_income) which would otherwise bias the model toward USD scale and
-# auto-approve every VN loan when BE forwards VND/scale_calib values.
-# Only ratios + scale-invariant signals are kept. Set to "0" to fall back to
-# the legacy USD-style training.
-CURRENCY_INVARIANT_MODE = os.environ.get("CURRENCY_INVARIANT_MODE", "1") == "1"
+# Currency-invariant training mode.
+# Default is off so the app fields person_income and loan_amnt from the 45k
+# canonical dataset are actually trained. Turn it on only if the backend sends
+# unscaled local currency and you want ratios + scale-invariant signals only.
+CURRENCY_INVARIANT_MODE = os.environ.get("CURRENCY_INVARIANT_MODE", "0") == "1"
 
-if CURRENCY_INVARIANT_MODE:
-    RAW_NUMERIC_INPUT_COLUMNS = [
+TERM_AWARE_MODEL_FEATURES = [
+    "loan_term_months",
+    "loan_monthly_payment_ratio",
+]
+
+TERM_ADJUSTMENT_FEATURES = [
+    "loan_term_months",
+    "loan_monthly_payment_ratio",
+    "loan_percent_income",
+    "loan_int_rate",
+]
+
+BASE_RAW_NUMERIC_INPUT_COLUMNS = (
+    [
         "person_age",
         "person_emp_exp",
         "loan_int_rate",
@@ -159,8 +194,8 @@ if CURRENCY_INVARIANT_MODE:
         "cb_person_cred_hist_length",
         "credit_score",
     ]
-else:
-    RAW_NUMERIC_INPUT_COLUMNS = [
+    if CURRENCY_INVARIANT_MODE
+    else [
         "person_age",
         "person_income",
         "person_emp_exp",
@@ -170,6 +205,9 @@ else:
         "cb_person_cred_hist_length",
         "credit_score",
     ]
+)
+
+RAW_NUMERIC_INPUT_COLUMNS = BASE_RAW_NUMERIC_INPUT_COLUMNS.copy()
 
 # One necessary derived model feature: maps Yes/No to 1/0.
 DERIVED_MODEL_FEATURES = [
@@ -204,6 +242,8 @@ def target_mapping() -> dict[str, str]:
             "loan_status=0": LABEL_NON_DEFAULT,
             "is_default=1": LABEL_DEFAULT,
             "is_default=0": LABEL_NON_DEFAULT,
+            "LendingClub Charged Off/Default/Late": LABEL_DEFAULT,
+            "LendingClub Fully Paid": LABEL_NON_DEFAULT,
         }
     return {
         "loan_status=0": LABEL_DEFAULT,
@@ -214,21 +254,30 @@ def target_mapping() -> dict[str, str]:
 
 
 def feature_dictionary() -> pd.DataFrame:
+    def role(column: str, default_role: str) -> str:
+        if column in MODEL_FEATURES:
+            return default_role
+        if column in OPTIONAL_RUNTIME_INPUT_COLUMNS:
+            return "runtime_optional_not_trained"
+        return "raw_input"
+
     rows = [
-        ("person_age", "model_numeric", "Tuoi nguoi vay"),
-        ("person_income", "model_numeric", "Thu nhap nam"),
-        ("person_emp_exp", "model_numeric", "So nam kinh nghiem lam viec"),
-        ("loan_amnt", "model_numeric", "So tien vay"),
-        ("loan_int_rate", "model_numeric", "Lai suat khoan vay"),
-        ("loan_percent_income", "model_numeric", "Ti le tien vay / thu nhap nam"),
-        ("cb_person_cred_hist_length", "model_numeric", "Do dai lich su tin dung"),
-        ("credit_score", "model_numeric", "Diem tin dung da chuan hoa 150-750"),
-        ("previous_default_bin", "model_numeric", "1 neu tung quyt no, 0 neu chua"),
-        ("person_gender", "model_category", "Gioi tinh"),
-        ("person_education", "model_category", "Trinh do hoc van"),
-        ("person_home_ownership", "model_category", "Tinh trang nha o"),
-        ("loan_intent", "model_category", "Muc dich vay"),
-        ("loan_status", "target", "Default mode label: 0=Default, 1=Non-Default"),
+        ("person_age", role("person_age", "model_numeric"), "Tuoi nguoi vay"),
+        ("person_income", role("person_income", "model_numeric"), "Thu nhap nam"),
+        ("person_emp_exp", role("person_emp_exp", "model_numeric"), "So nam kinh nghiem lam viec"),
+        ("loan_amnt", role("loan_amnt", "model_numeric"), "So tien vay"),
+        ("loan_term_months", role("loan_term_months", "model_numeric"), "Ky han vay theo thang"),
+        ("loan_int_rate", role("loan_int_rate", "model_numeric"), "Lai suat khoan vay"),
+        ("loan_percent_income", role("loan_percent_income", "model_numeric"), "Ti le tien vay / thu nhap nam"),
+        ("loan_monthly_payment_ratio", role("loan_monthly_payment_ratio", "model_numeric"), "Tien goc phai tra moi thang / thu nhap thang"),
+        ("cb_person_cred_hist_length", role("cb_person_cred_hist_length", "model_numeric"), "Do dai lich su tin dung"),
+        ("credit_score", role("credit_score", "model_numeric"), "Diem tin dung da chuan hoa 150-750"),
+        ("previous_default_bin", role("previous_default_bin", "model_numeric"), "1 neu tung quyt no, 0 neu chua"),
+        ("person_gender", role("person_gender", "model_category"), "Gioi tinh"),
+        ("person_education", role("person_education", "model_category"), "Trinh do hoc van"),
+        ("person_home_ownership", role("person_home_ownership", "model_category"), "Tinh trang nha o"),
+        ("loan_intent", role("loan_intent", "model_category"), "Muc dich vay"),
+        ("loan_status", "target", "Default mode label: 1=Default, 0=Non-Default"),
         ("previous_loan_defaults_on_file", "raw_input", "Raw Yes/No column converted to previous_default_bin"),
         ("credit_score_raw", "audit_only", "Diem tin dung goc truoc khi chuan hoa"),
         ("source_row_id", "audit_only", "Ma dong de truy vet split ve CSV goc"),
@@ -236,6 +285,40 @@ def feature_dictionary() -> pd.DataFrame:
     for col in EXPLAIN_ONLY_FEATURES:
         rows.append((col, "explain_only", "Tinh them de giai thich rule, khong dua vao model"))
     return pd.DataFrame(rows, columns=["column", "role", "meaning"])
+
+
+def has_real_term_values(raw: pd.DataFrame) -> bool:
+    if "loan_term_months" not in raw.columns:
+        return False
+    term = pd.to_numeric(raw["loan_term_months"], errors="coerce")
+    return bool(term.between(1, 360).any())
+
+
+def configure_feature_contract(raw: pd.DataFrame) -> bool:
+    global RAW_MODEL_INPUT_COLUMNS, REQUIRED_COLUMNS, RAW_NUMERIC_INPUT_COLUMNS, NUMERIC_FEATURES, MODEL_FEATURES
+
+    term_mode = TERM_FEATURE_MODE if TERM_FEATURE_MODE in {"auto", "required", "off"} else "auto"
+    term_available = has_real_term_values(raw)
+    include_term = term_mode == "required" or (term_mode == "auto" and term_available)
+
+    if term_mode == "required" and not term_available:
+        raise ValueError(
+            "TERM_FEATURE_MODE_NEW_DATA=required but selected training data has no real loan_term_months/term values. "
+            "Use a CSV with a real term column or set TERM_FEATURE_MODE_NEW_DATA=auto/off."
+        )
+
+    RAW_MODEL_INPUT_COLUMNS = BASE_RAW_MODEL_INPUT_COLUMNS + (TERM_RAW_INPUT_COLUMNS if include_term else [])
+    REQUIRED_COLUMNS = RAW_MODEL_INPUT_COLUMNS + [TARGET_COLUMN]
+    RAW_NUMERIC_INPUT_COLUMNS = BASE_RAW_NUMERIC_INPUT_COLUMNS + (TERM_AWARE_MODEL_FEATURES if include_term else [])
+    NUMERIC_FEATURES = RAW_NUMERIC_INPUT_COLUMNS + DERIVED_MODEL_FEATURES
+    MODEL_FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
+
+    print(
+        "[features] "
+        f"currency_invariant={int(CURRENCY_INVARIANT_MODE)} | "
+        f"term_mode={term_mode} | term_available={term_available} | term_in_model={include_term}"
+    )
+    return include_term
 
 
 # =============================================================================
@@ -265,7 +348,7 @@ def maybe_mount_drive() -> None:
     if not is_colab():
         return
     try:
-        from google.colab import drive
+        drive = importlib.import_module("google.colab.drive")
     except Exception:
         return
 
@@ -311,24 +394,257 @@ def find_data_csv() -> Path:
     candidates.extend(
         [
             BASE_DIR / "loan_data.csv",
+            BASE_DIR / "financial_loan.csv",
+            BASE_DIR / "accepted_2007_to_2018Q4.csv",
             Path.cwd() / "loan_data.csv",
+            Path.cwd() / "financial_loan.csv",
+            Path.cwd() / "accepted_2007_to_2018Q4.csv",
             Path("/content/loan_data.csv"),
+            Path("/content/financial_loan.csv"),
+            Path("/content/accepted_2007_to_2018Q4.csv"),
             Path("/content/drive/MyDrive/Colab Notebooks/loan_data.csv"),
+            Path("/content/drive/MyDrive/Colab Notebooks/financial_loan.csv"),
+            Path("/content/drive/MyDrive/Colab Notebooks/accepted_2007_to_2018Q4.csv"),
             Path("/content/drive/MyDrive/loan_data.csv"),
+            Path("/content/drive/MyDrive/financial_loan.csv"),
+            Path("/content/drive/MyDrive/accepted_2007_to_2018Q4.csv"),
         ]
     )
     for candidate in candidates:
         if candidate.exists():
             return candidate
     raise FileNotFoundError(
-        "Cannot find loan_data.csv. Put it next to this script or set DATA_CSV_NEW_DATA."
+        "Cannot find loan_data.csv, financial_loan.csv, or accepted_2007_to_2018Q4.csv. "
+        "Put one next to this script or set DATA_CSV_NEW_DATA."
     )
+
+
+def find_term_data_csv(primary_data_csv: Path) -> Path | None:
+    env_path = os.environ.get("TERM_DATA_CSV_NEW_DATA", "").strip()
+    candidates: list[Path] = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.extend(
+        [
+            primary_data_csv,
+            BASE_DIR / "financial_loan.csv",
+            BASE_DIR / "accepted_2007_to_2018Q4.csv",
+            Path.cwd() / "financial_loan.csv",
+            Path.cwd() / "accepted_2007_to_2018Q4.csv",
+            Path("/content/financial_loan.csv"),
+            Path("/content/accepted_2007_to_2018Q4.csv"),
+            Path("/content/drive/MyDrive/Colab Notebooks/financial_loan.csv"),
+            Path("/content/drive/MyDrive/Colab Notebooks/accepted_2007_to_2018Q4.csv"),
+            Path("/content/drive/MyDrive/financial_loan.csv"),
+            Path("/content/drive/MyDrive/accepted_2007_to_2018Q4.csv"),
+        ]
+    )
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            resolved = candidate
+        if resolved in seen or not candidate.exists():
+            continue
+        seen.add(resolved)
+        try:
+            header = pd.read_csv(candidate, nrows=0)
+        except Exception:
+            continue
+        if any(col in set(header.columns) for col in TERM_SOURCE_COLUMNS):
+            return candidate
+    return None
 
 
 def save_json(path: Path, payload: dict[str, Any] | list[Any]) -> None:
     ensure_parent(path)
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
+# =============================================================================
+# Dataset schema normalization
+# =============================================================================
+
+
+LENDINGCLUB_DEFAULT_STATUSES = {
+    "charged off",
+    "default",
+    "late (31-120 days)",
+    "late (16-30 days)",
+    "does not meet the credit policy. status:charged off",
+}
+
+LENDINGCLUB_NON_DEFAULT_STATUSES = {
+    "fully paid",
+    "does not meet the credit policy. status:fully paid",
+}
+
+TERM_SOURCE_COLUMNS = [
+    "loan_term_months",
+    "periodMonth",
+    "loanTermMonths",
+    "term_months",
+    "term",
+    "duration_months",
+    "tenor_months",
+]
+
+LENDINGCLUB_USECOLS = [
+    "loan_status",
+    "term",
+    "loan_amnt",
+    "loan_amount",
+    "annual_inc",
+    "annual_income",
+    "int_rate",
+    "installment",
+    "home_ownership",
+    "purpose",
+    "emp_length",
+    "fico_range_low",
+    "fico_range_high",
+    "earliest_cr_line",
+    "issue_d",
+    "delinq_2yrs",
+    "pub_rec",
+]
+
+
+def read_training_csv(data_csv: Path) -> pd.DataFrame:
+    header = pd.read_csv(data_csv, nrows=0)
+    columns = [str(c).strip() for c in header.columns]
+    column_set = set(columns)
+    lendingclub_like = "term" in column_set and (
+        {"annual_inc", "loan_amnt"}.issubset(column_set)
+        or {"annual_income", "loan_amount"}.issubset(column_set)
+    )
+    usecols = [c for c in LENDINGCLUB_USECOLS if c in column_set] if lendingclub_like else None
+    raw = pd.read_csv(data_csv, usecols=usecols, low_memory=False).reset_index(drop=True)
+    raw.columns = [str(c).strip() for c in raw.columns]
+    return raw
+
+
+def parse_term_months(series: pd.Series) -> pd.Series:
+    extracted = series.astype(str).str.extract(r"(\d+(?:\.\d+)?)", expand=False)
+    return pd.to_numeric(extracted, errors="coerce")
+
+
+def parse_percent(series: pd.Series) -> pd.Series:
+    text = series.astype(str).str.replace("%", "", regex=False).str.strip()
+    value = pd.to_numeric(text, errors="coerce")
+    return value.where(value > 1.0, value * 100.0)
+
+
+def parse_emp_length_years(series: pd.Series) -> pd.Series:
+    text = series.astype(str).str.lower().str.strip()
+    value = pd.to_numeric(text.str.extract(r"(\d+)", expand=False), errors="coerce")
+    value = value.where(~text.str.contains("<", regex=False), 0)
+    value = value.where(~text.str.contains("10+", regex=False), 10)
+    return value.fillna(0).clip(0, 60)
+
+
+def map_loan_intent(value: Any) -> str:
+    text = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if text in {"debt_consolidation", "credit_card"}:
+        return "DEBTCONSOLIDATION"
+    if text in {"educational", "education"}:
+        return "EDUCATION"
+    if text in {"medical"}:
+        return "MEDICAL"
+    if text in {"small_business", "business", "venture"}:
+        return "VENTURE"
+    if text in {"home_improvement", "house"}:
+        return "HOMEIMPROVEMENT"
+    return "PERSONAL"
+
+
+def map_lendingclub_target(status: pd.Series) -> pd.Series:
+    text = status.astype(str).str.strip().str.lower()
+    mapped = pd.Series(np.nan, index=status.index, dtype="float")
+    mapped.loc[text.isin(LENDINGCLUB_DEFAULT_STATUSES)] = 1
+    mapped.loc[text.isin(LENDINGCLUB_NON_DEFAULT_STATUSES)] = 0
+    return mapped
+
+
+def credit_history_years(raw: pd.DataFrame) -> pd.Series:
+    if {"issue_d", "earliest_cr_line"}.issubset(raw.columns):
+        issue = pd.to_datetime(raw["issue_d"], errors="coerce")
+        earliest = pd.to_datetime(raw["earliest_cr_line"], errors="coerce")
+        years = (issue - earliest).dt.days / 365.25
+        return years.clip(0, 50).fillna(3)
+    return pd.Series(3.0, index=raw.index)
+
+
+def column_or_default(raw: pd.DataFrame, column: str, default: Any) -> pd.Series:
+    if column in raw.columns:
+        return raw[column]
+    return pd.Series(default, index=raw.index)
+
+
+def canonicalize_training_schema(raw: pd.DataFrame) -> tuple[pd.DataFrame, str, dict[str, Any]]:
+    raw = raw.copy()
+    raw.columns = [str(c).strip() for c in raw.columns]
+    column_set = set(raw.columns)
+
+    term_source = next((col for col in TERM_SOURCE_COLUMNS if col in column_set), None)
+    if term_source and term_source != "loan_term_months":
+        raw["loan_term_months"] = parse_term_months(raw[term_source])
+
+    lendingclub_like = "term" in column_set and (
+        {"annual_inc", "loan_amnt"}.issubset(column_set)
+        or {"annual_income", "loan_amount"}.issubset(column_set)
+    )
+    if not lendingclub_like:
+        return raw, "loan_data", {
+            "note": "Input already uses the canonical loan_data schema.",
+        }
+
+    loan_amount_col = "loan_amnt" if "loan_amnt" in raw.columns else "loan_amount"
+    income_col = "annual_inc" if "annual_inc" in raw.columns else "annual_income"
+    status_target = map_lendingclub_target(raw["loan_status"])
+    keep_mask = status_target.notna()
+    dropped = int((~keep_mask).sum())
+    source = raw.loc[keep_mask].reset_index(drop=True).copy()
+    status_target = status_target.loc[keep_mask].astype(np.int8).reset_index(drop=True)
+
+    loan_amount = pd.to_numeric(source[loan_amount_col], errors="coerce")
+    annual_income = pd.to_numeric(source[income_col], errors="coerce")
+    term_months = parse_term_months(source["term"])
+    fico_low = pd.to_numeric(column_or_default(source, "fico_range_low", 600), errors="coerce")
+    fico_high = pd.to_numeric(column_or_default(source, "fico_range_high", fico_low), errors="coerce")
+    credit_score = pd.concat([fico_low, fico_high], axis=1).mean(axis=1)
+
+    out = pd.DataFrame(index=source.index)
+    out["person_age"] = 35.0
+    out["person_gender"] = "UNKNOWN"
+    out["person_education"] = "UNKNOWN"
+    out["person_income"] = annual_income
+    out["person_emp_exp"] = parse_emp_length_years(column_or_default(source, "emp_length", ""))
+    out["person_home_ownership"] = column_or_default(source, "home_ownership", "OTHER").astype(str).str.upper().replace({"ANY": "OTHER", "NONE": "OTHER"})
+    out["loan_amnt"] = loan_amount
+    out["loan_term_months"] = term_months
+    out["loan_intent"] = column_or_default(source, "purpose", "PERSONAL").map(map_loan_intent)
+    out["loan_int_rate"] = parse_percent(column_or_default(source, "int_rate", 12.0))
+    out["loan_percent_income"] = (loan_amount / annual_income.replace(0, np.nan)).clip(0, 5)
+    out["cb_person_cred_hist_length"] = credit_history_years(source)
+    out["credit_score"] = credit_score
+    previous_default = (
+        pd.to_numeric(column_or_default(source, "delinq_2yrs", 0), errors="coerce").fillna(0).gt(0)
+        | pd.to_numeric(column_or_default(source, "pub_rec", 0), errors="coerce").fillna(0).gt(0)
+    )
+    out["previous_loan_defaults_on_file"] = np.where(previous_default, "Yes", "No")
+    out[TARGET_COLUMN] = status_target
+    out["source_loan_status_raw"] = source["loan_status"].astype(str)
+
+    return out, "lendingclub", {
+        "note": "Mapped LendingClub-style data to the canonical AIScore schema with real term months.",
+        "rows_dropped_unresolved_status": dropped,
+        "default_statuses": sorted(LENDINGCLUB_DEFAULT_STATUSES),
+        "non_default_statuses": sorted(LENDINGCLUB_NON_DEFAULT_STATUSES),
+    }
 
 
 # =============================================================================
@@ -360,7 +676,18 @@ def determine_credit_score_source_range(df: pd.DataFrame) -> tuple[float, float]
 
 
 def make_target(df: pd.DataFrame) -> pd.Series:
-    raw_status = pd.to_numeric(df[TARGET_COLUMN], errors="coerce").fillna(0).astype(int)
+    raw_numeric = pd.to_numeric(df[TARGET_COLUMN], errors="coerce")
+    if raw_numeric.notna().all():
+        raw_status = raw_numeric.fillna(0).astype(int)
+    else:
+        mapped = map_lendingclub_target(df[TARGET_COLUMN])
+        if mapped.isna().any():
+            unsupported = sorted(df.loc[mapped.isna(), TARGET_COLUMN].astype(str).unique().tolist())[:12]
+            raise ValueError(
+                "Unsupported non-numeric loan_status values. Filter unresolved statuses first. "
+                f"Examples: {unsupported}"
+            )
+        raw_status = mapped.astype(int)
     if TARGET_MODE in {"as_is", "loan_status_is_default", "status_1_is_default"}:
         return raw_status.clip(0, 1).astype(np.int8)
     if TARGET_MODE in {"status_0_is_default", "invert"}:
@@ -387,12 +714,12 @@ def build_feature_frame(
     required = REQUIRED_COLUMNS if include_target else [c for c in REQUIRED_COLUMNS if c != TARGET_COLUMN]
     missing = sorted(set(required) - set(df.columns))
     if missing:
-        raise ValueError(f"Missing columns in loan_data.csv: {missing}")
+        raise ValueError(f"Missing columns in training data: {missing}")
 
     if "source_row_id" not in df.columns:
         df["source_row_id"] = np.arange(len(df))
 
-    for col in [
+    numeric_source_columns = [
         "person_age",
         "person_income",
         "person_emp_exp",
@@ -401,8 +728,26 @@ def build_feature_frame(
         "loan_percent_income",
         "cb_person_cred_hist_length",
         "credit_score",
-    ]:
+    ]
+    if "loan_term_months" in RAW_MODEL_INPUT_COLUMNS:
+        numeric_source_columns.append("loan_term_months")
+
+    for col in numeric_source_columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    annual_income = df["person_income"].replace(0, np.nan)
+    if "loan_term_months" in MODEL_FEATURES:
+        if df["loan_term_months"].isna().all():
+            raise ValueError(
+                "loan_term_months is configured as a model feature, but selected training data has no real term values."
+            )
+        df["loan_term_months"] = df["loan_term_months"].clip(1, 360)
+        monthly_income = annual_income / 12.0
+        monthly_principal = df["loan_amnt"] / df["loan_term_months"].replace(0, np.nan)
+        df["loan_monthly_payment_ratio"] = (monthly_principal / monthly_income).replace([np.inf, -np.inf], np.nan).clip(0, 5)
+
+    if df["loan_percent_income"].isna().any():
+        df["loan_percent_income"] = (df["loan_amnt"] / annual_income).clip(0, 5)
 
     df["credit_score_raw"] = df["credit_score"]
     df["credit_score"] = normalize_credit_score(
@@ -427,6 +772,123 @@ def build_feature_frame(
         df["is_default"] = make_target(df)
         return df[MODEL_FEATURES + ["credit_score_raw", "source_row_id", "is_default"]].copy()
     return df[MODEL_FEATURES + ["credit_score_raw", "source_row_id"]].copy()
+
+
+@dataclass
+class TermAdjustmentArtifacts:
+    model: Pipeline
+    metadata: dict[str, Any]
+
+
+def build_term_adjustment_frame(raw: pd.DataFrame) -> pd.DataFrame:
+    df = raw.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    required = [
+        "person_income",
+        "loan_amnt",
+        "loan_term_months",
+        "loan_int_rate",
+        "loan_percent_income",
+        TARGET_COLUMN,
+    ]
+    missing = sorted(set(required) - set(df.columns))
+    if missing:
+        raise ValueError(f"Term adjustment data missing columns: {missing}")
+
+    for col in ["person_income", "loan_amnt", "loan_term_months", "loan_int_rate", "loan_percent_income"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["loan_term_months"] = df["loan_term_months"].clip(1, 360)
+    annual_income = df["person_income"].replace(0, np.nan)
+    if df["loan_percent_income"].isna().any():
+        df["loan_percent_income"] = (df["loan_amnt"] / annual_income).clip(0, 5)
+    monthly_income = annual_income / 12.0
+    monthly_principal = df["loan_amnt"] / df["loan_term_months"].replace(0, np.nan)
+    df["loan_monthly_payment_ratio"] = (monthly_principal / monthly_income).replace([np.inf, -np.inf], np.nan).clip(0, 5)
+
+    for col in TERM_ADJUSTMENT_FEATURES:
+        median = df[col].median()
+        df[col] = pd.to_numeric(df[col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(median if pd.notna(median) else 0)
+
+    df["is_default"] = make_target(df)
+    return df[TERM_ADJUSTMENT_FEATURES + ["is_default"]].dropna().copy()
+
+
+def train_term_adjuster(primary_data_csv: Path) -> TermAdjustmentArtifacts | None:
+    if not TERM_ADJUSTMENT_ENABLED:
+        print("[term-adjust] disabled by TERM_ADJUSTMENT_ENABLED_NEW_DATA=0")
+        return None
+
+    term_data_csv = find_term_data_csv(primary_data_csv)
+    if term_data_csv is None:
+        print("[term-adjust] skipped: no CSV with a real term column found")
+        return None
+
+    raw_source = read_training_csv(term_data_csv)
+    raw_term, source_schema, source_schema_info = canonicalize_training_schema(raw_source)
+    if not has_real_term_values(raw_term):
+        print(f"[term-adjust] skipped: {term_data_csv} has no usable term values")
+        return None
+
+    if MAX_TERM_SAMPLES is not None and MAX_TERM_SAMPLES < len(raw_term):
+        raw_term, _ = train_test_split(
+            raw_term,
+            train_size=MAX_TERM_SAMPLES,
+            random_state=RANDOM_STATE,
+            stratify=make_target(raw_term),
+        )
+        raw_term = raw_term.reset_index(drop=True)
+
+    term_df = build_term_adjustment_frame(raw_term)
+    if term_df["is_default"].nunique() < 2:
+        print("[term-adjust] skipped: term data does not contain both target classes")
+        return None
+
+    train_df, test_df = train_test_split(
+        term_df,
+        test_size=0.20,
+        random_state=RANDOM_STATE,
+        stratify=term_df["is_default"],
+    )
+    X_train = train_df[TERM_ADJUSTMENT_FEATURES]
+    y_train = train_df["is_default"].to_numpy(dtype=np.int8)
+    X_test = test_df[TERM_ADJUSTMENT_FEATURES]
+    y_test = test_df["is_default"].to_numpy(dtype=np.int8)
+
+    model = Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            (
+                "classifier",
+                LogisticRegression(
+                    max_iter=1000,
+                    class_weight="balanced",
+                    random_state=RANDOM_STATE,
+                ),
+            ),
+        ]
+    )
+    model.fit(X_train, y_train)
+    proba = model.predict_proba(X_test)[:, 1]
+    metrics = classification_metrics(y_test, proba, 0.50)
+    metadata = {
+        "enabled": True,
+        "data_csv": str(term_data_csv),
+        "source_schema": source_schema,
+        "source_schema_info": source_schema_info,
+        "rows": int(len(term_df)),
+        "features": TERM_ADJUSTMENT_FEATURES,
+        "baseline_months": TERM_ADJUSTMENT_BASELINE_MONTHS,
+        "weight": TERM_ADJUSTMENT_WEIGHT,
+        "payment_burden_guard": "If the requested term raises loan_monthly_payment_ratio above the 36-month baseline, runtime will not allow the term delta to reduce PD.",
+        "metrics": metrics,
+        "note": "Auxiliary real-term model. Runtime applies the logit delta between requested term burden and baseline term burden to the 45k base PD, with a monotonic payment-burden guard for very short terms.",
+    }
+    print(
+        "[term-adjust] trained "
+        f"source={term_data_csv.name} rows={len(term_df):,} "
+        f"auc={metrics['roc_auc']:.4f} accuracy={metrics['accuracy']:.4f}"
+    )
+    return TermAdjustmentArtifacts(model=model, metadata=metadata)
 
 
 # =============================================================================
@@ -648,9 +1110,8 @@ def resolve_xgb_device() -> str:
     if XGB_DEVICE_REQUEST and XGB_DEVICE_REQUEST != "auto":
         return XGB_DEVICE_REQUEST
     try:
-        import torch
-
-        if torch.cuda.is_available():
+        torch_spec = importlib.util.find_spec("torch")
+        if torch_spec is not None and importlib.import_module("torch").cuda.is_available():
             return "cuda"
     except Exception:
         pass
@@ -726,10 +1187,12 @@ def find_best_threshold(
         recall = recall_score(y_true, pred, zero_division=0)
         f1 = f1_score(y_true, pred, zero_division=0)
         f2 = fbeta_score(y_true, pred, beta=2, zero_division=0)
+        accuracy = accuracy_score(y_true, pred)
         bal_acc = balanced_accuracy_score(y_true, pred)
         rows.append(
             {
                 "threshold": threshold,
+                "accuracy": accuracy,
                 "precision": precision,
                 "recall": recall,
                 "f1": f1,
@@ -1402,20 +1865,24 @@ def write_model_documentation(metadata: dict[str, Any], model_metrics: pd.DataFr
         if (CHART_DIR / name).exists() or not SKIP_CHARTS
     )
 
+    loan_status_mapping = ", ".join(
+        f"`{key} -> {value}`" for key, value in metadata["target_mapping"].items() if key.startswith("loan_status=")
+    )
+
     doc = f"""# AI Model Documentation - Credit Default Risk Scoring
 
 ## 1. Objective
 
-This training pipeline builds a banking-style credit default risk model for the current `loan_data.csv` dataset. The model estimates Probability of Default (PD), converts PD to a 150-750 risk score, and exports rule-based explanations for why an application receives its score.
+This training pipeline builds a banking-style credit default risk model for `{metadata["data_csv"]}` using the `{metadata.get("source_schema", "canonical")}` schema. The model estimates Probability of Default (PD), converts PD to a 150-750 risk score, and exports rule-based explanations for why an application receives its score.
 
 ## 2. Target Definition
 
 - Positive class: `Default`
 - Negative class: `Non-Default`
-- Default mapping used in this run: `loan_status=0 -> Default`, `loan_status=1 -> Non-Default`
+- Default mapping used in this run: {loan_status_mapping}
 - Internal target column: `is_default`, where `1=Default` and `0=Non-Default`
 
-This mapping follows the requested interpretation for this project. If another dataset stores `loan_status=1` as default, run with `TARGET_MODE_NEW_DATA=as_is`.
+This mapping follows `TARGET_MODE_NEW_DATA={metadata["target_mode"]}` for this training run.
 
 ## 3. Data Split
 
@@ -1428,7 +1895,7 @@ The validation set is used for early stopping, probability calibration, and thre
 
 ## 4. Features Used
 
-Only fields available in the current `loan_data.csv` are used for model training.
+Only canonical AIScore fields are used for model training. For LendingClub-style input, source columns such as `term`, `annual_inc`, `loan_amnt`, FICO range, and credit-history dates are mapped into this canonical schema before training.
 
 Numeric model features:
 
@@ -1442,7 +1909,7 @@ Derived model feature:
 
 - `previous_default_bin`: converts `previous_loan_defaults_on_file` from Yes/No to 1/0.
 
-No old Lending Club columns are used in this pipeline.
+`loan_term_months` and `loan_monthly_payment_ratio` are active model features, so repayment term affects PD both directly and through monthly affordability.
 
 ## 5. Credit Score Normalization
 
@@ -1555,13 +2022,20 @@ class TrainingArtifacts:
 
 def train_pipeline() -> TrainingArtifacts:
     data_csv = find_data_csv()
-    raw = pd.read_csv(data_csv).reset_index(drop=True)
+    raw_source = read_training_csv(data_csv)
+    raw, source_schema, source_schema_info = canonicalize_training_schema(raw_source)
     raw["source_row_id"] = np.arange(len(raw))
-    print(f"[data] Loaded {data_csv} shape={raw.shape}")
+    print(f"[data] Loaded {data_csv} source_shape={raw_source.shape} canonical_shape={raw.shape} schema={source_schema}")
+    if source_schema_info.get("rows_dropped_unresolved_status"):
+        print(f"[data] Dropped unresolved/open-status rows: {source_schema_info['rows_dropped_unresolved_status']:,}")
+    term_in_model = configure_feature_contract(raw)
 
     missing = sorted(set(REQUIRED_COLUMNS) - set(raw.columns))
     if missing:
-        raise ValueError(f"loan_data.csv is missing required columns: {missing}")
+        raise ValueError(
+            f"Training data is missing required canonical columns: {missing}. "
+            "Use loan_data.csv with the AIScore canonical schema or set DATA_CSV_NEW_DATA to a compatible CSV."
+        )
 
     if MAX_SAMPLES is not None and MAX_SAMPLES < len(raw):
         raw, _ = train_test_split(
@@ -1646,6 +2120,9 @@ def train_pipeline() -> TrainingArtifacts:
     test_export = make_test_export(raw_test, test, y_test, proba_test, threshold)
     write_csv(test_export, REPORT_DIR / "test_predictions.csv")
 
+    term_adjuster = None if term_in_model else train_term_adjuster(data_csv)
+    term_feature_trained = bool(term_in_model or term_adjuster is not None)
+
     sample_scored = score_applications(
         raw.sample(min(12, len(raw)), random_state=RANDOM_STATE).reset_index(drop=True),
         preprocessor,
@@ -1686,13 +2163,15 @@ def train_pipeline() -> TrainingArtifacts:
     metadata = {
         "version": "new_data_v1",
         "data_csv": str(data_csv),
+        "source_schema": source_schema,
+        "source_schema_info": source_schema_info,
         "rows": int(len(raw)),
         "target": "is_default",
         "target_mode": TARGET_MODE,
         "positive_class": LABEL_DEFAULT,
         "negative_class": LABEL_NON_DEFAULT,
         "target_mapping": target_mapping(),
-        "target_note": "Default mode: loan_status=0 -> Default, loan_status=1 -> Non-Default. If your data uses loan_status=1 as Default, set TARGET_MODE_NEW_DATA=as_is.",
+        "target_note": "Default mode: loan_status=1 -> Default, loan_status=0 -> Non-Default. If your data uses loan_status=0 as Default, set TARGET_MODE_NEW_DATA=status_0_is_default.",
         "credit_score_normalization": {
             "source_column": "credit_score",
             "source_min": credit_min,
@@ -1703,6 +2182,20 @@ def train_pipeline() -> TrainingArtifacts:
         },
         "features": MODEL_FEATURES,
         "required_raw_input_columns": RAW_MODEL_INPUT_COLUMNS,
+        "optional_runtime_input_columns": OPTIONAL_RUNTIME_INPUT_COLUMNS,
+        "term_feature_mode": TERM_FEATURE_MODE,
+        "term_feature_trained": term_feature_trained,
+        "term_feature_note": (
+            "loan_term_months and loan_monthly_payment_ratio are trained because the selected training data contains real term values."
+            if term_in_model
+            else (
+                "Base XGBoost model is trained on all 45k loan_data.csv fields. loan_term_months is trained through term_adjuster.joblib from a real-term auxiliary dataset and applied as a PD logit adjustment at runtime."
+                if term_adjuster is not None
+                else "loan_data.csv has no real loan term column, so term is accepted/resolved at runtime for audit but is not used by this model artifact. Add a real loan_term_months column or provide TERM_DATA_CSV_NEW_DATA to train term adjustment."
+            )
+        ),
+        "term_adjustment": term_adjuster.metadata if term_adjuster is not None else None,
+        "term_adjustment_model_features": TERM_ADJUSTMENT_FEATURES if term_adjuster is not None else [],
         "raw_numeric_input_columns": RAW_NUMERIC_INPUT_COLUMNS,
         "derived_model_features": DERIVED_MODEL_FEATURES,
         "numeric_features": NUMERIC_FEATURES,
@@ -1744,6 +2237,7 @@ def train_pipeline() -> TrainingArtifacts:
             "xgb_device_request": XGB_DEVICE_REQUEST,
             "xgb_resolved_device": resolve_xgb_device(),
             "permutation_importance_enabled": DO_PERMUTATION_IMPORTANCE,
+            "currency_invariant_mode": CURRENCY_INVARIANT_MODE,
         },
     }
 
@@ -1751,6 +2245,11 @@ def train_pipeline() -> TrainingArtifacts:
     joblib.dump(preprocessor, MODEL_DIR / "preprocessor.joblib")
     joblib.dump(calibrator, MODEL_DIR / "isotonic_calibrator.joblib")
     joblib.dump(xgb_model, MODEL_DIR / "xgb_pd_model.joblib")
+    term_adjuster_path = MODEL_DIR / "term_adjuster.joblib"
+    if term_adjuster is not None:
+        joblib.dump(term_adjuster.model, term_adjuster_path)
+    elif term_adjuster_path.exists():
+        term_adjuster_path.unlink()
     xgb_model.save_model(str(MODEL_DIR / "xgb_pd_model.json"))
     save_json(MODEL_DIR / "metadata.json", metadata)
     save_json(
@@ -1759,7 +2258,9 @@ def train_pipeline() -> TrainingArtifacts:
             "target": TARGET_COLUMN,
             "target_mapping": target_mapping(),
             "required_raw_input_columns": RAW_MODEL_INPUT_COLUMNS,
+            "optional_runtime_input_columns": OPTIONAL_RUNTIME_INPUT_COLUMNS,
             "model_features": MODEL_FEATURES,
+            "term_adjustment_model_features": TERM_ADJUSTMENT_FEATURES if term_adjuster is not None else [],
             "explain_only_features": EXPLAIN_ONLY_FEATURES,
             "processed_feature_names": feature_names,
         },

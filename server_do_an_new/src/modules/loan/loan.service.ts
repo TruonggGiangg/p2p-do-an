@@ -627,8 +627,8 @@ export class LoanService {
 
     // ══════════════════════════════════════════════════════════════════════
     // AIScore PD Integration + Loan Evaluation Config (Rule Engine)
-    // Luồng: CIC Score + Loan Data → AI Service → ai_risk_score
-    //        ai_risk_score là thang 150-750 (cao = tốt), map về evaluationScore 0-100.
+    // Luồng: CIC Score + Loan Data → AI Service → PD
+    //        riskProbabilityScore = round(PD * 100), evaluationScore = 100 - riskProbabilityScore.
     //        evaluationScore → Credit Grade mapping → auto approve/reject/review
     // ══════════════════════════════════════════════════════════════════════
     let aiScoreResult: any = null;
@@ -694,7 +694,7 @@ export class LoanService {
         const personIncomeUsdAnnual = Math.max(1, Math.round((personIncome * 12) / vndPerUsd));
         const loanAmntUsd = Math.max(1, Math.round(dto.capital / vndPerUsd));
 
-        // 3. Gọi AI Score service với 13 features
+        // 3. Gọi AI Score service với term-aware features
         const aiPayload: Record<string, any> = {
           person_age: personAge,
           person_gender: personGender,
@@ -703,6 +703,7 @@ export class LoanService {
           person_emp_exp: personEmpExp,
           person_home_ownership: dto.personHomeOwnership || kycData?.homeOwnership || 'RENT',
           loan_amnt: loanAmntUsd,
+          loan_term_months: dto.periodMonth,
           loan_intent: loanIntent,
           loan_int_rate: loanIntRate,
           loan_percent_income: loanPercentIncome,
@@ -717,7 +718,8 @@ export class LoanService {
         this.logger.log(
           `[createApplication] VND→USD scaling: vndPerUsd=${vndPerUsd} (${exchangeRateSource}), ` +
             `incomeMonthlyVND=${personIncome}, incomeAnnualUSD=${personIncomeUsdAnnual}, ` +
-            `loanVND=${dto.capital}, loanUSD=${loanAmntUsd}, pctIncome=${loanPercentIncome.toFixed(3)}`,
+            `loanVND=${dto.capital}, loanUSD=${loanAmntUsd}, termMonths=${dto.periodMonth}, ` +
+            `pctIncome=${loanPercentIncome.toFixed(3)}`,
         );
 
         const { default: axios } = await import('axios');
@@ -732,159 +734,114 @@ export class LoanService {
         );
 
         const aiRiskScore = scoreResponse.data?.ai_risk_score;
-        const defaultProbability = scoreResponse.data?.default_probability;
-
-        if (aiRiskScore != null) {
-          // 3. ai_risk_score thực ra là điểm tín dụng dải 150-750 (cao = tốt). Map về 0-100:
-          //    150 → 0  (rủi ro rất cao), 750 → 100 (rủi ro rất thấp).
-          const SCORE_MIN = 150;
-          const SCORE_MAX = 750;
-
-          // ──────────────────────────────────────────────────────────────────
-          // BE-side safety floor (defense-in-depth):
-          // Nếu AI service trả PD quá thấp (≤0.05) cho hồ sơ rõ ràng yếu —
-          // CIC nội bộ thấp / loan vượt khả năng trả / có default trước —
-          // thì BỎ QUA AI và áp PD floor theo rule cứng. Giúp tránh trường hợp
-          // model bias do training data lệch hoặc service cũ chưa restart.
-          let effectivePd = Number(defaultProbability) || 0;
-          let effectiveAiScore = Number(aiRiskScore);
-          const ruleFloors: Array<{ pd: number; reason: string }> = [];
-
-          if (cicScore <= 300) ruleFloors.push({ pd: 0.70, reason: `CIC ${cicScore} ≤ 300` });
-          else if (cicScore < 500) ruleFloors.push({ pd: 0.45, reason: `CIC ${cicScore} < 500` });
-          else if (cicScore < 600) ruleFloors.push({ pd: 0.25, reason: `CIC ${cicScore} < 600` });
-
-          if (previousDefaults === 'Yes') ruleFloors.push({ pd: 0.75, reason: 'Có lịch sử default trước' });
-          if (loanPercentIncome >= 1.0) ruleFloors.push({ pd: 0.85, reason: 'Khoản vay ≥ 100% thu nhập năm' });
-          else if (loanPercentIncome >= 0.5) ruleFloors.push({ pd: 0.55, reason: 'Khoản vay ≥ 50% thu nhập năm' });
-          else if (loanPercentIncome >= 0.35) ruleFloors.push({ pd: 0.40, reason: 'Khoản vay ≥ 35% thu nhập năm' });
-
-          // Income calibrated USD-equivalent (sau quy đổi VND/scale)
-          if (personIncomeUsdAnnual <= 1) ruleFloors.push({ pd: 0.85, reason: 'Thu nhập trống' });
-          else if (personIncomeUsdAnnual < 36000)
-            ruleFloors.push({ pd: 0.55, reason: `Thu nhập năm ${personIncomeUsdAnnual} < 36k (calibrated)` });
-          else if (personIncomeUsdAnnual < 60000)
-            ruleFloors.push({ pd: 0.30, reason: `Thu nhập năm ${personIncomeUsdAnnual} < 60k (calibrated)` });
-
-          if (ruleFloors.length > 0) {
-            const maxFloor = Math.max(...ruleFloors.map(f => f.pd));
-            if (maxFloor > effectivePd) {
-              const oldPd = effectivePd;
-              const oldScore = effectiveAiScore;
-              effectivePd = maxFloor;
-              effectiveAiScore = Math.round(SCORE_MAX - (SCORE_MAX - SCORE_MIN) * effectivePd);
-              this.logger.warn(
-                `[createApplication] BE-safety-floor APPLIED: AI PD=${oldPd.toFixed(4)} (score=${oldScore}) ` +
-                  `→ PD=${effectivePd.toFixed(4)} (score=${effectiveAiScore}). Reasons: ${ruleFloors
-                    .map(f => `${f.reason}→${f.pd}`)
-                    .join('; ')}`,
-              );
-            }
-          }
-
-          const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, effectiveAiScore));
-          evaluationScore = Math.round(((clamped - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
-
-          // 4. Lấy cấu hình đánh giá (version mới nhất)
-          const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
-
-          // 5. Tìm hạng tín dụng phù hợp
-          const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
-          matchedGrade = sortedGrades.find(g => evaluationScore! >= g.minScore && evaluationScore! <= g.maxScore);
-          const gradeMaxLoanAmount = Number(matchedGrade?.maxLoanAmount ?? 0);
-          const withinGradeLimit = !gradeMaxLoanAmount || dto.capital <= gradeMaxLoanAmount;
-
-          // 6. Xác định decision dựa vào auto thresholds — đọc THẲNG từ DB loan_evaluation_configs.
-          //    AI service CHỈ trả PD + lý do; mọi rule auto-approve/reject là cấu hình ở DB.
-          //    Auto-approve cần đồng thời:
-          //      a) evaluationScore >= autoApproveScore (DB)
-          //      b) loan amount nằm trong maxLoanAmount của hạng (DB)
-          if (evaluationScore < evalConfig.autoRejectScore) {
-            autoDecision = 'auto_rejected';
-          } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) {
-            autoDecision = 'auto_approved';
-          } else {
-            autoDecision = 'pending'; // manual review
-          }
-          this.logger.log(
-            `[createApplication] AutoDecision (DB-only) | evalScore=${evaluationScore} ` +
-              `vs autoReject<${evalConfig.autoRejectScore} / autoApprove>=${evalConfig.autoApproveScore} | ` +
-              `withinGradeLimit=${withinGradeLimit} (cap=${gradeMaxLoanAmount || 'unlimited'}) | => ${autoDecision}`,
-          );
-
-          aiScoreResult = {
-            pd: effectivePd,
-            rawAiPd: defaultProbability,
-            rawAiScore: aiRiskScore,
-            beFloorApplied: ruleFloors.length > 0 && effectivePd > (Number(defaultProbability) || 0),
-            beFloorReasons: ruleFloors.map(f => f.reason),
-            creditScore: evaluationScore,
-            grade: matchedGrade?.grade || 'N/A',
-            subGrade: matchedGrade?.label || 'Chưa xếp hạng',
-            tier: matchedGrade?.grade || 'N/A',
-            decision:
-              autoDecision === 'auto_approved' ? 'APPROVE' : autoDecision === 'auto_rejected' ? 'REJECT' : 'REVIEW',
-            riskLevel:
-              matchedGrade?.grade === 'A'
-                ? 'LOW'
-                : matchedGrade?.grade === 'B'
-                  ? 'MEDIUM'
-                  : matchedGrade?.grade === 'C'
-                    ? 'HIGH'
-                    : 'VERY_HIGH',
-            // Rule-based reasons từ AI service: vì sao bị từ chối / điểm mạnh hồ sơ
-            riskFactors: scoreResponse.data?.reasons?.negatives || [],
-            positiveFactors: scoreResponse.data?.reasons?.positives || [],
-            decisionExplanation: scoreResponse.data?.reasons?.decision_explanation || '',
-            modelDecision: scoreResponse.data?.decision || '',
-            modelRiskLevel: scoreResponse.data?.risk_level || '',
-            featuresResolved: scoreResponse.data?.features_resolved || null,
-            configVersion: evalConfig.version,
-            autoRejectScore: evalConfig.autoRejectScore,
-            autoApproveScore: evalConfig.autoApproveScore,
-            maxLoanAmount: matchedGrade?.maxLoanAmount ?? null,
-            baseInterestRate: matchedGrade?.baseInterestRate ?? null,
-            amountWithinGradeLimit: withinGradeLimit,
-            scoredAt: new Date(),
-          };
-
-          this.logger.log(
-            `[createApplication] AIScore: ai_risk_score=${aiRiskScore} evaluationScore=${evaluationScore} ` +
-              `Grade=${matchedGrade?.grade || 'N/A'} (${matchedGrade?.label || '-'}) Decision=${autoDecision}`,
-          );
-
-          // 7. Update user credit profile
-          // QUAN TRỌNG: KHÔNG ghi đè creditProfile.creditScore (CIC gốc 150-750).
-          // AI risk score lưu riêng vào creditProfile.aiRiskScore.
-          await this.userModel.findByIdAndUpdate(userId, {
-            $set: {
-              'creditProfile.pd': effectivePd,
-              'creditProfile.aiRiskScore': clamped, // AI risk score 150-750 (KHÔNG PHẢI CIC!)
-              'creditProfile.evaluationScore': evaluationScore, // 0-100 (hiển thị)
-              'creditProfile.grade': matchedGrade?.grade,
-              'creditProfile.riskLevel': aiScoreResult.riskLevel,
-              'creditProfile.lastScoredAt': new Date(),
-            },
-          });
+        const defaultProbability = Number(scoreResponse.data?.default_probability);
+        if (!Number.isFinite(defaultProbability)) {
+          throw new BadRequestException('AI Score service trả về default_probability không hợp lệ');
         }
+
+        const riskProbabilityScore = Math.max(0, Math.min(100, Math.round(defaultProbability * 100)));
+        evaluationScore = Math.max(0, Math.min(100, 100 - riskProbabilityScore));
+        const serviceEvaluationScore = Number(scoreResponse.data?.evaluation_score ?? aiRiskScore);
+        if (Number.isFinite(serviceEvaluationScore) && Math.abs(serviceEvaluationScore - evaluationScore) > 1) {
+          this.logger.warn(
+            `[createApplication] AIScore evaluation mismatch: service=${serviceEvaluationScore}, ` +
+              `computedFromPD=${evaluationScore}. Using computedFromPD.`,
+          );
+        }
+
+        // 4. Lấy cấu hình đánh giá (version mới nhất)
+        const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
+
+        // 5. Tìm hạng tín dụng phù hợp
+        const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
+        matchedGrade = sortedGrades.find(g => evaluationScore! >= g.minScore && evaluationScore! <= g.maxScore);
+        const gradeMaxLoanAmount = Number(matchedGrade?.maxLoanAmount ?? 0);
+        const withinGradeLimit = !gradeMaxLoanAmount || dto.capital <= gradeMaxLoanAmount;
+
+        // 6. Xác định decision dựa vào auto thresholds đọc từ DB loan_evaluation_configs.
+        if (evaluationScore < evalConfig.autoRejectScore) {
+          autoDecision = 'auto_rejected';
+        } else if (evaluationScore >= evalConfig.autoApproveScore && withinGradeLimit) {
+          autoDecision = 'auto_approved';
+        } else {
+          autoDecision = 'pending'; // manual review
+        }
+        this.logger.log(
+          `[createApplication] AutoDecision (DB-only) | evalScore=${evaluationScore} ` +
+            `vs autoReject<${evalConfig.autoRejectScore} / autoApprove>=${evalConfig.autoApproveScore} | ` +
+            `withinGradeLimit=${withinGradeLimit} (cap=${gradeMaxLoanAmount || 'unlimited'}) | => ${autoDecision}`,
+        );
+
+        aiScoreResult = {
+          pd: defaultProbability,
+          rawAiPd: defaultProbability,
+          riskProbabilityScore,
+          rawAiScore: aiRiskScore,
+          beFloorApplied: false,
+          beFloorReasons: [],
+          creditScore: evaluationScore,
+          grade: matchedGrade?.grade || 'N/A',
+          subGrade: matchedGrade?.label || 'Chưa xếp hạng',
+          tier: matchedGrade?.grade || 'N/A',
+          decision:
+            autoDecision === 'auto_approved' ? 'APPROVE' : autoDecision === 'auto_rejected' ? 'REJECT' : 'REVIEW',
+          riskLevel:
+            matchedGrade?.grade === 'A'
+              ? 'LOW'
+              : matchedGrade?.grade === 'B'
+                ? 'MEDIUM'
+                : matchedGrade?.grade === 'C'
+                  ? 'HIGH'
+                  : 'VERY_HIGH',
+          riskFactors: scoreResponse.data?.reasons?.negatives || [],
+          positiveFactors: scoreResponse.data?.reasons?.positives || [],
+          decisionExplanation: scoreResponse.data?.reasons?.decision_explanation || '',
+          modelDecision: scoreResponse.data?.decision || '',
+          modelRiskLevel: scoreResponse.data?.risk_level || '',
+          featuresResolved: scoreResponse.data?.features_resolved || null,
+          configVersion: evalConfig.version,
+          autoRejectScore: evalConfig.autoRejectScore,
+          autoApproveScore: evalConfig.autoApproveScore,
+          maxLoanAmount: matchedGrade?.maxLoanAmount ?? null,
+          baseInterestRate: matchedGrade?.baseInterestRate ?? null,
+          amountWithinGradeLimit: withinGradeLimit,
+          scoredAt: new Date(),
+        };
+
+        this.logger.log(
+          `[createApplication] AIScore: PD=${defaultProbability.toFixed(4)} riskScore=${riskProbabilityScore} ` +
+            `evaluationScore=${evaluationScore} serviceScore=${aiRiskScore ?? 'N/A'} ` +
+            `Grade=${matchedGrade?.grade || 'N/A'} (${matchedGrade?.label || '-'}) Decision=${autoDecision}`,
+        );
+
+        // 7. Update user credit profile
+        // QUAN TRỌNG: KHÔNG ghi đè creditProfile.creditScore (CIC gốc 150-750).
+        // AI evaluation score 0-100 lưu riêng vào creditProfile.aiRiskScore.
+        await this.userModel.findByIdAndUpdate(userId, {
+          $set: {
+            'creditProfile.pd': defaultProbability,
+            'creditProfile.aiRiskScore': evaluationScore, // PD-derived 0-100 (KHÔNG PHẢI CIC!)
+            'creditProfile.evaluationScore': evaluationScore, // 0-100 (hiển thị)
+            'creditProfile.grade': matchedGrade?.grade,
+            'creditProfile.riskLevel': aiScoreResult.riskLevel,
+            'creditProfile.lastScoredAt': new Date(),
+          },
+        });
       }
     } catch (aiError: any) {
       // AIScore failure should NOT block loan creation (graceful degradation)
       this.logger.warn(`[createApplication] AIScore FAILED (non-blocking): ${aiError.message}`);
     }
 
-    // Auto-reject: KHÔNG chặn tạo khoản vay — tạo với status 'pending' để admin review.
-    // AI chỉ đưa ra khuyến nghị, admin có quyền override quyết định cuối cùng.
-    // Dữ liệu AI score vẫn được lưu đầy đủ trong aiScoreResult để admin tham khảo.
     if (autoDecision === 'auto_rejected' && aiScoreResult) {
       this.logger.warn(
-        `[createApplication] AI đề xuất từ chối (evalScore=${evaluationScore}/100, Grade=${aiScoreResult.grade}). ` +
-          `Khoản vay vẫn được tạo với status=pending để admin review.`,
+        `[createApplication] AI auto-reject theo loan_evaluation_configs ` +
+          `(evalScore=${evaluationScore}/100, Grade=${aiScoreResult.grade}).`,
       );
     }
 
-    // Determine initial status: auto_approved → approved, else → pending (bao gồm cả auto_rejected)
-    const initialStatus = autoDecision === 'auto_approved' ? 'approved' : 'pending';
+    const initialStatus =
+      autoDecision === 'auto_approved' ? 'approved' : autoDecision === 'auto_rejected' ? 'rejected' : 'pending';
 
     // 5. Tạo trên Fineract TRƯỚC (Atomicity: không tạo MongoDB nếu Fineract thất bại)
     let fineractLoanId: number;
@@ -935,7 +892,7 @@ export class LoanService {
     });
     this.logger.log(`[createApplication] MongoDB doc created id=${doc._id} fineractLoanId=${fineractLoanId} status=${initialStatus}`);
 
-    // 7. Nếu auto_approved → approve trên Fineract luôn
+    // 7. Nếu auto_approved / auto_rejected → thực thi trên Fineract luôn theo config MongoDB
     if (autoDecision === 'auto_approved') {
       try {
         const approvedOnDate = expectedDisbursementDate || new Date().toISOString().split('T')[0];
@@ -946,6 +903,27 @@ export class LoanService {
         // Rollback status to pending if Fineract auto-approve fails
         doc.status = 'pending';
         if (aiScoreResult) aiScoreResult.decision = 'REVIEW';
+        if ((doc as any).aiScore) (doc as any).aiScore.decision = 'REVIEW';
+        await doc.save();
+      }
+    } else if (autoDecision === 'auto_rejected') {
+      try {
+        const reason =
+          aiScoreResult?.decisionExplanation ||
+          `AI auto-reject theo cấu hình: evaluationScore=${evaluationScore}/100, grade=${aiScoreResult?.grade || 'N/A'}`;
+        await this.fineractLoanService.rejectLoan(fineractLoanId, undefined, reason);
+        doc.status = 'rejected';
+        doc.rejectedAt = new Date();
+        doc.rejectedBy = 'AI_AUTO';
+        doc.rejectionReason = reason;
+        if ((doc as any).aiScore) (doc as any).aiScore.decision = 'REJECT';
+        await doc.save();
+        this.logger.log(`[createApplication] Auto-rejected on Fineract: fineractLoanId=${fineractLoanId}`);
+      } catch (rejectErr: any) {
+        this.logger.warn(`[createApplication] Auto-reject on Fineract failed (non-blocking): ${rejectErr.message}`);
+        doc.status = 'pending';
+        if (aiScoreResult) aiScoreResult.decision = 'REVIEW';
+        if ((doc as any).aiScore) (doc as any).aiScore.decision = 'REVIEW';
         await doc.save();
       }
     }

@@ -1,18 +1,24 @@
 {
   "version": "new_data_v1",
   "data_csv": "/content/drive/MyDrive/Colab Notebooks/loan_data.csv",
+  "source_schema": "loan_data",
+  "source_schema_info": {
+    "note": "Input already uses the canonical loan_data schema."
+  },
   "rows": 45000,
   "target": "is_default",
-  "target_mode": "status_0_is_default",
+  "target_mode": "as_is",
   "positive_class": "Default",
   "negative_class": "Non-Default",
   "target_mapping": {
-    "loan_status=0": "Default",
-    "loan_status=1": "Non-Default",
+    "loan_status=1": "Default",
+    "loan_status=0": "Non-Default",
     "is_default=1": "Default",
-    "is_default=0": "Non-Default"
+    "is_default=0": "Non-Default",
+    "LendingClub Charged Off/Default/Late": "Default",
+    "LendingClub Fully Paid": "Non-Default"
   },
-  "target_note": "Default mode: loan_status=0 -> Default, loan_status=1 -> Non-Default. If your data uses loan_status=1 as Default, set TARGET_MODE_NEW_DATA=as_is.",
+  "target_note": "Default mode: loan_status=1 -> Default, loan_status=0 -> Non-Default. If your data uses loan_status=0 as Default, set TARGET_MODE_NEW_DATA=status_0_is_default.",
   "credit_score_normalization": {
     "source_column": "credit_score",
     "source_min": 390.0,
@@ -23,7 +29,9 @@
   },
   "features": [
     "person_age",
+    "person_income",
     "person_emp_exp",
+    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -49,9 +57,68 @@
     "credit_score",
     "previous_loan_defaults_on_file"
   ],
+  "optional_runtime_input_columns": [
+    "loan_term_months",
+    "loan_monthly_payment_ratio"
+  ],
+  "term_feature_mode": "auto",
+  "term_feature_trained": true,
+  "term_feature_note": "Base XGBoost model is trained on all 45k loan_data.csv fields. loan_term_months is trained through term_adjuster.joblib from a real-term auxiliary dataset and applied as a PD logit adjustment at runtime.",
+  "term_adjustment": {
+    "enabled": true,
+    "data_csv": "/content/drive/MyDrive/Colab Notebooks/financial_loan.csv",
+    "source_schema": "lendingclub",
+    "source_schema_info": {
+      "note": "Mapped LendingClub-style data to the canonical AIScore schema with real term months.",
+      "rows_dropped_unresolved_status": 1098,
+      "default_statuses": [
+        "charged off",
+        "default",
+        "does not meet the credit policy. status:charged off",
+        "late (16-30 days)",
+        "late (31-120 days)"
+      ],
+      "non_default_statuses": [
+        "does not meet the credit policy. status:fully paid",
+        "fully paid"
+      ]
+    },
+    "rows": 37478,
+    "features": [
+      "loan_term_months",
+      "loan_monthly_payment_ratio",
+      "loan_percent_income",
+      "loan_int_rate"
+    ],
+    "baseline_months": 36.0,
+    "weight": 0.4,
+    "payment_burden_guard": "If the requested term raises loan_monthly_payment_ratio above the 36-month baseline, runtime will not allow the term delta to reduce PD.",
+    "metrics": {
+      "roc_auc": 0.679028,
+      "average_precision": 0.261293,
+      "brier": 0.225786,
+      "accuracy": 0.649146,
+      "balanced_accuracy": 0.625837,
+      "precision": 0.223754,
+      "recall": 0.593252,
+      "f1": 0.324949,
+      "f2": 0.445963,
+      "mcc": 0.181409,
+      "ks": 0.267696
+    },
+    "note": "Auxiliary real-term model. Runtime applies the logit delta between requested term burden and baseline term burden to the 45k base PD, with a monotonic payment-burden guard for very short terms."
+  },
+  "term_adjustment_model_features": [
+    "loan_term_months",
+    "loan_monthly_payment_ratio",
+    "loan_percent_income",
+    "loan_int_rate"
+  ],
   "raw_numeric_input_columns": [
     "person_age",
+    "person_income",
     "person_emp_exp",
+    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -62,7 +129,9 @@
   ],
   "numeric_features": [
     "person_age",
+    "person_income",
     "person_emp_exp",
+    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -78,7 +147,9 @@
   "explain_only_features": [],
   "processed_feature_names": [
     "person_age",
+    "person_income",
     "person_emp_exp",
+    "loan_amnt",
     "loan_int_rate",
     "loan_percent_income",
     "cb_person_cred_hist_length",
@@ -104,20 +175,20 @@
   ],
   "threshold": {
     "metric": "f2",
-    "value": 0.145
+    "value": 0.15499999999999997
   },
   "metrics": {
-    "roc_auc": 0.958657,
-    "average_precision": 0.986326,
-    "brier": 0.064973,
-    "accuracy": 0.897111,
-    "balanced_accuracy": 0.77725,
-    "precision": 0.887966,
-    "recall": 0.993,
-    "f1": 0.937551,
-    "f2": 0.970051,
-    "mcc": 0.684978,
-    "ks": 0.743714
+    "roc_auc": 0.977218,
+    "average_precision": 0.929912,
+    "brier": 0.048366,
+    "accuracy": 0.900222,
+    "balanced_accuracy": 0.91175,
+    "precision": 0.709665,
+    "recall": 0.9325,
+    "f1": 0.805964,
+    "f2": 0.877399,
+    "mcc": 0.752969,
+    "ks": 0.826143
   },
   "risk_bands": [
     {
@@ -164,9 +235,9 @@
     "train_rows": 29250,
     "validation_rows": 6750,
     "test_rows": 9000,
-    "train_default_rate": 0.777778,
-    "validation_default_rate": 0.777778,
-    "test_default_rate": 0.777778
+    "train_default_rate": 0.222222,
+    "validation_default_rate": 0.222222,
+    "test_default_rate": 0.222222
   },
   "config": {
     "random_state": 42,
@@ -179,6 +250,7 @@
     "xgb_tree_method": "hist",
     "xgb_device_request": "auto",
     "xgb_resolved_device": "cpu",
-    "permutation_importance_enabled": false
+    "permutation_importance_enabled": false,
+    "currency_invariant_mode": false
   }
 }

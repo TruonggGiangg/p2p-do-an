@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { DelinquencyCollectionStage } from '../entities/delinquency-policy.schema';
 
@@ -53,10 +54,20 @@ export class CreateDelinquencyPolicyDto {
   @IsBoolean()
   legal_escalation?: boolean;
 
-  @ApiPropertyOptional({ example: true })
+  @ApiPropertyOptional({
+    example: 12,
+    nullable: true,
+    description: 'Số tháng lưu vết nợ quá hạn; null/rỗng/0 = lưu vĩnh viễn.',
+  })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === '' || value == null) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : value;
+  })
   @IsInt()
-  retention_months?: number;
+  @Min(0)
+  retention_months?: number | null;
 
   @IsOptional()
   @IsBoolean()

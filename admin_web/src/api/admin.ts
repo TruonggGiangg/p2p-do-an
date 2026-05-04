@@ -801,6 +801,7 @@ export const adminApi = {
             | "LEGAL"
             | "WRITE_OFF";
           legal_escalation: boolean;
+          retention_months?: number | null;
           is_active: boolean;
           description?: string;
           createdAt: string;
@@ -828,6 +829,7 @@ export const adminApi = {
       | "LEGAL"
       | "WRITE_OFF";
     legal_escalation?: boolean;
+    retention_months?: number | null;
     is_active?: boolean;
     description?: string;
   }) =>
@@ -856,6 +858,7 @@ export const adminApi = {
         | "LEGAL"
         | "WRITE_OFF";
       legal_escalation: boolean;
+      retention_months: number | null;
       is_active: boolean;
       description: string;
     }>,

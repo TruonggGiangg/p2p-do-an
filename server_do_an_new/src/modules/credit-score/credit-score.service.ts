@@ -734,15 +734,27 @@ export class CreditScoreService implements OnModuleInit {
       .lean();
     const retentionMap = new Map<number, number | null>();
     for (const p of policies) {
-      retentionMap.set(p.debt_group, p.retention_months ?? null);
+      const numericRetention = Number(p.retention_months);
+      const normalizedRetention = Number.isFinite(numericRetention) && numericRetention > 0 ? Math.trunc(numericRetention) : null;
+      const hasExistingRetention = retentionMap.has(p.debt_group);
+      const existingRetention = retentionMap.get(p.debt_group);
+      if (normalizedRetention == null) {
+        retentionMap.set(p.debt_group, null);
+      } else if (!hasExistingRetention) {
+        retentionMap.set(p.debt_group, normalizedRetention);
+      } else if (existingRetention != null) {
+        retentionMap.set(p.debt_group, Math.max(existingRetention, normalizedRetention));
+      } else {
+        retentionMap.set(p.debt_group, null);
+      }
     }
 
     const now = new Date();
     let cleaned = 0;
     for (const rec of resolvedRecords) {
       const retentionMonths = retentionMap.get(rec.debtGroup);
-      // null or undefined = vĩnh viễn (permanent) → never soft-delete
-      if (retentionMonths == null) continue;
+      // null, undefined, or 0 = vĩnh viễn (permanent) → never soft-delete
+      if (retentionMonths == null || retentionMonths <= 0) continue;
 
       const expiresAt = new Date(rec.resolvedAt!);
       expiresAt.setMonth(expiresAt.getMonth() + retentionMonths);

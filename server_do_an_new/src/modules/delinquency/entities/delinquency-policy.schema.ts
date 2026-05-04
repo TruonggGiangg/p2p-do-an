@@ -54,7 +54,7 @@ export class DelinquencyPolicy extends Document {
   legal_escalation: boolean;
 
   @Prop({ type: Number, required: false, default: null })
-  retention_months: number;
+  retention_months: number | null;
 
   @Prop({ required: true, default: false })
   freeze_account: boolean;

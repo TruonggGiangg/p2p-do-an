@@ -1,14 +1,9 @@
 """
-AIScore Service — FastAPI REST API (v9.0)
+AIScore Service — FastAPI REST API (v10.0)
 ===========================================
-Stacking Ensemble: XGBoost + SVM (Level 1) → LR Meta (Level 2)
-
 Pipeline:
-  25 features → Smart Scaling → XGB prob + SVM prob
-  → [XGB_p, SVM_p, 25 features] → LR Meta → PD (calibrated)
-
-Dataset: Lending Club accepted + rejected (2007-2018 Q4)
-25 Features: 21 NUMERIC + 4 CATEGORICAL
+    backend payload → models_final feature schema → XGBoost PD
+    → isotonic calibration → PD-derived score
 
 Endpoints:
   POST /api/score         - Score 1 borrower
@@ -19,8 +14,10 @@ Endpoints:
 
 Output:
   {
-    "ai_risk_score": 21,
-    "default_probability": 0.2098,
+        "default_probability": 0.74,
+        "risk_probability_score": 74,
+        "evaluation_score": 26,
+        "ai_risk_score": 26,
     "status": "success"
   }
 """
@@ -40,23 +37,24 @@ from scorer_final import CreditScorerFinal
 # ── Pydantic models (models_final v1) ──
 
 class ScoreRequest(BaseModel):
-    """Schema mapping sang 13 raw input columns của model models_final.
+    """Schema mapping sang raw input columns của model models_final.
 
     BE NestJS đẩy tất cả các trường này; trường không có → để default.
     Cho phép truyền alias (loanAmount, periodMonth…) để backward-compat.
     """
 
-    # 13 raw inputs của model
+    # Raw inputs của model
     person_age: Optional[float] = Field(default=25, ge=18, le=100, description="Tuổi người vay")
     person_gender: Optional[str] = Field(default="male", description="male / female")
     person_education: Optional[str] = Field(default="High School", description="High School / Associate / Bachelor / Master / Doctorate")
-    person_income: float = Field(default=0, ge=0, description="Thu nhập hàng tháng (VND)")
+    person_income: float = Field(default=0, ge=0, description="Thu nhập năm đã scale theo backend")
     person_emp_exp: float = Field(default=0, ge=0, le=60, description="Số năm kinh nghiệm làm việc")
     person_home_ownership: Optional[str] = Field(default="RENT", description="RENT / OWN / MORTGAGE / OTHER")
-    loan_amnt: float = Field(default=0, ge=0, description="Số tiền vay", alias="loanAmount")
+    loan_amnt: float = Field(default=0, ge=0, description="Số tiền vay đã scale theo backend", alias="loanAmount")
+    loan_term_months: Optional[float] = Field(default=36, ge=1, le=360, description="Kỳ hạn vay theo tháng", alias="periodMonth")
     loan_intent: Optional[str] = Field(default="PERSONAL", description="PERSONAL / EDUCATION / MEDICAL / VENTURE / HOMEIMPROVEMENT / DEBTCONSOLIDATION")
     loan_int_rate: Optional[float] = Field(default=12.0, ge=0, le=100, description="Lãi suất %/năm")
-    loan_percent_income: Optional[float] = Field(default=None, ge=0, le=5, description="loan_amnt / (income*12); nếu không truyền sẽ tự tính")
+    loan_percent_income: Optional[float] = Field(default=None, ge=0, le=5, description="loan_amnt / person_income; nếu không truyền sẽ tự tính")
     cb_person_cred_hist_length: Optional[float] = Field(default=3, ge=0, le=30, description="Số năm lịch sử tín dụng")
     credit_score: float = Field(..., ge=150, le=850, description="Điểm tín dụng (CIC 150-750 hoặc FICO 300-850)")
     previous_loan_defaults_on_file: Optional[str] = Field(default="No", description="Yes / No")
@@ -64,15 +62,18 @@ class ScoreRequest(BaseModel):
     # Backward-compat aliases (BE cũ có thể đang đẩy)
     capital: Optional[float] = Field(default=None, description="Alias của loan_amnt")
     monthly_income: Optional[float] = Field(default=None, ge=0, description="Alias của person_income")
+    term: Optional[Any] = Field(default=None, description="Alias của loan_term_months, ví dụ '36 months'")
+    loanTermMonths: Optional[float] = Field(default=None, ge=1, le=360, description="Alias của loan_term_months")
 
     model_config = {"populate_by_name": True}
 
 class ScoreResponse(BaseModel):
-    ai_risk_score: int
+    ai_risk_score: int = Field(..., description="Điểm đánh giá 0-100 = 100 - round(PD*100); giữ tên cũ để backend tương thích")
     default_probability: float
+    risk_probability_score: int = Field(..., description="Điểm rủi ro 0-100 = round(PD*100)")
+    evaluation_score: int = Field(..., description="Điểm đánh giá 0-100, càng cao càng tốt")
     model_default_probability: Optional[float] = None
-    policy_pd_floor: Optional[float] = None
-    policy_overrides: Optional[List[str]] = None
+    base_model_default_probability: Optional[float] = None
     risk_level: Optional[str] = None
     decision: Optional[str] = None
     reasons: Optional[Dict[str, Any]] = None
@@ -134,7 +135,7 @@ async def lifespan(app: FastAPI):
     # Startup: load models_final/
     try:
         scorer = CreditScorerFinal()
-        print("[AIScore] models_final loaded (XGB + Isotonic, 13 raw features).")
+        print("[AIScore] models_final loaded (XGB + Isotonic, PD-only scoring).")
     except FileNotFoundError as e:
         print(f"[AIScore] models_final not found: {e}. Service starts but /api/score will 503.")
         scorer = None
@@ -155,8 +156,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AIScore Service",
-    description="Stacking Ensemble (XGB+SVM→LR Meta, 25 Features: 21 NUM + 4 CAT) — P2P Lending Credit Scoring",
-    version="9.0.0",
+    description="XGBoost PD service. Backend maps PD-derived evaluation score through loan_evaluation_configs.",
+    version="10.0.0",
     lifespan=lifespan,
 )
 
@@ -178,17 +179,20 @@ async def health():
         "status": "ok",
         "service": "aiscore-service-models-final",
         "model_loaded": scorer is not None,
-        "model_type": "XGBoost + IsotonicRegression (models_final v1)",
-        "data_source": "loan_data.csv (45k rows)",
+        "model_type": "XGBoost + IsotonicRegression (models_final PD-only)",
+        "data_source": scorer.metadata.get("data_csv", "N/A") if scorer else "N/A",
+        "source_schema": scorer.metadata.get("source_schema", "N/A") if scorer else "N/A",
         "n_features": len(scorer.metadata.get("features", [])) if scorer else 13,
         "auc_roc": metrics.get("roc_auc", "N/A"),
+        "accuracy": metrics.get("accuracy", "N/A"),
+        "term_feature_trained": scorer.metadata.get("term_feature_trained", False) if scorer else False,
         "exchange_rate": _EXCHANGE_RATE_CACHE,
     }
 
 
 @app.post("/api/score", response_model=ScoreResponse)
 async def predict_score(req: ScoreRequest):
-    """Score 1 borrower với models_final (13 raw features)."""
+    """Score 1 borrower with models_final and return model PD only."""
     if scorer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
@@ -199,6 +203,8 @@ async def predict_score(req: ScoreRequest):
             features["loan_amnt"] = features["capital"]
         if not features.get("person_income") and features.get("monthly_income"):
             features["person_income"] = features["monthly_income"]
+        if "loan_term_months" not in req.model_fields_set and (features.get("loanTermMonths") or features.get("term")):
+            features["loan_term_months"] = features.get("loanTermMonths") or features.get("term")
         result = scorer.predict(features)
         return result
     except ValueError as e:
@@ -231,13 +237,15 @@ async def predict_batch(req: BatchRequest):
             errors.append({"index": i, "error": str(e)})
 
     if results:
-        scores = [r["ai_risk_score"] for r in results]
+        scores = [r["evaluation_score"] for r in results]
+        risk_scores = [r["risk_probability_score"] for r in results]
         pds = [r["default_probability"] for r in results]
         summary = {
             "total": len(req.applicants),
             "scored": len(results),
             "errors": len(errors),
-            "avg_risk_score": round(sum(scores) / len(scores), 1),
+            "avg_evaluation_score": round(sum(scores) / len(scores), 1),
+            "avg_risk_probability_score": round(sum(risk_scores) / len(risk_scores), 1),
             "avg_pd": round(sum(pds) / len(pds), 4),
         }
     else:

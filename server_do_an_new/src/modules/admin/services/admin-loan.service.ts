@@ -406,6 +406,10 @@ export class AdminLoanService {
       0,
       Math.min(5, prevResolved.loan_percent_income ? Number(prevResolved.loan_percent_income) : Number(loan.capital) / annualIncomeVnd),
     );
+    const loanTermMonths = Math.max(
+      1,
+      Number(loan.periodMonth) || Number(prevResolved.loan_term_months) || Number(prevResolved.periodMonth) || 36,
+    );
     const loanIntent = LoanService.mapWillingToLoanIntent(loan.willing);
     const previousDefaults = userDoc?.previousLoanDefaults ? 'Yes' : 'No';
 
@@ -417,6 +421,7 @@ export class AdminLoanService {
       person_emp_exp: personEmpExp,
       person_home_ownership: prevResolved.person_home_ownership || kycData?.homeOwnership || 'RENT',
       loan_amnt: loanAmntUsd,
+      loan_term_months: loanTermMonths,
       loan_intent: loanIntent,
       loan_int_rate: annualRate,
       loan_percent_income: loanPercentIncome,
@@ -431,7 +436,8 @@ export class AdminLoanService {
     this.logger.log(
       `[triggerAIScore] VND→USD scaling: vndPerUsd=${vndPerUsd} (${exchangeRateSource}), ` +
         `incomeMonthlyVND=${personIncomeMonthlyVnd}, incomeAnnualUSD=${personIncomeUsdAnnual}, ` +
-        `loanVND=${loan.capital}, loanUSD=${loanAmntUsd}, pctIncome=${loanPercentIncome.toFixed(3)}`,
+        `loanVND=${loan.capital}, loanUSD=${loanAmntUsd}, termMonths=${loanTermMonths}, ` +
+        `pctIncome=${loanPercentIncome.toFixed(3)}`,
     );
 
     const { default: axios } = await import('axios');
@@ -444,45 +450,20 @@ export class AdminLoanService {
     );
 
     const aiRiskScore = scoreResponse.data?.ai_risk_score;
-    const defaultProbability = scoreResponse.data?.default_probability;
-    if (aiRiskScore == null) throw new BadRequestException('AI Score service trả về kết quả không hợp lệ');
-
-    // Map ai_risk_score (150-750, cao=tốt) → evaluationScore (0-100)
-    const SCORE_MIN = 150;
-    const SCORE_MAX = 750;
-
-    // ──────────────────────────────────────────────────────────────────
-    // BE-side safety floor (defense-in-depth) — giống với loan.service.ts.
-    // Để tránh AI service trả PD~0 do model bias / service chưa restart.
-    let effectivePd = Number(defaultProbability) || 0;
-    let effectiveAiScore = Number(aiRiskScore);
-    const ruleFloors: Array<{ pd: number; reason: string }> = [];
-    if (cicScore <= 300) ruleFloors.push({ pd: 0.70, reason: `CIC ${cicScore} ≤ 300` });
-    else if (cicScore < 500) ruleFloors.push({ pd: 0.45, reason: `CIC ${cicScore} < 500` });
-    else if (cicScore < 600) ruleFloors.push({ pd: 0.25, reason: `CIC ${cicScore} < 600` });
-    if (previousDefaults === 'Yes') ruleFloors.push({ pd: 0.75, reason: 'Có lịch sử default trước' });
-    if (loanPercentIncome >= 1.0) ruleFloors.push({ pd: 0.85, reason: 'Khoản vay ≥ 100% thu nhập năm' });
-    else if (loanPercentIncome >= 0.5) ruleFloors.push({ pd: 0.55, reason: 'Khoản vay ≥ 50% thu nhập năm' });
-    else if (loanPercentIncome >= 0.35) ruleFloors.push({ pd: 0.40, reason: 'Khoản vay ≥ 35% thu nhập năm' });
-    if (personIncomeUsdAnnual <= 1) ruleFloors.push({ pd: 0.85, reason: 'Thu nhập trống' });
-    else if (personIncomeUsdAnnual < 36000) ruleFloors.push({ pd: 0.55, reason: `Thu nhập ${personIncomeUsdAnnual} < 36k (calibrated)` });
-    else if (personIncomeUsdAnnual < 60000) ruleFloors.push({ pd: 0.30, reason: `Thu nhập ${personIncomeUsdAnnual} < 60k (calibrated)` });
-    if (ruleFloors.length > 0) {
-      const maxFloor = Math.max(...ruleFloors.map(f => f.pd));
-      if (maxFloor > effectivePd) {
-        const oldPd = effectivePd;
-        const oldScore = effectiveAiScore;
-        effectivePd = maxFloor;
-        effectiveAiScore = Math.round(SCORE_MAX - (SCORE_MAX - SCORE_MIN) * effectivePd);
-        this.logger.warn(
-          `[triggerAIScore] BE-safety-floor APPLIED: AI PD=${oldPd.toFixed(4)} (score=${oldScore}) ` +
-            `→ PD=${effectivePd.toFixed(4)} (score=${effectiveAiScore}). Reasons: ${ruleFloors.map(f => `${f.reason}→${f.pd}`).join('; ')}`,
-        );
-      }
+    const defaultProbability = Number(scoreResponse.data?.default_probability);
+    if (!Number.isFinite(defaultProbability)) {
+      throw new BadRequestException('AI Score service trả về default_probability không hợp lệ');
     }
 
-    const clamped = Math.max(SCORE_MIN, Math.min(SCORE_MAX, effectiveAiScore));
-    const evaluationScore = Math.round(((clamped - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100);
+    const riskProbabilityScore = Math.max(0, Math.min(100, Math.round(defaultProbability * 100)));
+    const evaluationScore = Math.max(0, Math.min(100, 100 - riskProbabilityScore));
+    const serviceEvaluationScore = Number(scoreResponse.data?.evaluation_score ?? aiRiskScore);
+    if (Number.isFinite(serviceEvaluationScore) && Math.abs(serviceEvaluationScore - evaluationScore) > 1) {
+      this.logger.warn(
+        `[triggerAIScore] AIScore evaluation mismatch: service=${serviceEvaluationScore}, ` +
+          `computedFromPD=${evaluationScore}. Using computedFromPD.`,
+      );
+    }
 
     const evalConfig = await this.creditScoreService.getLoanEvaluationConfig();
     const sortedGrades = [...(evalConfig.creditGrades || [])].sort((a, b) => b.maxScore - a.maxScore);
@@ -503,11 +484,12 @@ export class AdminLoanService {
     );
 
     const aiScore = {
-      pd: effectivePd,
+      pd: defaultProbability,
       rawAiPd: defaultProbability,
+      riskProbabilityScore,
       rawAiScore: aiRiskScore,
-      beFloorApplied: ruleFloors.length > 0 && effectivePd > (Number(defaultProbability) || 0),
-      beFloorReasons: ruleFloors.map(f => f.reason),
+      beFloorApplied: false,
+      beFloorReasons: [],
       creditScore: evaluationScore,
       grade: matchedGrade?.grade || 'N/A',
       subGrade: matchedGrade?.label || 'Chưa xếp hạng',
@@ -542,11 +524,11 @@ export class AdminLoanService {
 
     // Update user credit profile
     // QUAN TRỌNG: KHÔNG ghi đè creditProfile.creditScore (CIC gốc 150-750 từ KYC/scorecard).
-    // AI risk score (clamped) lưu riêng vào creditProfile.aiRiskScore để tránh ô nhiễm CIC.
+    // AI evaluation score 0-100 lưu riêng vào creditProfile.aiRiskScore để tránh ô nhiễm CIC.
     await this.userModel.findByIdAndUpdate(loan.userId, {
       $set: {
-        'creditProfile.pd': effectivePd,
-        'creditProfile.aiRiskScore': clamped, // AI risk score 150-750 (KHÔNG PHẢI CIC!)
+        'creditProfile.pd': defaultProbability,
+        'creditProfile.aiRiskScore': evaluationScore, // PD-derived 0-100 (KHÔNG PHẢI CIC!)
         'creditProfile.evaluationScore': evaluationScore,
         'creditProfile.grade': matchedGrade?.grade,
         'creditProfile.riskLevel': aiScore.riskLevel,
@@ -558,19 +540,50 @@ export class AdminLoanService {
       `[triggerAIScore] Done: fineractLoanId=${fineractLoanId} score=${evaluationScore} grade=${aiScore.grade} decision=${aiScore.decision}`,
     );
 
-    // AI scoring trên admin CHỈ tính điểm + lưu kết quả — KHÔNG tự động thay đổi trạng thái.
-    // Admin xem kết quả AI → tự quyết định duyệt/từ chối bằng nút riêng.
     let finalStatus: LoanApplicationStatus = (loan.status as LoanApplicationStatus) || 'pending';
+    let autoDecisionExecuted = false;
+    let autoDecisionError = '';
 
-    if (autoDecision === 'auto_rejected') {
-      this.logger.warn(
-        `[triggerAIScore] AI đề xuất TỪ CHỐI loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade}). ` +
-          `Giữ status=${finalStatus} — admin quyết định cuối cùng.`,
+    if (finalStatus === 'pending' && autoDecision === 'auto_rejected') {
+      const reason =
+        aiScore.decisionExplanation ||
+        `AI auto-reject theo cấu hình: evaluationScore=${evaluationScore}/100, grade=${aiScore.grade}`;
+      await this.rejectLoan(fineractLoanId, reason);
+      await this.loanApplicationModel.updateOne(
+        { fineractLoanId },
+        {
+          $set: {
+            'aiScore.decision': 'REJECT',
+            rejectedAt: new Date(),
+            rejectedBy: 'AI_AUTO',
+            rejectionReason: reason,
+          },
+        },
       );
-    } else if (autoDecision === 'auto_approved') {
+      finalStatus = 'rejected';
+      autoDecisionExecuted = true;
+      this.logger.warn(
+        `[triggerAIScore] Auto-rejected loan ${fineractLoanId} theo loan_evaluation_configs ` +
+          `(score=${evaluationScore}, grade=${aiScore.grade}).`,
+      );
+    } else if (finalStatus === 'pending' && autoDecision === 'auto_approved') {
+      try {
+        await this.approveLoan(fineractLoanId);
+        finalStatus = 'approved';
+        autoDecisionExecuted = true;
+        this.logger.log(
+          `[triggerAIScore] Auto-approved loan ${fineractLoanId} theo loan_evaluation_configs ` +
+            `(score=${evaluationScore}, grade=${aiScore.grade}).`,
+        );
+      } catch (err: any) {
+        autoDecisionError = err?.message || 'Không thể tự động duyệt khoản vay';
+        this.logger.warn(
+          `[triggerAIScore] Auto-approve skipped for loan ${fineractLoanId}: ${autoDecisionError}`,
+        );
+      }
+    } else if (autoDecision !== 'pending') {
       this.logger.log(
-        `[triggerAIScore] AI đề xuất DUYỆT loan ${fineractLoanId} (score=${evaluationScore}, grade=${aiScore.grade}). ` +
-          `Giữ status=${finalStatus} — admin quyết định cuối cùng.`,
+        `[triggerAIScore] AutoDecision=${autoDecision} nhưng loan status=${finalStatus}; không đổi trạng thái.`,
       );
     }
 
@@ -578,13 +591,20 @@ export class AdminLoanService {
       fineractLoanId,
       aiScore,
       status: finalStatus,
-      autoRejected: false,
+      autoRejected: autoDecisionExecuted && autoDecision === 'auto_rejected',
+      autoDecisionExecuted,
       message:
-        autoDecision === 'auto_rejected'
-          ? `AI đề xuất từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}. Admin vui lòng xem xét.`
-          : autoDecision === 'auto_approved'
-            ? `AI đề xuất duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}. Admin vui lòng xác nhận.`
-            : `Tính điểm AI thành công: ${evaluationScore}/100, hạng ${aiScore.grade}`,
+        autoDecisionExecuted && autoDecision === 'auto_rejected'
+          ? `AI đã tự động từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}.`
+          : autoDecisionExecuted && autoDecision === 'auto_approved'
+            ? `AI đã tự động duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}.`
+            : autoDecisionError
+              ? `AI đề xuất duyệt nhưng chưa tự động duyệt được: ${autoDecisionError}`
+              : autoDecision === 'auto_rejected'
+                ? `AI đề xuất từ chối: ${evaluationScore}/100, hạng ${aiScore.grade}.`
+                : autoDecision === 'auto_approved'
+                  ? `AI đề xuất duyệt: ${evaluationScore}/100, hạng ${aiScore.grade}.`
+                  : `Tính điểm AI thành công: ${evaluationScore}/100, hạng ${aiScore.grade}`,
     };
   }
 
@@ -808,7 +828,7 @@ export class AdminLoanService {
     // 3. Update contract status to 'active'
     try {
       await this.loanContractModel.updateOne({ loanId: loan._id, status: 'signed' }, { $set: { status: 'active' } });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`[disburseLoan] Failed to update contract status: ${err?.message}`);
     }
 
@@ -825,14 +845,14 @@ export class AdminLoanService {
           amount: loan.capital,
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`[disburseLoan] Failed to create notification: ${err?.message}`);
     }
 
     // 5. Event 3: Cập nhật điểm tín dụng — Dư nợ & Tín dụng mới thay đổi
     try {
       await this.creditScoreService.applyDisbursementEvent(loan.userId);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`[disburseLoan] Failed to update credit score: ${err?.message}`);
     }
 
@@ -898,7 +918,7 @@ export class AdminLoanService {
         type: 'loan_rejected',
         data: { loanId: app._id?.toString(), fineractLoanId, reason: note || '' },
       });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`[rejectLoan] Failed to create notification: ${err?.message}`);
     }
 
@@ -956,7 +976,7 @@ export class AdminLoanService {
     // 3. Remove contract if created
     try {
       await this.loanContractModel.deleteOne({ loanId: app._id });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`[undoApproval] Failed to remove contract: ${err?.message}`);
     }
 
@@ -1402,7 +1422,7 @@ export class AdminLoanService {
       try {
         await this.syncLoanFromFineract(loan.id);
         results.push({ id: loan.id, status: 'success' });
-      } catch (err) {
+      } catch (err: any) {
         this.logger.error(`[syncClientLoansFromFineract] Error syncing loan ${loan.id}: ${err.message}`);
         results.push({ id: loan.id, status: 'error', message: err.message });
       }
@@ -2039,6 +2059,13 @@ export class AdminLoanService {
     });
   }
 
+  private normalizeRetentionMonths(value: unknown): number | null {
+    if (value === '' || value == null) return null;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    return Math.trunc(numeric);
+  }
+
   async createDelinquencyPolicy(dto: CreateDelinquencyPolicyDto) {
     const existing = await this.delinquencyPolicyModel
       .findOne({
@@ -2067,6 +2094,7 @@ export class AdminLoanService {
         block_new_loan: dto.block_new_loan,
         collection_stage: dto.collection_stage,
         legal_escalation: dto.legal_escalation ?? false,
+        retention_months: this.normalizeRetentionMonths(dto.retention_months),
         is_active: dto.is_active ?? true,
         description: dto.description,
       });
@@ -2124,6 +2152,7 @@ export class AdminLoanService {
     if (dto.block_new_loan != null) existing.block_new_loan = dto.block_new_loan;
     if (dto.collection_stage != null) existing.collection_stage = dto.collection_stage;
     if (dto.legal_escalation != null) existing.legal_escalation = dto.legal_escalation;
+    if (dto.retention_months !== undefined) existing.retention_months = this.normalizeRetentionMonths(dto.retention_months);
     if (dto.is_active != null) existing.is_active = dto.is_active;
     if (dto.description !== undefined) existing.description = dto.description;
     // Legacy cleanup: remove old configurable multiplier from existing documents.

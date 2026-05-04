@@ -191,18 +191,23 @@ export class LoanApplication extends Document {
 
   // ── AIScore PD Result ──
   // Lưu kết quả chấm điểm tín dụng khi tạo khoản vay
-  // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier → Decision
+  // Luồng: XGBoost → PD → evaluationScore 0-100 → Grade/SubGrade → Tier → Decision
   @Prop({
     type: {
       pd: { type: Number }, // Probability of Default (0.0 - 1.0)
-      creditScore: { type: Number }, // 300-850
+      rawAiPd: { type: Number }, // PD gốc từ AI service
+      riskProbabilityScore: { type: Number }, // round(PD * 100), càng cao càng rủi ro
+      rawAiScore: { type: Number }, // ai_risk_score từ AI service, hiện là evaluationScore 0-100
+      beFloorApplied: { type: Boolean }, // luôn false với luồng PD-only mới
+      beFloorReasons: { type: [String] },
+      creditScore: { type: Number }, // evaluationScore 0-100, càng cao càng tốt
       grade: { type: String }, // A-G
       subGrade: { type: String }, // A1-G5
       tier: { type: String }, // Platinum | Gold | Silver | Basic
       decision: { type: String }, // APPROVE | REVIEW | REJECT
       riskLevel: { type: String }, // LOW | MEDIUM | HIGH | VERY_HIGH
-      riskFactors: { type: [Object] }, // Danh sách yếu tố rủi ro (rule-based negatives)
-      positiveFactors: { type: [String] }, // Điểm mạnh hồ sơ (rule-based positives)
+      riskFactors: { type: [Object] },
+      positiveFactors: { type: [String] },
       decisionExplanation: { type: String }, // Diễn giải quyết định cho UI
       modelDecision: { type: String }, // approve | manual_review | reject_or_strict_review (theo model)
       modelRiskLevel: { type: String }, // Very low/low/medium/high/Very high risk
@@ -212,7 +217,7 @@ export class LoanApplication extends Document {
       maxLoanAmount: { type: Number },
       baseInterestRate: { type: Number },
       amountWithinGradeLimit: { type: Boolean },
-      featuresResolved: { type: Object }, // 13 features đã được model dùng (đã chuẩn hoá)
+      featuresResolved: { type: Object }, // raw inputs + model_feature_values đã dùng
       scoredAt: { type: Date }, // Thời điểm chấm điểm
     },
     _id: false,
@@ -220,6 +225,11 @@ export class LoanApplication extends Document {
   })
   aiScore?: {
     pd: number;
+    rawAiPd?: number;
+    riskProbabilityScore?: number;
+    rawAiScore?: number;
+    beFloorApplied?: boolean;
+    beFloorReasons?: string[];
     creditScore: number;
     grade: string;
     subGrade: string;

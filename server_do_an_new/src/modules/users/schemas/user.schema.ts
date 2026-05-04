@@ -80,13 +80,14 @@ export class User extends Document {
   metadata?: Record<string, any>; // Optional metadata for extensibility
 
   // ── AIScore Credit Profile ──
-  // Luồng: XGBoost → PD → Credit Score → Grade/SubGrade → Tier
+  // Luồng: XGBoost → PD → evaluationScore 0-100 → Grade/SubGrade → Tier
   // Cập nhật mỗi khi user tạo khoản vay (nếu aiscore.enabled = true)
   @Prop({
     type: {
       pd: { type: Number }, // Probability of Default (0.0 - 1.0)
-      creditScore: { type: Number }, // 150-750 (raw AI model output, dùng làm input cho lần chấm sau)
-      evaluationScore: { type: Number }, // 0-100 (mapped từ creditScore để hiển thị)
+      creditScore: { type: Number }, // điểm CIC/nội bộ legacy 150-750 nếu có
+      aiRiskScore: { type: Number }, // evaluationScore 0-100 tính từ PD, càng cao càng tốt
+      evaluationScore: { type: Number }, // 0-100 tính từ PD để hiển thị/xếp hạng
       grade: { type: String }, // A-G
       subGrade: { type: String }, // A1-G5
       tier: { type: String }, // Platinum | Gold | Silver | Basic
@@ -99,6 +100,7 @@ export class User extends Document {
   creditProfile?: {
     pd: number;
     creditScore: number;
+    aiRiskScore?: number;
     evaluationScore?: number;
     grade: string;
     subGrade: string;
