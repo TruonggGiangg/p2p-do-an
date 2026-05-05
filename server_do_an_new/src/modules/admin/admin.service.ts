@@ -109,6 +109,9 @@ export class AdminService implements OnModuleInit {
   ): Promise<LoanEvaluationConfigValue> {
     return this.staffService.createLoanEvaluationConfig(input, adminId);
   }
+  async syncLoanEvaluationConfigBlockchain(version?: number, adminId?: string): Promise<LoanEvaluationConfigValue> {
+    return this.staffService.syncLoanEvaluationConfigBlockchain(version, adminId);
+  }
   async getLoanEvaluationConfigHistory(
     page?: number,
     limit?: number,

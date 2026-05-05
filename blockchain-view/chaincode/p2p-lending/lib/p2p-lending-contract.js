@@ -1,6 +1,7 @@
 'use strict';
 
 const { Contract } = require('fabric-contract-api');
+const crypto = require('crypto');
 
 /**
  * P2P Lending Smart Contract - Redesigned for Fineract Integration
@@ -620,6 +621,58 @@ class P2PLendingContract extends Contract {
       },
       fineract: loan.fineract,
     });
+  }
+
+  async createLoanEvaluationConfig(ctx, configId, configDataJson) {
+    const data = JSON.parse(configDataJson);
+    const key = `LoanEvaluationConfig_${configId}`;
+    const bytes = await ctx.stub.getState(key);
+    if (bytes && bytes.length > 0) {
+      throw new Error(`The loan evaluation config ${configId} already exists`);
+    }
+
+    const txTimestamp = ctx.stub.getTxTimestamp();
+    const createdAt = new Date(txTimestamp.seconds.low * 1000).toISOString();
+    const transactionId = ctx.stub.getTxID();
+    const record = {
+      docType: 'LoanEvaluationConfig',
+      configId,
+      version: data.version,
+      configHash: data.configHash,
+      autoRejectScore: data.autoRejectScore,
+      autoApproveScore: data.autoApproveScore,
+      creditGrades: data.creditGrades || [],
+      scoreWeights: data.scoreWeights || {},
+      changedBy: data.changedBy || null,
+      changedById: data.changedById || null,
+      changeNote: data.changeNote || null,
+      sourceCollection: data.sourceCollection || 'loan_evaluation_configs',
+      sourceId: data.sourceId || null,
+      transactionId,
+      dataHash: crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex'),
+      createdAt,
+      createdBy: ctx.clientIdentity.getID(),
+    };
+
+    await ctx.stub.putState(key, Buffer.from(JSON.stringify(record)));
+    return JSON.stringify(record);
+  }
+
+  async queryLoanEvaluationConfig(ctx, configId) {
+    const key = configId.startsWith('LoanEvaluationConfig_') ? configId : `LoanEvaluationConfig_${configId}`;
+    const bytes = await ctx.stub.getState(key);
+    if (!bytes || bytes.length === 0) {
+      throw new Error(`The loan evaluation config ${configId} does not exist`);
+    }
+    return bytes.toString();
+  }
+
+  async queryAllLoanEvaluationConfigs(ctx) {
+    const allResults = [];
+    for await (const { key, value } of ctx.stub.getStateByRange('LoanEvaluationConfig_', 'LoanEvaluationConfig_~')) {
+      allResults.push({ Key: key, Record: JSON.parse(value.toString('utf8')) });
+    }
+    return JSON.stringify(allResults);
   }
 
   // ===== HELPER FUNCTIONS =====

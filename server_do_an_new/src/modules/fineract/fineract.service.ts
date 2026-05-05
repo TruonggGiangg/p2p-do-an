@@ -121,8 +121,8 @@ export class FineractService {
     return this.loanService.createLoanApplication(data);
   }
 
-  async approveLoan(loanId: number): Promise<void> {
-    return this.loanService.approveLoan(loanId);
+  async approveLoan(loanId: number, approvedOnDate?: string): Promise<void> {
+    return this.loanService.approveLoan(loanId, approvedOnDate);
   }
 
   async disburseLoan(loanId: number): Promise<void> {

@@ -42,7 +42,7 @@ const LIGHT_PALETTE = {
   error: '#DC2626',
   bgContainer: '#FFFFFF',
   bgLayout: '#F1F5F9',
-  siderBg: '#0F172A',
+  siderBg: 'rgba(239, 246, 255, 0.94)',
 };
 
 const DARK_PALETTE = {
@@ -155,14 +155,18 @@ export default function App() {
           },
           components: {
             Layout: {
-              siderBg: isDarkMode ? p.siderBg : '#0F172A',
+              siderBg: isDarkMode ? p.siderBg : LIGHT_PALETTE.siderBg,
               headerBg: isDarkMode ? p.bgContainer : '#FFFFFF',
               headerHeight: 64,
               bodyBg: isDarkMode ? p.bgLayout : '#F1F5F9',
             },
             Menu: {
-              darkItemBg: isDarkMode ? p.siderBg : '#0F172A',
-              darkSubMenuItemBg: isDarkMode ? '#020617' : '#0F172A',
+              darkItemBg: isDarkMode ? p.siderBg : '#EFF6FF',
+              darkSubMenuItemBg: isDarkMode ? '#020617' : '#DBEAFE',
+              itemBg: isDarkMode ? p.siderBg : 'transparent',
+              itemColor: isDarkMode ? '#CBD5E1' : '#334155',
+              itemSelectedBg: isDarkMode ? '#1E293B' : '#DBEAFE',
+              itemSelectedColor: isDarkMode ? '#FFFFFF' : '#1D4ED8',
               itemHeight: 48,
               itemMarginBlock: 4,
               itemBorderRadius: 10,

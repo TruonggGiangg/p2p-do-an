@@ -4,6 +4,7 @@
 /server_do_an/dist
 /server_do_an/build
 
+*.md
 *.docx
 *.tex
 *.txt

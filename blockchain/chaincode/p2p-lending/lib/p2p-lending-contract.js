@@ -486,6 +486,50 @@ class P2PLendingContract extends Contract {
     }
 
     // ==========================================
+    // ADMIN CONFIG AUDIT
+    // ==========================================
+
+    async createLoanEvaluationConfig(ctx, configId, configDataJson) {
+        console.info('============= START : createLoanEvaluationConfig ===========');
+
+        const exists = await ctx.stub.getState(configId);
+        if (exists && exists.length > 0) {
+            throw new Error(`The loan evaluation config ${configId} already exists`);
+        }
+
+        const data = JSON.parse(configDataJson);
+        const txId = ctx.stub.getTxID();
+
+        const configRecord = {
+            docType: 'LoanEvaluationConfig',
+            configId,
+            version: data.version,
+            configHash: data.configHash,
+            autoRejectScore: data.autoRejectScore,
+            autoApproveScore: data.autoApproveScore,
+            creditGrades: data.creditGrades || [],
+            scoreWeights: data.scoreWeights || {},
+            changedBy: data.changedBy || null,
+            changedById: data.changedById || null,
+            changeNote: data.changeNote || null,
+            sourceCollection: data.sourceCollection || 'loan_evaluation_configs',
+            sourceId: data.sourceId || null,
+            transactionId: txId,
+            dataHash: this._hashData(data),
+            createdAt: this._getTxTime(ctx),
+            createdBy: ctx.clientIdentity.getID()
+        };
+
+        await this._putState(ctx, configId, configRecord);
+        console.info('============= END : createLoanEvaluationConfig ===========');
+        return JSON.stringify(configRecord);
+    }
+
+    async queryLoanEvaluationConfig(ctx, configId) {
+        return await this._getState(ctx, configId);
+    }
+
+    // ==========================================
     // RICH QUERIES (LevelDB Compatible)
     // ==========================================
 
@@ -567,6 +611,10 @@ class P2PLendingContract extends Contract {
     // Settlement queries
     async queryAllSettlementContracts(ctx) {
         return await this._getAllByDocType(ctx, 'SettlementContract');
+    }
+
+    async queryAllLoanEvaluationConfigs(ctx) {
+        return await this._getAllByDocType(ctx, 'LoanEvaluationConfig');
     }
 
     async querySettlementsByLoan(ctx, loanContractId) {

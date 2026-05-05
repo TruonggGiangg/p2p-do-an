@@ -219,6 +219,18 @@ export class AdminProductController {
     return { statusCode: 201, message: 'Tạo phiên bản cấu hình thành công', data };
   }
 
+  @Post('loan-evaluation-config/sync-blockchain')
+  @CheckPolicies(ability => ability.can(Action.Manage, 'all'))
+  @ApiOperation({ summary: 'Ghi lại cấu hình đánh giá khoản vay hiện tại lên blockchain nếu chưa có tx hash' })
+  @ApiResponse({ status: 200 })
+  async syncLoanEvaluationConfigBlockchain(
+    @CurrentUser('id') adminId: string,
+    @Body() body: { version?: number },
+  ) {
+    const data = await this.adminService.syncLoanEvaluationConfigBlockchain(body?.version, adminId);
+    return { statusCode: 200, message: 'Đã ghi cấu hình lên blockchain', data };
+  }
+
   @Get('loan-evaluation-config/history')
   @CheckPolicies(ability => ability.can(Action.Read, 'LoanProduct'))
   @ApiOperation({ summary: 'Lịch sử phiên bản cấu hình đánh giá khoản vay' })

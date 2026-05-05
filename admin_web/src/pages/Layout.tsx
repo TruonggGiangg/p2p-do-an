@@ -31,7 +31,7 @@ import {
 import { useTheme } from '../App';
 import { useFontSize, type FontSizePreset } from '../components/FontSizeProvider';
 import { AbilityContext } from '../AbilityContext';
-import { Action } from '../ability';
+import { Action, type Subject } from '../ability';
 
 const { Sider, Header, Content } = Layout;
 const { Text, Title } = Typography;
@@ -181,14 +181,20 @@ export default function AppLayout() {
   };
 
   /* ── Styles ── */
-  const siderBg = isDarkMode ? '#070d1f' : '#0F172A';
-  const activeItemBg = isDarkMode ? 'rgba(77, 142, 255, 0.12)' : 'rgba(59, 130, 246, 0.15)';
-  const activeGlow = isDarkMode ? '0 0 12px rgba(77, 142, 255, 0.25)' : '0 0 12px rgba(59, 130, 246, 0.2)';
-  const hoverBg = isDarkMode ? 'rgba(77, 142, 255, 0.06)' : 'rgba(59, 130, 246, 0.08)';
-  const groupLabelColor = isDarkMode ? '#8c909f' : '#94A3B8';
-  const inactiveFg = isDarkMode ? '#b9c8de' : '#94A3B8';
-  const activeFg = '#FFFFFF';
+  const siderBg = isDarkMode
+    ? '#070d1f'
+    : 'linear-gradient(180deg, rgba(248, 250, 252, 0.97) 0%, rgba(239, 246, 255, 0.93) 100%)';
+  const activeItemBg = isDarkMode ? 'rgba(77, 142, 255, 0.12)' : 'rgba(59, 130, 246, 0.16)';
+  const activeGlow = isDarkMode ? '0 0 12px rgba(77, 142, 255, 0.25)' : '0 8px 20px rgba(37, 99, 235, 0.14)';
+  const hoverBg = isDarkMode ? 'rgba(77, 142, 255, 0.06)' : 'rgba(219, 234, 254, 0.68)';
+  const groupLabelColor = isDarkMode ? '#8c909f' : '#2563EB';
+  const inactiveFg = isDarkMode ? '#b9c8de' : '#334155';
+  const activeFg = isDarkMode ? '#FFFFFF' : '#1D4ED8';
   const activeAccent = isDarkMode ? '#4d8eff' : '#3B82F6';
+  const logoTextColor = isDarkMode ? '#FFFFFF' : '#0F172A';
+  const siderDivider = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(37, 99, 235, 0.18)';
+  const userPanelBg = isDarkMode ? '#060c1c' : 'rgba(219, 234, 254, 0.72)';
+  const secondaryText = isDarkMode ? 'rgba(255,255,255,0.5)' : '#2563EB';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -197,7 +203,7 @@ export default function AppLayout() {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         trigger={null}
-        theme="dark"
+        theme={isDarkMode ? 'dark' : 'light'}
         width={264}
         collapsedWidth={72}
         style={{
@@ -210,6 +216,9 @@ export default function AppLayout() {
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
+          borderRight: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(37, 99, 235, 0.56)'}`,
+          boxShadow: isDarkMode ? 'none' : '8px 0 28px rgba(37, 99, 235, 0.10)',
+          backdropFilter: isDarkMode ? undefined : 'blur(14px)',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
@@ -237,13 +246,13 @@ export default function AppLayout() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 800, color: '#fff', fontSize: 14, flexShrink: 0,
               boxShadow: '0 4px 14px rgba(77, 142, 255, 0.35)',
-              letterSpacing: '0.5px',
+              letterSpacing: 0,
             }}>P2</div>
             {!collapsed && (
               <Text strong style={{
-                color: '#FFFFFF',
+                color: logoTextColor,
                 fontSize: 17,
-                letterSpacing: '0.3px',
+                letterSpacing: 0,
                 fontWeight: 700,
                 fontFamily: "'Manrope', var(--font-sans)",
               }}>P2P Admin</Text>
@@ -272,7 +281,7 @@ export default function AppLayout() {
                       fontSize: 10.5,
                       fontWeight: 700,
                       color: groupLabelColor,
-                      letterSpacing: '0.08em',
+                      letterSpacing: 0,
                       textTransform: 'uppercase',
                       fontFamily: "'Inter', var(--font-sans)",
                       userSelect: 'none',
@@ -283,7 +292,7 @@ export default function AppLayout() {
                   {collapsed && gi > 0 && (
                     <div style={{
                       height: 1,
-                      background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.1)',
+                      background: siderDivider,
                       margin: '6px 8px',
                     }} />
                   )}
@@ -372,7 +381,8 @@ export default function AppLayout() {
           {/* ── User panel ── */}
           <div style={{
             padding: collapsed ? '12px 6px' : '14px 16px',
-            background: isDarkMode ? '#060c1c' : '#0a1628',
+            background: userPanelBg,
+            borderTop: `1px solid ${siderDivider}`,
             display: 'flex',
             alignItems: 'center',
             gap: 10,
@@ -391,10 +401,10 @@ export default function AppLayout() {
             />
             {!collapsed && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <Text strong style={{ color: '#FFFFFF', fontSize: 13, display: 'block', lineHeight: 1.3 }}>
+                <Text strong style={{ color: logoTextColor, fontSize: 13, display: 'block', lineHeight: 1.3 }}>
                   {user?.username || 'Admin'}
                 </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, display: 'block', lineHeight: 1.3 }}>
+                <Text style={{ color: secondaryText, fontSize: 11, display: 'block', lineHeight: 1.3 }}>
                   {roleLabel}
                 </Text>
               </div>
@@ -413,7 +423,7 @@ export default function AppLayout() {
               flexShrink: 0,
               color: groupLabelColor,
               transition: 'all 0.2s ease',
-              borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'}`,
+              borderTop: `1px solid ${siderDivider}`,
             }}
             onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = activeFg; }}
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = groupLabelColor; }}

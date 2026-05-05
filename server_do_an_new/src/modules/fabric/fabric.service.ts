@@ -49,7 +49,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
       await this.gateway.connect(ccp, {
         wallet,
         identity: 'admin',
-        discovery: { enabled: true, asLocalhost: true },
+        discovery: { enabled: false, asLocalhost: true },
       });
 
       this.network = await this.gateway.getNetwork(this.channelName);
@@ -60,6 +60,34 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Failed to connect to Fabric network: ${error.message}`, error.stack);
       this.connected = false;
+    }
+  }
+
+  private parseFabricResult(result: Buffer): any {
+    const payload = result.toString();
+    return payload ? JSON.parse(payload) : null;
+  }
+
+  private shouldReconnect(error: any): boolean {
+    const message = String(error?.message || error || '');
+    return (
+      message.includes('DiscoveryService') ||
+      message.includes('failed constructing descriptor') ||
+      message.includes('Channel:') ||
+      message.includes('No valid responses from any peers')
+    );
+  }
+
+  private async reconnectToFabric() {
+    try {
+      this.gateway?.disconnect();
+    } catch {
+      // Ignore stale gateway disconnect errors.
+    }
+    this.connected = false;
+    await this.connectToFabric();
+    if (!this.connected || !this.contract) {
+      throw new Error('Unable to reconnect to Fabric gateway');
     }
   }
 
@@ -81,8 +109,19 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
   async submitTransaction(functionName: string, ...args: string[]): Promise<any> {
     try {
       const result = await this.contract.submitTransaction(functionName, ...args);
-      return JSON.parse(result.toString());
-    } catch (error) {
+      return this.parseFabricResult(result);
+    } catch (error: any) {
+      if (this.shouldReconnect(error)) {
+        this.logger.warn(`Fabric discovery/gateway error on ${functionName}; reconnecting and retrying once`);
+        await this.reconnectToFabric();
+        try {
+          const retryResult = await this.contract.submitTransaction(functionName, ...args);
+          return this.parseFabricResult(retryResult);
+        } catch (retryError: any) {
+          this.logger.error(`Failed to submit transaction ${functionName} after reconnect: ${retryError.message}`);
+          throw retryError;
+        }
+      }
       this.logger.error(`Failed to submit transaction ${functionName}: ${error.message}`);
       throw error;
     }
@@ -91,8 +130,19 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
   async evaluateTransaction(functionName: string, ...args: string[]): Promise<any> {
     try {
       const result = await this.contract.evaluateTransaction(functionName, ...args);
-      return JSON.parse(result.toString());
-    } catch (error) {
+      return this.parseFabricResult(result);
+    } catch (error: any) {
+      if (this.shouldReconnect(error)) {
+        this.logger.warn(`Fabric discovery/gateway error on ${functionName}; reconnecting and retrying once`);
+        await this.reconnectToFabric();
+        try {
+          const retryResult = await this.contract.evaluateTransaction(functionName, ...args);
+          return this.parseFabricResult(retryResult);
+        } catch (retryError: any) {
+          this.logger.error(`Failed to evaluate transaction ${functionName} after reconnect: ${retryError.message}`);
+          throw retryError;
+        }
+      }
       this.logger.error(`Failed to evaluate transaction ${functionName}: ${error.message}`);
       throw error;
     }

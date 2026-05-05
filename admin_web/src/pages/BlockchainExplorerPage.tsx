@@ -32,6 +32,7 @@ interface NetworkStatus {
 interface BlockchainStats {
   totalLoanContracts: number;
   totalInvestmentContracts: number;
+  totalLoanEvaluationConfigs?: number;
   totalTransactions: number;
   totalLoanVolume: number;
   totalInvestmentVolume: number;
@@ -40,7 +41,7 @@ interface BlockchainStats {
 
 interface ContractBlock {
   key: string;
-  type: 'LoanContract' | 'InvestmentContract' | 'SettlementContract';
+  type: string;
   contractId: string;
   status: string;
   amount: number;
@@ -63,6 +64,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   SettlementContract: { label: 'Biên lai tất toán', color: 'orange', icon: <DollarOutlined /> },
   MatchingEvent: { label: 'Sự kiện ghép nối', color: 'purple', icon: <NodeIndexOutlined /> },
   InvestmentOrder: { label: 'Lệnh đầu tư', color: 'geekblue', icon: <SafetyCertificateOutlined /> },
+  LoanEvaluationConfig: { label: 'Cấu hình đánh giá', color: 'magenta', icon: <SafetyCertificateOutlined /> },
 };
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -77,12 +79,24 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   open: { color: 'processing', label: 'Đang mở' },
   cancelled: { color: 'error', label: 'Đã hủy' },
   success: { color: 'success', label: 'Thành công' },
+  committed: { color: 'success', label: 'Đã ghi' },
 };
 
 const statusTag = (status: string, type?: string) => {
   const actualStatus = (!status || status.trim() === '') && type === 'MatchingEvent' ? 'success' : status;
   const cfg = STATUS_CONFIG[actualStatus] || { color: 'default', label: actualStatus || '—' };
   return <Tag color={cfg.color}>{cfg.label}</Tag>;
+};
+
+const renderLedgerValue = (record: ContractBlock) => {
+  if (record.type === 'LoanEvaluationConfig') {
+    return <Tag color="magenta">v{record.amount}</Tag>;
+  }
+  return (
+    <Text strong style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+      {fmt(record.amount)}
+    </Text>
+  );
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -157,7 +171,7 @@ export default function BlockchainExplorerPage() {
   /* ── Table columns ── */
   const columns: ColumnsType<ContractBlock> = [
     {
-      title: 'Mã hợp đồng',
+      title: 'Mã giao dịch',
       dataIndex: 'contractId',
       key: 'contractId',
       width: 220,
@@ -205,17 +219,13 @@ export default function BlockchainExplorerPage() {
       render: (status: string, record: ContractBlock) => statusTag(status, record.type),
     },
     {
-      title: 'Giá trị',
+      title: 'Giá trị / Version',
       dataIndex: 'amount',
       key: 'amount',
       width: 160,
       align: 'right',
       sorter: (a, b) => a.amount - b.amount,
-      render: (v: number) => (
-        <Text strong style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-          {fmt(v)}
-        </Text>
-      ),
+      render: (_: number, record: ContractBlock) => renderLedgerValue(record),
     },
     {
       title: 'Data Hash (SHA-256)',
@@ -276,6 +286,54 @@ export default function BlockchainExplorerPage() {
   /* ── Unique statuses for filter ── */
   const uniqueStatuses = [...new Set(contracts.map(c => c.status))];
 
+  const renderLoanEvaluationConfigSummary = (details: any) => {
+    if (selectedContract?.type !== 'LoanEvaluationConfig') return null;
+    const weights = details.scoreWeights || {};
+    const weightEntries = Object.entries(weights).filter(([key]) => key !== '_id');
+    return (
+      <>
+        <Divider style={{ fontSize: 13 }}>
+          <SafetyCertificateOutlined /> Cấu hình đã ghi trên blockchain
+        </Divider>
+        <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Version">v{details.version}</Descriptions.Item>
+          <Descriptions.Item label="Tx Hash">
+            <Text copyable style={{ fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all' }}>
+              {details.transactionId || '—'}
+            </Text>
+          </Descriptions.Item>
+          <Descriptions.Item label="Auto reject">
+            <Tag color="red">&lt; {details.autoRejectScore}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Auto approve">
+            <Tag color="green">≥ {details.autoApproveScore}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Người thay đổi" span={2}>{details.changedBy || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Ghi chú" span={2}>{details.changeNote || '—'}</Descriptions.Item>
+        </Descriptions>
+
+        <Descriptions column={1} bordered size="small" style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Phân hạng tín dụng">
+            <Space wrap>
+              {(details.creditGrades || []).map((grade: any) => (
+                <Tag key={grade.grade} color={grade.grade === 'A' ? 'green' : grade.grade === 'B' ? 'blue' : grade.grade === 'C' ? 'gold' : 'red'}>
+                  {grade.grade}: {grade.minScore}-{grade.maxScore} | {fmt(grade.maxLoanAmount || 0)} | {grade.baseInterestRate}%/năm
+                </Tag>
+              ))}
+            </Space>
+          </Descriptions.Item>
+          <Descriptions.Item label="Trọng số">
+            <Space wrap>
+              {weightEntries.map(([key, value]) => (
+                <Tag key={key}>{key}: {String(value)}%</Tag>
+              ))}
+            </Space>
+          </Descriptions.Item>
+        </Descriptions>
+      </>
+    );
+  };
+
   return (
     <div style={{ margin: -32, padding: 32 }}>
       {/* ── Header ── */}
@@ -335,6 +393,7 @@ export default function BlockchainExplorerPage() {
         {[
           { title: 'Hợp đồng vay', value: stats?.totalLoanContracts || 0, icon: <FileProtectOutlined />, color: '#3B82F6', suffix: 'hợp đồng' },
           { title: 'Hợp đồng đầu tư', value: stats?.totalInvestmentContracts || 0, icon: <FundOutlined />, color: '#10B981', suffix: 'hợp đồng' },
+          { title: 'Cấu hình đánh giá', value: stats?.totalLoanEvaluationConfigs || 0, icon: <SafetyCertificateOutlined />, color: '#DB2777', suffix: 'bản ghi' },
           { title: 'Tổng giao dịch', value: stats?.totalTransactions || 0, icon: <NodeIndexOutlined />, color: '#6366F1', suffix: 'blocks' },
           { title: 'Tổng giá trị vay', value: stats?.totalLoanVolume || 0, icon: <DollarOutlined />, color: '#F59E0B', isCurrency: true },
         ].map((s, i) => (
@@ -383,7 +442,7 @@ export default function BlockchainExplorerPage() {
           <Col xs={24} sm={8}>
             <Input
               prefix={<SearchOutlined />}
-              placeholder="Tìm theo mã hợp đồng hoặc hash..."
+              placeholder="Tìm theo mã giao dịch hoặc hash..."
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               allowClear
@@ -401,6 +460,7 @@ export default function BlockchainExplorerPage() {
                 { label: 'Biên lai tất toán', value: 'SettlementContract' },
                 { label: 'Sự kiện ghép nối', value: 'MatchingEvent' },
                 { label: 'Lệnh đầu tư', value: 'InvestmentOrder' },
+                { label: 'Cấu hình đánh giá', value: 'LoanEvaluationConfig' },
               ]}
               suffixIcon={<FilterOutlined />}
             />
@@ -497,9 +557,7 @@ export default function BlockchainExplorerPage() {
                             </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <Text strong style={{ fontFamily: 'var(--font-mono)', fontSize: 15 }}>
-                              {fmt(block.amount)}
-                            </Text>
+                            {renderLedgerValue(block)}
                             <br />
                             <Text type="secondary" style={{ fontSize: 11 }}>
                               <ClockCircleOutlined /> {dayjs(block.createdAt).format('DD/MM/YYYY HH:mm')}
@@ -540,7 +598,7 @@ export default function BlockchainExplorerPage() {
           <div>
             {/* Contract info */}
             <Descriptions column={1} bordered size="small" style={{ marginBottom: 24 }}>
-              <Descriptions.Item label="Mã hợp đồng">
+              <Descriptions.Item label="Mã giao dịch">
                 <Text copyable style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                   {selectedContract.contractId}
                 </Text>
@@ -554,10 +612,8 @@ export default function BlockchainExplorerPage() {
               <Descriptions.Item label="Trạng thái">
                 {statusTag(selectedContract.status, selectedContract.type)}
               </Descriptions.Item>
-              <Descriptions.Item label="Giá trị">
-                <Text strong style={{ fontSize: 16, fontFamily: 'var(--font-mono)' }}>
-                  {fmt(selectedContract.amount)}
-                </Text>
+              <Descriptions.Item label="Giá trị / Version">
+                {renderLedgerValue(selectedContract)}
               </Descriptions.Item>
               <Descriptions.Item label="Data Hash (SHA-256)">
                 <Text copyable style={{ fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all' }}>
@@ -575,6 +631,8 @@ export default function BlockchainExplorerPage() {
                   : '—'}
               </Descriptions.Item>
             </Descriptions>
+
+            {renderLoanEvaluationConfigSummary(selectedContract.details)}
 
             {/* History */}
             <Divider style={{ fontSize: 13 }}>

@@ -32,8 +32,10 @@ export default function LoanEvaluationConfigPage() {
     const [messageApi, ctx] = message.useMessage();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [syncingBlockchain, setSyncingBlockchain] = useState(false);
     const [currentVersion, setCurrentVersion] = useState(0);
     const [configHash, setConfigHash] = useState('');
+    const [blockchainTxHash, setBlockchainTxHash] = useState('');
 
     // ── Block 1 state ──
     const [autoReject, setAutoReject] = useState(40);
@@ -57,6 +59,7 @@ export default function LoanEvaluationConfigPage() {
         (Number(weights.paymentHistory) || 0) + (Number(weights.debtLevel) || 0) +
         (Number(weights.creditAge) || 0) + (Number(weights.creditMix) || 0) + (Number(weights.newCredit) || 0),
         [weights]);
+    const shortBlockchainTxHash = useMemo(() => blockchainTxHash ? `${blockchainTxHash.slice(0, 18)}…` : '', [blockchainTxHash]);
 
     /** Rebuild grade score ranges cascading from thresholds. Top grade maxScore=100, bottom grade minScore=autoReject. */
     const rebuildGrades = useCallback(
@@ -108,6 +111,7 @@ export default function LoanEvaluationConfigPage() {
                 }
                 setCurrentVersion(data.version ?? 0);
                 setConfigHash(data.configHash ?? '');
+                setBlockchainTxHash(data.blockchainTxHash ?? '');
             }
         } catch { /* default values */ }
         finally { setLoading(false); }
@@ -195,12 +199,38 @@ export default function LoanEvaluationConfigPage() {
             });
             setCurrentVersion(data.version ?? 0);
             setConfigHash(data.configHash ?? '');
-            messageApi.success(`Đã lưu cấu hình v${data.version} thành công`);
+            setBlockchainTxHash(data.blockchainTxHash ?? '');
+            if (data.blockchainTxHash) {
+                messageApi.success(`Đã lưu cấu hình v${data.version} và ghi blockchain`);
+            } else {
+                messageApi.warning(`Đã lưu cấu hình v${data.version}, nhưng blockchain chưa ghi được`);
+            }
             if (showHistory) fetchHistory();
         } catch (err: any) {
             messageApi.error(err?.response?.data?.message || 'Lưu cấu hình thất bại');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleSyncBlockchain = async () => {
+        if (!currentVersion) return;
+        try {
+            setSyncingBlockchain(true);
+            const data = await adminApi.syncLoanEvaluationConfigBlockchain(currentVersion);
+            setCurrentVersion(data.version ?? currentVersion);
+            setConfigHash(data.configHash ?? configHash);
+            setBlockchainTxHash(data.blockchainTxHash ?? '');
+            if (data.blockchainTxHash) {
+                messageApi.success(`Đã ghi blockchain cho cấu hình v${data.version}`);
+            } else {
+                messageApi.warning(`Cấu hình v${data.version} vẫn chưa có tx blockchain`);
+            }
+            if (showHistory) fetchHistory();
+        } catch (err: any) {
+            messageApi.error(err?.response?.data?.message || 'Ghi blockchain thất bại');
+        } finally {
+            setSyncingBlockchain(false);
         }
     };
 
@@ -232,15 +262,51 @@ export default function LoanEvaluationConfigPage() {
             {ctx}
             <PageHeader
                 title="Rule Engine — Đánh giá khoản vay"
-                description="Cấu hình ngưỡng tự động, hạng tín dụng, trọng số. Mỗi lần lưu tạo phiên bản mới (INSERT-only), kèm SHA-256 hash."
+                description="Cấu hình ngưỡng tự động, hạng tín dụng, trọng số. Mỗi lần lưu tạo phiên bản mới, kèm SHA-256 hash và audit blockchain."
                 breadcrumb={[{ label: 'Đánh giá khoản vay' }]}
                 helpTooltip="Cấu hình được lưu theo dạng versioning — không bao giờ ghi đè dữ liệu cũ."
+                extra={
+                    <Space wrap>
+                        <Button
+                            type="primary"
+                            icon={<CheckCircleOutlined />}
+                            onClick={handleSave}
+                            loading={saving}
+                            disabled={loading || weightSum !== 100 || autoReject >= autoApprove}
+                        >
+                            Lưu + blockchain (v{currentVersion + 1})
+                        </Button>
+                        {currentVersion > 0 && !blockchainTxHash && (
+                            <Button
+                                icon={<SafetyCertificateOutlined />}
+                                onClick={handleSyncBlockchain}
+                                loading={syncingBlockchain}
+                                disabled={loading || saving}
+                            >
+                                Ghi blockchain v{currentVersion}
+                            </Button>
+                        )}
+                        <Button icon={<HistoryOutlined />} onClick={toggleHistory} disabled={loading}>
+                            {showHistory ? 'Ẩn lịch sử' : 'Lịch sử'}
+                        </Button>
+                    </Space>
+                }
             />
 
             {currentVersion > 0 && (
                 <Alert
                     type="info" showIcon style={{ marginBottom: 16 }}
-                    message={<>Phiên bản hiện tại: <strong>v{currentVersion}</strong> &nbsp;|&nbsp; Hash: <code style={{ fontSize: 11 }}>{configHash?.slice(0, 24)}…</code></>}
+                    message={
+                        <Space wrap size={[8, 4]}>
+                            <span>Phiên bản hiện tại: <strong>v{currentVersion}</strong></span>
+                            <span>Hash: <code style={{ fontSize: 11 }}>{configHash?.slice(0, 24)}…</code></span>
+                            {blockchainTxHash ? (
+                                <Tag color="green">Blockchain: {shortBlockchainTxHash}</Tag>
+                            ) : (
+                                <Tag color="orange">Chưa ghi blockchain</Tag>
+                            )}
+                        </Space>
+                    }
                 />
             )}
 
@@ -440,7 +506,7 @@ export default function LoanEvaluationConfigPage() {
                     <Space>
                         <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleSave} loading={saving}
                             disabled={weightSum !== 100 || autoReject >= autoApprove}>
-                            Lưu cấu hình (v{currentVersion + 1})
+                            Lưu cấu hình + blockchain (v{currentVersion + 1})
                         </Button>
                         <Button onClick={resetDefaults}>Khôi phục mặc định</Button>
                         <Button icon={<HistoryOutlined />} onClick={toggleHistory}>
@@ -479,6 +545,7 @@ export default function LoanEvaluationConfigPage() {
                                     }
                                 },
                                 { title: 'Hash', dataIndex: 'configHash', key: 'hash', width: 180, render: (v: string) => v ? <code style={{ fontSize: 10 }}>{v.slice(0, 24)}…</code> : '-' },
+                                { title: 'Blockchain', dataIndex: 'blockchainTxHash', key: 'blockchain', width: 160, render: (v: string) => v ? <Tag color="green">{v.slice(0, 12)}…</Tag> : <Tag color="orange">Chưa ghi</Tag> },
                                 {
                                     title: '', key: 'action', width: 60, render: (_: any, r: any) => (
                                         <Button type="link" size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); setDrawerRecord(r); }}>Xem</Button>

@@ -623,7 +623,7 @@ export class InvestPaymentService {
         },
       },
       { $inc: { investedNotes: numNotes, nodeMatch: -numNotes } },
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     if (!fundedLoan) {

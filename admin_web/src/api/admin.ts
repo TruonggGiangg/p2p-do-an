@@ -1352,4 +1352,11 @@ export const adminApi = {
         `/api/admin/loan-evaluation-config/history?page=${page}&limit=${limit}`,
       )
       .then((r) => r.data.data),
+
+  syncLoanEvaluationConfigBlockchain: (version?: number) =>
+    api
+      .post<{
+        data: LoanEvaluationConfigDto;
+      }>("/api/admin/loan-evaluation-config/sync-blockchain", { version })
+      .then((r) => r.data.data),
 };

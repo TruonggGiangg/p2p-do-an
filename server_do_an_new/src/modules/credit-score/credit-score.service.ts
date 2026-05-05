@@ -12,6 +12,7 @@ import { LoanDelinquency } from '../delinquency/entities/loan-delinquency.schema
 import { DelinquencyPolicy } from '../delinquency/entities/delinquency-policy.schema';
 import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { OVERDUE_PENALTY_CHARGE_ID, DEFAULT_OVERDUE_PENALTY_RATE_PER_DAY } from '../fineract/fineract.constants';
+import { FabricService } from '../fabric/fabric.service';
 
 const SCORE_MIN = 150;
 const SCORE_MAX = 750;
@@ -342,6 +343,7 @@ export class CreditScoreService implements OnModuleInit {
     @InjectModel(DelinquencyPolicy.name)
     private readonly delinquencyPolicyModel: Model<DelinquencyPolicy>,
     private readonly fineractLoanService: FineractLoanService,
+    private readonly fabricService: FabricService,
   ) {}
 
   async onModuleInit() {
@@ -1488,6 +1490,76 @@ export class CreditScoreService implements OnModuleInit {
     return createHash('sha256').update(payload).digest('hex');
   }
 
+  private toLoanEvaluationConfigValue(doc: any): LoanEvaluationConfigValue {
+    return {
+      version: doc.version,
+      autoRejectScore: doc.autoRejectScore,
+      autoApproveScore: doc.autoApproveScore,
+      creditGrades: doc.creditGrades,
+      scoreWeights: doc.scoreWeights,
+      configHash: doc.configHash,
+      blockchainTxHash: doc.blockchainTxHash || '',
+      changedBy: doc.changedBy,
+      changeNote: doc.changeNote,
+      createdAt: doc.createdAt,
+    };
+  }
+
+  private getLoanEvalConfigTxHash(result: any): string {
+    return result?.transactionId || result?.txId || result?.configId || '';
+  }
+
+  private async syncLoanEvalConfigToBlockchain(
+    created: LoanEvaluationConfig,
+    input: LoanEvaluationConfigInput,
+    configHash: string,
+    adminId?: string,
+  ): Promise<string> {
+    const configId = `LOAN_EVAL_CONFIG_v${created.version}`;
+    const payload = {
+      version: created.version,
+      configHash,
+      autoRejectScore: input.autoRejectScore,
+      autoApproveScore: input.autoApproveScore,
+      creditGrades: input.creditGrades,
+      scoreWeights: input.scoreWeights,
+      changedBy: created.changedBy || adminId || '',
+      changedById: adminId || '',
+      changeNote: created.changeNote || input.changeNote || '',
+      sourceCollection: 'loan_evaluation_configs',
+      sourceId: created._id?.toString?.() || '',
+    };
+
+    try {
+      if (!this.fabricService?.isConnected()) {
+        this.logger.warn('[createLoanEvaluationConfig] Fabric is not connected; saved config without blockchain tx hash');
+        return '';
+      }
+
+      const result = await this.fabricService.submitTransaction(
+        'createLoanEvaluationConfig',
+        configId,
+        JSON.stringify(payload),
+      );
+      const txHash = this.getLoanEvalConfigTxHash(result) || configId;
+      this.logger.log(`[createLoanEvaluationConfig] Blockchain synced ${configId} tx=${txHash}`);
+      return txHash;
+    } catch (error: any) {
+      if (String(error?.message || '').includes('already exists')) {
+        try {
+          const existing = await this.fabricService.evaluateTransaction('queryLoanEvaluationConfig', configId);
+          const txHash = this.getLoanEvalConfigTxHash(existing) || configId;
+          this.logger.log(`[createLoanEvaluationConfig] Blockchain record already existed ${configId} tx=${txHash}`);
+          return txHash;
+        } catch (queryError: any) {
+          this.logger.warn(`[createLoanEvaluationConfig] Could not query existing blockchain config ${configId}: ${queryError.message}`);
+        }
+      }
+      this.logger.warn(`[createLoanEvaluationConfig] Blockchain sync failed: ${error.message}`);
+      return '';
+    }
+  }
+
   private validateLoanEvalConfig(input: LoanEvaluationConfigInput): void {
     const { autoRejectScore, autoApproveScore, creditGrades, scoreWeights } = input;
 
@@ -1566,18 +1638,34 @@ export class CreditScoreService implements OnModuleInit {
         blockchainTxHash: '',
       };
     }
-    return {
-      version: doc.version,
+    return this.toLoanEvaluationConfigValue(doc);
+  }
+
+  async syncLoanEvaluationConfigBlockchain(version?: number, adminId?: string): Promise<LoanEvaluationConfigValue> {
+    const query = version ? { version } : {};
+    const doc = await this.loanEvaluationConfigModel.findOne(query).sort({ version: -1 });
+    if (!doc) {
+      throw new BadRequestException('Không tìm thấy cấu hình đánh giá khoản vay để ghi blockchain');
+    }
+    if (doc.blockchainTxHash) {
+      return this.toLoanEvaluationConfigValue(doc);
+    }
+
+    const input: LoanEvaluationConfigInput = {
       autoRejectScore: doc.autoRejectScore,
       autoApproveScore: doc.autoApproveScore,
       creditGrades: doc.creditGrades,
       scoreWeights: doc.scoreWeights,
-      configHash: doc.configHash,
-      blockchainTxHash: doc.blockchainTxHash || '',
-      changedBy: doc.changedBy,
       changeNote: doc.changeNote,
-      createdAt: (doc as any).createdAt,
     };
+    const blockchainTxHash = await this.syncLoanEvalConfigToBlockchain(doc, input, doc.configHash, adminId);
+    if (!blockchainTxHash) {
+      throw new BadRequestException('Chưa ghi được cấu hình lên blockchain. Vui lòng thử lại sau khi Fabric sẵn sàng.');
+    }
+
+    doc.blockchainTxHash = blockchainTxHash;
+    await doc.save();
+    return this.toLoanEvaluationConfigValue(doc);
   }
 
   async createLoanEvaluationConfig(
@@ -1606,22 +1694,17 @@ export class CreditScoreService implements OnModuleInit {
       changeNote: input.changeNote || `Cấu hình phiên bản ${nextVersion}`,
     });
 
+    const blockchainTxHash = await this.syncLoanEvalConfigToBlockchain(created, input, configHash, adminId);
+    if (blockchainTxHash) {
+      created.blockchainTxHash = blockchainTxHash;
+      await created.save();
+    }
+
     this.logger.log(
-      `[createLoanEvaluationConfig] v${nextVersion} by admin=${adminId} hash=${configHash.slice(0, 16)}…`,
+      `[createLoanEvaluationConfig] v${nextVersion} by admin=${adminId} hash=${configHash.slice(0, 16)}… blockchain=${blockchainTxHash || 'not_synced'}`,
     );
 
-    return {
-      version: created.version,
-      autoRejectScore: created.autoRejectScore,
-      autoApproveScore: created.autoApproveScore,
-      creditGrades: created.creditGrades,
-      scoreWeights: created.scoreWeights,
-      configHash: created.configHash,
-      blockchainTxHash: created.blockchainTxHash || '',
-      changedBy: created.changedBy,
-      changeNote: created.changeNote,
-      createdAt: (created as any).createdAt,
-    };
+    return this.toLoanEvaluationConfigValue(created);
   }
 
   async getLoanEvaluationConfigHistory(

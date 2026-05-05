@@ -58,6 +58,10 @@ export class AdminStaffService {
     return this.creditScoreService.createLoanEvaluationConfig(input, adminId);
   }
 
+  async syncLoanEvaluationConfigBlockchain(version?: number, adminId?: string): Promise<LoanEvaluationConfigValue> {
+    return this.creditScoreService.syncLoanEvaluationConfigBlockchain(version, adminId);
+  }
+
   async getLoanEvaluationConfigHistory(
     page?: number,
     limit?: number,

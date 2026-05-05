@@ -46,6 +46,123 @@ export class FineractFDService extends FineractBaseService {
     super(configService);
   }
 
+  private parseFineractDate(value: any): string | null {
+    if (!value) return null;
+    if (Array.isArray(value) && value.length >= 3) {
+      const [year, month, day] = value;
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
+    }
+    return null;
+  }
+
+  private async getClientSafeSubmittedOnDate(clientId: number): Promise<string> {
+    let submittedOnDate = this.getTodayFormatted('iso');
+
+    try {
+      const clientInfo = await this.client.get(`/clients/${clientId}`);
+      const activationDate = this.parseFineractDate(clientInfo.data?.activationDate);
+      if (activationDate && submittedOnDate < activationDate) {
+        submittedOnDate = activationDate;
+      }
+    } catch (error: any) {
+      this.fdLogger.warn(`[createFixedDeposit] Could not fetch client activation date: ${error.message}`);
+    }
+
+    return submittedOnDate;
+  }
+
+  private async getFixedDepositTemplate(clientId: number, productId: number): Promise<any | null> {
+    try {
+      const response = await this.client.get('/fixeddepositaccounts/template', {
+        params: { clientId, productId },
+      });
+      return response.data || null;
+    } catch (error: any) {
+      this.fdLogger.warn(`[createFixedDeposit] Could not fetch FD template: ${error.message}`);
+      return null;
+    }
+  }
+
+  private async getFDProductDetails(productId: number): Promise<any | null> {
+    try {
+      const response = await this.client.get(`/fixeddepositproducts/${productId}`);
+      return response.data || null;
+    } catch (error: any) {
+      this.fdLogger.warn(`[createFixedDeposit] Could not fetch FD product ${productId}: ${error.message}`);
+      return null;
+    }
+  }
+
+  private normalizeDepositAmount(depositAmount: number, productDetails: any): number {
+    const rawAmount = Number(depositAmount) || 0;
+    const rawStep = Number(productDetails?.currency?.inMultiplesOf ?? productDetails?.inMultiplesOf ?? 1);
+    const step = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : 1;
+    const minDeposit = Number(productDetails?.minDepositAmount ?? 0);
+    const maxDeposit = Number(productDetails?.maxDepositAmount ?? 0);
+
+    let normalized = Math.round(rawAmount / step) * step;
+
+    if (Number.isFinite(minDeposit) && minDeposit > 0 && normalized < minDeposit) {
+      normalized = Math.ceil(minDeposit / step) * step;
+    }
+
+    if (Number.isFinite(maxDeposit) && maxDeposit > 0 && normalized > maxDeposit) {
+      normalized = Math.floor(maxDeposit / step) * step;
+    }
+
+    if (normalized !== rawAmount) {
+      this.fdLogger.log(`[createFixedDeposit] depositAmount normalized ${rawAmount} -> ${normalized} (step=${step})`);
+    }
+
+    return normalized;
+  }
+
+  private buildFDAccountNo(): string {
+    const unique = `${Date.now().toString().slice(-10)}${Math.floor(10 + Math.random() * 90)}`;
+    return `FD${unique}`;
+  }
+
+  private isSavingsIntegrityError(error: any): boolean {
+    const errorText = JSON.stringify(error.response?.data || error.message || '').toLowerCase();
+    return errorText.includes('data integrity') || errorText.includes('savings account') || errorText.includes('externalid');
+  }
+
+  private async postFixedDepositAccount(
+    payload: Record<string, any>,
+    submittedOnDate: string,
+  ): Promise<FDAccountResult> {
+    const response = await this.client.post('/fixeddepositaccounts', payload);
+    const accountId = response.data.savingsId || response.data.resourceId;
+
+    if (!accountId) {
+      throw new BadRequestException('Fineract did not return a Fixed Deposit account id');
+    }
+
+    this.fdLogger.log(`FD created: ID=${accountId}`);
+
+    await this.approveFixedDeposit(accountId, submittedOnDate);
+    await this.activateFixedDeposit(accountId, submittedOnDate);
+
+    let accountNo = response.data.accountNo || payload.accountNo || '';
+    try {
+      const details = await this.getFixedDepositDetails(accountId);
+      accountNo = details.accountNo || accountNo;
+    } catch (error: any) {
+      this.fdLogger.warn(`[createFixedDeposit] Could not fetch FD ${accountId} account number: ${error.message}`);
+    }
+
+    return {
+      accountId,
+      accountNo,
+      status: 'active',
+    };
+  }
+
   // ═══════════════════════════════════════════════════════
   //  FD PRODUCT LOOKUP
   // ═══════════════════════════════════════════════════════
@@ -194,20 +311,23 @@ export class FineractFDService extends FineractBaseService {
       `Creating FD (standalone escrow): client=${clientId}, product=${productId}, amount=${depositAmount}, period=${periodMonths}m`,
     );
 
-    // FD đứng một mình như escrow. Không link savings, không transfer interest — tiền + lãi
-    // đều tích trong FD cho đến khi maturity hoặc giải ngân. Để tránh lỗi
-    // "Unknown data integrity issue with savings account" do Fineract reject linkAccountId
-    // khi savings và FD product không khớp currency/role.
+    const submittedOnDate = await this.getClientSafeSubmittedOnDate(clientId);
+    const productDetails = await this.getFDProductDetails(productId);
+    const template = await this.getFixedDepositTemplate(clientId, productId);
+    const normalizedDepositAmount = this.normalizeDepositAmount(depositAmount, productDetails);
+    const depositPeriodFrequencyId =
+      template?.depositPeriodFrequency?.id || template?.depositPeriodFrequencyType?.id || 2;
+
     const payload: Record<string, any> = {
+      accountNo: this.buildFDAccountNo(),
       clientId,
       productId,
-      submittedOnDate: this.getTodayFormatted('display'),
-      depositAmount,
+      submittedOnDate,
+      depositAmount: normalizedDepositAmount,
       depositPeriod: periodMonths,
-      depositPeriodFrequencyId: 2, // Months
+      depositPeriodFrequencyId, // Months
       locale: 'en',
-      dateFormat: 'dd MMMM yyyy',
-      transferInterestToSavings: false,
+      dateFormat: 'yyyy-MM-dd',
     };
 
     if (externalId) {
@@ -215,21 +335,20 @@ export class FineractFDService extends FineractBaseService {
     }
 
     try {
-      const response = await this.client.post('/fixeddepositaccounts', payload);
-      const accountId = response.data.savingsId || response.data.resourceId;
-
-      this.fdLogger.log(`FD created: ID=${accountId}`);
-
-      // Approve + Activate
-      await this.approveFixedDeposit(accountId);
-      await this.activateFixedDeposit(accountId);
-
-      return {
-        accountId,
-        accountNo: response.data.accountNo || '',
-        status: 'active',
-      };
+      return await this.postFixedDepositAccount(payload, submittedOnDate);
     } catch (error: any) {
+      if (externalId && this.isSavingsIntegrityError(error)) {
+        this.fdLogger.warn(
+          `[createFixedDeposit] Create failed with externalId=${externalId}; retrying once without externalId.`,
+        );
+        const retryPayload: Record<string, any> = { ...payload, accountNo: this.buildFDAccountNo() };
+        delete retryPayload.externalId;
+        try {
+          return await this.postFixedDepositAccount(retryPayload, submittedOnDate);
+        } catch (retryError: any) {
+          this.handleError(retryError, `Failed to create Fixed Deposit for client ${clientId}`);
+        }
+      }
       this.handleError(error, `Failed to create Fixed Deposit for client ${clientId}`);
     }
   }
@@ -238,12 +357,12 @@ export class FineractFDService extends FineractBaseService {
   //  APPROVE / ACTIVATE
   // ═══════════════════════════════════════════════════════
 
-  private async approveFixedDeposit(accountId: number): Promise<void> {
+  private async approveFixedDeposit(accountId: number, onDate?: string): Promise<void> {
     try {
       await this.client.post(`/fixeddepositaccounts/${accountId}?command=approve`, {
-        approvedOnDate: this.getTodayFormatted('display'),
+        approvedOnDate: onDate || this.getTodayFormatted('iso'),
         locale: 'en',
-        dateFormat: 'dd MMMM yyyy',
+        dateFormat: 'yyyy-MM-dd',
       });
       this.fdLogger.log(`FD ${accountId} approved`);
     } catch (error: any) {
@@ -251,12 +370,12 @@ export class FineractFDService extends FineractBaseService {
     }
   }
 
-  private async activateFixedDeposit(accountId: number): Promise<void> {
+  private async activateFixedDeposit(accountId: number, onDate?: string): Promise<void> {
     try {
       await this.client.post(`/fixeddepositaccounts/${accountId}?command=activate`, {
-        activatedOnDate: this.getTodayFormatted('display'),
+        activatedOnDate: onDate || this.getTodayFormatted('iso'),
         locale: 'en',
-        dateFormat: 'dd MMMM yyyy',
+        dateFormat: 'yyyy-MM-dd',
       });
       this.fdLogger.log(`FD ${accountId} activated`);
     } catch (error: any) {

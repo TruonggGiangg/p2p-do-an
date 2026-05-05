@@ -19,6 +19,64 @@ export class FineractLoanService extends FineractBaseService {
     super(configService);
   }
 
+  private parseFineractDate(value: any): string | null {
+    if (!value) return null;
+    if (Array.isArray(value) && value.length >= 3) {
+      const [year, month, day] = value;
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
+    }
+    return null;
+  }
+
+  private async resolveApprovalDate(loanId: number, requestedDate?: string): Promise<string> {
+    const today = this.getTodayFormatted('iso');
+    let candidate = this.parseFineractDate(requestedDate) || today;
+
+    try {
+      const response = await this.client.get(`/loans/${loanId}`);
+      const loanDetails = response.data;
+      const submittedOnDate =
+        this.parseFineractDate(loanDetails?.timeline?.submittedOnDate) ||
+        this.parseFineractDate(loanDetails?.submittedOnDate);
+      const expectedDisbursementDate =
+        this.parseFineractDate(loanDetails?.timeline?.expectedDisbursementDate) ||
+        this.parseFineractDate(loanDetails?.expectedDisbursementDate);
+
+      if (!requestedDate && expectedDisbursementDate && expectedDisbursementDate < today) {
+        candidate = expectedDisbursementDate;
+      }
+
+      if (expectedDisbursementDate && candidate > expectedDisbursementDate) {
+        candidate = expectedDisbursementDate;
+      }
+
+      if (submittedOnDate && candidate < submittedOnDate) {
+        candidate = submittedOnDate;
+      }
+
+      if (submittedOnDate && expectedDisbursementDate && submittedOnDate > expectedDisbursementDate) {
+        this.logger.warn(
+          `[approveLoan] Loan ${loanId} has submittedOnDate=${submittedOnDate} after expectedDisbursementDate=${expectedDisbursementDate}; Fineract may reject approval.`,
+        );
+      }
+
+      this.logger.log(
+        `[approveLoan] Date check loanId=${loanId}: submitted=${submittedOnDate || 'n/a'} expectedDisb=${expectedDisbursementDate || 'n/a'} requested=${requestedDate || 'auto'} today=${today} -> approvedOnDate=${candidate}`,
+      );
+    } catch (error: any) {
+      this.logger.warn(
+        `[approveLoan] Could not fetch loan ${loanId} date constraints, using approvedOnDate=${candidate}: ${error.message}`,
+      );
+    }
+
+    return candidate;
+  }
+
   /**
    * Create a new loan application in Fineract (học theo p2p)
    * interestRatePerPeriod: lãi/tháng (%). Nếu không truyền thì lấy từ product.
@@ -69,7 +127,13 @@ export class FineractLoanService extends FineractBaseService {
       }
 
       const submittedOnDate = this.getTodayFormatted('iso');
-      const expectedDisbursementDate = data.expectedDisbursementDate || submittedOnDate;
+      let expectedDisbursementDate = this.parseFineractDate(data.expectedDisbursementDate) || submittedOnDate;
+      if (expectedDisbursementDate < submittedOnDate) {
+        this.logger.warn(
+          `[createLoanApplication] expectedDisbursementDate=${expectedDisbursementDate} is before submittedOnDate=${submittedOnDate}; using submittedOnDate.`,
+        );
+        expectedDisbursementDate = submittedOnDate;
+      }
 
       // Lấy charges từ product config để gắn vào loan
       this.logger.debug(`[createLoanApplication] Raw product.charges: ${JSON.stringify(product.charges)}`);
@@ -140,10 +204,7 @@ export class FineractLoanService extends FineractBaseService {
    */
   async approveLoan(loanId: number, approvedOnDate?: string): Promise<void> {
     try {
-      const today = this.getTodayFormatted('iso');
-      // Fineract requires: approvedOnDate <= expectedDisbursementDate
-      // If caller passes disbursementDate (may be in the past), use it directly
-      const finalApprovedOnDate = approvedOnDate || today;
+      const finalApprovedOnDate = await this.resolveApprovalDate(loanId, approvedOnDate);
       this.logger.log(`[approveLoan] START | loanId=${loanId} approvedOnDate=${finalApprovedOnDate}`);
       await this.client.post(`/loans/${loanId}?command=approve`, {
         approvedOnDate: finalApprovedOnDate,
