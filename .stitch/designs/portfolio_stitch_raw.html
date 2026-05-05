@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Truong Giang - Creative Developer &amp; Designer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Noto+Serif:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#c8956c",
+                        "on-primary-container": "#512e0e",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed": "#ffdcc2",
+                        "on-secondary": "#472a03",
+                        "outline": "#9d8e83",
+                        "on-tertiary-container": "#403529",
+                        "on-primary-fixed-variant": "#643e1c",
+                        "primary-fixed-dim": "#f3bb90",
+                        "on-background": "#ebe1db",
+                        "tertiary-fixed-dim": "#d6c3b3",
+                        "on-surface-variant": "#d5c3b8",
+                        "on-primary": "#4a2808",
+                        "on-secondary-fixed-variant": "#614018",
+                        "secondary-fixed-dim": "#efbd8a",
+                        "on-secondary-container": "#dfaf7e",
+                        "tertiary": "#d6c3b3",
+                        "surface-container-high": "#2e2926",
+                        "surface-container-highest": "#393430",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed-variant": "#514538",
+                        "on-surface": "#ebe1db",
+                        "on-tertiary-fixed": "#231a0f",
+                        "surface-tint": "#f3bb90",
+                        "surface-container": "#231f1c",
+                        "inverse-on-surface": "#352f2c",
+                        "secondary-fixed": "#ffdcbc",
+                        "inverse-primary": "#7f5531",
+                        "surface-container-low": "#1f1b18",
+                        "on-secondary-fixed": "#2c1700",
+                        "surface-variant": "#393430",
+                        "primary": "#f3bb90",
+                        "surface-bright": "#3e3835",
+                        "error-container": "#93000a",
+                        "tertiary-fixed": "#f3dfce",
+                        "surface": "#171310",
+                        "surface-dim": "#171310",
+                        "outline-variant": "#50443c",
+                        "secondary": "#efbd8a",
+                        "tertiary-container": "#ae9d8d",
+                        "error": "#ffb4ab",
+                        "surface-container-lowest": "#110d0b",
+                        "secondary-container": "#64421a",
+                        "background": "#171310",
+                        "inverse-surface": "#ebe1db",
+                        "on-primary-fixed": "#2e1500",
+                        "on-tertiary": "#3a2e23"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-max": "1280px",
+                        "element-gap": "24px",
+                        "section-padding": "120px",
+                        "gutter": "32px",
+                        "unit": "8px"
+                    },
+                    "fontFamily": {
+                        "h2": ["Noto Serif"],
+                        "h1": ["Noto Serif"],
+                        "body-md": ["Newsreader"],
+                        "body-lg": ["Newsreader"],
+                        "label": ["Newsreader"],
+                        "h3": ["Noto Serif"],
+                        "display": ["Noto Serif"]
+                    },
+                    "fontSize": {
+                        "h2": ["32px", {"lineHeight": "1.3", "letterSpacing": "0.03em", "fontWeight": "400"}],
+                        "h1": ["48px", {"lineHeight": "1.2", "letterSpacing": "0.04em", "fontWeight": "400"}],
+                        "body-md": ["16px", {"lineHeight": "1.6", "letterSpacing": "0", "fontWeight": "400"}],
+                        "body-lg": ["20px", {"lineHeight": "1.6", "letterSpacing": "0.01em", "fontWeight": "400"}],
+                        "label": ["14px", {"lineHeight": "1.2", "letterSpacing": "0.1em", "fontWeight": "500"}],
+                        "h3": ["24px", {"lineHeight": "1.4", "letterSpacing": "0.02em", "fontWeight": "400"}],
+                        "display": ["72px", {"lineHeight": "1.1", "letterSpacing": "0.05em", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .gold-gradient-line {
+            background: linear-gradient(to right, transparent, #c8956c, transparent);
+        }
+        .cubic-ease {
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-stone-950/90 backdrop-blur-md shadow-[0_20px_50px_rgba(20,10,5,0.3)] border-b border-[#C8956C]/20">
+<div class="flex justify-between items-center h-20 px-8 md:px-16 max-w-[1440px] mx-auto">
+<div class="text-2xl font-serif text-[#C8956C] tracking-tighter">TG</div>
+<ul class="hidden md:flex space-x-8 font-serif tracking-widest uppercase text-xs">
+<li class="cursor-pointer transition-all duration-700 cubic-bezier(0.4,0,0.2,1) text-stone-200 hover:text-[#C8956C] transition-colors duration-500 ease-in-out">
+<a href="#work">Work</a>
+</li>
+<li class="cursor-pointer transition-all duration-700 cubic-bezier(0.4,0,0.2,1) text-[#C8956C] border-b border-[#C8956C] pb-1">
+<a href="#expertise">Expertise</a>
+</li>
+<li class="cursor-pointer transition-all duration-700 cubic-bezier(0.4,0,0.2,1) text-stone-200 hover:text-[#C8956C] transition-colors duration-500 ease-in-out">
+<a href="#about">About</a>
+</li>
+<li class="cursor-pointer transition-all duration-700 cubic-bezier(0.4,0,0.2,1) text-stone-200 hover:text-[#C8956C] transition-colors duration-500 ease-in-out">
+<a href="#contact">Contact</a>
+</li>
+</ul>
+<button class="hidden md:block font-serif tracking-widest uppercase text-xs text-[#C8956C] border border-[#C8956C] px-6 py-2 rounded-full hover:bg-[#C8956C]/10 transition-colors duration-500">
+                Inquire
+            </button>
+<button class="md:hidden text-[#C8956C]">
+<span class="material-symbols-outlined" data-icon="menu" style="font-variation-settings: 'FILL' 0;">menu</span>
+</button>
+</div>
+</nav>
+<main>
+<!-- Hero Section -->
+<section class="min-h-screen flex items-center justify-center pt-section-padding pb-section-padding px-gutter relative overflow-hidden">
+<div class="absolute inset-0 z-0 opacity-20 pointer-events-none" style="background: radial-gradient(circle at 50% 50%, rgba(200, 149, 108, 0.15) 0%, transparent 60%);"></div>
+<div class="max-w-container-max mx-auto text-center z-10">
+<h1 class="font-display text-display text-primary-container mb-6 drop-shadow-2xl opacity-0 animate-[fade-in-up_1s_ease-out_0.5s_forwards]" style="animation: fade-in-up 1s ease-out 0.2s forwards; opacity: 1;">
+                    Truong Giang
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant italic mb-12 max-w-2xl mx-auto">
+                    Creative Developer &amp; Designer
+                </p>
+<div class="h-[1px] w-32 mx-auto gold-gradient-line mb-12"></div>
+<a class="inline-block px-10 py-4 font-label text-label text-primary-container uppercase tracking-widest border border-primary-container/50 hover:border-primary-container hover:bg-primary-container/5 transition-all duration-500 cubic-ease rounded-sm" href="#work">
+                    Explore My Work
+                </a>
+</div>
+</section>
+<!-- About Section -->
+<section class="py-section-padding px-gutter bg-surface-container-low relative" id="about">
+<div class="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-12 gap-16 items-center">
+<div class="md:col-span-5 relative group">
+<div class="absolute inset-0 bg-primary-container/10 -m-4 rounded-xl blur-2xl transition-all duration-700 opacity-50 group-hover:opacity-80"></div>
+<div class="relative aspect-[4/5] rounded-lg border border-primary-container/30 overflow-hidden shadow-[0_30px_60px_rgba(45,36,32,0.4)]">
+<img alt="Portrait" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-1000 object-center opacity-90" data-alt="A moody, high-fashion style portrait of a creative professional in a dimly lit studio setting. The lighting is dramatic and directional, casting soft, warm amber shadows across the subject's face against a deep espresso background. The aesthetic is strictly 'Quiet Luxury', evoking a bespoke, artisanal vibe with highly textured, dark organic tones and refined restraint." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAibU2dhGBviYcm4qgmB_xsiU0QX_pDrEOy_xuq5RFzr-Hzfr70pIx1ZWTRXpLvwruJn3zkY1lreuSagc01ESQixnGLXgQhmA9Jz6ikh51768LtOE2AtsFIbrRgTEJ58tKJ3YBD6YlO0djYWshGjf5Skkq9QYqwRUlNCZjhXgrce_pBa_L7-RL9K1-gMZk96MneMxdswdGxl8UsEi8b5Ogh2ZGDs11K2eeAQ03ic2NODpoOY_kcn8lVShFamHOlD58R3Fs6pSryNXw"/>
+<div class="absolute inset-0 bg-primary-container/5 mix-blend-overlay pointer-events-none"></div>
+</div>
+</div>
+<div class="md:col-span-7 pl-0 md:pl-12">
+<h2 class="font-h2 text-h2 text-on-surface mb-8">About Me</h2>
+<div class="h-[1px] w-24 gold-gradient-line mb-10"></div>
+<div class="space-y-6 text-on-surface-variant font-body-md text-body-md mb-12 pr-0 lg:pr-12">
+<p>I am a digital artisan specializing in crafting immersive, high-performance web experiences. My philosophy is rooted in "Quiet Luxury"—designing interfaces that prioritize substance, tactile feedback, and absolute sophistication over noise.</p>
+<p>Bridging the gap between meticulous design and robust engineering, I create digital environments that feel less like websites and more like curated galleries.</p>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<div class="p-8 bg-surface-container rounded-sm border-l border-primary-container/30 shadow-[0_20px_40px_rgba(20,15,10,0.2)]">
+<div class="font-h3 text-h3 text-primary-container mb-2">50+</div>
+<div class="font-label text-label text-on-surface-variant uppercase tracking-widest text-[10px]">Projects Delivered</div>
+</div>
+<div class="p-8 bg-surface-container rounded-sm border-l border-primary-container/30 shadow-[0_20px_40px_rgba(20,15,10,0.2)]">
+<div class="font-h3 text-h3 text-primary-container mb-2">5+</div>
+<div class="font-label text-label text-on-surface-variant uppercase tracking-widest text-[10px]">Years Experience</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Portfolio Section -->
+<section class="py-section-padding px-gutter bg-background relative" id="work">
+<div class="max-w-container-max mx-auto">
+<div class="flex items-center gap-8 mb-20">
+<h2 class="font-h2 text-h2 text-on-surface whitespace-nowrap">Selected Works</h2>
+<div class="h-[1px] w-full gold-gradient-line"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-24">
+<!-- Project 1 -->
+<div class="group cursor-pointer">
+<div class="relative overflow-hidden bg-surface-variant rounded-sm mb-8 aspect-video shadow-[0_30px_60px_rgba(20,15,10,0.3)]">
+<img alt="Project 1" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000 cubic-ease opacity-80 group-hover:opacity-100" data-alt="A conceptual screenshot of an ultra-premium architecture portfolio website displayed on a sleek monitor in a dark room. The screen features expansive whitespace, subtle warm gold accent lines, and striking high-contrast imagery against a deep charcoal background. The mood is elegant and minimalist, reflecting a 'Quiet Luxury' design philosophy with soft, ambient lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDgpX_NhD0liLwt0uP9pY16kJdWn72KfHdHNeqX2bOlxFaDwccENV-SZpQXyzLage2Igfp2RItWB231L-qjjR_wYnzZWVoD61Vv4Po4Jfjz9GMs2krF4GpgThVKSWQMFrh1tlDKwt0bvx2SqiLKli9tzxzAFmNfvuvv2LFIbtgTOJe_ZaQQaHOUBzdO2Sl9vZ53ZyOhF8bQVyB2bU_uHT3smUtEUjzCzJlQu8SpSD2FKqKrwuSemH-bRLxBE4mOFxmGMlZcomtV4s8"/>
+<div class="absolute inset-0 bg-primary-container/0 group-hover:bg-primary-container/5 transition-colors duration-500 mix-blend-overlay"></div>
+</div>
+<h3 class="font-h3 text-h3 text-on-surface mb-3 group-hover:text-primary-container transition-colors duration-300">Maison d'Art</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6">A digital exhibition space designed for a boutique Parisian gallery, focusing on fluid typography and invisible interactions.</p>
+<div class="flex gap-3 flex-wrap">
+<span class="px-3 py-1 border border-outline-variant text-[10px] font-label text-label text-on-surface-variant uppercase tracking-wider rounded-full">Next.js</span>
+<span class="px-3 py-1 border border-outline-variant text-[10px] font-label text-label text-on-surface-variant uppercase tracking-wider rounded-full">WebGL</span>
+</div>
+</div>
+<!-- Project 2 -->
+<div class="group cursor-pointer md:mt-24">
+<div class="relative overflow-hidden bg-surface-variant rounded-sm mb-8 aspect-video shadow-[0_30px_60px_rgba(20,15,10,0.3)]">
+<img alt="Project 2" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-1000 cubic-ease opacity-80 group-hover:opacity-100" data-alt="A minimalist digital art installation showcasing an e-commerce interface for a luxury fashion brand. The design uses deep organic dark tones contrasting with pristine ivory cream text and burnished bronze accents. The interface is clean, spacious, and highly structural, shot in a gallery-like setting with very low ambient light and a soft, warm glow." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDCz1otgj9tcJqA9QVV79bxJWkKx5gUbkNu7I22V27daP-K8LWCdTYlEANVztvxMKZoN_PcgTi1u7OqcoY3jCgZwwyt1hq7fc8E_vCqZJB1brGlsfXnkseSmsx-pZmPuJc3-_ZeI05Bw7FaG6wizKjeX9inQbz6MuGQgsoTihcWHQMa8l5c9Pm1oKXocPDLAGCeA8cZbPv-xd6CBNp2Gi_wcWIkUlp7Rd8jOxLzVxbozz8QcVwdMvBSKSNo96nbrtCkcGncU_rchzA"/>
+<div class="absolute inset-0 bg-primary-container/0 group-hover:bg-primary-container/5 transition-colors duration-500 mix-blend-overlay"></div>
+</div>
+<h3 class="font-h3 text-h3 text-on-surface mb-3 group-hover:text-primary-container transition-colors duration-300">Aura Horology</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6">An e-commerce experience for bespoke timepieces, leveraging micro-animations to convey the precision of clockwork.</p>
+<div class="flex gap-3 flex-wrap">
+<span class="px-3 py-1 border border-outline-variant text-[10px] font-label text-label text-on-surface-variant uppercase tracking-wider rounded-full">React</span>
+<span class="px-3 py-1 border border-outline-variant text-[10px] font-label text-label text-on-surface-variant uppercase tracking-wider rounded-full">Tailwind</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Skills Section -->
+<section class="py-section-padding px-gutter bg-surface-container-low" id="expertise">
+<div class="max-w-container-max mx-auto">
+<div class="text-center mb-20">
+<h2 class="font-h2 text-h2 text-on-surface mb-6">Expertise</h2>
+<div class="h-[1px] w-24 mx-auto gold-gradient-line"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- Skill Card -->
+<div class="p-10 bg-surface-container border border-outline-variant/30 rounded-sm hover:border-primary-container/50 transition-colors duration-500 group shadow-[0_20px_40px_rgba(20,15,10,0.15)]">
+<span class="material-symbols-outlined text-3xl text-primary-container/70 mb-6 group-hover:text-primary-container transition-colors duration-300" style="font-variation-settings: 'FILL' 0, 'wght' 200;">code</span>
+<h4 class="font-h3 text-h3 text-on-surface mb-8 text-xl">React &amp; Next.js</h4>
+<div class="w-full h-[1px] bg-outline-variant/30 relative">
+<div class="absolute top-0 left-0 h-full bg-primary-container/80 w-[90%] transition-all duration-1000"></div>
+</div>
+</div>
+<div class="p-10 bg-surface-container border border-outline-variant/30 rounded-sm hover:border-primary-container/50 transition-colors duration-500 group shadow-[0_20px_40px_rgba(20,15,10,0.15)]">
+<span class="material-symbols-outlined text-3xl text-primary-container/70 mb-6 group-hover:text-primary-container transition-colors duration-300" style="font-variation-settings: 'FILL' 0, 'wght' 200;">data_object</span>
+<h4 class="font-h3 text-h3 text-on-surface mb-8 text-xl">TypeScript</h4>
+<div class="w-full h-[1px] bg-outline-variant/30 relative">
+<div class="absolute top-0 left-0 h-full bg-primary-container/80 w-[85%] transition-all duration-1000"></div>
+</div>
+</div>
+<div class="p-10 bg-surface-container border border-outline-variant/30 rounded-sm hover:border-primary-container/50 transition-colors duration-500 group shadow-[0_20px_40px_rgba(20,15,10,0.15)]">
+<span class="material-symbols-outlined text-3xl text-primary-container/70 mb-6 group-hover:text-primary-container transition-colors duration-300" style="font-variation-settings: 'FILL' 0, 'wght' 200;">design_services</span>
+<h4 class="font-h3 text-h3 text-on-surface mb-8 text-xl">UI/UX Design</h4>
+<div class="w-full h-[1px] bg-outline-variant/30 relative">
+<div class="absolute top-0 left-0 h-full bg-primary-container/80 w-[95%] transition-all duration-1000"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Contact Section -->
+<section class="py-section-padding px-gutter bg-background" id="contact">
+<div class="max-w-4xl mx-auto text-center">
+<h2 class="font-h1 text-h1 text-primary-container mb-6 italic">Let's Connect</h2>
+<div class="h-[1px] w-32 mx-auto gold-gradient-line mb-16"></div>
+<form class="space-y-12 mb-20 text-left">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="relative group">
+<input class="w-full bg-transparent border-0 border-b border-outline-variant py-4 px-0 text-on-surface font-body-md focus:ring-0 focus:border-primary-container transition-colors peer placeholder-transparent" id="name" placeholder="Name" type="text"/>
+<label class="absolute left-0 top-4 text-on-surface-variant font-label text-label uppercase tracking-widest transition-all peer-focus:-top-4 peer-focus:text-[10px] peer-focus:text-primary-container peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[10px]" for="name">Name</label>
+<div class="absolute bottom-0 left-0 w-full h-8 bg-primary-container/5 blur-md opacity-0 peer-focus:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+</div>
+<div class="relative group">
+<input class="w-full bg-transparent border-0 border-b border-outline-variant py-4 px-0 text-on-surface font-body-md focus:ring-0 focus:border-primary-container transition-colors peer placeholder-transparent" id="email" placeholder="Email" type="email"/>
+<label class="absolute left-0 top-4 text-on-surface-variant font-label text-label uppercase tracking-widest transition-all peer-focus:-top-4 peer-focus:text-[10px] peer-focus:text-primary-container peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[10px]" for="email">Email</label>
+<div class="absolute bottom-0 left-0 w-full h-8 bg-primary-container/5 blur-md opacity-0 peer-focus:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+</div>
+</div>
+<div class="relative group">
+<textarea class="w-full bg-transparent border-0 border-b border-outline-variant py-4 px-0 text-on-surface font-body-md focus:ring-0 focus:border-primary-container transition-colors peer placeholder-transparent resize-none" id="message" placeholder="Message" rows="4"></textarea>
+<label class="absolute left-0 top-4 text-on-surface-variant font-label text-label uppercase tracking-widest transition-all peer-focus:-top-4 peer-focus:text-[10px] peer-focus:text-primary-container peer-[:not(:placeholder-shown)]:-top-4 peer-[:not(:placeholder-shown)]:text-[10px]" for="message">Message</label>
+<div class="absolute bottom-0 left-0 w-full h-8 bg-primary-container/5 blur-md opacity-0 peer-focus:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+</div>
+<div class="text-center pt-8">
+<button class="inline-block px-12 py-4 bg-primary-container text-on-primary-container font-label text-label uppercase tracking-widest rounded-sm hover:bg-primary-fixed transition-colors duration-500" type="submit">
+                            Send Message
+                        </button>
+</div>
+</form>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-stone-950 w-full py-12 border-t border-[#C8956C]/30">
+<div class="flex flex-col md:flex-row justify-between items-center px-12 max-w-7xl mx-auto gap-6">
+<p class="font-serif text-[10px] tracking-[0.2em] uppercase text-stone-400">
+                © 2024 Truong Giang. Crafted with restraint.
+            </p>
+<ul class="flex space-x-8 font-serif text-[10px] tracking-[0.2em] uppercase text-stone-500">
+<li class="cursor-pointer transition-all duration-300 slow-fade text-stone-500 hover:text-[#C8956C]">
+<a href="#">Instagram</a>
+</li>
+<li class="cursor-pointer transition-all duration-300 slow-fade text-stone-500 hover:text-[#C8956C]">
+<a href="#">LinkedIn</a>
+</li>
+<li class="cursor-pointer transition-all duration-300 slow-fade text-stone-500 hover:text-[#C8956C]">
+<a href="#">Dribbble</a>
+</li>
+</ul>
+</div>
+</footer>
+</body></html>
