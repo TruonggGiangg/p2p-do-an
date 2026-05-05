@@ -1,27 +1,27 @@
 /**
- * DisbursementJob — Tự động giải ngân khoản vay đủ match + đến ngày
+ * DisbursementJob — Retry giải ngân khoản vay đủ điều kiện đa bên + đến ngày
  * Pattern: HD-AMC DisbursementJob.js, adapted for NestJS
  *
  * Logic:
  *  1. Tìm LoanApplication có status='approved', isFullMatch=true, disbursementDate <= now
- *  2. Approve trên Fineract (idempotent)
- *  3. Disburse trên Fineract
- *  4. Cập nhật MongoDB status → 'disbursed'
+ *  2. Delegate sang InvestPaymentService.handleFullMatchDisbursement()
+ *  3. Service này kiểm đủ: đã duyệt, đủ 100% vốn thật, tất cả NĐT ký, người vay ký SmartCA
+ *  4. Chỉ khi gate pass mới disburse Fineract + cập nhật MongoDB status → 'disbursed'
  */
 
 import { BaseJob } from './base-job';
 import { Model } from 'mongoose';
 import { LoanApplication } from '../loan/schemas/loan-application.schema';
-import { FineractLoanService } from '../fineract/services/fineract-loan.service';
+import { InvestPaymentService } from '../invest/invest-payment.service';
 
 export class DisbursementJob extends BaseJob {
   constructor(
     private readonly loanModel: Model<LoanApplication>,
-    private readonly fineractLoanService: FineractLoanService,
+    private readonly investPaymentService: InvestPaymentService,
   ) {
     super({
       name: 'Disbursement',
-      description: 'Tự động giải ngân khoản vay đủ match + đến ngày (học theo HD-AMC)',
+      description: 'Retry giải ngân khoản vay đã đủ vốn + đủ chữ ký đa bên + đến ngày',
       intervalMs: 60 * 1000, // 1 phút
       enabled: true,
       runOnStart: true,
@@ -53,14 +53,14 @@ export class DisbursementJob extends BaseJob {
   }
 
   /**
-   * Kiểm tra và giải ngân các khoản vay đủ match + đến ngày giải ngân
-   * Logic y hệt HD-AMC DisbursementJob.execute()
+    * Kiểm tra và retry giải ngân các khoản vay đủ vốn + đến ngày giải ngân.
+    * Không tự gọi Fineract trực tiếp để tránh bỏ qua điều kiện chữ ký người vay/NĐT.
    */
   async execute() {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0]; // 'yyyy-MM-dd'
 
-    // Tìm khoản vay approved + đủ vốn (isFullMatch) + đến ngày giải ngân
+    // Tìm khoản vay approved + đủ vốn thật (isFullMatch) + đến ngày giải ngân
     const loansToDisburse = await this.loanModel
       .find({
         status: 'approved',
@@ -68,13 +68,14 @@ export class DisbursementJob extends BaseJob {
         disbursementDate: { $lte: todayStr },
         fineractLoanId: { $ne: null },
       })
-      .select('_id fineractLoanId capital disbursementDate')
+      .select('_id fineractLoanId capital disbursementDate status isFullMatch investedNotes totalNotes')
       .limit(this.params.maxPerRun || 50)
       .lean();
 
     const report = {
       found: loansToDisburse.length,
       disbursed: 0,
+      skipped: 0,
       failed: 0,
       details: [] as any[],
     };
@@ -90,52 +91,23 @@ export class DisbursementJob extends BaseJob {
       const fineractLoanId = loan.fineractLoanId!;
 
       try {
-        // 0. Pre-check Fineract loan status to avoid unnecessary API errors
-        let fineractStatus: number | null = null;
-        try {
-          const details = await this.fineractLoanService.getLoanDetails(fineractLoanId.toString());
-          fineractStatus = details?.status?.id ?? null;
-        } catch {
-          this.logger.warn(`Could not fetch Fineract status for loan #${fineractLoanId}, will attempt anyway`);
-        }
+        await this.investPaymentService.handleFullMatchDisbursement(loanId, 'disbursement-job');
 
-        // Status 300 = Active (already disbursed) → just sync MongoDB
-        if (fineractStatus === 300) {
-          this.logger.log(`Loan #${fineractLoanId} already disbursed on Fineract, syncing MongoDB`);
-          await this.loanModel.updateOne(
-            { _id: (loan as any)._id },
-            { $set: { status: 'disbursed', lastSyncedAt: new Date() } },
-          );
+        const refreshed = await this.loanModel.findById(loanId).select('status').lean();
+        if (refreshed?.status === 'disbursed') {
           report.disbursed++;
-          report.details.push({ loanId, fineractLoanId, status: 'success', note: 'already_disbursed_sync' });
-          this.setProgress(i + 1, total, `${i + 1}/${total} — ${report.disbursed} OK, ${report.failed} lỗi`);
-          continue;
+          report.details.push({ loanId, fineractLoanId, status: 'success' });
+          this.logger.log(`✓ Disbursed loan ${loanId} (Fineract #${fineractLoanId})`);
+        } else {
+          report.skipped++;
+          report.details.push({
+            loanId,
+            fineractLoanId,
+            status: 'skipped',
+            reason: 'not_ready_for_multi_party_disbursement',
+          });
+          this.logger.log(`Loan ${loanId} not ready for disbursement yet`);
         }
-
-        // Status 200 = Approved → skip approve, proceed to disburse
-        // Status 100 = Pending Approval → approve then disburse
-        if (fineractStatus !== 200) {
-          // 1. Approve trên Fineract (idempotent - skip nếu đã approved)
-          await this.fineractLoanService.approveLoan(fineractLoanId, loan.disbursementDate);
-        }
-
-        // 2. Disburse trên Fineract
-        await this.fineractLoanService.disburseLoan(fineractLoanId, loan.capital);
-
-        // 3. Cập nhật MongoDB
-        await this.loanModel.updateOne(
-          { _id: (loan as any)._id },
-          { $set: { status: 'disbursed', lastSyncedAt: new Date() } },
-        );
-
-        report.disbursed++;
-        report.details.push({
-          loanId,
-          fineractLoanId,
-          status: 'success',
-        });
-
-        this.logger.log(`✓ Disbursed loan ${loanId} (Fineract #${fineractLoanId})`);
       } catch (err: any) {
         report.failed++;
         report.details.push({
@@ -147,7 +119,11 @@ export class DisbursementJob extends BaseJob {
         this.logger.error(`✗ Failed loan ${loanId}: ${err.message}`);
       }
 
-      this.setProgress(i + 1, total, `${i + 1}/${total} — ${report.disbursed} OK, ${report.failed} lỗi`);
+      this.setProgress(
+        i + 1,
+        total,
+        `${i + 1}/${total} — ${report.disbursed} giải ngân, ${report.skipped} chờ, ${report.failed} lỗi`,
+      );
     }
 
     return report;

@@ -769,15 +769,22 @@ export class AdminLoanService {
     this.logger.log(`[disburseLoan] fineractLoanId=${fineractLoanId}`);
     const loan = await this.loanApplicationModel.findOne({ fineractLoanId });
     if (!loan) throw new BadRequestException(`Khoản vay Fineract #${fineractLoanId} không tồn tại trong hệ thống`);
+    if (loan.status !== 'approved') {
+      throw new BadRequestException(`Khoản vay #${fineractLoanId} phải ở trạng thái đã duyệt trước khi giải ngân. Hiện tại: ${loan.status}`);
+    }
 
     // 0. Check contract is signed before allowing disbursement
     const contract = await this.loanContractModel.findOne({ loanId: loan._id });
     if (!contract) {
       throw new BadRequestException(`Khoản vay #${fineractLoanId} chưa có hợp đồng. Không thể giải ngân.`);
     }
-    if (contract.status !== 'signed') {
+    const borrowerSignedVerified = Boolean(
+      contract.smartCASignatureVerified === true ||
+        (contract.signatureProvider === 'vnpt_smartca' && ['signed', 'active'].includes(String(contract.status || ''))),
+    );
+    if (contract.status !== 'signed' || !borrowerSignedVerified) {
       throw new BadRequestException(
-        `Há»£p Ä‘á»“ng khoáº£n vay #${fineractLoanId} chÆ°a Ä‘Æ°á»£c kÃ½ (tráº¡ng thÃ¡i: ${contract.status}). NgÆ°á»i vay cáº§n kÃ½ há»£p Ä‘á»“ng trÆ°á»›c khi giáº£i ngÃ¢n.`,
+        `Hợp đồng khoản vay #${fineractLoanId} chưa được người vay ký SmartCA hợp lệ (trạng thái: ${contract.status}). Không thể giải ngân.`,
       );
     }
 

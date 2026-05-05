@@ -1042,6 +1042,13 @@ export interface ProductCharge {
 }
 
 export interface SigningStatusResponse {
+  funding?: {
+    approved: boolean;
+    isFullMatch: boolean;
+    investedNotes: number;
+    totalNotes: number;
+    fundingComplete: boolean;
+  };
   borrower: {
     hasContract: boolean;
     hasSigned: boolean;

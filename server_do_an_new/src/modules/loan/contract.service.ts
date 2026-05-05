@@ -357,8 +357,36 @@ export class ContractService {
     }
 
     const loan = await this.loanApplicationModel.findById(contract.loanId);
-    if (!loan || !(loan as any).isFullMatch) {
-      throw new BadRequestException('Khoản vay chưa được đầu tư đủ 100% vốn. Đang chờ nhà đầu tư.');
+    if (!loan) {
+      throw new BadRequestException('Khoản vay không tồn tại');
+    }
+    if (loan.status !== 'approved') {
+      throw new BadRequestException(`Khoản vay phải ở trạng thái đã duyệt trước khi ký hợp đồng. Hiện tại: ${loan.status}`);
+    }
+
+    const totalNotes = Math.max(1, Number((loan as any).totalNotes || Math.ceil((loan.capital || 0) / 500000)));
+    const investedNotes = Number((loan as any).investedNotes || 0);
+    if ((loan as any).isFullMatch !== true || investedNotes < totalNotes) {
+      throw new BadRequestException(
+        `Khoản vay chưa được rót đủ 100% vốn thật (${investedNotes}/${totalNotes} phần). Đang chờ nhà đầu tư.`,
+      );
+    }
+
+    const investmentContractModel: any = this.loanApplicationModel.db.model('InvestmentContract');
+    const investmentContracts: any[] = await investmentContractModel
+      .find({ loanApplicationId: loan._id })
+      .select('_id status smartCASignatureVerified lenderId')
+      .lean();
+    if (!investmentContracts.length) {
+      throw new BadRequestException('Khoản vay chưa có hợp đồng đầu tư. Đang chờ nhà đầu tư rót vốn.');
+    }
+    const unsignedInvestmentContracts = investmentContracts.filter(
+      c => c.smartCASignatureVerified !== true || !['active', 'signed'].includes(String(c.status || '')),
+    );
+    if (unsignedInvestmentContracts.length > 0) {
+      throw new BadRequestException(
+        `Còn ${unsignedInvestmentContracts.length}/${investmentContracts.length} hợp đồng đầu tư chưa được nhà đầu tư ký SmartCA. Người vay chỉ ký sau khi tất cả nhà đầu tư ký xong.`,
+      );
     }
 
     contract.status = 'signed';

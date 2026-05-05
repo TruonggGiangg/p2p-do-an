@@ -26,10 +26,10 @@ import { CleanupOrdersJob } from './cleanup-orders.job';
 import { AdminModule } from '../admin/admin.module';
 import { AdminService } from '../admin/admin.service';
 import { FineractModule } from '../fineract/fineract.module';
-import { FineractLoanService } from '../fineract/services/fineract-loan.service';
 import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { InvestModule } from '../invest/invest.module';
 import { InvestService } from '../invest/invest.service';
+import { InvestPaymentService } from '../invest/invest-payment.service';
 import { InvestmentOrder, InvestmentOrderSchema } from '../invest/schemas/investment-order.schema';
 
 @Module({
@@ -96,14 +96,14 @@ import { InvestmentOrder, InvestmentOrderSchema } from '../invest/schemas/invest
       provide: 'DISBURSEMENT_JOB',
       useFactory: (
         loanModel: any,
-        fineractLoanService: FineractLoanService,
+        investPaymentService: InvestPaymentService,
         jobManager: JobManagerService,
       ) => {
-        const job = new DisbursementJob(loanModel, fineractLoanService);
+        const job = new DisbursementJob(loanModel, investPaymentService);
         jobManager.register(job);
         return job;
       },
-      inject: [getModelToken(LoanApplication.name), FineractLoanService, JobManagerService],
+      inject: [getModelToken(LoanApplication.name), InvestPaymentService, JobManagerService],
     },
     {
       provide: 'CLEANUP_ORDERS_JOB',

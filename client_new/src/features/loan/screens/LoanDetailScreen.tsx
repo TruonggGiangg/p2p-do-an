@@ -169,19 +169,19 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
     const [submittingSupport, setSubmittingSupport] = useState(false);
     const [signingStatus, setSigningStatus] = useState<SigningStatusResponse | null>(null);
 
+    const statusDisplayForLoan = useMemo(() => getStatusInfo({
+        ...(rawLoan || {}),
+        status: loan.status,
+        statusInfo: fineractDetails?.status || rawLoan?.statusInfo,
+    } as any), [fineractDetails, rawLoan, loan.status]);
+
     const isActive = useMemo(() =>
-        fineractDetails?.status?.active === true ||
-        loan.status === 'success' ||
-        loan.status === 'disbursed',
-        [fineractDetails, loan.status]);
+        statusDisplayForLoan.text === 'Đang vay' || statusDisplayForLoan.text.includes('Quá hạn'),
+        [statusDisplayForLoan.text]);
 
     const isPending = useMemo(() =>
-        fineractDetails?.status?.pendingApproval === true ||
-        fineractDetails?.status?.waitingForDisbursal === true ||
-        loan.status === 'pending' ||
-        loan.status === 'waiting' ||
-        loan.status === 'approved',
-        [fineractDetails, loan.status]);
+        ['Chờ duyệt', 'Chờ ký', 'Chờ giải ngân', 'Đang gọi vốn'].includes(statusDisplayForLoan.text),
+        [statusDisplayForLoan.text]);
 
     const isClean = useMemo(() =>
         loan.status === 'clean' ||
@@ -373,10 +373,7 @@ const LoanDetailScreen = ({ route }: { route: { params: RouteParams } }) => {
 
     // ---- Render Tabs ----
     const renderInfoTab = () => {
-        const statusDisplay = getStatusInfo({
-            ...rawLoan,
-            statusInfo: fineractDetails?.status || rawLoan.statusInfo
-        });
+        const statusDisplay = statusDisplayForLoan;
         const progressPercent = outstanding && loan.capital > 0
             ? Math.min(100, Math.round((totalPaid / (loan.capital + (outstanding.interestOutstanding + totalPaid - loan.capital > 0 ? outstanding.interestOutstanding + totalPaid - loan.capital : 0))) * 100))
             : 0;
