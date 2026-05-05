@@ -5,6 +5,7 @@ import { SmartCAService } from './smartca.service';
 import { DigitalSignatureController } from './smartca.controller';
 import { DigitalSignature, DigitalSignatureSchema } from './schemas/digital-signature.schema';
 import { LoanContract, LoanContractSchema } from '../loan/schemas/loan-contract.schema';
+import { LoanApplication, LoanApplicationSchema } from '../loan/schemas/loan-application.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { InvestmentContract, InvestmentContractSchema } from '../invest/schemas/investment-contract.schema';
 import smartcaConfig from 'src/config/smartca.config';
@@ -15,6 +16,7 @@ import smartcaConfig from 'src/config/smartca.config';
     MongooseModule.forFeature([
       { name: DigitalSignature.name, schema: DigitalSignatureSchema },
       { name: LoanContract.name, schema: LoanContractSchema },
+      { name: LoanApplication.name, schema: LoanApplicationSchema },
       { name: User.name, schema: UserSchema },
       { name: InvestmentContract.name, schema: InvestmentContractSchema },
     ]),

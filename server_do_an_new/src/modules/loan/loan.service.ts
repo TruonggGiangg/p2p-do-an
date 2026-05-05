@@ -1471,9 +1471,20 @@ export class LoanService {
     ).length;
     const pendingInvestors = totalInvestors - signedInvestors;
 
-    const allPartiesSigned = borrowerSigned && (totalInvestors === 0 || pendingInvestors === 0);
+    const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
+    const totalNotes = Math.max(1, Number((loan as any).totalNotes || Math.ceil((loan.capital || 0) / baseUnitPrice)));
+    const investedNotes = Number((loan as any).investedNotes || 0);
+    const fundingComplete = loan.status === 'approved' && (loan as any).isFullMatch === true && investedNotes >= totalNotes;
+    const investorsAllSigned = pendingInvestors === 0 && totalInvestors > 0;
 
     return {
+      funding: {
+        approved: loan.status === 'approved',
+        isFullMatch: (loan as any).isFullMatch === true,
+        investedNotes,
+        totalNotes,
+        fundingComplete,
+      },
       borrower: {
         hasContract: !!loanContract,
         hasSigned: borrowerSigned,
@@ -1484,9 +1495,9 @@ export class LoanService {
         total: totalInvestors,
         signed: signedInvestors,
         pending: pendingInvestors,
-        allSigned: pendingInvestors === 0 && totalInvestors > 0,
+        allSigned: investorsAllSigned,
       },
-      readyForDisbursement: allPartiesSigned && totalInvestors > 0,
+      readyForDisbursement: fundingComplete && borrowerSigned && investorsAllSigned,
     };
   }
 }

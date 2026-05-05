@@ -91,6 +91,7 @@ export class DigitalSignatureController {
     if (contract.status !== 'pending_signature') {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
+    await this.assertLoanContractReadyForBorrowerSignature(contract);
 
     const contractHTML = this.generateContractHTML(contract);
     const documentHash = this.smartCAService.hashDocument(contractHTML);
@@ -138,6 +139,7 @@ export class DigitalSignatureController {
     if (contract.status !== 'pending_signature') {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
+    await this.assertLoanContractReadyForBorrowerSignature(contract);
 
     const contractHTML = this.generateContractHTML(contract);
     const documentHash = this.smartCAService.hashDocument(contractHTML);
@@ -315,6 +317,7 @@ export class DigitalSignatureController {
     if (contract.status !== 'pending_signature') {
       throw new BadRequestException(`Hợp đồng đã ở trạng thái: ${contract.status}`);
     }
+    await this.assertLoanContractReadyForBorrowerSignature(contract);
 
     oldSignature.status = 'cancelled';
     await oldSignature.save();
@@ -432,6 +435,7 @@ export class DigitalSignatureController {
     if (contract.status !== 'pending_signature') {
       throw new BadRequestException(`Trạng thái hợp đồng không hợp lệ để ký: ${contract.status}`);
     }
+    await this.assertLoanContractReadyForBorrowerSignature(contract);
 
     this.logger.log(`[DEV_MODE] Manual signing contract ${body.contractId} for user ${userId}`);
     await this.updateContractSigned(contract, 'DEV_MODE_SIGNATURE');
@@ -475,6 +479,49 @@ export class DigitalSignatureController {
     return contract.__contractType || (contract.lenderId ? 'invest' : 'loan');
   }
 
+  private async assertLoanContractReadyForBorrowerSignature(contract: any): Promise<void> {
+    if (this.getContractType(contract) !== 'loan') return;
+
+    const loanApplicationModel: any = this.contractModel.db.model('LoanApplication');
+    const loan = await loanApplicationModel
+      .findById(contract.loanId)
+      .select('_id status capital totalNotes investedNotes isFullMatch')
+      .lean();
+
+    if (!loan) {
+      throw new BadRequestException('Khoản vay không tồn tại. Không thể ký hợp đồng.');
+    }
+    if (loan.status !== 'approved') {
+      throw new BadRequestException(`Khoản vay phải ở trạng thái đã duyệt trước khi ký hợp đồng. Hiện tại: ${loan.status}`);
+    }
+
+    const baseUnitPrice = this.configService.get<number>('invest.baseUnitPrice') || 500_000;
+    const totalNotes = Math.max(1, Number(loan.totalNotes || Math.ceil(Number(loan.capital || 0) / baseUnitPrice)));
+    const investedNotes = Number(loan.investedNotes || 0);
+    if (loan.isFullMatch !== true || investedNotes < totalNotes) {
+      throw new BadRequestException(
+        `Khoản vay chưa được rót đủ 100% vốn thật (${investedNotes}/${totalNotes} phần). Người vay chỉ ký sau khi nhà đầu tư rót đủ vốn.`,
+      );
+    }
+
+    const investmentContracts = await this.investContractModel
+      .find({ loanApplicationId: loan._id })
+      .select('_id status smartCASignatureVerified lenderId')
+      .lean();
+    if (!investmentContracts.length) {
+      throw new BadRequestException('Khoản vay chưa có hợp đồng đầu tư. Đang chờ nhà đầu tư rót vốn.');
+    }
+
+    const unsigned = investmentContracts.filter(
+      (c: any) => c.smartCASignatureVerified !== true || !['active', 'signed'].includes(String(c.status || '')),
+    );
+    if (unsigned.length > 0) {
+      throw new BadRequestException(
+        `Còn ${unsigned.length}/${investmentContracts.length} hợp đồng đầu tư chưa được nhà đầu tư ký SmartCA. Người vay chỉ ký sau khi tất cả nhà đầu tư ký xong.`,
+      );
+    }
+  }
+
   private generateContractHTML(contract: any): string {
     if (this.getContractType(contract) === 'invest') {
       return generateInvestmentContractHTML({ contract });
@@ -489,6 +536,15 @@ export class DigitalSignatureController {
   private async updateContractSigned(contract: any, signatureValue?: string): Promise<void> {
     const model = this.getContractModel(contract);
     const isInvest = this.getContractType(contract) === 'invest';
+    const alreadyBorrowerSigned = Boolean(
+      !isInvest &&
+        (contract.smartCASignatureVerified === true ||
+          (contract.signatureProvider === 'vnpt_smartca' && ['signed', 'active'].includes(String(contract.status || '')))),
+    );
+
+    if (!isInvest && !alreadyBorrowerSigned) {
+      await this.assertLoanContractReadyForBorrowerSignature(contract);
+    }
 
     await model.updateOne(
       { _id: contract._id },

@@ -241,9 +241,8 @@ export class InvestPaymentService {
     );
     this.logger.log(`${LOG} ✅ Contract created: contractId=${contract.contractId}, _id=${contract._id}, capital=${investAmount.toLocaleString()} VND, status=${contract.status}`);
 
-    // ── 6.5 GATE: Direct invest cần ký SmartCA TRƯỚC khi trừ tiền ──
-    // Hợp đồng từ order matching: status='active' + smartCASignatureVerified=true → tiếp tục step 7-10 ngay.
-    // Hợp đồng đầu tư trực tiếp: status='pending_signature' → DỪNG ở đây, KHÔNG trừ tiền.
+    // ── 6.5 GATE: NĐT cần ký SmartCA TRƯỚC khi trừ tiền ──
+    // Cả order matching và đầu tư trực tiếp đều dừng ở pending_signature, KHÔNG trừ tiền.
     // Sau khi NĐT ký SmartCA xong, smartca.controller sẽ gọi finalizeInvestmentAfterSigning() để hoàn tất.
     if (contract.status === 'pending_signature') {
       this.logger.log(
@@ -654,6 +653,14 @@ export class InvestPaymentService {
       { $set: { status: 'active' } },
     );
 
+    if (contract.investmentOrderId) {
+      await this.orderModel.updateOne(
+        { _id: contract.investmentOrderId, 'loans.loanId': String(loanApplicationId) },
+        { $set: { 'loans.$.isInvested': true } },
+      );
+      this.logger.log(`${LOG} Order ${contract.investmentOrderId}: loan ${loanApplicationId} marked as invested after payment finalize`);
+    }
+
     this.logger.log(
       `${LOG} Funding confirmed: investedNotes=${fundedLoan.investedNotes}/${fundedLoan.totalNotes}, nodeMatch=${fundedLoan.nodeMatch || 0}, matchPercentage=${matchPercentage}%`,
     );
@@ -760,6 +767,13 @@ export class InvestPaymentService {
         return;
       }
 
+      if (loan.status !== 'approved') {
+        this.logger.warn(
+          `${logPrefix} Loan ${loanApplicationId} chưa ở trạng thái approved (status=${loan.status}). Không disburse.`,
+        );
+        return;
+      }
+
       const totalNotes = Math.max(
         1,
         Number((loan as any).totalNotes || Math.ceil((loan.capital || 0) / this.baseUnitPrice)),
@@ -795,8 +809,7 @@ export class InvestPaymentService {
       }
 
       // ── Gate: TẤT CẢ hợp đồng đầu tư phải được nhà đầu tư ký SmartCA (status=active + smartCASignatureVerified) ──
-      // Hợp đồng tạo từ order matching tự gán smartCASignatureVerified=true (provider=order_matching_skip);
-      // Hợp đồng đầu tư trực tiếp phải ký SmartCA mới được giải ngân.
+      // Cả order matching và đầu tư trực tiếp đều chỉ được tính là funded sau khi SmartCA finalize.
       const investmentContractsCheck = await this.contractModel
         .find({ loanApplicationId: new Types.ObjectId(loanApplicationId) })
         .select('_id status smartCASignatureVerified signatureProvider lenderId')

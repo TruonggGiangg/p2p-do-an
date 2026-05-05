@@ -312,8 +312,9 @@ export class InvestmentContractService {
     });
 
     // 7. Update loan atomically.
-    // Order matching has already reserved nodeMatch, so confirmed payment moves it into investedNotes.
-    // Direct investment only reserves room here; money is deducted after SmartCA signing.
+    // Direct investment reserves room here; money is deducted after SmartCA signing.
+    // Order matching already reserved nodeMatch when the order was matched, so do not convert it to investedNotes yet.
+    // investedNotes must represent money-backed notes only; finalizeInvestmentAfterSigning() converts nodeMatch -> investedNotes.
     // Lưu ý: một số loan cũ trong DB có totalNotes=0 (legacy) — self-heal trước khi atomic update,
     // nếu không atomic check `totalNotes >= invested + nodeMatch + numNotes` sẽ luon fail (0 >= 1).
     const storedTotalNotes = (loan as any).totalNotes || 0;
@@ -322,11 +323,10 @@ export class InvestmentContractService {
       await this.loanModel.updateOne({ _id: loanApplicationId }, { $set: { totalNotes: computedTotalNotes } });
       this.logger.log(`${LOG}    Self-heal totalNotes: ${storedTotalNotes} → ${computedTotalNotes}`);
     }
-    const nodeMatchDecrement = investmentOrderId ? orderMatchedNodes : 0;
     const directReserve = !fromOrderMatching;
     const roomExpr = directReserve
       ? { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }, numNotes] }
-      : { $add: [{ $ifNull: ['$investedNotes', 0] }, numNotes] };
+      : { $add: [{ $ifNull: ['$investedNotes', 0] }, { $ifNull: ['$nodeMatch', 0] }] };
     // Effective totalNotes for guard: use whichever is larger (handle legacy zero values)
     const effectiveTotalExpr = {
       $max: [
@@ -334,30 +334,35 @@ export class InvestmentContractService {
         { $ceil: { $divide: [{ $ifNull: ['$capital', 0] }, this.baseUnitPrice] } },
       ],
     };
-    const incPayload = directReserve
-      ? { nodeMatch: numNotes }
-      : {
-          investedNotes: numNotes,
-          ...(nodeMatchDecrement > 0 ? { nodeMatch: -nodeMatchDecrement } : {}),
-        };
-
     this.logger.log(
       `${LOG}    Atomic update loan: ${
         directReserve
           ? `reserve nodeMatch += ${numNotes}`
-          : `investedNotes += ${numNotes}, nodeMatch -= ${nodeMatchDecrement}`
+          : `validate existing order reservation nodeMatch >= ${orderMatchedNodes}; defer investedNotes until SmartCA finalize`
       }`,
     );
-    const updateResult = await this.loanModel.findOneAndUpdate(
-      {
-        _id: loanApplicationId,
-        $expr: {
-          $gte: [effectiveTotalExpr, roomExpr],
-        },
-      },
-      { $inc: incPayload },
-      { new: true },
-    );
+    const updateResult = directReserve
+      ? await this.loanModel.findOneAndUpdate(
+          {
+            _id: loanApplicationId,
+            $expr: {
+              $gte: [effectiveTotalExpr, roomExpr],
+            },
+          },
+          { $inc: { nodeMatch: numNotes } },
+          { new: true },
+        )
+      : await this.loanModel.findOneAndUpdate(
+          {
+            _id: loanApplicationId,
+            nodeMatch: { $gte: orderMatchedNodes },
+            $expr: {
+              $gte: [effectiveTotalExpr, roomExpr],
+            },
+          },
+          { $set: { totalNotes: computedTotalNotes } },
+          { new: true },
+        );
 
     if (!updateResult) {
       // Atomic update fail = thực tế đã hết room (không đủ totalNotes để cùng lúc
@@ -372,9 +377,11 @@ export class InvestmentContractService {
         `${LOG} ❌ Atomic update FAILED — tình trạng khoản vay: total=${total}, invested=${invested}, nodeMatch=${nodeM}, remaining=${remaining}, requested=${numNotes}`,
       );
       throw new BadRequestException(
-        remaining <= 0
-          ? `Khoản vay này đã được giữ chỗ đầy đủ bởi nhà đầu tư khác. Vui lòng làm mới danh sách và chọn khoản vay khác.`
-          : `Chỉ còn ${remaining} notes khả dụng (bạn yêu cầu ${numNotes}). Vui lòng giảm số lượng hoặc làm mới danh sách.`,
+        fromOrderMatching
+          ? `Phần giữ chỗ của lệnh đầu tư không còn hợp lệ. Vui lòng làm mới lệnh đầu tư và thử lại.`
+          : remaining <= 0
+            ? `Khoản vay này đã được giữ chỗ đầy đủ bởi nhà đầu tư khác. Vui lòng làm mới danh sách và chọn khoản vay khác.`
+            : `Chỉ còn ${remaining} notes khả dụng (bạn yêu cầu ${numNotes}). Vui lòng giảm số lượng hoặc làm mới danh sách.`,
       );
     }
 
@@ -399,13 +406,9 @@ export class InvestmentContractService {
     await contract.save();
     this.logger.log(`${LOG} ✅ InvestmentContract saved: ${contractId}, capital=${capital.toLocaleString()} VND, ${numNotes} notes`);
 
-    // Update order loan entry as invested
+    // Keep order loan entry as not invested until finalizeInvestmentAfterSigning() deducts money.
     if (investmentOrderId) {
-      await this.orderModel.updateOne(
-        { _id: investmentOrderId, 'loans.loanId': String(loan._id) },
-        { $set: { 'loans.$.isInvested': true } },
-      );
-      this.logger.log(`${LOG}    Order ${investmentOrderId}: loan ${loan._id} marked as isInvested=true`);
+      this.logger.log(`${LOG}    Order ${investmentOrderId}: loan ${loan._id} remains reserved until SmartCA finalize`);
     }
 
     // Return contract + isFullMatch flag (để payment service trigger disbursement)

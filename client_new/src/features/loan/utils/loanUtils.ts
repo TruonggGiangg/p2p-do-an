@@ -46,6 +46,16 @@ export const getPurposeIcon = (purpose?: string): any => {
 export const getStatusInfo = (loan: LoanHistoryItem) => {
     const sf = loan.statusInfo;
     const isFullMatch = (loan as any).isFullMatch || (loan as any).fineractDetails?.isFullMatch;
+    const contractStatus = String((loan as any).contractStatus || '').toLowerCase();
+    const hasContractSignal = Boolean((loan as any).contractId || contractStatus);
+    const borrowerSigned = Boolean(
+        (loan as any).contractSignedVerified || ['signed', 'active', 'completed'].includes(contractStatus)
+    );
+
+    const waitingForBorrowerSignature = isFullMatch && hasContractSignal && !borrowerSigned;
+    const pendingSignatureStatus = () => ({ text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'pen' as const });
+    const pendingDisbursementStatus = () => ({ text: 'Chờ giải ngân', color: '#0EA5E9', bgColor: '#F0F9FF', icon: 'cash-clock' as const });
+    const activeStatus = () => ({ text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF', icon: 'progress-clock' as const });
 
     // 1. Ưu tiên kiểm tra quá hạn
     if (loan.delinquentDays && loan.delinquentDays > 0) {
@@ -59,13 +69,16 @@ export const getStatusInfo = (loan: LoanHistoryItem) => {
 
     // 2. Kiểm tra theo fineractStatus (statusInfo)
     if (sf) {
-        if (sf.active) return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF', icon: 'progress-clock' as const };
+        if (sf.active) {
+            if (waitingForBorrowerSignature) return pendingSignatureStatus();
+            return activeStatus();
+        }
         if (sf.closedObligationsMet) return { text: 'Đã tất toán', color: '#0ECB81', bgColor: '#F0FDF4', icon: 'check-circle' as const };
         if (sf.closedWrittenOff) return { text: 'Đã xóa nợ', color: '#6B7280', bgColor: '#F9FAFB', icon: 'close-circle' as const };
         if (sf.pendingApproval) return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'clock-outline' as const };
         
         if (sf.waitingForDisbursal || sf.approved) {
-            if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'pen' as const };
+            if (waitingForBorrowerSignature || isFullMatch) return borrowerSigned ? pendingDisbursementStatus() : pendingSignatureStatus();
             return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF', icon: 'account-group' as const };
         }
         
@@ -76,10 +89,13 @@ export const getStatusInfo = (loan: LoanHistoryItem) => {
     // 3. Fallback cho trạng thái cũ
     const status = String(loan.status || '').toLowerCase();
     if (status === 'clean' || status === 'closed') return { text: 'Đã tất toán', color: '#0ECB81', bgColor: '#F0FDF4', icon: 'check-circle' as const };
-    if (status === 'success' || status === 'disbursed') return { text: 'Đang vay', color: '#3B82F6', bgColor: '#EFF6FF', icon: 'progress-clock' as const };
+    if (status === 'success' || status === 'disbursed') {
+        if (waitingForBorrowerSignature) return pendingSignatureStatus();
+        return activeStatus();
+    }
     if (status === 'waiting' || status === 'pending') return { text: 'Chờ duyệt', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'clock-outline' as const };
     if (status === 'approved') {
-        if (isFullMatch) return { text: 'Chờ ký', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'pen' as const };
+        if (isFullMatch) return borrowerSigned ? pendingDisbursementStatus() : pendingSignatureStatus();
         return { text: 'Đang gọi vốn', color: '#8B5CF6', bgColor: '#F5F3FF', icon: 'account-group' as const };
     }
     
@@ -99,5 +115,5 @@ export const isActiveLoan = (loan: LoanHistoryItem): boolean => {
  */
 export const isPendingLoan = (loan: LoanHistoryItem): boolean => {
     const s = getStatusInfo(loan);
-    return ['Chờ duyệt', 'Chờ ký', 'Đang gọi vốn'].includes(s.text);
+    return ['Chờ duyệt', 'Chờ ký', 'Chờ giải ngân', 'Đang gọi vốn'].includes(s.text);
 };
