@@ -26,6 +26,5 @@ export class SavingsProductSnapshot extends Document {
 }
 
 export const SavingsProductSnapshotSchema = SchemaFactory.createForClass(SavingsProductSnapshot);
-SavingsProductSnapshotSchema.index({ scope: 1 });
 
 export { SAVINGS_SNAPSHOT_SCOPE };

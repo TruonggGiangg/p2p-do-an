@@ -1,103 +1,230 @@
-# Hướng dẫn chi tiết Setup và Khởi chạy Blockchain (Hyperledger Fabric)
+# Hướng dẫn Setup và Start Blockchain (Hyperledger Fabric)
 
-Tài liệu này cung cấp các bước chi tiết từ A-Z để khởi tạo, chạy mạng Blockchain và kết nối thành công với Backend NestJS của dự án P2P Lending.
+Tài liệu này dùng cho đúng phạm vi hiện tại của dự án: **chỉ start phần `fabric-samples/test-network`**, deploy chaincode `p2p-lending`, rồi đồng bộ chứng chỉ sang Backend NestJS.
 
----
+Trong `fabric-samples` đã có file helper:
 
-## 1. Yêu cầu Hệ thống Môi trường
-- **Môi trường bắt buộc:** Mọi lệnh liên quan đến Fabric **phải** được chạy trong môi trường Linux. Nếu dùng Windows, hãy sử dụng **WSL2 (Ubuntu)**.
-- **Docker:** Đảm bảo **Docker Desktop** đang chạy và đã tích hợp với WSL2 (Settings > Resources > WSL Integration).
-
----
-
-## 2. Quá trình Khởi chạy Mạng Blockchain (Test-Network)
-
-Mở terminal WSL (gõ `wsl` trên Windows Terminal hoặc CMD) và thực hiện các bước sau:
-
-### Bước 2.1. Di chuyển vào thư mục mạng
 ```bash
-cd /mnt/d/Project/p2p-do-an/fabric-samples/test-network
+fabric-samples/.network
 ```
 
-### Bước 2.2. Xóa và làm sạch mạng cũ (Reset Network)
-Việc này đảm bảo xóa sạch dữ liệu của các hợp đồng cũ, tránh xung đột lỗi identity và chứng chỉ bảo mật.
+File này lưu cấu hình mạng dùng lại cho các lần sau: Docker compose project `p2p_fabric_do_an`, Docker network `fabric_test`, channel `mychannel`, CouchDB, chaincode `p2p-lending`, image build chaincode `hyperledger/fabric-nodeenv:2.5`, và các function start/deploy/sync backend. Đây là file helper của project, **không phải** Docker network file mặc định của Hyperledger Fabric.
+
+---
+
+## 1. Yêu cầu môi trường
+
+- Mọi lệnh Fabric phải chạy trong Linux/WSL2, không chạy trực tiếp bằng PowerShell.
+- Docker Desktop phải đang chạy và bật WSL integration.
+- Đường dẫn WSL hiện tại của project:
+
+```bash
+cd "/mnt/c/Users/Arisu/Downloads/Big Project For P2P/p2p-do-an"
+```
+
+Nếu clone project sang chỗ khác, chỉ cần `cd` vào đúng root project rồi source lại file `.network`.
+
+---
+
+## 2. Load cấu hình `.network`
+
+Mở WSL terminal:
+
+```bash
+cd "/mnt/c/Users/Arisu/Downloads/Big Project For P2P/p2p-do-an"
+source ./fabric-samples/.network
+```
+
+Kiểm tra nhanh biến/folder:
+
+```bash
+echo "$P2P_FABRIC_TEST_NETWORK_DIR"
+echo "$P2P_FABRIC_CHANNEL"
+```
+
+---
+
+## 3. Start lại test-network nếu đã setup rồi
+
+Dùng khi network đã từng setup, certificates/organizations còn tồn tại, chỉ cần bật lại container:
+
+```bash
+fabric_test_network_start
+fabric_test_network_status
+```
+
+Function này chạy đúng lệnh gốc:
+
+```bash
+cd "$P2P_FABRIC_TEST_NETWORK_DIR"
+COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh up -ca -s couchdb
+```
+
+Sau khi start thành công, Docker sẽ có network `fabric_test`. Blockchain Explorer cũng đang trỏ vào network này trong `blockchain-view/blockchain-explorer/docker-compose.yaml`.
+
+---
+
+## 4. Reset và tạo mới network từ đầu
+
+Dùng khi cần làm sạch dữ liệu cũ, tạo lại certificates, channel và state CouchDB:
+
+```bash
+fabric_test_network_reset
+```
+
+Function này tương đương:
+
 ```bash
 COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh down
-```
-
-### Bước 2.3. Khởi tạo mạng mới
-Lệnh này sẽ tạo ra một channel mới tên là `mychannel` và sử dụng CouchDB để lưu trữ state (giúp query dữ liệu dạng JSON dễ dàng hơn).
-```bash
 COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh up createChannel -c mychannel -ca -s couchdb
 ```
 
----
-
-## 3. Triển khai (Deploy) Smart Contract
-
-Chaincode của hệ thống P2P Lending nằm ở thư mục `blockchain/chaincode/p2p-lending`. 
-
-### Trường hợp 1: Mạng vừa được khởi tạo mới hoàn toàn (như Bước 2)
-Sau khi chạy lệnh `network.sh down` và tạo lại mạng, bộ đếm sequence (ccs) của chaincode sẽ **bắt đầu lại từ 1**.
-```bash
-COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh deployCC -ccn p2p-lending -ccp ../../blockchain/chaincode/p2p-lending -ccl javascript -ccs 1
-```
-
-### Trường hợp 2: Mạng ĐANG CHẠY, chỉ muốn cập nhật lại code Chaincode
-Nếu bạn vừa chỉnh sửa file `index.js` hoặc logic bên trong chaincode, bạn cần **tăng** sequence (`-ccs`) lên một đơn vị (Ví dụ: 2, 3, 4...) để Fabric hiểu là bản cập nhật.
-```bash
-COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh deployCC -ccn p2p-lending -ccp ../../blockchain/chaincode/p2p-lending -ccl javascript -ccs 2
-```
+Sau khi reset, chaincode sequence quay lại từ `1`.
 
 ---
 
-## 4. Kết nối Backend (NestJS) với Blockchain
+## 5. Deploy smart contract
 
-Khi mạng Fabric tạo mới, các chứng chỉ bảo mật (Certificates) sẽ được tạo ngẫu nhiên lại. Bạn **BẮT BUỘC** phải cập nhật các chứng chỉ này cho Backend và tạo lại ví (Wallet).
+Chaincode của hệ thống nằm ở:
 
-### Chạy chuỗi lệnh sau trong WSL:
 ```bash
-cd /mnt/d/Project/p2p-do-an/server_do_an_new
+blockchain/chaincode/p2p-lending
+```
 
-# 1. Copy file cấu hình mạng (Connection Profile) mới nhất chứa chứng chỉ vào Backend
-cp ../fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/connection-org1.json ./fabric-config/connection-org1.json
+Nếu vừa reset/tạo network mới:
 
-# 2. Xóa ví cũ của Backend để tránh lỗi Identity Already Exists hoặc chứng chỉ bị lệch
+```bash
+fabric_test_network_deploy 1
+```
+
+Nếu network đang chạy và chỉ cập nhật code chaincode, tăng sequence lên `2`, `3`, `4`, ...
+
+```bash
+fabric_test_network_deploy 2
+```
+
+Lệnh gốc tương đương:
+
+```bash
+cd "$P2P_FABRIC_TEST_NETWORK_DIR"
+COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh deployCC \
+  -ccn p2p-lending \
+  -ccp ../../blockchain/chaincode/p2p-lending \
+  -ccl javascript \
+  -ccs 1
+```
+
+---
+
+## 6. Đồng bộ Backend NestJS với Fabric
+
+Khi reset network, certificates sẽ đổi. Backend bắt buộc phải copy lại `connection-org1.json` và tạo lại wallet.
+
+Sau khi source `.network`, chạy:
+
+```bash
+fabric_backend_sync
+```
+
+Function này tương đương:
+
+```bash
+cd "/mnt/c/Users/Arisu/Downloads/Big Project For P2P/p2p-do-an/server_do_an_new"
+
+cp ../fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/connection-org1.json \
+  ./fabric-config/connection-org1.json
+
 rm -rf ./fabric-wallet
-
-# 3. Tái tạo ví (Wallet) mới thông qua file script setup
 node scripts/setup-fabric-wallet.js
 ```
 
-### Bước cuối cùng: Khởi động Backend
-Mở một terminal mới (hoặc dùng terminal hiện tại) và khởi động server NestJS. Backend sẽ tự động đọc ví mới và kết nối thành công:
+Start backend:
+
 ```bash
+cd "$P2P_BACKEND_DIR"
 npm run start:dev
 ```
 
-🎉 Nếu kết nối thành công, trong log của Backend sẽ xuất hiện dòng chữ:
-`[FabricService] Successfully connected to Fabric network and obtained smart contract`
+Nếu kết nối thành công, log backend có dòng:
+
+```text
+[FabricService] Successfully connected to Fabric network and obtained smart contract
+```
 
 ---
 
-## 5. Khắc phục sự cố thường gặp (Troubleshooting)
+## 7. Luồng chạy chuẩn
 
-1. **Lỗi `DiscoveryService has failed to return results` trên Backend:**
-   - Nguyên nhân: Bạn đã chạy `network.sh down` nhưng quên chạy Bước 4 để cập nhật lại ví và connection profile cho Backend.
-   - Khắc phục: Dừng Backend, thực hiện đầy đủ **Bước 4**, sau đó chạy lại Backend.
-
-2. **Lỗi `failed to invoke backing implementation of 'ApproveChaincodeDefinitionForMyOrg': requested sequence X is larger than the next available sequence number Y`:**
-   - Nguyên nhân: Bạn cung cấp sai Sequence Number khi deploy chaincode. 
-   - Khắc phục: Sửa lại cờ `-ccs` thành số Y đang được yêu cầu trong log (Ví dụ: `-ccs 1`).
-
-3. **Lỗi `Certificate or Private Key not found at expected path` khi chạy `setup-fabric-wallet.js`:**
-   - Nguyên nhân: Bạn đang chạy script nhưng thư mục mạng Fabric trống do chưa chạy Bước 2.3.
-   - Khắc phục: Đảm bảo mạng `p2p_fabric_do_an` đang chạy, sau đó chạy lại script setup.
-
-
-
-## 6. Start lại nếu setup lại
+### Chỉ start lại network đã có sẵn
 
 ```bash
-wsl bash -c "cd /mnt/d/Project/p2p-do-an/fabric-samples/test-network && COMPOSE_PROJECT_NAME=p2p_fabric_do_an ./network.sh up -s couchdb"
+cd "/mnt/c/Users/Arisu/Downloads/Big Project For P2P/p2p-do-an"
+source ./fabric-samples/.network
+fabric_test_network_start
+fabric_test_network_status
+```
+
+### Setup sạch từ đầu
+
+```bash
+cd "/mnt/c/Users/Arisu/Downloads/Big Project For P2P/p2p-do-an"
+source ./fabric-samples/.network
+fabric_test_network_reset
+fabric_test_network_deploy 1
+fabric_backend_sync
+```
+
+Hoặc dùng một lệnh gộp nếu không cần can thiệp từng bước:
+
+```bash
+fabric_test_network_setup_all
+```
+
+### Cập nhật chaincode khi network đang chạy
+
+```bash
+source ./fabric-samples/.network
+fabric_test_network_deploy 2
+fabric_backend_sync
+```
+
+---
+
+## 8. Troubleshooting
+
+1. **Backend lỗi `DiscoveryService has failed to return results`:**
+   - Thường do vừa reset Fabric nhưng chưa chạy `fabric_backend_sync`.
+   - Dừng backend, chạy `fabric_backend_sync`, rồi start backend lại.
+
+2. **Deploy chaincode lỗi sequence `requested sequence X is larger than the next available sequence number Y`:**
+   - Sequence đưa vào sai.
+   - Chạy lại `fabric_test_network_deploy Y` theo số `Y` trong log.
+
+3. **`Certificate or Private Key not found at expected path`:**
+   - Chưa tạo network/channel hoặc thư mục `organizations` không đúng.
+   - Chạy `fabric_test_network_create` hoặc `fabric_test_network_reset` trước, rồi chạy `fabric_backend_sync`.
+
+4. **Không thấy Docker network `fabric_test`:**
+   - `test-network` chưa start hoặc Docker Desktop/WSL integration chưa chạy.
+   - Kiểm tra:
+
+```bash
+docker network ls | grep fabric_test
+fabric_test_network_status
+```
+
+5. **Deploy chaincode lỗi `No such image: hyperledger/fabric-nodeenv:2.5`:**
+   - Thiếu image dùng để build chaincode JavaScript.
+   - File `.network` đã tự pull image này trước khi deploy. Nếu cần chạy tay:
+
+```bash
+docker pull hyperledger/fabric-nodeenv:2.5
+```
+
+6. **`fabric_backend_sync` báo `node: command not found` trong WSL:**
+   - Helper sẽ tự fallback sang `node.exe` nếu Windows Node có trong PATH.
+   - Nếu WSL vẫn không thấy Node, chạy bước tạo wallet bằng PowerShell trong `server_do_an_new`:
+
+```powershell
+node .\scripts\setup-fabric-wallet.js
 ```
