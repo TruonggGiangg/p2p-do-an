@@ -4,11 +4,11 @@ const { Contract } = require('fabric-contract-api');
 const crypto = require('crypto');
 
 class P2PLendingContract extends Contract {
-    
+
     // ==========================================
     // UTILITY FUNCTIONS
     // ==========================================
-    
+
     _hashData(data) {
         return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
     }
@@ -43,7 +43,7 @@ class P2PLendingContract extends Contract {
         }
         return new Date(seconds * 1000).toISOString();
     }
-    
+
     // ==========================================
     // INITIALIZATION
     // ==========================================
@@ -66,7 +66,7 @@ class P2PLendingContract extends Contract {
      */
     async createLoanContract(ctx, contractId, contractDataJson) {
         console.info('============= START : createLoanContract ===========');
-        
+
         // Check if exists
         const exists = await ctx.stub.getState(contractId);
         if (exists && exists.length > 0) {
@@ -116,9 +116,9 @@ class P2PLendingContract extends Contract {
      */
     async updateLoanStatus(ctx, contractId, newStatus, additionalDataJson) {
         console.info(`============= START : updateLoanStatus → ${newStatus} ===========`);
-        
+
         const loanContract = await this._getState(ctx, contractId);
-        
+
         if (loanContract.docType !== 'LoanContract') {
             throw new Error(`Asset ${contractId} is not a LoanContract`);
         }
@@ -156,7 +156,7 @@ class P2PLendingContract extends Contract {
             if (data.writtenOffAt !== undefined) loanContract.writtenOffAt = data.writtenOffAt;
             if (data.writeOffReason !== undefined) loanContract.writeOffReason = data.writeOffReason;
             if (data.approvedAt !== undefined) loanContract.approvedAt = data.approvedAt;
-            
+
             // Re-hash after significant update
             loanContract.dataHash = this._hashData(loanContract);
         }
@@ -179,7 +179,7 @@ class P2PLendingContract extends Contract {
      */
     async createInvestmentContract(ctx, contractId, contractDataJson) {
         console.info('============= START : createInvestmentContract ===========');
-        
+
         const exists = await ctx.stub.getState(contractId);
         if (exists && exists.length > 0) {
             throw new Error(`The investment contract ${contractId} already exists`);
@@ -244,9 +244,9 @@ class P2PLendingContract extends Contract {
      */
     async updateInvestmentStatus(ctx, contractId, newStatus, additionalDataJson) {
         console.info(`============= START : updateInvestmentStatus → ${newStatus} ===========`);
-        
+
         const investmentContract = await this._getState(ctx, contractId);
-        
+
         if (investmentContract.docType !== 'InvestmentContract') {
             throw new Error(`Asset ${contractId} is not an InvestmentContract`);
         }
@@ -265,7 +265,7 @@ class P2PLendingContract extends Contract {
 
         if (additionalDataJson && additionalDataJson !== 'null' && additionalDataJson !== '{}') {
             const data = JSON.parse(additionalDataJson);
-            
+
             // Update financial fields if provided
             if (data.fineractFDAccountId !== undefined) investmentContract.fineractFDAccountId = data.fineractFDAccountId;
             if (data.fineractFDAccountNo !== undefined) investmentContract.fineractFDAccountNo = data.fineractFDAccountNo;
@@ -278,7 +278,7 @@ class P2PLendingContract extends Contract {
             if (data.lenderSchedule !== undefined) investmentContract.lenderSchedule = data.lenderSchedule;
             if (data.repaymentHistory !== undefined) investmentContract.repaymentHistory = data.repaymentHistory;
             if (data.paymentStatus !== undefined) investmentContract.paymentStatus = data.paymentStatus;
-            
+
             // Counters update
             if (data.totalReceived !== undefined) investmentContract.totalReceived = data.totalReceived;
             if (data.totalPrincipalReceived !== undefined) investmentContract.totalPrincipalReceived = data.totalPrincipalReceived;
@@ -312,7 +312,7 @@ class P2PLendingContract extends Contract {
      */
     async createInvestmentOrder(ctx, orderId, orderDataJson) {
         console.info('============= START : createInvestmentOrder ===========');
-        
+
         const exists = await ctx.stub.getState(orderId);
         if (exists && exists.length > 0) {
             throw new Error(`The investment order ${orderId} already exists`);
@@ -351,9 +351,9 @@ class P2PLendingContract extends Contract {
      */
     async updateInvestmentOrder(ctx, orderId, newStatus, additionalDataJson) {
         console.info(`============= START : updateInvestmentOrder → ${newStatus} ===========`);
-        
+
         const order = await this._getState(ctx, orderId);
-        
+
         if (order.docType !== 'InvestmentOrder') {
             throw new Error(`Asset ${orderId} is not an InvestmentOrder`);
         }
@@ -396,7 +396,7 @@ class P2PLendingContract extends Contract {
      */
     async createMatchingEvent(ctx, eventId, eventDataJson) {
         console.info('============= START : createMatchingEvent ===========');
-        
+
         const exists = await ctx.stub.getState(eventId);
         if (exists && exists.length > 0) {
             throw new Error(`The matching event ${eventId} already exists`);
@@ -449,7 +449,7 @@ class P2PLendingContract extends Contract {
      */
     async createSettlementContract(ctx, settlementId, settlementDataJson) {
         console.info('============= START : createSettlementContract ===========');
-        
+
         const exists = await ctx.stub.getState(settlementId);
         if (exists && exists.length > 0) {
             throw new Error(`The settlement ${settlementId} already exists`);

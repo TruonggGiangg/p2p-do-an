@@ -40,6 +40,7 @@ export interface MatchedAsk {
 export interface MarketBid {
   id: string;
   investorCode: string;
+  name?: string;
   phone: string | null;
   maxRate: number;
   minRate: number;
@@ -55,6 +56,7 @@ export interface MarketBid {
 export interface MatchedBid {
   id: string;
   investorCode: string;
+  name?: string;
   phone: string | null;
   totalCapital: number;
   matchedCapital: number;

@@ -583,6 +583,7 @@ function BidsPanel({ data, pagination, params, onParamsChange, isDarkMode, cardB
               <div style={{ fontSize: 13, fontWeight: 700, color: headingColor, fontFamily: FONT_MONO, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {bid.investorCode}
               </div>
+              {bid.name && <div style={{ fontSize: 11, color: mutedColor, fontFamily: FONT, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bid.name}</div>}
               {bid.phone && <div style={{ fontSize: 10, color: mutedColor, fontFamily: FONT_MONO, fontWeight: 500 }}>{bid.phone}</div>}
             </div>
 
@@ -1031,7 +1032,11 @@ function MatchedBidsTable({ data, pagination, params, onParamsChange, isDarkMode
             onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
           >
             <span style={{ fontSize: 12, fontFamily: FONT_MONO, color: mutedColor }}>{fmtTime(item.matchedAt)}</span>
-            <span style={{ fontSize: 13, fontFamily: FONT_MONO, fontWeight: 600, color: headingColor }}>{item.investorCode}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontFamily: FONT_MONO, fontWeight: 600, color: headingColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.investorCode}</div>
+              {item.name && <div style={{ fontSize: 11, color: mutedColor, fontFamily: FONT, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>}
+              {item.phone && <div style={{ fontSize: 10, color: mutedColor, fontFamily: FONT_MONO, fontWeight: 500 }}>{item.phone}</div>}
+            </div>
             <span style={{ fontSize: 12, textAlign: 'right', color: mutedColor, fontFamily: FONT_MONO }}>{item.rate}%</span>
             <span style={{ fontSize: 13, textAlign: 'right', fontWeight: 600, color: isDarkMode ? ACCENT.bid.dark : ACCENT.bid.light, fontFamily: FONT_MONO, opacity: 0.85 }}>{fmtNum(item.matchedCapital)}</span>
             <span style={{ fontSize: 12, textAlign: 'right', color: mutedColor, fontFamily: FONT_MONO }}>{fmtNum(item.totalCapital)}</span>
