@@ -353,9 +353,8 @@ export default function HomeScreen() {
     const [walletsLoading, setWalletsLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [walletSelectorVisible, setWalletSelectorVisible] = useState(false);
+    const [mainWalletSelectorVisible, setMainWalletSelectorVisible] = useState(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
-    const [activeCardIndex, setActiveCardIndex] = useState(0);
-    const cardScrollRef = useRef<ScrollView>(null);
 
     const c = theme.colors;
     const isDark = themeMode === 'dark';
@@ -422,10 +421,6 @@ export default function HomeScreen() {
         else { item.isParent ? (navigation as any).getParent()?.navigate(item.nav) : (navigation as any).navigate(item.nav); }
     };
     const handleSelectWalletForQR = (wallet: WalletType) => { setWalletSelectorVisible(false); (navigation as any).navigate('MyQR', { wallet }); };
-    const onCardScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const idx = Math.round(e.nativeEvent.contentOffset.x / (WALLET_CARD_W + 12));
-        if (idx !== activeCardIndex && idx >= 0 && idx < (wallets.length || 1)) { setActiveCardIndex(idx); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
-    };
 
     const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
     const userName = user?.name || user?.profile?.firstName || 'Bạn';
@@ -434,7 +429,10 @@ export default function HomeScreen() {
     const displayWallets = wallets.length > 0 ? wallets : [{
         _id: 'placeholder', type: 'e_wallet' as const, balance: 0,
         productName: 'P2P Wallet', accountNo: '0000', status: 'active', currency: 'VND',
-    }];
+        isDefault: true,
+    } as any];
+
+    const activeCardIndex = Math.max(0, displayWallets.findIndex(w => w.isDefault));
 
     return (
         <View style={[styles.container, { backgroundColor: c.background }]}>
@@ -459,32 +457,36 @@ export default function HomeScreen() {
                         <Text style={[styles.greetingSub, { color: c.textMuted }]}>Quản lý tài chính thông minh.</Text>
                     </Animated.View>
 
-                    {/* 2. 3D CARD CAROUSEL — Chỉ hiển thị khi đã eKYC */}
+                    {/* 2. SINGLE CARD — Chỉ hiển thị khi đã eKYC */}
                     {user?.kycStatus === 'VERIFIED' && (
                     <Animated.View entering={FadeInDown.delay(200).duration(700)} style={styles.cardCarouselSection}>
-                        <ScrollView ref={cardScrollRef} horizontal showsHorizontalScrollIndicator={false}
-                            snapToInterval={WALLET_CARD_W + 12} snapToAlignment="start" decelerationRate="fast"
-                            contentContainerStyle={styles.cardScrollContent} onMomentumScrollEnd={onCardScroll}>
-                            {displayWallets.map((wallet, idx) => (
-                                <FlippableCard key={wallet._id || idx} wallet={wallet} index={idx}
-                                    balanceVisible={balanceVisible} isDefault={idx === activeCardIndex}
-                                    userName={userName} phone={phone} onSetDefault={() => setActiveCardIndex(idx)} />
-                            ))}
-                        </ScrollView>
+                        <View style={{ alignItems: 'center' }}>
+                            <FlippableCard 
+                                wallet={displayWallets[activeCardIndex] || displayWallets[0]} 
+                                index={activeCardIndex}
+                                balanceVisible={balanceVisible} 
+                                isDefault={true}
+                                userName={userName} 
+                                phone={phone} 
+                                onSetDefault={() => {}} 
+                            />
+                        </View>
                         {displayWallets.length > 1 && (
-                            <View style={styles.cardDots}>
-                                {displayWallets.map((_, i) => (
-                                    <View key={i} style={[styles.cardDot, {
-                                        backgroundColor: i === activeCardIndex ? theme.colors.primary : (isDark ? theme.colors.border : '#D1D5DB'),
-                                        width: i === activeCardIndex ? 20 : 8,
-                                    }]} />
-                                ))}
+                            <View style={styles.switchWalletWrap}>
+                                <TouchableOpacity 
+                                    activeOpacity={0.8}
+                                    onPress={() => setMainWalletSelectorVisible(true)} 
+                                    style={[styles.switchWalletBtn, { backgroundColor: isDark ? '#1A2E24' : '#F0F9EA' }]}
+                                >
+                                    <MaterialCommunityIcons name="swap-horizontal" size={16} color={c.primary} />
+                                    <Text style={[styles.switchWalletText, { color: c.primary }]}>Thay đổi ví hiển thị</Text>
+                                </TouchableOpacity>
                             </View>
                         )}
                         <View style={styles.swipeHint}>
                             <MaterialCommunityIcons name="gesture-tap" size={14} color={c.textMuted} />
                             <Text style={[styles.swipeHintText, { color: c.textMuted }]}>
-                                Chạm để lật thẻ{displayWallets.length > 1 ? ' • Vuốt để đổi ví' : ''}
+                                Chạm vào thẻ để lật & xem QR
                             </Text>
                         </View>
                     </Animated.View>
@@ -553,6 +555,38 @@ export default function HomeScreen() {
 
             <WalletSelectorModal visible={walletSelectorVisible} onClose={() => setWalletSelectorVisible(false)}
                 wallets={wallets} onSelect={handleSelectWalletForQR} title="Chọn ví nhận tiền" />
+            <WalletSelectorModal 
+                visible={mainWalletSelectorVisible} 
+                onClose={() => setMainWalletSelectorVisible(false)}
+                wallets={wallets} 
+                selectedWalletId={
+                    displayWallets[activeCardIndex]?.fineractId || 
+                    displayWallets[activeCardIndex]?.accountNo || 
+                    displayWallets[activeCardIndex]?.id || 
+                    displayWallets[activeCardIndex]?._id
+                }
+                onSelect={async (wallet) => {
+                    const walletId = wallet._id || wallet.id;
+                    if (!walletId) return;
+                    
+                    setMainWalletSelectorVisible(false);
+                    try {
+                        // Optimistic update
+                        const newWallets = wallets.map(w => ({
+                            ...w,
+                            isDefault: (w._id === walletId || w.id === walletId)
+                        }));
+                        setWallets(newWallets);
+                        
+                        // Backend update
+                        await walletAPI.setDefaultWallet(walletId);
+                    } catch (error) {
+                        console.error('Failed to set default wallet:', error);
+                        fetchWallets(); // Revert on error
+                    }
+                }} 
+                title="Chọn ví hiển thị" 
+            />
         </View>
     );
 }
@@ -641,9 +675,10 @@ const styles = StyleSheet.create({
     backFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
     backFooterText: { color: 'rgba(205,234,45,0.35)', fontSize: 10, fontWeight: '500' },
 
-    // ── Card Dots ──
-    cardDots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 14 },
-    cardDot: { height: 6, borderRadius: 3 },
+    // ── Switch Wallet ──
+    switchWalletWrap: { alignItems: 'center', marginTop: 16 },
+    switchWalletBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+    switchWalletText: { fontSize: 12, fontWeight: '600' },
     swipeHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8 },
     swipeHintText: { fontSize: 11, fontWeight: '500' },
 

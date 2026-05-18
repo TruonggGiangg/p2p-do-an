@@ -10,6 +10,7 @@ import {
     ActivityIndicator,
     Keyboard,
     TouchableWithoutFeedback,
+    TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -186,22 +187,26 @@ export default function TransferScreen() {
                                 setIsWalletModalVisible(true);
                             }}
                         >
-                            <CommonCard style={[styles.walletCard, { backgroundColor: isDark ? c.surface : '#fff' }]}>
+                            <View style={[styles.walletCard, { 
+                                backgroundColor: isDark ? '#14231C' : '#FFFFFF',
+                                borderColor: isDark ? 'rgba(205,234,45,0.15)' : 'rgba(14,203,129,0.1)',
+                                borderWidth: 1,
+                            }]}>
                                 <View style={styles.walletInfo}>
-                                    <View style={[styles.walletIcon, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F3E8FF' }]}>
-                                        <MaterialCommunityIcons name="wallet-outline" size={24} color={c.primary} />
+                                    <View style={[styles.walletIcon, { backgroundColor: isDark ? 'rgba(205,234,45,0.15)' : 'rgba(14,203,129,0.1)' }]}>
+                                        <MaterialCommunityIcons name="wallet-outline" size={24} color={isDark ? '#CDEA2D' : c.primary} />
                                     </View>
                                     <View style={{ flex: 1 }}>
                                         <Text style={[styles.walletName, { color: c.textPrimary }]}>
                                             {selectedWallet?.productName || 'Chọn ví'}
                                         </Text>
-                                        <Text style={[styles.walletBalance, { color: c.success }]}>
+                                        <Text style={[styles.walletBalance, { color: isDark ? '#CDEA2D' : c.primary, fontWeight: '600' }]}>
                                             Số dư: {formatCurrency(selectedWallet?.balance || 0)}
                                         </Text>
                                     </View>
-                                    <Ionicons name="chevron-forward" size={20} color={c.textDim} />
+                                    <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
                                 </View>
-                            </CommonCard>
+                            </View>
                         </TouchableOpacity>
 
                         {/* Recipient */}
@@ -209,53 +214,67 @@ export default function TransferScreen() {
                             <View style={styles.inputHeader}>
                                 <Text style={[styles.sectionTitle, { color: c.textPrimary, marginBottom: 0 }]}>Đến người nhận</Text>
                                 <TouchableOpacity
-                                    style={[styles.qrButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}
+                                    style={[styles.qrButton, { backgroundColor: isDark ? 'rgba(205,234,45,0.15)' : 'rgba(14,203,129,0.1)' }]}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                         setQrScannerVisible(true);
                                     }}
                                 >
-                                    <MaterialCommunityIcons name="qrcode-scan" size={20} color={c.primary} />
-                                    <Text style={[styles.qrText, { color: c.primary }]}>Quét mã</Text>
+                                    <MaterialCommunityIcons name="qrcode-scan" size={18} color={isDark ? '#CDEA2D' : c.primary} />
+                                    <Text style={[styles.qrText, { color: isDark ? '#CDEA2D' : c.primary }]}>Quét mã QR</Text>
                                 </TouchableOpacity>
                             </View>
 
                             <CommonInput
-                                placeholder="Nhập số điện thoại hoặc số tài khoản"
+                                placeholder="Số điện thoại / Số tài khoản"
                                 value={recipientAccountNo}
                                 onChangeText={setRecipientAccountNo}
                                 keyboardType="numeric"
-                                containerStyle={styles.input}
+                                containerStyle={[styles.input, {
+                                    backgroundColor: isDark ? '#14231C' : '#F8FAFC',
+                                    borderWidth: 1,
+                                    borderColor: isDark ? 'rgba(205,234,45,0.1)' : 'rgba(0,0,0,0.03)',
+                                    borderRadius: 16,
+                                    minHeight: 56,
+                                }]}
+                                inputStyle={{ fontSize: 15, fontWeight: '600' }}
                             />
 
                             <View style={styles.inputGroup}>
                                 <Text style={[styles.inputLabel, { color: c.textSecondary }]}>Số tiền (VND)</Text>
-                                <View style={[styles.amountInputWrap, { borderBottomColor: c.border }]}>
-                                    <Text style={[styles.currency, { color: c.textPrimary }]}>₫</Text>
-                                    <CommonInput
+                                <View style={[styles.amountInputWrap, { borderBottomColor: amount ? (isDark ? '#CDEA2D' : c.primary) : c.border }]}>
+                                    <Text style={[styles.currency, { color: amount ? (isDark ? '#CDEA2D' : c.primary) : c.textMuted }]}>₫</Text>
+                                    <TextInput
                                         placeholder="0"
+                                        placeholderTextColor={c.textMuted}
                                         value={amount}
                                         onChangeText={(v) => setAmount(formatAmountInput(v))}
                                         keyboardType="numeric"
-                                        containerStyle={styles.amountInput}
-                                        inputStyle={styles.amountTextStyle}
+                                        style={[styles.amountTextStyle, { flex: 1, color: amount ? (isDark ? '#CDEA2D' : c.primary) : c.textPrimary }]}
                                     />
                                 </View>
                                 <View style={styles.quickAmounts}>
-                                    {[50000, 100000, 200000, 500000].map((amt) => (
-                                        <TouchableOpacity
-                                            key={amt}
-                                            style={[styles.quickAmtBtn, { backgroundColor: isDark ? c.surface : '#F1F5F9' }]}
-                                            onPress={() => {
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                setAmount(amt.toLocaleString('en-US'));
-                                            }}
-                                        >
-                                            <Text style={[styles.quickAmtText, { color: c.textPrimary }]}>
-                                                {amt >= 1000 ? `${amt / 1000}k` : amt}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
+                                    {[50000, 100000, 200000, 500000].map((amt) => {
+                                        const isSelected = amount.replace(/,/g, '') === amt.toString();
+                                        return (
+                                            <TouchableOpacity
+                                                key={amt}
+                                                style={[styles.quickAmtBtn, { 
+                                                    backgroundColor: isSelected ? (isDark ? '#CDEA2D' : c.primary) : (isDark ? '#14231C' : '#F1F5F9'),
+                                                    borderColor: isSelected ? (isDark ? '#CDEA2D' : c.primary) : (isDark ? 'rgba(255,255,255,0.1)' : 'transparent'),
+                                                    borderWidth: 1,
+                                                }]}
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    setAmount(amt.toLocaleString('en-US'));
+                                                }}
+                                            >
+                                                <Text style={[styles.quickAmtText, { color: isSelected ? (isDark ? '#000' : '#fff') : c.textPrimary }]}>
+                                                    {amt >= 1000 ? `${amt / 1000}k` : amt}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
                                 </View>
                             </View>
 
@@ -269,7 +288,12 @@ export default function TransferScreen() {
                                     numberOfLines={3}
                                     textAlignVertical="top"
                                     maxLength={140}
-                                    containerStyle={styles.descInput}
+                                    containerStyle={[styles.descInput, {
+                                        backgroundColor: isDark ? '#14231C' : '#F8FAFC',
+                                        borderWidth: 1,
+                                        borderColor: isDark ? 'rgba(205,234,45,0.1)' : 'rgba(0,0,0,0.03)',
+                                        borderRadius: 16,
+                                    }]}
                                     inputStyle={styles.descTextStyle}
                                 />
                                 <Text style={[styles.charCount, { color: c.textMuted }]}>
@@ -384,23 +408,26 @@ const styles = StyleSheet.create({
     amountInputWrap: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderBottomWidth: 1,
+        borderBottomWidth: 2,
         paddingBottom: 4,
+        marginBottom: 8,
     },
     currency: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: '700',
-        marginRight: 8,
+        marginRight: 12,
     },
     amountInput: {
         flex: 1,
         marginBottom: 0,
         backgroundColor: 'transparent',
+        borderWidth: 0,
     },
     amountTextStyle: {
-        fontSize: 28,
+        fontSize: 40,
         fontWeight: '800',
         paddingVertical: 0,
+        height: 50,
     },
     quickAmounts: {
         flexDirection: 'row',
@@ -409,8 +436,8 @@ const styles = StyleSheet.create({
     },
     quickAmtBtn: {
         flex: 1,
-        height: 36,
-        borderRadius: 10,
+        height: 38,
+        borderRadius: 19,
         justifyContent: 'center',
         alignItems: 'center',
     },

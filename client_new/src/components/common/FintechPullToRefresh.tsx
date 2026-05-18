@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, ReactNode } from 'react';
-import { StyleSheet, View, ViewStyle, StyleProp, Platform, Vibration, ScrollView } from 'react-native';
+import { StyleSheet, View, ViewStyle, StyleProp, Platform, Vibration, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     Gesture,
@@ -146,9 +146,16 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
 
     const [isRefreshingUI, setIsRefreshingUI] = useState(false);
     const [showParticles, setShowParticles] = useState(false);
+    const [isPulling, setIsPulling] = useState(false);
     const showStartRef = React.useRef<number | null>(null);
     const pendingHideRef = React.useRef<NodeJS.Timeout | null>(null);
     const isPullTriggered = React.useRef(false); // true = user physically pulled
+
+    // Android specific refs cho RefreshControl
+    const lastRefreshTime = React.useRef(0);
+    const lastNotAtTopTimeRef = React.useRef(Date.now());
+    const REFRESH_COOLDOWN_MS = 1000;
+    const SCROLL_SETTLE_MS = 500;
 
     useEffect(() => {
         if (DEBUG_PULL_TO_REFRESH) {
@@ -160,6 +167,13 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         () => (pullProgress.value > 0.08 || isRefreshingValue.value),
         (shouldShow) => {
             runOnJS(setShowParticles)(shouldShow);
+        }
+    );
+
+    useAnimatedReaction(
+        () => (pullProgress.value > 0.3),
+        (shouldPull) => {
+            runOnJS(setIsPulling)(shouldPull);
         }
     );
 
@@ -252,10 +266,17 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     }, []);
 
     const lastScrollLogY = useSharedValue(-999);
+    const updateNotAtTopTime = () => {
+        lastNotAtTopTimeRef.current = Date.now();
+    };
+
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => {
             const y = event.contentOffset.y;
             scrollY.value = y;
+            if (Platform.OS === 'android' && y > 5) {
+                runOnJS(updateNotAtTopTime)();
+            }
             // DEBUG: log scroll. Nếu không thấy onScroll khi vuốt = ScrollView không nhận touch
             if (DEBUG_PULL_TO_REFRESH && (Math.abs(y - lastScrollLogY.value) > 15 || y <= 20)) {
                 lastScrollLogY.value = y;
@@ -264,7 +285,29 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         },
     });
 
+    const handleRefreshAndroid = useCallback(() => {
+        const now = Date.now();
+        if (now - lastRefreshTime.current < REFRESH_COOLDOWN_MS) {
+            return;
+        }
+
+        const timeSinceLastScroll = now - lastNotAtTopTimeRef.current;
+        if (timeSinceLastScroll < SCROLL_SETTLE_MS) {
+            return;
+        }
+
+        lastRefreshTime.current = now;
+        isPullTriggered.current = true;
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (Platform.OS === 'android') {
+            Vibration.vibrate([0, 25, 30, 35, 50, 40, 30]);
+        }
+        if (onRefresh) onRefresh();
+    }, [onRefresh]);
+
     const panGesture = Gesture.Pan()
+        .enabled(!isRefreshingUI)
         .onBegin(() => {
             runOnJS(debugLog)('Pan onBegin', { scrollY: scrollY.value });
         })
@@ -352,9 +395,9 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         .failOffsetX([-15, 15])
         // Android: activeOffsetY cao = phải kéo xuống rõ ràng mới pull; failOffsetY âm = vuốt lên (scroll) thì fail ngay
         // iOS: giữ nhạy như reference
-        .activeOffsetY(Platform.OS === 'android' ? 25 : 5)
+        .activeOffsetY(Platform.OS === 'android' ? 10 : 12)
         .failOffsetY(Platform.OS === 'android' ? -8 : -10)
-        .minDistance(0)
+        .minDistance(5)
         .shouldCancelWhenOutside(Platform.OS === 'android' ? false : true);
 
     const nativeGesture = Gesture.Native();
@@ -363,29 +406,29 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
     const animatedHeaderStyle = useAnimatedStyle(() => {
         const t = translationY.value;
         const p = pullProgress.value;
-        const scale = interpolate(t, [0, REFRESH_THRESHOLD], [0.65, 1.15], Extrapolate.CLAMP);
-        const transY = interpolate(t, [0, REFRESH_THRESHOLD], [-55, 0], Extrapolate.CLAMP);
-
-        // iOS: Remove safeTop as it's already handled by the header/root container
-        // This prevents the logo from falling "too deep"
-        const baseOffset = 0;
-        const osOffset = Platform.OS === 'ios' ? -25 : 0;
-
-        // Góc xoay nhẹ khi kéo - cảm giác "nghiêng" theo lực
-        const rotateZ = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [0, 1.5, 0], Extrapolate.CLAMP);
-        // Glow pulse khi gần đạt ngưỡng
-        const glowScale = interpolate(p, [0.85, 1], [1, 1.08], Extrapolate.CLAMP);
 
         return {
-            transform: [
-                { translateY: t - HEADER_HEIGHT + transY + topOffset + baseOffset + VERTICAL_OFFSET + osOffset },
-                { scale: scale * glowScale },
-                { rotateZ: `${rotateZ}deg` },
-            ],
-            opacity: interpolate(t, [0, 28], [0, 1], Extrapolate.CLAMP),
+            height: t,
+            marginTop: topOffset,
             shadowOpacity: interpolate(p, [0.7, 1], [0, 0.3], Extrapolate.CLAMP),
             shadowRadius: interpolate(p, [0.7, 1], [0, 24], Extrapolate.CLAMP),
             shadowOffset: { width: 0, height: 4 },
+        };
+    });
+
+    // Icon wrapper: scale + rotate + opacity tách riêng khỏi header container
+    const animatedIconStyle = useAnimatedStyle(() => {
+        const t = translationY.value;
+        const p = pullProgress.value;
+        const scale = interpolate(t, [0, REFRESH_THRESHOLD], [0.65, 1.15], Extrapolate.CLAMP);
+        const rotateZ = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [0, 1.5, 0], Extrapolate.CLAMP);
+        const glowScale = interpolate(p, [0.85, 1], [1, 1.08], Extrapolate.CLAMP);
+        return {
+            opacity: interpolate(t, [0, 28], [0, 1], Extrapolate.CLAMP),
+            transform: [
+                { scale: scale * glowScale },
+                { rotateZ: `${rotateZ}deg` },
+            ],
         };
     });
 
@@ -395,7 +438,6 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         const scaleY = interpolate(t, [0, REFRESH_THRESHOLD * 0.5, REFRESH_THRESHOLD], [1, 1.015, 1.035], Extrapolate.CLAMP);
         return {
             transform: [
-                { translateY: t },
                 { scaleY },
             ],
         };
@@ -408,85 +450,103 @@ const FintechPullToRefresh: React.FC<FintechPullToRefreshProps> = ({
         ));
     };
 
+    const nativeRefreshControl = Platform.OS === 'android' ? (
+        <RefreshControl
+            refreshing={false} // QUAN TRONG: Luôn false để nó biến mất ngay khi nhả tay
+            onRefresh={handleRefreshAndroid}
+            colors={[activePrimary as string]}
+            progressBackgroundColor={'#FFFFFF'}
+            tintColor="transparent"
+            progressViewOffset={0}
+        />
+    ) : undefined;
+
+    // Icon slot bên trong ScrollView — cuộn theo content, không sticky
+    const headerSlot = (
+        <Animated.View
+            pointerEvents="none"
+            style={[{
+                overflow: 'hidden',
+                justifyContent: 'center',
+                alignItems: 'center',
+                shadowColor: activePrimary,
+            }, animatedHeaderStyle]}
+        >
+            <Animated.View style={[styles.indicatorWrapper, animatedIconStyle]}>
+                <VentoUltimateLoading
+                    size={110}
+                    staggerScale={0.4}
+                    strokeWidth={9}
+                    showLabel={false}
+                    progress={pullProgress}
+                    isRefreshing={isRefreshingUI}
+                    isPulling={isPulling}
+                    primaryColor={primaryColor}
+                    glowColor={glowColor}
+                />
+                {renderParticles()}
+            </Animated.View>
+        </Animated.View>
+    );
+
+    const androidScrollContent = renderScrollComponent ? (
+        renderScrollComponent({
+            onScroll: scrollHandler,
+            scrollEventThrottle: 16,
+            style: [styles.content, animatedContentStyle, customStyle, scrollProps.style],
+            overScrollMode: 'never',
+            ...scrollProps
+        })
+    ) : (
+        <AnimatedGHScrollView
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
+            contentContainerStyle={contentContainerStyle}
+            showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+            overScrollMode="never"
+            refreshControl={nativeRefreshControl}
+            {...scrollProps}
+        >
+            {headerSlot}
+            {children}
+        </AnimatedGHScrollView>
+    );
+
+    const iosScrollContent = renderScrollComponent ? (
+        renderScrollComponent({
+            onScroll: scrollHandler,
+            scrollEventThrottle: 16,
+            bounces: false,
+            style: [styles.content, animatedContentStyle, customStyle, scrollProps.style],
+            ...scrollProps
+        })
+    ) : (
+        <AnimatedScrollView
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
+            bounces={false}
+            contentContainerStyle={contentContainerStyle}
+            showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+            {...scrollProps}
+        >
+            {headerSlot}
+            {children}
+        </AnimatedScrollView>
+    );
+
     return (
         <GestureHandlerRootView style={styles.container} collapsable={false}>
             <GestureDetector gesture={composedGesture}>
-                {renderScrollComponent ? (
-                    <Animated.View style={[styles.content, animatedContentStyle, customStyle]}>
-                        {renderScrollComponent({
-                            onScroll: scrollHandler,
-                            scrollEventThrottle: 1,
-                            style: { flex: 1 },
-                            bounces: true,
-                            ...scrollProps
-                        })}
-                    </Animated.View>
-                ) : Platform.OS === 'android' ? (
-                    <AnimatedGHScrollView
-                        onScroll={scrollHandler}
-                        scrollEventThrottle={1}
-                        style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
-                        bounces={true}
-                        contentContainerStyle={contentContainerStyle}
-                        showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-                        {...scrollProps}
-                    >
-                        {children}
-                    </AnimatedGHScrollView>
-                ) : (
-                    <AnimatedScrollView
-                        onScroll={scrollHandler}
-                        scrollEventThrottle={1}
-                        style={[styles.content, { flex: 1 }, animatedContentStyle, customStyle]}
-                        bounces={true}
-                        contentContainerStyle={contentContainerStyle}
-                        showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-                        {...scrollProps}
-                    >
-                        {children}
-                    </AnimatedScrollView>
-                )}
+                {Platform.OS === 'android' ? androidScrollContent : iosScrollContent}
             </GestureDetector>
-
-            <Animated.View
-                pointerEvents="none"
-                style={[
-                    styles.header,
-                    { shadowColor: activePrimary },
-                    animatedHeaderStyle,
-                ]}
-            >
-                <View style={styles.indicatorWrapper}>
-                    <VentoUltimateLoading
-                        size={110}
-                        staggerScale={0.4}
-                        strokeWidth={9}
-                        showLabel={false}
-                        progress={pullProgress}
-                        isRefreshing={isRefreshingUI}
-                        primaryColor={primaryColor}
-                        glowColor={glowColor}
-                    />
-                    {renderParticles()}
-                </View>
-            </Animated.View>
         </GestureHandlerRootView>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
-    header: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: HEADER_HEIGHT,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 10,
-        overflow: 'visible',
-    },
     indicatorWrapper: {
         alignItems: 'center',
         justifyContent: 'center',

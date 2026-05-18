@@ -43,7 +43,7 @@ export default function StatFilterCards({ items, activeKey, onChange, colSpan }:
 
                 const cardStyle: CSSProperties = {
                     borderRadius: 14,
-                    padding: '20px 20px 18px',
+                    padding: '16px 16px 14px',
                     cursor: 'pointer',
                     position: 'relative',
                     overflow: 'hidden',
@@ -65,14 +65,14 @@ export default function StatFilterCards({ items, activeKey, onChange, colSpan }:
 
                 /* Icon container */
                 const iconWrapperStyle: CSSProperties = {
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    fontSize: 20,
+                    fontSize: 18,
                     transition: 'all 0.3s ease',
                     background: isActive
                         ? `${item.color}18`
@@ -114,7 +114,7 @@ export default function StatFilterCards({ items, activeKey, onChange, colSpan }:
 
 
                             {/* Content */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <div style={iconWrapperStyle}>
                                     {item.icon}
                                 </div>
@@ -140,7 +140,7 @@ export default function StatFilterCards({ items, activeKey, onChange, colSpan }:
                                         strong
                                         style={{
                                             color: isActive ? item.color : token.colorText,
-                                            fontSize: 26,
+                                            fontSize: 24,
                                             fontWeight: 800,
                                             lineHeight: 1,
                                             display: 'block',
@@ -191,7 +191,7 @@ export function StatDisplayCards({ items, colSpan }: {
                     <div
                         style={{
                             borderRadius: 14,
-                            padding: '20px 20px 18px',
+                            padding: '16px 16px 14px',
                             position: 'relative',
                             overflow: 'hidden',
                             height: '100%',
@@ -203,19 +203,19 @@ export function StatDisplayCards({ items, colSpan }: {
                     >
 
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             <div
                                 style={{
-                                    width: 44,
-                                    height: 44,
-                                    borderRadius: 12,
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 10,
                                     background: `${item.color}0C`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
                                     color: item.color,
-                                    fontSize: 20,
+                                    fontSize: 18,
                                     border: `1px solid ${item.color}15`,
                                 }}
                             >
@@ -243,7 +243,7 @@ export function StatDisplayCards({ items, colSpan }: {
                                     strong
                                     style={{
                                         color: token.colorText,
-                                        fontSize: 26,
+                                        fontSize: 24,
                                         fontWeight: 800,
                                         lineHeight: 1,
                                         display: 'block',

@@ -111,9 +111,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /package-lock.json
 
 # Hyperledger Fabric & Blockchain (ignore entire directories)
-
-
-
+/fabric-samples
+/server_do_an_new/fabric-wallet
+/server_do_an_new/fabric-config
 !server_do_an/src/wallet/
 !client_app/src/services/wallet/
 

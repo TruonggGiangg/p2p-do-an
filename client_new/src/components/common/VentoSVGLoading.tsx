@@ -26,23 +26,30 @@ interface PathData {
     d: string;
     length: number;
     fillRule?: "evenodd" | "nonzero";
+    shimmer?: boolean;
+    strokeScale?: number;
+    showHead?: boolean;
 }
 
-// --- VENTO: Cải thiện tỷ lệ & đường cong
+// --- VENTO: viewBox=370×152
 const VENTO_PATHS: PathData[] = [
-    { d: 'M22 30 L47 82 L72 30', length: 140 }, // V: cân đối
-    { d: 'M82 30 L112 30 M82 30 L82 82 L112 82 M82 56 L108 56', length: 155 }, // E
-    { d: 'M127 82 L127 30 L167 82 L167 30', length: 180 }, // N
-    { d: 'M182 30 L232 30 M207 30 L207 82', length: 110 }, // T
-    { d: 'M252 30 L282 30 L297 56 L282 82 L252 82 L237 56 Z', length: 175 }, // O: oval hài hòa
+    { d: 'M10 24 L44 90 L78 24', length: 150 }, // V
+    { d: 'M93 24 L129 24', length: 36 }, // E - top
+    { d: 'M93 24 L93 90 L129 90', length: 103 }, // E - left+bottom
+    { d: 'M93 57 L123 57', length: 30 }, // E - middle
+    { d: 'M144 90 L144 24 L184 90 L184 24', length: 210 }, // N
+    { d: 'M199 24 L247 24 M223 24 L223 90', length: 114 }, // T
+    { d: 'M319 57 C319 38.8 304.7 24 287 24 C269.3 24 255 38.8 255 57 C255 75.2 269.3 90 287 90 C304.7 90 319 75.2 319 57 Z', length: 204 }, // O
 ];
 
-const DECO_PATHS: PathData[] = [
-    { d: 'M20 105 L170 105 L185 90 L200 115 L215 95 L230 105 L295 105', length: 310 },
-    { d: 'M305 40 L315 50 L305 60 L295 50 Z', length: 30 },
+const WIND_PATHS: PathData[] = [
+    { d: 'M5 100 L308 100 C318 100 318 110 308 110', length: 319, shimmer: true, strokeScale: 0.55, showHead: false },
+    { d: 'M28 112 L256 112 C266 112 266 122 256 122', length: 244, shimmer: true, strokeScale: 0.47, showHead: false },
+    { d: 'M62 124 L200 124 C210 124 210 134 200 134', length: 154, shimmer: true, strokeScale: 0.40, showHead: false },
+    { d: 'M106 136 L164 136 C174 136 174 146 164 146', length: 74, shimmer: true, strokeScale: 0.33, showHead: false },
 ];
 
-const ALL_PATHS = [...VENTO_PATHS, ...DECO_PATHS];
+const ALL_PATHS = [...VENTO_PATHS, ...WIND_PATHS];
 
 interface DoubleLayerPathProps {
     d: string;
@@ -55,6 +62,9 @@ interface DoubleLayerPathProps {
     staggerScale: number;
     fillRule?: "evenodd" | "nonzero";
     primaryColor?: string;
+    shimmer?: boolean;
+    strokeScale?: number;
+    showHead?: boolean;
 }
 
 /**
@@ -70,13 +80,20 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
     staggerScale,
     fillRule,
     primaryColor,
+    shimmer,
+    strokeScale,
+    showHead = true,
 }) => {
+    const gradientId = shimmer ? 'shimmerGradient' : 'fireGradient';
+    const actualStrokeWidth = strokeWidth * (strokeScale || (shimmer ? 0.75 : 1));
+    const bodyLinecap = showHead ? 'round' : 'butt';
+
     const animatedProps = useAnimatedProps(() => {
         const pathSpan = 1 / (totalPaths * (1 - staggerScale) + staggerScale);
         const startDraw = index * pathSpan * (1 - staggerScale);
         const endDraw = startDraw + pathSpan;
 
-        // REVERSE ERASURE: Logo disappears from Right to Left (O -> T -> N -> E -> V)
+        // REVERSE ERASURE: Logo disappears from Right to Left
         const reverseIndex = totalPaths - 1 - index;
         const startErase = 1 + reverseIndex * pathSpan * (1 - staggerScale);
         const endErase = startErase + pathSpan;
@@ -135,9 +152,10 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
                 d={d}
                 fill="none"
                 stroke={primaryColor}
-                strokeWidth={strokeWidth * 1.6}
-                strokeLinecap="round"
+                strokeWidth={actualStrokeWidth * 1.6}
+                strokeLinecap={bodyLinecap as any}
                 strokeLinejoin="round"
+                strokeDasharray={[pathLength, pathLength]}
                 opacity={0.06}
                 animatedProps={animatedProps}
                 fillRule={fillRule}
@@ -145,24 +163,26 @@ const DoubleLayerPath: React.FC<DoubleLayerPathProps> = ({
             <AnimatedPath
                 d={d}
                 fill="none"
-                stroke="url(#fireGradient)"
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
+                stroke={`url(#${gradientId})`}
+                strokeWidth={actualStrokeWidth}
+                strokeLinecap={bodyLinecap as any}
                 strokeLinejoin="round"
                 strokeDasharray={[pathLength, pathLength]}
                 animatedProps={animatedProps}
                 fillRule={fillRule}
             />
-            <AnimatedPath
-                d={d}
-                fill="none"
-                stroke="#FFFBF0"
-                strokeWidth={strokeWidth * 1.05}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                animatedProps={headProps}
-                fillRule={fillRule}
-            />
+            {showHead && (
+                <AnimatedPath
+                    d={d}
+                    fill="none"
+                    stroke="#FFFBF0"
+                    strokeWidth={actualStrokeWidth * 1.05}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    animatedProps={headProps}
+                    fillRule={fillRule}
+                />
+            )}
         </G>
     );
 };
@@ -175,6 +195,7 @@ export interface VentoUltimateLoadingProps {
     showLabel?: boolean;
     progress?: SharedValue<number>;
     isRefreshing?: boolean;
+    isPulling?: boolean;
     style?: ViewStyle;
     primaryColor?: string;
     glowColor?: string;
@@ -191,6 +212,7 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
     showLabel = true,
     progress: manualProgress,
     isRefreshing = false,
+    isPulling = false,
     style: customStyle,
     primaryColor,
     glowColor,
@@ -214,8 +236,8 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
             );
         }
 
-        // Start animation if we are in auto-refresh mode OR if no manual progress is provided (loading screen mode)
-        const shouldAnimate = isRefreshing || manualProgress === undefined;
+        // Start animation if we are in auto-refresh mode, pulling mode, OR if no manual progress is provided (loading screen mode)
+        const shouldAnimate = isRefreshing || isPulling || manualProgress === undefined;
 
         if (shouldAnimate) {
             internalMasterAnim.value = withRepeat(
@@ -235,12 +257,12 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
             cancelAnimation(internalMasterAnim);
             cancelAnimation(labelOpacity);
         };
-    }, [isRefreshing, manualProgress === undefined, duration, showLabel]);
+    }, [isRefreshing, isPulling, manualProgress === undefined, duration, showLabel]);
 
-    const master = (isRefreshing || manualProgress === undefined) ? internalMasterAnim : manualProgress!;
+    const master = (isRefreshing || isPulling || manualProgress === undefined) ? internalMasterAnim : manualProgress!;
 
-    const viewBoxWidth = 320;
-    const viewBoxHeight = 120;
+    const viewBoxWidth = 370;
+    const viewBoxHeight = 152;
     const aspectRatio = viewBoxWidth / viewBoxHeight;
     const width = size;
     const height = size / aspectRatio;
@@ -277,6 +299,11 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
                             <Stop offset="0.5" stopColor={activeGlow} stopOpacity="1" />
                             <Stop offset="1" stopColor={activePrimary} stopOpacity="1" />
                         </LinearGradient>
+                        <LinearGradient id="shimmerGradient" x1="0" y1="0" x2="1" y2="0">
+                            <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.7" />
+                            <Stop offset="0.5" stopColor={activeGlow} stopOpacity="1" />
+                            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.7" />
+                        </LinearGradient>
                     </Defs>
                     <G>
                         {ALL_PATHS.map((path, index) => (
@@ -292,6 +319,9 @@ const VentoUltimateLoading: React.FC<VentoUltimateLoadingProps> = ({
                                 progress={master}
                                 fillRule={path.fillRule}
                                 primaryColor={activePrimary}
+                                shimmer={path.shimmer}
+                                strokeScale={path.strokeScale}
+                                showHead={path.showHead}
                             />
                         ))}
                     </G>
