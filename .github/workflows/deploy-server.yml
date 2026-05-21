@@ -72,6 +72,8 @@ jobs:
               --network p2p-network \
               --env-file /opt/p2p/.env.server \
               -p 127.0.0.1:3001:3001 \
+              -v /opt/p2p/fabric-config:/app/fabric-config \
+              -v /opt/p2p/fabric-wallet:/app/fabric-wallet \
               ${{ env.IMAGE }}:latest
 
             echo "=== Health check ==="
