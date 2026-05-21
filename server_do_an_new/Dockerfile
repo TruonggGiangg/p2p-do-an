@@ -8,13 +8,17 @@ WORKDIR /app
 # Copy package files first (better layer caching)
 COPY package.json package-lock.json ./
 
-RUN npm install
+# Install ALL dependencies (including dev for build)
+RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY . .
 
-# Build NestJS
-RUN npm run build
+# Build NestJS using npx to ensure nest CLI is found
+RUN npx nest build
+
+# Verify dist exists
+RUN ls -la dist/ && ls -la dist/main.js
 
 # ============================================================
 # Stage 2: Production
@@ -26,7 +30,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-RUN npm install --omit=dev && npm cache clean --force
+# Install production dependencies only
+RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
 
 # Copy built app from builder
 COPY --from=builder /app/dist ./dist
