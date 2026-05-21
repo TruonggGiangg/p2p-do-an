@@ -24,6 +24,8 @@ jobs:
             fi
             
             cd ~/p2p-do-an
+            git fetch --all
+            git reset --hard origin/main
             git pull https://oauth2:${GITHUB_TOKEN}@github.com/TruonggGiangg/p2p-do-an.git main
             
             echo "=== Running Fabric Setup Script ==="
