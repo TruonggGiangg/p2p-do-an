@@ -1,10 +1,21 @@
 #!/bin/bash
 set -e
 
+echo "=== Cài đặt các công cụ cần thiết ==="
+sudo apt-get update && sudo apt-get install -y jq curl
+
 echo "=== Cập nhật mã nguồn ==="
 cd ~/p2p-do-an
 
 echo "=== Khởi tạo mạng Hyperledger Fabric ==="
+cd ~/p2p-do-an
+if [ ! -d "fabric-samples" ]; then
+  echo ">>> Downloading fabric-samples and binaries..."
+  curl -sSLO https://raw.githubusercontent.com/hyperledger/fabric/main/scripts/install-fabric.sh && chmod +x install-fabric.sh
+  ./install-fabric.sh docker samples binary
+fi
+
+export PATH=~/p2p-do-an/fabric-samples/bin:$PATH
 cd ~/p2p-do-an/fabric-samples/test-network
 ./network.sh down
 ./network.sh up createChannel -c mychannel -ca
