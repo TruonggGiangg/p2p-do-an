@@ -2,11 +2,7 @@
 set -e
 
 echo "=== Cập nhật mã nguồn ==="
-if [ ! -d ~/p2p-do-an ]; then
-  git clone https://github.com/TruonggGiangg/p2p-do-an.git ~/p2p-do-an
-fi
 cd ~/p2p-do-an
-git pull origin main
 
 echo "=== Khởi tạo mạng Hyperledger Fabric ==="
 cd ~/p2p-do-an/fabric-samples/test-network
