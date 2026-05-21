@@ -2,7 +2,12 @@
 set -e
 
 echo "=== Cài đặt các công cụ cần thiết ==="
-sudo apt-get update && sudo apt-get install -y jq curl
+sudo apt-get update && sudo apt-get install -y jq curl build-essential
+if ! command -v node &> /dev/null; then
+  echo ">>> Cài đặt Node.js 20..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
 
 echo "=== Cập nhật mã nguồn ==="
 cd ~/p2p-do-an
