@@ -76,6 +76,9 @@ jobs:
               -v /opt/p2p/fabric-wallet:/app/fabric-wallet \
               ${{ env.IMAGE }}:latest
 
+            echo "=== Connecting to Fabric network ==="
+            docker network connect fabric_test ${{ env.CONTAINER_NAME }} || true
+
             echo "=== Health check ==="
             sleep 5
             if docker ps | grep -q ${{ env.CONTAINER_NAME }}; then

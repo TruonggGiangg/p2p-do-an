@@ -49,7 +49,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
       await this.gateway.connect(ccp, {
         wallet,
         identity: 'admin',
-        discovery: { enabled: true, asLocalhost: true },
+        discovery: { enabled: true, asLocalhost: false },
       });
 
       this.network = await this.gateway.getNetwork(this.channelName);

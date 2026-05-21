@@ -72,8 +72,12 @@ jobs:
               --name ${{ env.CONTAINER_NAME }} \
               --restart unless-stopped \
               --network p2p-network \
-              -p 127.0.0.1:5173:80 \
+              -p 5173:80 \
               ${{ env.IMAGE }}:latest
+
+            echo "=== Replace API URL ==="
+            docker exec ${{ env.CONTAINER_NAME }} sh -c "find /usr/share/nginx/html -type f -name '*.js' -exec sed -i 's|http://localhost:3001|https://backend.social-chat-xuanho.io.vn|g' {} + || true"
+            docker exec ${{ env.CONTAINER_NAME }} sh -c "find /usr/share/nginx/html -type f -name '*.js' -exec sed -i 's|http://13.251.106.252:3001|https://backend.social-chat-xuanho.io.vn|g' {} + || true"
 
             echo "=== Health check ==="
             sleep 3
