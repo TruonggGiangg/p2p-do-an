@@ -5,6 +5,9 @@
 /server_do_an/build
 
 *.md
+!CICD_GUIDE.md
+!README.md
+!**/README.md
 *.docx
 *.tex
 *.txt

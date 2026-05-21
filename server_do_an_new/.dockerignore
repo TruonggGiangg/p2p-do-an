@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+debug_reminder.log
+tmp
+docs
+documents
+fabric-config
+fabric-wallet
+test
+.git
+.gitignore
+.editorconfig
+.prettierrc
+tsconfig.build.tsbuildinfo

@@ -1,0 +1,88 @@
+name: Deploy P2P Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server_do_an_new/**'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/p2p-server
+  CONTAINER_NAME: p2p-server
+
+jobs:
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: vars
+        run: echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server_do_an_new
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: SSH & Deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== Pulling latest image ==="
+            docker pull ${{ env.IMAGE }}:latest
+
+            echo "=== Stopping old container ==="
+            docker stop ${{ env.CONTAINER_NAME }} 2>/dev/null || true
+            docker rm ${{ env.CONTAINER_NAME }} 2>/dev/null || true
+
+            echo "=== Starting new container ==="
+            docker run -d \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart unless-stopped \
+              --network p2p-network \
+              --env-file /opt/p2p/.env.server \
+              -p 127.0.0.1:3001:3001 \
+              ${{ env.IMAGE }}:latest
+
+            echo "=== Health check ==="
+            sleep 5
+            if docker ps | grep -q ${{ env.CONTAINER_NAME }}; then
+              echo "✅ Server deployed!"
+              docker logs --tail 10 ${{ env.CONTAINER_NAME }}
+            else
+              echo "❌ Failed!"
+              docker logs ${{ env.CONTAINER_NAME }}
+              exit 1
+            fi
+
+            docker image prune -f

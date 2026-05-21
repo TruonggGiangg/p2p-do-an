@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+docs
+.stitch
+.git
+.gitignore
+tsc_errors.txt
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
