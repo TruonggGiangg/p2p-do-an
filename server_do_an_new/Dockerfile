@@ -17,8 +17,7 @@ COPY . .
 # Build NestJS using npx to ensure nest CLI is found
 RUN npx nest build
 
-# Verify dist exists
-RUN ls -la dist/ && ls -la dist/main.js
+
 
 # ============================================================
 # Stage 2: Production
@@ -44,4 +43,4 @@ USER nestjs
 
 EXPOSE 3001
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
