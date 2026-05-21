@@ -8,8 +8,7 @@ WORKDIR /app
 # Copy package files first (better layer caching)
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci --ignore-scripts
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -27,8 +26,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install production dependencies only
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built app from builder
 COPY --from=builder /app/dist ./dist
