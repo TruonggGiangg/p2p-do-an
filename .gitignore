@@ -36,8 +36,10 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# Package lock files (ignore everywhere)
+# Package lock files (ignore everywhere except CI/CD apps)
 package-lock.json
+!server_do_an_new/package-lock.json
+!admin_web/package-lock.json
 
 # OS
 .DS_Store
