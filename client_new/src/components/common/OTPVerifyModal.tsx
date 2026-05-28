@@ -23,6 +23,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useConfirmModal } from './ConfirmModal';
@@ -62,6 +63,7 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
 }) => {
   const { theme } = useTheme();
   const modal = useConfirmModal();
+  const navigation = useNavigation<any>();
   const {
     otp: generatedOTP,
     timeRemaining,
@@ -381,7 +383,10 @@ export const OTPVerifyModal: React.FC<OTPVerifyModalProps> = ({
                   </Text>
                   <TouchableOpacity
                     style={[styles.registerNowBtn, { backgroundColor: theme.colors.primary }]}
-                    onPress={() => requestOTPSession(actionType, actionData)} // or just re-init
+                    onPress={() => {
+                      handleCancel();
+                      navigation.navigate('PinSetup');
+                    }}
                     disabled={isLoading}
                   >
                     <Text style={styles.registerNowText}>Kích hoạt ngay</Text>

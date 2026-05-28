@@ -93,9 +93,7 @@ export default function LoginScreen() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Custom Binance Header */}
             <View style={[styles.customHeader, { paddingTop: Platform.OS === 'ios' ? 50 : 20 }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon}>
-                    <MaterialCommunityIcons name="close" size={24} color={theme.colors.textPrimary} />
-                </TouchableOpacity>
+                <View style={styles.headerIcon} />
 
                 <View style={styles.headerCenter}>
                     <MaterialCommunityIcons name="shield-check" size={18} color={theme.colors.primary} />
@@ -113,11 +111,11 @@ export default function LoginScreen() {
             </View>
 
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
-                <Animated.View style={{ opacity: fadeAnim }}>
+                <Animated.View style={[{ opacity: fadeAnim }, { flex: 1 }]}>
                     {/* Branding Section */}
                     <View style={styles.branding}>
                         <View style={[styles.logoBox, { backgroundColor: theme.colors.primary }]}>
@@ -158,55 +156,19 @@ export default function LoginScreen() {
                             <Text style={[styles.globalError, { color: theme.colors.error }]}>{error}</Text>
                         )}
 
-                        <CommonButton
-                            title="Log In"
-                            onPress={() => handleLogin()}
-                            loading={isLoading}
-                            disabled={isLoading || !username.trim() || !password.trim()}
-                            variant="primary"
-                            style={styles.loginBtn}
-                        />
 
-                        {/* Secondary Links */}
-                        <View style={styles.linksRow}>
-                            <TouchableOpacity>
-                                <Text style={[styles.linkText, { color: theme.colors.textSecondary }]}>
-                                    Forgot Password?
-                                </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.faceIdLink}>
-                                <MaterialCommunityIcons
-                                    name="fingerprint"
-                                    size={20}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={[styles.linkText, { color: theme.colors.textSecondary }]}>
-                                    Face ID
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
                     </View>
 
-                    {/* Divider */}
-                    <View style={styles.dividerContainer}>
-                        <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-                        <Text style={[styles.dividerText, { color: theme.colors.textDim }]}>Or continue with</Text>
-                        <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-                    </View>
+                    <View style={{ flex: 1, minHeight: 40 }} />
 
-                    {/* Social Logins */}
-                    <View style={styles.socialRow}>
-                        <TouchableOpacity style={[styles.socialBtn, { borderColor: theme.colors.border }]}>
-                            <MaterialCommunityIcons name="google" size={20} color="#EA4335" />
-                            <Text style={[styles.socialBtnText, { color: theme.colors.textPrimary }]}>Google</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={[styles.socialBtn, { borderColor: theme.colors.border }]}>
-                            <MaterialCommunityIcons name="apple" size={22} color={theme.colors.textPrimary} />
-                            <Text style={[styles.socialBtnText, { color: theme.colors.textPrimary }]}>Apple</Text>
-                        </TouchableOpacity>
-                    </View>
+                    <CommonButton
+                        title="Log In"
+                        onPress={() => handleLogin()}
+                        loading={isLoading}
+                        disabled={isLoading || !username.trim() || !password.trim()}
+                        variant="primary"
+                        style={styles.loginBtn}
+                    />
 
                     {/* Footer Policy */}
                     <View style={[styles.footer, { backgroundColor: theme.colors.surfaceLight, borderColor: theme.colors.border }]}>
@@ -410,55 +372,10 @@ const styles = StyleSheet.create({
     loginBtn: {
         marginTop: 12,
         height: 52,
+        marginBottom: 24,
     },
-    linksRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: 20,
-    },
-    faceIdLink: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    linkText: {
-        fontSize: 13,
-        fontFamily: 'Poppins_500Medium',
-    },
-    dividerContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginVertical: 40,
-        gap: 16,
-    },
-    dividerLine: {
-        flex: 1,
-        height: 1,
-    },
-    dividerText: {
-        fontSize: 12,
-        fontFamily: 'Poppins_400Regular',
-    },
-    socialRow: {
-        flexDirection: 'row',
-        gap: 16,
-        marginBottom: 40,
-    },
-    socialBtn: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 48,
-        borderRadius: 14,
-        borderWidth: 1,
-        gap: 10,
-    },
-    socialBtnText: {
-        fontSize: 14,
-        fontFamily: 'Poppins_600SemiBold',
-    },
+
+
     footer: {
         flexDirection: 'row',
         padding: 16,

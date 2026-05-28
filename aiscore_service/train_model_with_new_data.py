@@ -1236,6 +1236,26 @@ def get_feature_names(preprocessor: ColumnTransformer) -> list[str]:
         return MODEL_FEATURES
 
 
+def xgb_feature_importance_table(model: Any, feature_names: list[str]) -> pd.DataFrame:
+    booster = model.get_booster()
+    raw_scores = booster.get_score(importance_type="gain")
+    rows = []
+    for key, value in raw_scores.items():
+        idx = int(key[1:]) if key.startswith("f") and key[1:].isdigit() else None
+        feature = feature_names[idx] if idx is not None and idx < len(feature_names) else key
+        rows.append({"feature": feature, "gain": float(value)})
+
+    table = pd.DataFrame(rows, columns=["feature", "gain"])
+    if table.empty:
+        return table.assign(rank=pd.Series(dtype=int), normalized_gain=pd.Series(dtype=float))
+
+    table = table.sort_values("gain", ascending=False).reset_index(drop=True)
+    total_gain = float(table["gain"].sum())
+    table["normalized_gain"] = table["gain"] / total_gain if total_gain > 0 else 0.0
+    table.insert(0, "rank", np.arange(1, len(table) + 1))
+    return table
+
+
 def make_test_export(
     raw_test: pd.DataFrame,
     feature_test: pd.DataFrame,
@@ -1574,15 +1594,12 @@ def _score_distribution(df: pd.DataFrame) -> plt.Figure:
 
 
 def _xgb_feature_importance_chart(model: Any, feature_names: list[str]) -> plt.Figure:
-    booster = model.get_booster()
-    raw_scores = booster.get_score(importance_type="gain")
-    rows = []
-    for key, value in raw_scores.items():
-        idx = int(key[1:]) if key.startswith("f") and key[1:].isdigit() else None
-        name = feature_names[idx] if idx is not None and idx < len(feature_names) else key
-        rows.append((name, value))
-    imp = pd.DataFrame(rows, columns=["feature", "gain"]).sort_values("gain", ascending=False).head(25)
+    imp = xgb_feature_importance_table(model, feature_names).head(25)
     fig, ax = plt.subplots(figsize=(10, 8))
+    if imp.empty:
+        ax.text(0.5, 0.5, "No feature importance available", ha="center", va="center")
+        ax.axis("off")
+        return fig
     sns.barplot(data=imp, y="feature", x="gain", ax=ax, color="#4C78A8")
     ax.set_title("Top XGBoost feature importance by gain")
     ax.set_xlabel("Gain")
@@ -1993,6 +2010,8 @@ XGBoost is well suited for credit-risk tabular data because it learns nonlinear 
 - Calibrator: `isotonic_calibrator.joblib`
 - Metadata: `metadata.json`
 - Predictions: `test_predictions.csv`
+- Confusion matrix heatmap: `17_confusion_matrix.png`
+- XGBoost feature importance chart: `21_xgb_feature_importance_gain.png`
 - Scoring examples: `sample_scoring_examples.csv`
 - Feature dictionary: `feature_dictionary.csv`
 
@@ -2117,6 +2136,8 @@ def train_pipeline() -> TrainingArtifacts:
     print("\n[classification_report] XGBoost calibrated")
     print(classification_report(y_test, (proba_test >= threshold).astype(int), target_names=[LABEL_NON_DEFAULT, LABEL_DEFAULT]))
 
+    print(f"[chart-output] Confusion matrix heatmap: {CHART_DIR / '17_confusion_matrix.png'}")
+
     test_export = make_test_export(raw_test, test, y_test, proba_test, threshold)
     write_csv(test_export, REPORT_DIR / "test_predictions.csv")
 
@@ -2133,6 +2154,18 @@ def train_pipeline() -> TrainingArtifacts:
         threshold,
     )
     write_csv(sample_scored, REPORT_DIR / "sample_scoring_examples.csv")
+
+    xgb_importance = xgb_feature_importance_table(xgb_model, feature_names)
+    print("\n[feature_importance] Top XGBoost features by gain")
+    if xgb_importance.empty:
+        print("No feature importance available from XGBoost booster.")
+    else:
+        print(
+            xgb_importance[["rank", "feature", "gain", "normalized_gain"]]
+            .head(25)
+            .to_string(index=False)
+        )
+    print(f"[chart-output] XGBoost feature importance chart: {CHART_DIR / '21_xgb_feature_importance_gain.png'}")
 
     permutation_table = None
     if DO_PERMUTATION_IMPORTANCE:
@@ -2216,6 +2249,8 @@ def train_pipeline() -> TrainingArtifacts:
             "train_split_csv": str(SPLIT_DIR / "train_split.csv"),
             "validation_split_csv": str(SPLIT_DIR / "validation_split.csv"),
             "test_split_csv": str(SPLIT_DIR / "test_split.csv"),
+            "confusion_matrix_chart": str(CHART_DIR / "17_confusion_matrix.png"),
+            "feature_importance_chart": str(CHART_DIR / "21_xgb_feature_importance_gain.png"),
         },
         "split": {
             "train_rows": int(len(train)),
@@ -2291,6 +2326,8 @@ def train_pipeline() -> TrainingArtifacts:
     print(f"  Reports: {REPORT_DIR}")
     print(f"  Splits : {SPLIT_DIR}")
     print(f"  Feature dictionary: {REPORT_DIR / 'feature_dictionary.csv'}")
+    print(f"  Confusion heatmap : {CHART_DIR / '17_confusion_matrix.png'}")
+    print(f"  Importance chart  : {CHART_DIR / '21_xgb_feature_importance_gain.png'}")
     print(f"  Train split     : {SPLIT_DIR / 'train_split.csv'}")
     print(f"  Validation split: {SPLIT_DIR / 'validation_split.csv'}")
     print(f"  Test split      : {SPLIT_DIR / 'test_split.csv'}")

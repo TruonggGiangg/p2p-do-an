@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     ViewStyle,
     TextStyle,
+    StyleProp,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -33,8 +34,8 @@ interface CommonInputProps {
     error?: string;
     keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad' | 'number-pad';
     autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-    containerStyle?: ViewStyle;
-    inputStyle?: TextStyle;
+    containerStyle?: StyleProp<ViewStyle>;
+    inputStyle?: StyleProp<TextStyle>;
     editable?: boolean;
     multiline?: boolean;
     numberOfLines?: number;

@@ -222,6 +222,7 @@ export class AdminMarketService {
       return {
         id: order._id,
         investorCode: order.lenderId?.username || `INV_${String(order._id).slice(-6)}`,
+        name: order.name,
         phone: order.lenderId?.phoneNumber || null,
         maxRate: order.interestRange?.max || 0,
         minRate: order.interestRange?.min || 0,
@@ -416,6 +417,7 @@ export class AdminMarketService {
     const bids = orders.map((order: any) => ({
       id: order._id,
       investorCode: order.lenderId?.username || `INV_${String(order._id).slice(-6)}`,
+      name: order.name,
       phone: order.lenderId?.phoneNumber || null,
       totalCapital: order.capital || 0,
       matchedCapital: order.matchedCapital || 0,

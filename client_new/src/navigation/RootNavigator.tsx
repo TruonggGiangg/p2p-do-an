@@ -205,6 +205,7 @@ export default function RootNavigator() {
                     <Stack.Screen name="InvestmentStats" component={InvestmentStatsScreen} />
                     <Stack.Screen name="SchedulePreview" component={SchedulePreviewScreen} />
                     <Stack.Screen name="InvestmentFlow" component={InvestmentFlowScreen} />
+                    {!needsPinSetup && <Stack.Screen name="PinSetup" component={PinSetupScreen} />}
                 </>
             )}
         </Stack.Navigator>

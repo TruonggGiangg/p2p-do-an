@@ -35,7 +35,6 @@ export const QUICK_ACTIONS: ShortcutItem[] = [
 export const MAIN_FEATURES: ShortcutItem[] = [
     { icon: 'ArrowsLeftRight', label: 'Chuyển\ntiền',     nav: 'Transfer',    isParent: true,  color: '#CDEA2D' },
     { icon: 'HandCoins',       label: 'Vay\nvốn',         nav: 'Loan',        isParent: false, color: '#0ECB81' },
-    { icon: 'CreditCard',      label: 'Trả góp\nBNPL',    nav: 'BNPL',        isParent: false, color: '#F0B90B' },
     { icon: 'ClockCounterClockwise', label: 'Lịch sử\nvay', nav: 'LoanHistory', isParent: true,  color: '#B8E2FF' },
 ];
 
@@ -66,7 +65,7 @@ export const SERVICES_GRID = FINANCIAL_SERVICES;
 export const UTILITIES_GRID = UTILITIES;
 export const MOMO_GRID = [...MAIN_FEATURES.map(f => ({ ...f, label: f.label.replace('\n', ' ') }))];
 export const WALLET_GROUP = QUICK_ACTIONS.filter(i => ['Wallets', 'Transfer', 'QR'].includes(i.nav));
-export const LOAN_GROUP = MAIN_FEATURES.filter(i => ['Loan', 'BNPL'].includes(i.nav));
+export const LOAN_GROUP = MAIN_FEATURES.filter(i => ['Loan'].includes(i.nav));
 export const HISTORY_GROUP: ShortcutItem[] = [
     { icon: 'ClockCounterClockwise', label: 'Lịch sử vay', nav: 'LoanHistory',      isParent: true },
     { icon: 'FileText',              label: 'Hợp đồng',    nav: 'LoanContractList', isParent: true },

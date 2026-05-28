@@ -24,4 +24,3 @@ export class LoanProductSnapshot extends Document {
 }
 
 export const LoanProductSnapshotSchema = SchemaFactory.createForClass(LoanProductSnapshot);
-LoanProductSnapshotSchema.index({ scope: 1 });

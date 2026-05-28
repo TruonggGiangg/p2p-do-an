@@ -49,7 +49,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
       await this.gateway.connect(ccp, {
         wallet,
         identity: 'admin',
-        discovery: { enabled: false, asLocalhost: true },
+        discovery: { enabled: true, asLocalhost: true },
       });
 
       this.network = await this.gateway.getNetwork(this.channelName);
@@ -95,6 +95,12 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
     return this.connected;
   }
 
+  private async ensureConnected() {
+    if (!this.connected || !this.contract) {
+      await this.reconnectToFabric();
+    }
+  }
+
   getNetworkStatus() {
     return {
       connected: this.connected,
@@ -108,6 +114,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
 
   async submitTransaction(functionName: string, ...args: string[]): Promise<any> {
     try {
+      await this.ensureConnected();
       const result = await this.contract.submitTransaction(functionName, ...args);
       return this.parseFabricResult(result);
     } catch (error: any) {
@@ -129,6 +136,7 @@ export class FabricService implements OnModuleInit, OnModuleDestroy {
 
   async evaluateTransaction(functionName: string, ...args: string[]): Promise<any> {
     try {
+      await this.ensureConnected();
       const result = await this.contract.evaluateTransaction(functionName, ...args);
       return this.parseFabricResult(result);
     } catch (error: any) {

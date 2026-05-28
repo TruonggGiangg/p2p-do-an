@@ -53,17 +53,30 @@ const menuGroups: MenuGroup[] = [
     groupLabel: 'TỔNG QUAN',
     items: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
+    ],
+  },
+  {
+    groupLabel: 'ĐẦU TƯ & GIAO DỊCH',
+    items: [
       { key: '/market', icon: <SwapOutlined />, label: 'Bảng khớp lệnh' },
       { key: '/investment-orders', icon: <FundOutlined />, label: 'Lệnh đầu tư' },
+      { key: '/fd-products', icon: <WalletOutlined />, label: 'Quỹ đầu tư có kỳ hạn' },
+    ],
+  },
+  {
+    groupLabel: 'QUẢN LÝ TÍN DỤNG',
+    items: [
+      { key: '/loans', icon: <DollarOutlined />, label: 'Quản lý khoản vay' },
+      { key: '/loan-approvals', icon: <CheckCircleOutlined />, label: 'Phê duyệt khoản vay' },
     ],
   },
   {
     groupLabel: 'QUẢN LÝ SẢN PHẨM',
     items: [
-      { key: '/document-types', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
       { key: '/loan-products', icon: <BankOutlined />, label: 'Sản phẩm vay' },
       { key: '/savings-products', icon: <WalletOutlined />, label: 'Sản phẩm tiết kiệm' },
       { key: '/fd-products', icon: <FundOutlined />, label: 'Quỹ đầu tư có kỳ hạn' },
+      { key: '/document-types', icon: <FileTextOutlined />, label: 'Loại tài liệu' },
     ],
   },
   {
@@ -91,8 +104,10 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    groupLabel: 'HỆ THỐNG',
+    groupLabel: 'CẤU HÌNH & HỆ THỐNG',
     items: [
+      { key: '/loan-evaluation-config', icon: <AuditOutlined />, label: 'Đánh giá khoản vay' },
+      { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
       { key: '/blockchain', icon: <BlockOutlined />, label: 'Blockchain Explorer' },
       { key: '/background-jobs', icon: <ThunderboltOutlined />, label: 'Tác vụ chạy ngầm' },
     ],
@@ -141,7 +156,6 @@ export default function AppLayout() {
     '/fd-products':              [[Action.Read, 'SavingsProduct']],
     '/loans':                    [[Action.Read, 'Loan']],
     '/loan-approvals':           [[Action.Approve, 'Loan'], [Action.Read, 'Loan']],
-    '/loan-support-requests':    [[Action.Read, 'LoanApplication']],
     '/delinquency-policies':     [[Action.Update, 'Loan'], [Action.Manage, 'all']],
     '/loan-evaluation-config':   [[Action.Manage, 'all']],
     '/bnpl':                     [[Action.Manage, 'all']],

@@ -24,16 +24,24 @@ async function main() {
 
         // Paths to the cryptogen generated certificates
         const credPath = path.join(repoRoot, 'fabric-samples', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'users', 'Admin@org1.example.com', 'msp');
-        const certPath = path.join(credPath, 'signcerts', 'cert.pem');
+        const certDir = path.join(credPath, 'signcerts');
         const keyDir = path.join(credPath, 'keystore');
-        const files = fs.readdirSync(keyDir);
-        const keyFileName = files.find(f => f.endsWith('_sk'));
+        const certFiles = fs.readdirSync(certDir);
+        const keyFiles = fs.readdirSync(keyDir);
+        const certFileName = certFiles.find(f => f === 'cert.pem') || certFiles.find(f => f.endsWith('.pem'));
+        const keyFileName = keyFiles.find(f => f.endsWith('_sk')) || keyFiles.find(f => !f.startsWith('.'));
 
         if (!keyFileName) {
             console.error('Private Key not found in keystore directory.');
             process.exit(1);
         }
 
+        if (!certFileName) {
+            console.error('Certificate not found in signcerts directory.');
+            process.exit(1);
+        }
+
+        const certPath = path.join(certDir, certFileName);
         const keyPath = path.join(keyDir, keyFileName);
 
         if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {

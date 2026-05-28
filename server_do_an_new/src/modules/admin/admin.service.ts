@@ -80,6 +80,26 @@ export class AdminService implements OnModuleInit {
         if (nameMatch) {
           const correctGroup = parseInt(nameMatch[1], 10);
           if (p.debt_group !== correctGroup) {
+            const duplicateQuery =
+              p.loan_product_id == null
+                ? {
+                    _id: { $ne: p._id },
+                    debt_group: correctGroup,
+                    $or: [{ loan_product_id: null }, { loan_product_id: { $exists: false } }],
+                  }
+                : {
+                    _id: { $ne: p._id },
+                    loan_product_id: p.loan_product_id,
+                    debt_group: correctGroup,
+                  };
+            const duplicate = await this.delinquencyPolicyModel.exists(duplicateQuery);
+            if (duplicate) {
+              this.logger.log(
+                `[PolicyMigration] Skipped "${p.debt_group_name}": product=${p.loan_product_id ?? 'default'} debt_group ${correctGroup} already exists`,
+              );
+              continue;
+            }
+
             await this.delinquencyPolicyModel.updateOne({ _id: p._id }, { $set: { debt_group: correctGroup } });
             fixedCount++;
             this.logger.warn(
