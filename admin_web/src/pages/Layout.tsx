@@ -79,6 +79,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { key: '/delinquency-policies', icon: <ExclamationCircleOutlined />, label: 'Cấu hình xử lý nợ xấu' },
       { key: '/loan-evaluation-config', icon: <AuditOutlined />, label: 'Đánh giá khoản vay' },
+      { key: '/bnpl', icon: <DollarOutlined />, label: 'BNPL' },
     ],
   },
   {
@@ -143,6 +144,7 @@ export default function AppLayout() {
     '/loan-support-requests':    [[Action.Read, 'LoanApplication']],
     '/delinquency-policies':     [[Action.Update, 'Loan'], [Action.Manage, 'all']],
     '/loan-evaluation-config':   [[Action.Manage, 'all']],
+    '/bnpl':                     [[Action.Manage, 'all']],
     '/customers':                [[Action.Read, 'Customer']],
     '/staff':                    [[Action.Read, 'Staff']],
     '/roles-permissions':        [[Action.Manage, 'all']],

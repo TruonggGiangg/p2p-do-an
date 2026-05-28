@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -13,7 +13,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BinanceHeader, CommonCard, useConfirmModal } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { formatCurrency } from '../../../shared/utils';
-import type { BnplLoan } from '../api/bnpl.api';
+import { bnplAPI } from '../api/bnpl.api';
+import type { BnplLoan, BnplTransaction } from '../api/bnpl.api';
 
 type RouteParams = { loan: BnplLoan };
 
@@ -26,14 +27,75 @@ export default function BNPLLoanDetailScreen() {
     const route = useRoute();
     const insets = useSafeAreaInsets();
     const modal = useConfirmModal();
-    const { loan } = (route.params || {}) as RouteParams;
+    const { loan: routeLoan } = (route.params || {}) as RouteParams;
     const c = theme.colors;
     const [menuVisible, setMenuVisible] = useState(false);
+    const [loading, setLoading] = useState(Boolean(routeLoan));
+    const [detail, setDetail] = useState<BnplLoan | null>(routeLoan || null);
+    const [transactions, setTransactions] = useState<BnplTransaction[]>([]);
+
+    useEffect(() => {
+        if (!routeLoan?.id) {
+            setLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadLoanDetail = async () => {
+            setLoading(true);
+            try {
+                const [freshLoan, txResponse] = await Promise.all([
+                    bnplAPI.getLoanDetails(routeLoan.id),
+                    bnplAPI.getTransactions(100),
+                ]);
+
+                if (cancelled) {
+                    return;
+                }
+
+                setDetail(freshLoan);
+                setTransactions(
+                    txResponse.transactions.filter(
+                        (tx) => tx.loanId === routeLoan.id || tx.fineractLoanId === routeLoan.fineractLoanId,
+                    ),
+                );
+            } catch {
+                if (!cancelled) {
+                    setDetail(routeLoan);
+                    setTransactions([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        void loadLoanDetail();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [routeLoan?.id, routeLoan?.fineractLoanId]);
+
+    const loan = detail || routeLoan;
 
     if (!loan) {
         return (
             <View style={[styles.container, { backgroundColor: c.background }]}>
                 <BinanceHeader title="Chi tiết khoản vay" showBack />
+            </View>
+        );
+    }
+
+    if (loading && !detail) {
+        return (
+            <View style={[styles.container, { backgroundColor: c.background }]}>
+                <BinanceHeader title="Chi tiáº¿t khoáº£n vay" showBack />
+                <View style={styles.loadingWrap}>
+                    <Text style={{ color: c.textSecondary }}>Đang tải dữ liệu khoản BNPL...</Text>
+                </View>
             </View>
         );
     }
@@ -45,10 +107,13 @@ export default function BNPLLoanDetailScreen() {
         .filter(s => !((s as any).status === 'paid' || (s as any).paid))
         .reduce((sum, s) => sum + s.total, 0);
 
-    // Mock payment history
-    const mockPayments = loan.paidAmount > 0 ? [
-        { id: '1', date: new Date().toLocaleDateString('vi-VN'), amount: loan.paidAmount, type: 'Thanh toán dư nợ' },
-    ] : [];
+    const paymentHistory = transactions
+        .filter((tx) => ['repayment', 'prepayment', 'fee', 'adjustment'].includes(tx.type))
+        .sort((a, b) => {
+            const left = new Date(a.date || a.createdAt || 0).getTime();
+            const right = new Date(b.date || b.createdAt || 0).getTime();
+            return right - left;
+        });
 
     /** Nice date string — never breaks across lines */
     const formatDueDate = (raw: string) => {
@@ -200,10 +265,10 @@ export default function BNPLLoanDetailScreen() {
                 </View>
 
                 {/* ═══ Payment history ═══ */}
-                {mockPayments.length > 0 && (
+                {paymentHistory.length > 0 && (
                     <View style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Lịch sử thanh toán</Text>
-                        {mockPayments.map((p, idx) => (
+                        {paymentHistory.map((p, idx) => (
                             <View key={idx} style={[styles.paymentRow, { borderColor: c.border, backgroundColor: c.surface }]}>
                                 <View style={[styles.paymentIcon, { backgroundColor: c.primaryGlass }]}>
                                     <MaterialCommunityIcons name="credit-card-check-outline" size={20} color={c.primary} />
@@ -246,6 +311,7 @@ export default function BNPLLoanDetailScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     hero: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 },
     heroLabel: { fontSize: 13, marginBottom: 6 },
     heroAmount: { fontSize: 30, fontWeight: '800', letterSpacing: -0.5 },

@@ -41,6 +41,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port')!;
   const nodeEnv = configService.get<string>('nodeEnv')!;
+  const keycloakUrl = configService.get<string>('keycloak.url')!;
+  const keycloakRealm = configService.get<string>('keycloak.realm')!;
   const rawCorsOrigins = configService.get<string[] | string>('security.corsOrigins') ?? ['*'];
   const corsOrigins = (Array.isArray(rawCorsOrigins) ? rawCorsOrigins : rawCorsOrigins.split(','))
     .map(o => o.trim())
@@ -97,6 +99,7 @@ async function bootstrap() {
   // Start server
   // Bind to 0.0.0.0 to allow access from local network (iPhone)
   await app.listen(port, '0.0.0.0');
+  logger.log(`Keycloak config: ${keycloakUrl} | realm=${keycloakRealm}`);
 
   logger.log(`🚀 Server running on: http://0.0.0.0:${port}/api`);
   logger.log(`🌍 Environment: ${nodeEnv}`);

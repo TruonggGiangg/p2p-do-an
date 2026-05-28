@@ -15,4 +15,7 @@ export type Subject =
   | 'Staff'
   | 'Migration'
   | 'LoanApplication'
+  | 'BnplApplication'
+  | 'BnplWallet'
+  | 'BnplLoan'
   | 'all'; // CASL wildcard

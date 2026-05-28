@@ -190,7 +190,7 @@ export class FineractSignupService {
       userId,
       title: 'Chào mừng bạn đến với P2P Lending!',
       message: `Chúc mừng bạn đã đăng ký tài khoản ${roleLabel} thành công. Hãy hoàn thành eKYC để bắt đầu sử dụng dịch vụ.`,
-      type: 'system',
+      type: 'general',
       read: false,
     });
   }

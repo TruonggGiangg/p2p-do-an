@@ -16,6 +16,7 @@ import { BnplService } from './bnpl.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { CreateBnplLoanDto } from './dto/create-bnpl-loan.dto';
+import { CreateBnplApplicationDto } from './dto/create-bnpl-application.dto';
 import { PreviewBnplLoanDto } from './dto/preview-bnpl-loan.dto';
 
 @ApiTags('bnpl')
@@ -77,6 +78,30 @@ export class BnplController {
     );
   }
 
+  // ==================== APPLICATION ENDPOINTS ====================
+
+  @Post('applications')
+  @ApiOperation({ summary: 'Dang ky ho so BNPL' })
+  @ApiResponse({ status: 201, description: 'Ho so BNPL da duoc ghi nhan' })
+  async submitApplication(@CurrentUser('id') userId: string, @Body() dto: CreateBnplApplicationDto) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+    return this.bnplService.submitApplication(userId, dto);
+  }
+
+  @Get('applications/current')
+  @ApiOperation({ summary: 'Lay ho so BNPL hien tai cua user' })
+  @ApiResponse({ status: 200, description: 'Tra ve ho so BNPL moi nhat cua user' })
+  async getCurrentApplication(@CurrentUser('id') userId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+    return {
+      application: await this.bnplService.getCurrentApplication(userId),
+    };
+  }
+
   // ==================== WALLET ENDPOINTS ====================
 
   @Get('wallet')
@@ -104,6 +129,21 @@ export class BnplController {
       usedCredit: wallet.usedCredit,
       availableCredit: wallet.availableCredit,
     };
+  }
+
+  @Post('wallet/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xac nhan hop dong va kich hoat vi BNPL' })
+  @ApiResponse({ status: 200, description: 'Vi BNPL da duoc kich hoat' })
+  async activateWallet(
+    @CurrentUser('id') userId: string,
+    @Body() body: { signatureText?: string },
+  ) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+
+    return this.bnplService.activateWallet(userId, body.signatureText);
   }
 
   // ==================== LOAN ENDPOINTS ====================
@@ -185,5 +225,62 @@ export class BnplController {
         totalDue,
       },
     };
+  }
+
+  @Get('transactions')
+  @ApiOperation({ summary: 'Lịch sử giao dịch BNPL' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Số giao dịch tối đa' })
+  @ApiQuery({ name: 'offset', required: false, description: 'Bỏ qua bao nhiêu giao dịch đầu' })
+  @ApiResponse({ status: 200, description: 'Trả về lịch sử giao dịch BNPL' })
+  async getTransactions(
+    @CurrentUser('id') userId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+
+    return this.bnplService.getTransactions(userId, Number(limit) || 20, Number(offset) || 0);
+  }
+
+  @Post('loans/:id/repay')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Thanh toán một kỳ BNPL' })
+  @ApiResponse({ status: 200, description: 'Thanh toán thành công' })
+  async repayLoan(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() body: { amount: number; repaymentDate?: string; idempotencyKey?: string },
+  ) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+    return this.bnplService.repayLoan(userId, id, body.amount, body.repaymentDate, body.idempotencyKey);
+  }
+
+  @Get('loans/:id/prepay-amount')
+  @ApiOperation({ summary: 'Lấy số tiền tất toán sớm BNPL' })
+  @ApiResponse({ status: 200, description: 'Trả về số tiền tất toán sớm' })
+  async getPrepayAmount(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+    return this.bnplService.getPrepayAmount(userId, id);
+  }
+
+  @Post('loans/:id/prepay')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Tất toán sớm BNPL' })
+  @ApiResponse({ status: 200, description: 'Tất toán sớm thành công' })
+  async prepayLoan(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() body: { repaymentDate?: string; idempotencyKey?: string },
+  ) {
+    if (!userId) {
+      throw new UnauthorizedException('User ID not found');
+    }
+    return this.bnplService.prepayLoan(userId, id, body.repaymentDate, body.idempotencyKey);
   }
 }

@@ -4,6 +4,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { MongooseModule } from '@nestjs/mongoose';
+import { resolve } from 'node:path';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -34,6 +35,7 @@ import { FabricModule } from './modules/fabric/fabric.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [resolve(__dirname, '..', '.env'), resolve(process.cwd(), '.env')],
       load: [configuration],
       validate,
       cache: true,

@@ -15,7 +15,7 @@ import {
   SAVINGS_SNAPSHOT_SCOPE,
 } from '../schemas/savings-product-snapshot.schema';
 import { SyncDriftLog, ProductDiffItem } from '../schemas/sync-drift-log.schema';
-import { DocumentType } from '../schemas/document-type.schema';
+import { DocumentType as DbDocumentType, FileFormat } from '../schemas/document-type.schema';
 import { LoanProductDocumentType } from '../schemas/loan-product-document-type.schema';
 import { CreateDocumentTypeDto } from '../dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from '../dto/update-document-type.dto';
@@ -35,7 +35,7 @@ export class AdminProductService {
   private readonly logger = new Logger(AdminProductService.name);
 
   constructor(
-    @InjectModel(DocumentType.name) private documentTypeModel: Model<DocumentType>,
+    @InjectModel(DbDocumentType.name) private documentTypeModel: Model<DbDocumentType>,
     @InjectModel(LoanProductDocumentType.name) private loanProductDocModel: Model<LoanProductDocumentType>,
     @InjectModel(LoanProductSnapshot.name) private snapshotModel: Model<LoanProductSnapshot>,
     @InjectModel(SavingsProductSnapshot.name) private savingsSnapshotModel: Model<SavingsProductSnapshot>,
@@ -68,7 +68,7 @@ export class AdminProductService {
       name: dto.name,
       required: dto.required ?? false,
       description: dto.description,
-      fileFormat: dto.fileFormat ?? 'any',
+      fileFormat: dto.fileFormat ?? FileFormat.ANY,
     });
     return doc.toObject();
   }

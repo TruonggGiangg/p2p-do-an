@@ -642,7 +642,13 @@ export class FineractLoanService extends FineractBaseService {
   /**
    * Calculate BNPL loan schedule based on Product configuration
    */
-  async calculateBnplSchedule(data: { productId: number; principal: number; numberOfRepayments: number }): Promise<{
+  async calculateBnplSchedule(data: {
+    productId: number;
+    principal: number;
+    numberOfRepayments: number;
+    monthlyRateOverride?: number;
+    interestTypeOverride?: string;
+  }): Promise<{
     monthlyRate: number;
     annualRate: number;
     monthlyPay: number;
@@ -662,9 +668,9 @@ export class FineractLoanService extends FineractBaseService {
       throw new BadRequestException(`Loan product ${data.productId} not found in Fineract`);
     }
 
-    const monthlyRate = product.interestRatePerPeriod ?? 0;
+    const monthlyRate = product.interestRatePerPeriod ?? data.monthlyRateOverride ?? 0;
     const annualRate = product.annualInterestRate ?? monthlyRate * 12;
-    const interestType = product.interestType?.value ?? 'Flat';
+    const interestType = product.interestType?.value ?? data.interestTypeOverride ?? 'Flat';
     const inMultiplesOf = product.currency?.inMultiplesOf ?? 1;
 
     const roundToCurrencyMultiples = (val: number): number => roundToCurrency(val, inMultiplesOf);

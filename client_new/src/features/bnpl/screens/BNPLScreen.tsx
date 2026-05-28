@@ -25,6 +25,7 @@ import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefr
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatNumber, parseNumber, formatCurrency } from '../../../shared/utils';
 import { useDebounce } from '../../../shared/hooks';
+import type { BnplApplication } from '../api/bnpl.api';
 
 // ── Membership Tier ──────────────────────────────────────────────────────────
 const TIERS = [
@@ -33,6 +34,8 @@ const TIERS = [
     { key: 'vang', label: 'Hạng Vàng', icon: 'star-circle' as const, color: '#CDEA2D', limit: 10_000_000, minSpend: 20_000_000 },
     { key: 'kimcuong', label: 'Kim Cương', icon: 'diamond-stone' as const, color: '#81D4FA', limit: 20_000_000, minSpend: 50_000_000 },
 ];
+
+const BNPL_PURPOSE_OPTIONS = ['Tiêu dùng', 'Mua sắm', 'Du lịch', 'Giáo dục', 'Y tế', 'Khác'];
 
 function getTier(creditLimit: number) {
     if (creditLimit <= 2_000_000) return TIERS[0];
@@ -49,6 +52,7 @@ interface PreviewData {
     monthlyPayment: number;
     totalRepayment: number;
     totalInterest: number;
+    totalFees: number;
     interestType: string;
     schedulePreview: Array<{
         period: number;
@@ -76,6 +80,7 @@ export default function BNPLScreen() {
     const [balanceVisible, setBalanceVisible] = useState(true);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [successLoan, setSuccessLoan] = useState<BnplLoan | null>(null);
+    const [currentApplication, setCurrentApplication] = useState<BnplApplication | null>(null);
     // BNPL flow state machine
     type BnplFlowStatus = 'loading' | 'no_wallet' | 'registration' | 'pending_approval' | 'pending_signature' | 'active';
     const [bnplStatus, setBnplStatus] = useState<BnplFlowStatus>('loading');
@@ -97,6 +102,7 @@ export default function BNPLScreen() {
 
     // Form state
     const [amountRaw, setAmountRaw] = useState('5000000');
+    const [loanPurpose, setLoanPurpose] = useState('Mua sắm');
     const [loanDescription, setLoanDescription] = useState('');
     const [numberOfRepayments, setNumberOfRepayments] = useState(3);
 
@@ -129,18 +135,41 @@ export default function BNPLScreen() {
             await Promise.all([
                 minDelay,
                 (async () => {
-                    const [walletData, loansData, scheduleData, transData] = await Promise.all([
+                    const [walletData, loansData, scheduleData, transData, applicationData] = await Promise.all([
                         bnplAPI.getWallet(),
                         bnplAPI.getLoans(),
                         bnplAPI.getConsolidatedSchedule(),
                         bnplAPI.getTransactions(20),
+                        bnplAPI.getCurrentApplication(),
                     ]);
                     setWallet(walletData);
                     setLoans(loansData.loans);
                     setSchedule(scheduleData.schedule);
                     setScheduleSummary(scheduleData.summary);
                     setTransactions(transData.transactions);
-                    setBnplStatus('active');
+                    setCurrentApplication(applicationData);
+
+                    if (applicationData) {
+                        setRegForm(prev => ({
+                            ...prev,
+                            address: applicationData.address || prev.address,
+                            occupation: applicationData.occupation || prev.occupation,
+                            purpose: applicationData.purpose || prev.purpose,
+                            income: applicationData.income != null ? String(applicationData.income) : prev.income,
+                        }));
+                    }
+
+                    if (walletData?.status === 'active') {
+                        setBnplStatus('active');
+                    } else if (applicationData?.status === 'submitted') {
+                        setBnplStatus('pending_approval');
+                    } else if (applicationData?.status === 'approved') {
+                        setBnplStatus('pending_signature');
+                    } else if (walletData) {
+                        setBnplStatus('no_wallet');
+                    } else {
+                        setBnplStatus('no_wallet');
+                    }
                 })()
             ]);
         } catch (error: any) {
@@ -165,69 +194,6 @@ export default function BNPLScreen() {
         setRefreshing(true);
         await fetchData();
     }, []);
-
-    // ==================== MOCK CREATE HANDLER (no API) ====================
-    const handleMockCreateLoan = useCallback(() => {
-        const amount = parseInt(amountRaw) || 0;
-        if (!amount || amount < 500_000) {
-            modal.error('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
-            return;
-        }
-        if (amount > (wallet?.availableCredit ?? 50_000_000)) {
-            modal.error('Vượt hạn mức', `Số tiền vay vượt hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet?.availableCredit ?? 0)}`);
-            return;
-        }
-        const monthlyRate = 0.018;
-        const n = numberOfRepayments;
-        const r = monthlyRate;
-        const monthlyPayment = amount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-        const totalRepayment = monthlyPayment * n;
-        const totalInterest = totalRepayment - amount;
-        const now = new Date();
-        const mockLoan: BnplLoan = {
-            id: `mock-${Date.now()}`,
-            fineractLoanId: `BNP${Math.floor(1000 + Math.random() * 9000)}`,
-            principal: amount,
-            totalInterest,
-            totalRepayment,
-            paidAmount: 0,
-            outstandingBalance: totalRepayment,
-            numberOfRepayments: n,
-            status: 'active',
-            description: loanDescription || undefined,
-            disbursedAt: now.toISOString(),
-            repaymentSchedule: Array.from({ length: n }, (_, i) => ({
-                period: i + 1,
-                principal: amount / n,
-                interest: totalInterest / n,
-                total: monthlyPayment,
-                dueDate: new Date(now.getFullYear(), now.getMonth() + i + 1, now.getDate()).toLocaleDateString('vi-VN'),
-                status: 'pending',
-            })),
-        };
-        setLoans(prev => [mockLoan, ...prev]);
-        setWallet(prev => prev ? {
-            ...prev,
-            usedCredit: prev.usedCredit + amount,
-            availableCredit: prev.availableCredit - amount,
-        } : prev);
-        setTransactions(prev => [{
-            id: `tx-${Date.now()}`,
-            type: 'disbursement',
-            amount: amount,
-            description: `Giải ngân khoản vay ${loanDescription || 'BNPL'}`,
-            date: now.toLocaleDateString('vi-VN'),
-            createdAt: now.toISOString(),
-        }, ...prev]);
-        setCreateModalVisible(false);
-        setAmountRaw('5000000');
-        setLoanDescription('');
-        setNumberOfRepayments(3);
-        setPreview(null);
-        setTimeout(() => {
-            setSuccessLoan(mockLoan);
-        }, 300);
-    }, [amountRaw, numberOfRepayments, loanDescription, wallet]);
 
     // ==================== PREVIEW HANDLER ====================
     const handlePreview = useCallback(async () => {
@@ -302,6 +268,7 @@ export default function BNPLScreen() {
             const loan = await bnplAPI.createLoan({
                 amount,
                 description: loanDescription || undefined,
+                purpose: loanPurpose || undefined,
                 numberOfRepayments,
             });
 
@@ -375,28 +342,42 @@ export default function BNPLScreen() {
             return;
         }
         setSubmittingReg(true);
-        setTimeout(() => {
+        try {
+            const submitted = await bnplAPI.submitApplication({
+                requestedLimit: wallet?.creditLimit || 5000000,
+                requestedTermMonths: numberOfRepayments,
+                income: regForm.income ? Number(regForm.income) : undefined,
+                occupation: regForm.occupation || undefined,
+                purpose: regForm.purpose || undefined,
+                address: regForm.address,
+            });
+            setCurrentApplication(submitted);
+            setBnplStatus(submitted.status === 'approved' ? 'pending_signature' : 'pending_approval');
+            await fetchData();
+        } catch (error: any) {
+            modal.error('Lỗi', error?.response?.data?.message || error?.message || 'Không thể gửi hồ sơ BNPL');
+        } finally {
             setSubmittingReg(false);
-            setBnplStatus('pending_approval');
-        }, 1200);
+        }
     };
 
-    // ── Signature submit
-    const handleSignAndActivate = () => {
+    const handleActivateWallet = async () => {
         if (!termsAccepted || !signatureChecked) {
-            modal.error('Chưa xác nhận', 'Vui lòng đọc điều khoản và xác nhận chữ ký số.');
+            modal.error('ChÆ°a xÃ¡c nháº­n', 'Vui lÃ²ng Ä‘á»c Ä‘iá»u khoáº£n vÃ  xÃ¡c nháº­n chá»¯ kÃ½ sá»‘.');
             return;
         }
-        // Simulate wallet activation with mock data
-        setWallet({
-            id: 'mock-wallet-001',
-            creditLimit: 10000000,
-            usedCredit: 0,
-            availableCredit: 10000000,
-            status: 'active',
-            tier: 'SILVER',
-        } as any);
-        setBnplStatus('active');
+
+        try {
+            setCreating(true);
+            const signatureText = regForm.fullName || user?.name || 'Khach hang';
+            await bnplAPI.activateWallet(signatureText);
+            setBnplStatus('active');
+            await fetchData();
+        } catch (error: any) {
+            modal.error('Lá»—i', error?.response?.data?.message || error?.message || 'Khong the kich hoat vi BNPL');
+        } finally {
+            setCreating(false);
+        }
     };
 
     const mapPolicyActions = (policy: DelinquencyPolicyItem) => {
@@ -697,7 +678,7 @@ export default function BNPLScreen() {
             <TouchableOpacity
                 style={[styles.flowBtn, { backgroundColor: termsAccepted && signatureChecked ? c.primary : c.border, marginTop: 24 }]}
                 activeOpacity={0.85}
-                onPress={handleSignAndActivate}
+                onPress={handleActivateWallet}
             >
                 <Text style={[styles.flowBtnText, { color: termsAccepted && signatureChecked ? c.onPrimary : c.textMuted }]}>
                     Xác nhận & Kích hoạt ví
@@ -1006,6 +987,14 @@ export default function BNPLScreen() {
                                                         {formatCurrency(loan.paidAmount)}
                                                     </Text>
                                                 </View>
+                                                {loan.purpose ? (
+                                                    <View style={styles.loanRow}>
+                                                        <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Mục đích</Text>
+                                                        <Text style={[styles.loanValue, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                                                            {loan.purpose}
+                                                        </Text>
+                                                    </View>
+                                                ) : null}
                                                 <View style={styles.loanRow}>
                                                     <Text style={[styles.loanLabel, { color: theme.colors.textMuted }]}>Còn nợ</Text>
                                                     <Text style={[styles.loanValue, { color: theme.colors.error }]}>
@@ -1042,6 +1031,7 @@ export default function BNPLScreen() {
                             { label: 'Mã khoản vay', value: `#${successLoan.fineractLoanId}` },
                             { label: 'Số tiền vay', value: formatCurrency(successLoan.principal) },
                             { label: 'Số kỳ trả', value: `${successLoan.numberOfRepayments} kỳ` },
+                            { label: 'Mục đích', value: successLoan.purpose || 'Chưa ghi nhận' },
                         ].map((row, idx, arr) => (
                             <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: c.border }}>
                                 <Text style={{ fontSize: 13, color: c.textSecondary }}>{row.label}</Text>
@@ -1101,6 +1091,57 @@ export default function BNPLScreen() {
                                     icon="cash"
                                 />
 
+                                {/* Purpose Selector */}
+                                <View style={styles.inputSection}>
+                                    <View style={styles.inputLabelRow}>
+                                        <MaterialCommunityIcons
+                                            name="tag-outline"
+                                            size={18}
+                                            color={theme.colors.textMuted}
+                                            style={styles.inputIcon}
+                                        />
+                                        <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>Mục đích khoản BNPL</Text>
+                                    </View>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
+                                        {BNPL_PURPOSE_OPTIONS.map((purpose) => (
+                                            <TouchableOpacity
+                                                key={purpose}
+                                                onPress={() => setLoanPurpose(purpose)}
+                                                style={[
+                                                    styles.pill,
+                                                    {
+                                                        backgroundColor:
+                                                            loanPurpose === purpose
+                                                                ? theme.colors.primaryGlass
+                                                                : theme.colors.glassLight,
+                                                        borderColor:
+                                                            loanPurpose === purpose
+                                                                ? theme.colors.primaryBorder
+                                                                : theme.colors.border,
+                                                        borderRadius: theme.radius.pill,
+                                                    },
+                                                    loanPurpose === purpose && styles.pillActive,
+                                                ]}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.pillText,
+                                                        {
+                                                            color:
+                                                                loanPurpose === purpose
+                                                                    ? theme.colors.primary
+                                                                    : theme.colors.textSecondary,
+                                                        },
+                                                        loanPurpose === purpose && styles.pillTextActive,
+                                                    ]}
+                                                >
+                                                    {purpose}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+
                                 {/* Repayments Selector */}
                                 <View style={styles.inputSection}>
                                     <View style={styles.inputLabelRow}>
@@ -1113,7 +1154,7 @@ export default function BNPLScreen() {
                                         <Text style={[styles.inputLabel, { color: theme.colors.textPrimary }]}>Số kỳ trả nợ</Text>
                                     </View>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
-                                        {[1, 2, 3, 6, 9, 12].map((months) => (
+                                        {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
                                             <TouchableOpacity
                                                 key={months}
                                                 onPress={() => {
@@ -1213,6 +1254,14 @@ export default function BNPLScreen() {
                                                 </Text>
                                             </View>
                                             <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Cách tính lãi</Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {(preview?.interestType || 'declining_balance') === 'declining_balance'
+                                                        ? 'Dư nợ giảm dần'
+                                                        : preview?.interestType || 'Dư nợ giảm dần'}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.previewRow}>
                                                 <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
                                                     Tổng lãi dự kiến
                                                 </Text>
@@ -1221,11 +1270,23 @@ export default function BNPLScreen() {
                                                 </Text>
                                             </View>
                                             <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Phí</Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {formatCurrency(preview?.totalFees || 0)}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.previewRow}>
                                                 <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>
                                                     Tổng thanh toán
                                                 </Text>
                                                 <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
                                                     {formatCurrency(preview?.totalRepayment || 0)}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.previewRow}>
+                                                <Text style={[styles.previewRowLabel, { color: theme.colors.textMuted }]}>Kỳ hạn</Text>
+                                                <Text style={[styles.previewRowValue, { color: theme.colors.textPrimary }]}>
+                                                    {preview?.numberOfRepayments || numberOfRepayments} tháng
                                                 </Text>
                                             </View>
 
@@ -1302,7 +1363,7 @@ export default function BNPLScreen() {
                         >
                             <CommonButton
                                 title="Tạo khoản vay"
-                                onPress={handleMockCreateLoan}
+                                onPress={handleCreateLoan}
                                 icon="plus-circle"
                                 style={styles.submitBtn}
                             />

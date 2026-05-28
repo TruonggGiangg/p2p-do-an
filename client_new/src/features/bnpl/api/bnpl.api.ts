@@ -32,8 +32,28 @@ export interface BnplLoan {
   numberOfRepayments: number;
   status: string;
   description?: string;
+  purpose?: string;
   disbursedAt?: string;
   repaymentSchedule?: RepaymentScheduleItem[];
+}
+
+export interface BnplApplication {
+  id: string;
+  userId: string;
+  status: string;
+  requestedLimit?: number;
+  approvedLimit?: number;
+  income?: number;
+  occupation?: string;
+  purpose?: string;
+  address?: string;
+  requestedTermMonths?: number;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectReason?: string;
+  riskDecision?: Record<string, any> | null;
+  riskReasons?: string[];
 }
 
 export interface ConsolidatedScheduleItem {
@@ -53,6 +73,7 @@ export interface LoanPreview {
   monthlyPayment: number;
   totalRepayment: number;
   totalInterest: number;
+  totalFees: number;
   interestType: string;
   schedulePreview: RepaymentScheduleItem[];
 }
@@ -60,7 +81,17 @@ export interface LoanPreview {
 export interface CreateBnplLoanDto {
   amount: number;
   description?: string;
+  purpose?: string;
   numberOfRepayments?: number;
+}
+
+export interface CreateBnplApplicationDto {
+  requestedLimit?: number;
+  requestedTermMonths?: number;
+  income?: number;
+  occupation?: string;
+  purpose?: string;
+  address?: string;
 }
 
 export interface LoansResponse {
@@ -81,6 +112,30 @@ export interface BnplTransaction {
   date?: string;
   createdAt?: string;
   source?: string;
+  loanId?: string;
+  fineractLoanId?: string;
+  loanStatus?: string;
+}
+
+export interface BnplPrepayAmount {
+  amount: number;
+  principalPortion: number;
+  interestPortion: number;
+  penaltyPortion: number;
+  feesPortion: number;
+  date: string;
+  loanId: string;
+  fineractLoanId: string;
+  capital: number;
+}
+
+export interface BnplPaymentResult {
+  success: boolean;
+  transactionId: number | string;
+  amount: number;
+  date: string;
+  loanStatus: string;
+  breakdown?: { principal: number; interest: number; fees: number; penalty: number };
 }
 
 export interface DelinquencyPolicyItem {
@@ -183,6 +238,61 @@ export const bnplAPI = {
     } catch {
       return { transactions: [], total: 0 };
     }
+  },
+
+  /** Get amount needed to prepay BNPL loan */
+  getPrepayAmount: async (loanId: string): Promise<BnplPrepayAmount> => {
+    const response = await api.get<{ data: BnplPrepayAmount }>(
+      `/api/bnpl/loans/${loanId}/prepay-amount`,
+    );
+    return response.data.data;
+  },
+
+  /** Submit BNPL application */
+  submitApplication: async (data: CreateBnplApplicationDto): Promise<BnplApplication> => {
+    const response = await api.post<{ data: BnplApplication }>('/api/bnpl/applications', data);
+    return response.data.data;
+  },
+
+  /** Activate BNPL wallet after user signs the agreement */
+  activateWallet: async (signatureText?: string): Promise<BnplWalletInfo> => {
+    const response = await api.post<{ data: BnplWalletInfo }>('/api/bnpl/wallet/activate', {
+      signatureText,
+    });
+    return response.data.data;
+  },
+
+  /** Get current BNPL application for logged-in user */
+  getCurrentApplication: async (): Promise<BnplApplication | null> => {
+    try {
+      const response = await api.get<{ data: { application: BnplApplication | null } }>('/api/bnpl/applications/current');
+      return response.data.data.application || null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Repay a BNPL loan installment */
+  repayLoan: async (
+    loanId: string,
+    amount: number,
+    repaymentDate?: string,
+    idempotencyKey?: string,
+  ): Promise<BnplPaymentResult> => {
+    const response = await api.post<{ data: BnplPaymentResult }>(
+      `/api/bnpl/loans/${loanId}/repay`,
+      { amount, repaymentDate, idempotencyKey },
+    );
+    return response.data.data;
+  },
+
+  /** Prepay a BNPL loan */
+  prepayLoan: async (loanId: string, repaymentDate?: string, idempotencyKey?: string): Promise<BnplPaymentResult> => {
+    const response = await api.post<{ data: BnplPaymentResult }>(
+      `/api/bnpl/loans/${loanId}/prepay`,
+      { repaymentDate, idempotencyKey },
+    );
+    return response.data.data;
   },
 
   /** Get active delinquency policies for displaying contract terms before signature */

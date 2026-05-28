@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 export enum BnplWalletStatus {
+  PENDING = 'pending',
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
   CLOSED = 'closed',
@@ -27,9 +28,24 @@ export class BnplWallet extends Document {
   @Prop({
     type: String,
     enum: BnplWalletStatus,
-    default: BnplWalletStatus.ACTIVE,
+    default: BnplWalletStatus.PENDING,
   })
   status: BnplWalletStatus;
+
+  @Prop()
+  approvedAt?: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  approvedBy?: Types.ObjectId;
+
+  @Prop()
+  suspendedAt?: Date;
+
+  @Prop()
+  suspendedReason?: string;
+
+  @Prop()
+  lastSyncedAt?: Date;
 }
 
 export const BnplWalletSchema = SchemaFactory.createForClass(BnplWallet);

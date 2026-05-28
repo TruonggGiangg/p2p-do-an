@@ -11,7 +11,7 @@ import { KeycloakService } from '../../auth/services/keycloak.service';
 import { EkycService } from '../../ekyc/ekyc.service';
 import { User } from '../../users/schemas/user.schema';
 import { Wallet } from '../../wallets/schemas/wallet.schema';
-import { Notification } from '../../loan/schemas/notification.schema';
+import { Notification, NotificationType } from '../../loan/schemas/notification.schema';
 import { PushNotificationService } from '../../loan/services/push-notification.service';
 
 @Injectable()
@@ -350,7 +350,7 @@ export class AdminKycService {
     userId: Types.ObjectId,
     title: string,
     message: string,
-    type: string,
+    type: NotificationType,
     pushToken?: string,
     data: Record<string, any> = {},
   ) {

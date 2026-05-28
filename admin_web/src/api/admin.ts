@@ -359,6 +359,113 @@ export interface LoanEvaluationConfigDto {
   createdAt?: string;
 }
 
+export type BnplInterestType = "flat" | "declining_balance";
+
+export interface BnplApplicationDto {
+  id: string;
+  userId: string;
+  status: string;
+  requestedLimit?: number;
+  approvedLimit?: number;
+  income?: number;
+  occupation?: string;
+  purpose?: string;
+  address?: string;
+  requestedTermMonths?: number;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectReason?: string;
+  riskDecision?: Record<string, any> | null;
+  riskReasons?: string[];
+}
+
+export interface BnplWalletDto {
+  id: string;
+  userId: string;
+  userName?: string;
+  email?: string;
+  phoneNumber?: string;
+  creditLimit: number;
+  usedCredit: number;
+  availableCredit: number;
+  balance: number;
+  status: string;
+  activeLoansCount: number;
+  approvedAt?: string;
+  approvedBy?: string;
+  suspendedAt?: string;
+  suspendedReason?: string;
+  lastSyncedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BnplLoanDto {
+  id: string;
+  walletId: string;
+  userId: string;
+  userName?: string;
+  email?: string;
+  phoneNumber?: string;
+  walletStatus?: string;
+  fineractLoanId: string;
+  principal: number;
+  totalInterest: number;
+  totalRepayment: number;
+  paidAmount: number;
+  outstandingBalance: number;
+  numberOfRepayments: number;
+  status: string;
+  description?: string;
+  purpose?: string;
+  disbursedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BnplDashboardSummaryDto {
+  totalWallets: number;
+  activeWallets: number;
+  pendingWallets: number;
+  suspendedWallets: number;
+  totalLoans: number;
+  activeLoans: number;
+  approvedLoans: number;
+  pendingLoans: number;
+  closedLoans: number;
+  overdueLoans: number;
+  totalCreditLimit: number;
+  totalUsedCredit: number;
+  totalOutstanding: number;
+}
+
+export interface BnplPolicyConfigDto {
+  _id?: string;
+  version?: number;
+  loanProductId: number;
+  creditLimit: number;
+  defaultRepayments: number;
+  minRepayments: number;
+  maxRepayments: number;
+  minAmount: number;
+  maxAmount: number;
+  monthlyRate: number;
+  interestType: BnplInterestType;
+  lateFeeRate?: number;
+  lateFeeFlat?: number;
+  gracePeriodDays?: number;
+  maxActiveLoans?: number;
+  allowEarlyRepayment?: boolean;
+  currencyMultiples?: number;
+  configHash?: string;
+  blockchainTxHash?: string;
+  changedBy?: string;
+  changeNote?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export const adminApi = {
   login: (username: string, password: string) =>
     api.post<{
@@ -1358,5 +1465,88 @@ export const adminApi = {
       .post<{
         data: LoanEvaluationConfigDto;
       }>("/api/admin/loan-evaluation-config/sync-blockchain", { version })
+      .then((r) => r.data.data),
+
+  // â”€â”€ BNPL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  getBnplApplications: (status?: string) =>
+    api
+      .get<{ data: { applications: BnplApplicationDto[] } }>(
+        `/api/admin/bnpl/applications${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+      )
+      .then((r) => r.data.data.applications),
+
+  getBnplApplicationById: (applicationId: string) =>
+    api
+      .get<{ data: BnplApplicationDto }>(`/api/admin/bnpl/applications/${applicationId}`)
+      .then((r) => r.data.data),
+
+  approveBnplApplication: (applicationId: string, approvedLimit?: number) =>
+    api
+      .post<{ data: BnplApplicationDto }>(
+        `/api/admin/bnpl/applications/${applicationId}/approve`,
+        { approvedLimit },
+      )
+      .then((r) => r.data.data),
+
+  rejectBnplApplication: (applicationId: string, reason?: string) =>
+    api
+      .post<{ data: BnplApplicationDto }>(
+        `/api/admin/bnpl/applications/${applicationId}/reject`,
+        { reason },
+      )
+      .then((r) => r.data.data),
+
+  getBnplPolicyConfig: () =>
+    api
+      .get<{ data: BnplPolicyConfigDto }>("/api/admin/bnpl/policy")
+      .then((r) => r.data.data),
+
+  getBnplPolicyConfigHistory: () =>
+    api
+      .get<{ data: { items: BnplPolicyConfigDto[] } }>("/api/admin/bnpl/policy/history")
+      .then((r) => r.data.data.items),
+
+  createBnplPolicyConfig: (
+    body: Omit<
+      BnplPolicyConfigDto,
+      "_id" | "version" | "configHash" | "blockchainTxHash" | "changedBy" | "createdAt" | "updatedAt"
+    >,
+  ) =>
+    api
+      .post<{ data: BnplPolicyConfigDto }>("/api/admin/bnpl/policy", body)
+      .then((r) => r.data.data),
+
+  getBnplDashboardSummary: () =>
+    api
+      .get<{ data: BnplDashboardSummaryDto }>("/api/admin/bnpl/dashboard")
+      .then((r) => r.data.data),
+
+  getBnplWallets: (status?: string) =>
+    api
+      .get<{ data: { wallets: BnplWalletDto[] } }>(
+        `/api/admin/bnpl/wallets${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+      )
+      .then((r) => r.data.data.wallets),
+
+  activateBnplWallet: (walletId: string) =>
+    api
+      .post<{ data: BnplWalletDto }>(`/api/admin/bnpl/wallets/${walletId}/activate`)
+      .then((r) => r.data.data),
+
+  suspendBnplWallet: (walletId: string, reason?: string) =>
+    api
+      .post<{ data: BnplWalletDto }>(`/api/admin/bnpl/wallets/${walletId}/suspend`, { reason })
+      .then((r) => r.data.data),
+
+  getBnplLoans: (status?: string) =>
+    api
+      .get<{ data: { loans: BnplLoanDto[] } }>(
+        `/api/admin/bnpl/loans${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+      )
+      .then((r) => r.data.data.loans),
+
+  syncBnplLoan: (loanId: string) =>
+    api
+      .post<{ data: BnplLoanDto }>(`/api/admin/bnpl/loans/${loanId}/sync`)
       .then((r) => r.data.data),
 };

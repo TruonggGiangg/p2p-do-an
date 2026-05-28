@@ -12,7 +12,7 @@ import { authEvents } from "../events";
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   Constants.expoConfig?.extra?.apiUrl ||
-  "http://192.168.1.6:3001";
+  "http://192.168.100.98:3001";
 
 if (__DEV__) {
   console.log("📡 API_URL:", API_URL);
@@ -80,7 +80,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
+    const originalRequest = (error.config ?? {}) as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
 
@@ -111,7 +111,7 @@ api.interceptors.response.use(
 
     // Only handle 401 errors
     const isPublicEndpoint = PUBLIC_ENDPOINTS.some((endpoint) =>
-      originalRequest.url?.includes(endpoint),
+      requestUrl.includes(endpoint),
     );
     if (
       error.response?.status !== 401 ||
@@ -122,7 +122,7 @@ api.interceptors.response.use(
     }
 
     // Refresh endpoint failed - session expired
-    if (originalRequest.url?.includes("/auth/refresh")) {
+    if (requestUrl.includes("/auth/refresh")) {
       if (__DEV__) {
         console.log("Refresh token expired - logging out");
       }
@@ -137,6 +137,7 @@ api.interceptors.response.use(
         failedQueue.push({ resolve, reject });
       })
         .then((token) => {
+          originalRequest.headers = originalRequest.headers ?? {};
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
         })
@@ -160,6 +161,7 @@ api.interceptors.response.use(
       await authStorage.saveAccessToken(accessToken);
 
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+      originalRequest.headers = originalRequest.headers ?? {};
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
       processQueue(null, accessToken);

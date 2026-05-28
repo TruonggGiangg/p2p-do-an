@@ -22,6 +22,14 @@ export class CreateBnplLoanDto {
   description?: string;
 
   @ApiPropertyOptional({
+    description: 'Mục đích vay BNPL',
+    example: 'Mua sắm',
+  })
+  @IsOptional()
+  @IsString()
+  purpose?: string;
+
+  @ApiPropertyOptional({
     description: 'Số kỳ trả nợ',
     minimum: 1,
     maximum: 24,

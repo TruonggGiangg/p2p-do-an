@@ -34,6 +34,7 @@ import { AdminCustomerService } from './services/admin-customer.service';
 import { AdminKycService } from './services/admin-kyc.service';
 import { AdminStaffService } from './services/admin-staff.service';
 import { AdminLoanService } from './services/admin-loan.service';
+import { BnplService } from '../bnpl/bnpl.service';
 
 @Injectable()
 export class AdminService implements OnModuleInit {
@@ -62,6 +63,7 @@ export class AdminService implements OnModuleInit {
     private readonly kycService: AdminKycService,
     private readonly staffService: AdminStaffService,
     private readonly loanService: AdminLoanService,
+    private readonly bnplService: BnplService,
   ) {}
 
   /**
@@ -247,6 +249,46 @@ export class AdminService implements OnModuleInit {
   // ═══════════════════════════════════════════════════════════════════════════════
   // FACADE DELEGATES — Staff / Support / Profile / Preferences
   // ═══════════════════════════════════════════════════════════════════════════════
+  async getBnplApplications(status?: string) {
+    return this.bnplService.listApplications(status);
+  }
+  async getBnplApplicationById(applicationId: string) {
+    return this.bnplService.getApplicationById(applicationId);
+  }
+  async approveBnplApplication(applicationId: string, adminId: string, approvedLimit?: number) {
+    return this.bnplService.approveApplication(applicationId, adminId, approvedLimit);
+  }
+  async rejectBnplApplication(applicationId: string, adminId: string, reason?: string) {
+    return this.bnplService.rejectApplication(applicationId, adminId, reason);
+  }
+  async getBnplPolicyConfig() {
+    return this.bnplService.getActivePolicyConfig();
+  }
+  async getBnplPolicyConfigHistory() {
+    return this.bnplService.listPolicyConfigs();
+  }
+  async createBnplPolicyConfig(dto: any, adminId?: string) {
+    return this.bnplService.createPolicyConfig(dto, adminId);
+  }
+  async getBnplWallets(status?: string) {
+    return this.bnplService.listWallets(status);
+  }
+  async getBnplLoans(status?: string) {
+    return this.bnplService.listLoansAdmin(status);
+  }
+  async getBnplDashboardSummary() {
+    return this.bnplService.getAdminDashboardSummary();
+  }
+  async activateBnplWallet(walletId: string, adminId: string) {
+    return this.bnplService.activateWalletByAdmin(walletId, adminId);
+  }
+  async suspendBnplWallet(walletId: string, adminId: string, reason?: string) {
+    return this.bnplService.suspendWalletByAdmin(walletId, adminId, reason);
+  }
+  async syncBnplLoan(loanId: string) {
+    return this.bnplService.syncLoanStatusByAdmin(loanId);
+  }
+
   async createStaff(dto: RegisterDto) {
     return this.staffService.createStaff(dto);
   }

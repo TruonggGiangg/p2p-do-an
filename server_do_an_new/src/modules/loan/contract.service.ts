@@ -216,7 +216,7 @@ export class ContractService {
     const approvedLoansWithoutContract = await this.loanApplicationModel
       .find({
         userId: userObjectId,
-        status: { $in: eligibleStatuses },
+        status: { $in: eligibleStatuses as any[] },
         fineractLoanId: { $exists: true, $ne: null },
       })
       .select('_id fineractLoanId')

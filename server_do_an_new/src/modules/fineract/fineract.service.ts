@@ -154,7 +154,13 @@ export class FineractService {
     return this.loanService.getLoanProductDetails(productId);
   }
 
-  async calculateBnplSchedule(data: { productId: number; principal: number; numberOfRepayments: number }): Promise<{
+  async calculateBnplSchedule(data: {
+    productId: number;
+    principal: number;
+    numberOfRepayments: number;
+    monthlyRateOverride?: number;
+    interestTypeOverride?: string;
+  }): Promise<{
     monthlyRate: number;
     annualRate: number;
     monthlyPay: number;

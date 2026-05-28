@@ -52,6 +52,9 @@ export class BnplLoan extends Document {
   description?: string; // Mô tả giao dịch (e.g., "Mua iPhone 15")
 
   @Prop()
+  purpose?: string; // Mục đích khoản vay (e.g., "Mua sắm")
+
+  @Prop()
   disbursedAt?: Date; // Ngày giải ngân
 }
 

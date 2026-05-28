@@ -21,12 +21,14 @@ import { AdminProfileController } from './controllers/admin-profile.controller';
 import { AdminProductController } from './controllers/admin-product.controller';
 import { AdminCustomerController } from './controllers/admin-customer.controller';
 import { AdminKycController } from './controllers/admin-kyc.controller';
+import { AdminBnplController } from './controllers/admin-bnpl.controller';
 import { AdminStaffController } from './controllers/admin-staff.controller';
 import { AdminLoanController } from './controllers/admin-loan.controller';
 import { AdminMarketController } from './controllers/admin-market.controller';
 import { AdminService } from './admin.service';
 import { LoanSyncScheduler } from './loan-sync.scheduler';
 import { ReminderScheduler } from './reminder.scheduler';
+import { BnplScheduler } from './bnpl.scheduler';
 import { FineractModule } from '../fineract/fineract.module';
 import { LoanModule } from '../loan/loan.module';
 import { EkycModule } from '../ekyc/ekyc.module';
@@ -36,6 +38,7 @@ import { PushNotificationService } from '../loan/services/push-notification.serv
 import { UsersModule } from '../users/users.module';
 import { CreditScoreModule } from '../credit-score/credit-score.module';
 import { InvestModule } from '../invest/invest.module';
+import { BnplModule } from '../bnpl/bnpl.module';
 
 import {
   AdminProductService,
@@ -54,6 +57,7 @@ import { AdminMarketService } from './services/admin-market.service';
     CaslModule,
     UsersModule,
     CreditScoreModule,
+    BnplModule,
     forwardRef(() => LoanModule),
     forwardRef(() => InvestModule),
     MongooseModule.forFeature([
@@ -81,6 +85,7 @@ import { AdminMarketService } from './services/admin-market.service';
     AdminProductController,
     AdminCustomerController,
     AdminKycController,
+    AdminBnplController,
     AdminStaffController,
     AdminLoanController,
     AdminMarketController,
@@ -95,6 +100,7 @@ import { AdminMarketService } from './services/admin-market.service';
     AdminMarketService,
     LoanSyncScheduler,
     ReminderScheduler,
+    BnplScheduler,
     PushNotificationService,
   ],
   exports: [AdminService],

@@ -17,7 +17,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BinanceHeader, CommonCard } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { formatCurrency } from '../../../shared/utils';
-import type { BnplLoan } from '../api/bnpl.api';
+import { bnplAPI } from '../api/bnpl.api';
+import type { BnplLoan, BnplPrepayAmount } from '../api/bnpl.api';
 
 type RouteParams = { loan: BnplLoan };
 
@@ -38,12 +39,21 @@ export default function BNPLEarlyRepayScreen() {
     const [success, setSuccess] = useState(false);
     const [processing, setProcessing] = useState(false);
     const [sliderWidth, setSliderWidth] = useState(0);
+    const [prepayInfo, setPrepayInfo] = useState<BnplPrepayAmount | null>(null);
+    const idempotencyKeyRef = useRef(`bnpl-prepay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
     // Slider state
     const pan = useRef(new Animated.Value(0)).current;
     const sliderComplete = useRef(false);
 
     const getMaxX = useCallback(() => Math.max(sliderWidth - THUMB_SIZE - 6, 1), [sliderWidth]);
+
+    React.useEffect(() => {
+        if (!loan?.id) return;
+        bnplAPI.getPrepayAmount(loan.id)
+            .then(setPrepayInfo)
+            .catch(() => setPrepayInfo(null));
+    }, [loan?.id]);
 
     const panResponder = useRef(
         PanResponder.create({
@@ -75,13 +85,19 @@ export default function BNPLEarlyRepayScreen() {
         })
     ).current;
 
-    const handleConfirmPayment = useCallback(() => {
+    const handleConfirmPayment = useCallback(async () => {
         setProcessing(true);
-        setTimeout(() => {
-            setProcessing(false);
+        try {
+            await bnplAPI.prepayLoan(loan.id, undefined, idempotencyKeyRef.current);
             setSuccess(true);
-        }, 1500);
-    }, []);
+        } catch (error: any) {
+            Alert.alert('Lỗi', error?.response?.data?.message || error?.message || 'Không thể tất toán sớm');
+            sliderComplete.current = false;
+            Animated.spring(pan, { toValue: 0, useNativeDriver: false, friction: 7, tension: 50 }).start();
+        } finally {
+            setProcessing(false);
+        }
+    }, [loan?.id, pan]);
 
     if (!loan) {
         return (
@@ -91,7 +107,7 @@ export default function BNPLEarlyRepayScreen() {
         );
     }
 
-    const remaining = loan.outstandingBalance;
+    const remaining = prepayInfo?.amount ?? loan.outstandingBalance;
 
     // ── Success ──
     if (success) {

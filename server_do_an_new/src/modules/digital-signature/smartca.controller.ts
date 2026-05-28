@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { SmartCAService } from './smartca.service';
-import { DigitalSignature } from './schemas/digital-signature.schema';
+import { DigitalSignature, SignatureProvider } from './schemas/digital-signature.schema';
 import { LoanContract } from '../loan/schemas/loan-contract.schema';
 import { InvestmentContract } from '../invest/schemas/investment-contract.schema';
 import { generateLoanContractHTML } from '../loan/templates/loan-contract.template';
@@ -106,7 +106,7 @@ export class DigitalSignatureController {
       contractId: contract._id,
       userId: new Types.ObjectId(userId),
       contractCode: contract.contractId,
-      provider: 'vnpt_smartca',
+      provider: SignatureProvider.VNPT_SMARTCA,
       transactionId: session.transactionId,
       status: 'initiated',
       documentHash,
@@ -156,7 +156,7 @@ export class DigitalSignatureController {
       contractId: contract._id,
       userId: new Types.ObjectId(userId),
       contractCode: contract.contractId,
-      provider: 'vnpt_smartca',
+      provider: SignatureProvider.VNPT_SMARTCA,
       transactionId: result.transactionId,
       status: 'signed',
       documentHash,
@@ -337,7 +337,7 @@ export class DigitalSignatureController {
       contractId: contract._id,
       userId: new Types.ObjectId(userId),
       contractCode: contract.contractId,
-      provider: 'vnpt_smartca',
+      provider: SignatureProvider.VNPT_SMARTCA,
       transactionId: session.transactionId,
       status: 'initiated',
       documentHash,

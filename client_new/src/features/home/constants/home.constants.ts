@@ -24,7 +24,7 @@ export type ShortcutItem = {
 // ═══════════════════════════════════════════════
 export const QUICK_ACTIONS: ShortcutItem[] = [
     { icon: 'ArrowUpRight',   label: 'Gửi',      nav: 'Transfer',  isParent: true },
-    { icon: 'ArrowDownLeft',  label: 'Nhận',     nav: 'MyQR',      isParent: false },
+    { icon: 'CreditCard',     label: 'BNPL',     nav: 'BNPL',      isParent: false, color: '#F0B90B' },
     { icon: 'CreditCard',     label: 'Ví của tôi', nav: 'Wallets',   isParent: true },
     { icon: 'FileText',       label: 'Hợp đồng điện tử', nav: 'LoanContractList', isParent: true },
 ];
@@ -98,8 +98,8 @@ export const BANNERS: BannerItem[] = [
     },
     {
         id: '2',
-        title: 'Trả góp BNPL 0% lãi',
-        subtitle: 'Mua trước trả sau, chia nhỏ thanh toán',
+        title: 'Trả góp BNPL linh hoạt',
+        subtitle: 'Chọn kỳ hạn 1-12 tháng, lãi suất tính theo tháng',
         gradient: ['#0D2820', '#14342B', '#1A3B34'],
         accent: '#0ECB81',
         actionNav: 'BNPL',
