@@ -21,6 +21,33 @@ import { CreateBnplApplicationDto } from './dto/create-bnpl-application.dto';
 import { CreateBnplPolicyConfigDto } from './dto/create-bnpl-policy-config.dto';
 import { roundToCurrency } from '../../utils/RoundingUtils';
 
+/**
+ * Transform Fineract repayment periods to mobile-friendly format.
+ * Fineract uses: { dueDate: [2026,7,1], principalDue, interestDue, totalInstallmentAmountForPeriod }
+ * Mobile expects: { dueDate: "2026-07-01", principal, interest, total }
+ */
+function normalizeRepaymentPeriods(periods: any[]): any[] {
+  if (!Array.isArray(periods)) return [];
+  return periods
+    .filter((p: any) => p.period !== 0) // Exclude disbursement period
+    .map((p: any) => {
+      // Parse dueDate from Fineract array format [year, month, day]
+      let dueDate = p.dueDate;
+      if (Array.isArray(dueDate) && dueDate.length >= 3) {
+        const [y, m, d] = dueDate;
+        dueDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
+      return {
+        period: p.period ?? 0,
+        principal: p.principalDue ?? p.principalOriginalDue ?? p.principal ?? 0,
+        interest: p.interestDue ?? p.interestOriginalDue ?? p.interest ?? 0,
+        total: p.totalInstallmentAmountForPeriod ?? p.installmentAmount ?? p.totalDue ?? (p.principalDue || 0) + (p.interestDue || 0),
+        dueDate: dueDate ?? '',
+        status: p.obligationsMetOnDate ? 'paid' : 'pending',
+      };
+    });
+}
+
 export interface BnplWalletInfo {
   id: string;
   creditLimit: number;
@@ -29,6 +56,12 @@ export interface BnplWalletInfo {
   balance: number; // Negative value when in debt
   status: string;
   activeLoansCount: number;
+  /** Hạng tín dụng: platinum | gold | silver | basic | rejected | unknown */
+  creditTier?: string;
+  /** Điểm tín dụng đã normalize (0-100) */
+  creditScore?: number | null;
+  /** Hạn mức tối đa theo tier */
+  tierMaxLimit?: number;
 }
 
 export interface BnplApplicationInfo {
@@ -202,11 +235,18 @@ export class BnplService {
     };
   }
 
+  /**
+   * Normalize credit score to 0-100 scale.
+   * If user has no credit profile yet, returns a default score of 35 (Basic tier)
+   * so new users can still access BNPL with lowest tier until AI scores them.
+   */
   private normalizeCreditScore(user: User): number | null {
     const profile = user.creditProfile;
     const rawScore = profile?.evaluationScore ?? profile?.creditScore ?? null;
     if (rawScore == null || Number.isNaN(Number(rawScore))) {
-      return null;
+      // Chưa có điểm tín dụng → cho hạng Basic (35 điểm, 2tr) để user mới vẫn dùng được
+      this.logger.warn(`User ${user.username || user._id} has no credit profile, defaulting to Basic tier (35)`);
+      return 35;
     }
 
     const score = Number(rawScore);
@@ -372,20 +412,27 @@ export class BnplService {
 
   /**
    * Get or create BNPL wallet for user
+   * Credit limit is capped by both policy.creditLimit and tier.maxLimit
    */
   async getOrCreateWallet(userId: string): Promise<BnplWallet> {
     let wallet = await this.walletModel.findOne({ userId: new Types.ObjectId(userId) }).exec();
 
     if (!wallet) {
       const policy = await this.getActivePolicyConfig();
-      const creditLimit = policy.creditLimit;
+      
+      // Tính toán creditLimit dựa trên điểm tín dụng của user
+      const user = await this.userModel.findById(userId).select('creditProfile').lean().exec();
+      const creditScore = this.normalizeCreditScore(user as User);
+      const tier = this.getBnplTier(creditScore);
+      const creditLimit = Math.min(policy.creditLimit, tier.maxLimit > 0 ? tier.maxLimit : policy.creditLimit);
+      
       wallet = await this.walletModel.create({
         userId: new Types.ObjectId(userId),
         creditLimit,
         usedCredit: 0,
         status: BnplWalletStatus.PENDING,
       });
-      this.logger.log(`Created BNPL wallet for user ${userId} with limit ${creditLimit}`);
+      this.logger.log(`Created BNPL wallet for user ${userId} with limit ${creditLimit} (policy=${policy.creditLimit}, tier=${tier.name}, tierMax=${tier.maxLimit})`);
     }
 
     return wallet;
@@ -759,24 +806,45 @@ export class BnplService {
   }
 
   private mapTransactionType(raw: any): BnplTransactionInfo['type'] {
-    const label = String(raw?.transactionType?.value || raw?.type || raw?.transactionType?.code || '').toLowerCase();
+    // Fineract trả về type là object { code, value, disbursement, repayment, ... }
+    const t = raw?.type ?? raw?.transactionType;
+
+    // Ưu tiên boolean flags (chính xác nhất)
+    if (t?.disbursement === true) return 'disbursement';
+    if (t?.repayment === true || t?.recoveryRepayment === true) return 'repayment';
+    if (t?.chargePayment === true || t?.waiveCharges === true || t?.feeChargesPortion > 0) return 'fee';
+    if (t?.chargeAdjustment === true || t?.accrualAdjustment === true) return 'adjustment';
+    if (t?.creditBalanceRefund === true || t?.refund === true) return 'prepayment';
+
+    // Fallback: dùng code/value string
+    const label = String(t?.code ?? t?.value ?? raw?.transactionType?.value ?? '').toLowerCase();
     if (label.includes('disbur')) return 'disbursement';
-    if (label.includes('prepay')) return 'prepayment';
+    if (label.includes('prepay') || label.includes('creditbalance') || label.includes('refund')) return 'prepayment';
     if (label.includes('repay') || label.includes('payment')) return 'repayment';
     if (label.includes('fee') || label.includes('charge')) return 'fee';
-    if (label.includes('adjust')) return 'adjustment';
+    if (label.includes('adjust') || label.includes('accrual')) return 'adjustment';
     return 'other';
   }
 
   private mapLoanTransaction(loan: BnplLoan, txn: any): BnplTransactionInfo {
     const amount = Number(txn?.amount ?? txn?.transactionAmount ?? 0) || 0;
     const type = this.mapTransactionType(txn);
+    
+    // Mô tả rõ ràng theo loại giao dịch
+    const typeLabel: Record<string, string> = {
+      disbursement: 'Giải ngân BNPL',
+      repayment: 'Trả nợ BNPL',
+      prepayment: 'Trả trước hạn BNPL',
+      fee: 'Phí BNPL',
+      adjustment: 'Điều chỉnh BNPL',
+      other: 'Giao dịch BNPL',
+    };
     const description =
       txn?.note ||
       txn?.description ||
       txn?.transfer?.transferDescription ||
       txn?.paymentDetailData?.paymentType?.name ||
-      txn?.transactionType?.value ||
+      typeLabel[type] ||
       'Giao dịch BNPL';
 
     let date = this.normalizeIsoDate();
@@ -921,9 +989,21 @@ export class BnplService {
 
   /**
    * Get wallet info with computed fields
+   * Includes credit tier info for frontend display
    */
   async getWalletInfo(userId: string): Promise<BnplWalletInfo> {
     const wallet = await this.getOrCreateWallet(userId);
+    const user = await this.userModel.findById(userId).select('creditProfile').lean().exec();
+    
+    // Tính tier để mobile hiển thị chính xác
+    const creditScore = this.normalizeCreditScore(user as User);
+    const tier = this.getBnplTier(creditScore);
+    
+    // Hạn mức hiệu lực = min(wallet.creditLimit, tier.maxLimit)
+    const effectiveLimit = tier.maxLimit > 0 
+      ? Math.min(wallet.creditLimit, tier.maxLimit) 
+      : wallet.creditLimit;
+    
     const activeLoansCount = await this.loanModel.countDocuments({
       walletId: wallet._id,
       status: { $in: [BnplLoanStatus.ACTIVE, BnplLoanStatus.APPROVED] },
@@ -931,12 +1011,16 @@ export class BnplService {
 
     return {
       id: wallet._id.toString(),
-      creditLimit: wallet.creditLimit,
+      creditLimit: effectiveLimit,  // Hiển thị hạn mức bị cap bởi tier
       usedCredit: wallet.usedCredit,
-      availableCredit: wallet.creditLimit - wallet.usedCredit,
+      availableCredit: Math.max(0, effectiveLimit - wallet.usedCredit),
       balance: -wallet.usedCredit, // Negative when in debt
       status: wallet.status,
       activeLoansCount,
+      // Thông tin tier để app hiển thị
+      creditTier: tier.name,
+      creditScore: creditScore,
+      tierMaxLimit: tier.maxLimit,
     };
   }
 
@@ -1218,8 +1302,18 @@ export class BnplService {
     const policy = await this.getActivePolicyConfig();
     const wallet = await this.getOrCreateWallet(userId);
 
+    // Auto-activate wallet if user has verified KYC and no overdue
     if (wallet.status !== BnplWalletStatus.ACTIVE) {
-      throw new BadRequestException('Ví trả sau đang bị tạm ngưng');
+      if (wallet.status === BnplWalletStatus.PENDING && user.kycStatus === 'VERIFIED' && overdueSummary.overdueLoans === 0) {
+        await this.walletModel.updateOne(
+          { _id: wallet._id },
+          { $set: { status: BnplWalletStatus.ACTIVE, approvedAt: new Date() } },
+        );
+        wallet.status = BnplWalletStatus.ACTIVE;
+        this.logger.log(`Auto-activated BNPL wallet for user ${userId}`);
+      } else {
+        throw new BadRequestException('Ví trả sau đang bị tạm ngưng');
+      }
     }
 
     const activeLoansCount = await this.loanModel.countDocuments({
@@ -1243,10 +1337,16 @@ export class BnplService {
     const preview = await this.previewLoan(dto.amount, numberOfRepayments);
     const estimatedTotal = preview.totalRepayment;
 
+    // Hạn mức hiệu lực = min(wallet.creditLimit, tier.maxLimit)
+    const effectiveLimit = tier.maxLimit > 0 
+      ? Math.min(wallet.creditLimit, tier.maxLimit) 
+      : wallet.creditLimit;
+
     // Check credit limit with accurate total repayment from Fineract
-    if (wallet.usedCredit + estimatedTotal > wallet.creditLimit) {
+    // Dùng effectiveLimit (đã cap bởi tier) thay vì wallet.creditLimit thô
+    if (wallet.usedCredit + estimatedTotal > effectiveLimit) {
       throw new BadRequestException(
-        `Vượt quá hạn mức thấu chi. Còn lại: ${(wallet.creditLimit - wallet.usedCredit).toLocaleString()} VND`,
+        `Vượt quá hạn mức thấu chi. Hạn mức: ${effectiveLimit.toLocaleString()} VND, đã dùng: ${wallet.usedCredit.toLocaleString()} VND, còn lại: ${(effectiveLimit - wallet.usedCredit).toLocaleString()} VND`,
       );
     }
 
@@ -1310,7 +1410,7 @@ export class BnplService {
         description: loan.description,
         purpose: loan.purpose,
         disbursedAt: loan.disbursedAt,
-        repaymentSchedule: periods.filter((p: any) => p.period !== 0), // Exclude disbursement period
+        repaymentSchedule: normalizeRepaymentPeriods(periods),
       };
     } catch (error: any) {
       this.logger.error(`Failed to create BNPL loan: ${error.message}`);
@@ -1388,7 +1488,7 @@ export class BnplService {
       description: loan.description, // Chỉ có trong MongoDB
       purpose: loan.purpose,
       disbursedAt: loan.disbursedAt, // Chỉ có trong MongoDB
-      repaymentSchedule: schedule.filter((p: any) => p.period !== 0), // Exclude disbursement period
+      repaymentSchedule: normalizeRepaymentPeriods(schedule),
     };
   }
 

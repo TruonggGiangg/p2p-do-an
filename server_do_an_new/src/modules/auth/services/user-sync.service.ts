@@ -27,7 +27,15 @@ export class UserSyncService {
    * Sync user data from Keycloak & Fineract to MongoDB on login
    */
   async syncUser(keycloakUser: KeycloakUser): Promise<User> {
-    const { keycloakUserId, username, email, name } = keycloakUser;
+    let { keycloakUserId, username, email, name } = keycloakUser;
+
+    if (!keycloakUserId && username) {
+      const kcUser = await this.keycloakService.findUserByUsername(username);
+      if (kcUser?.id) {
+        keycloakUserId = kcUser.id;
+        keycloakUser.keycloakUserId = kcUser.id; // Update reference for controller session
+      }
+    }
 
     // First, try to find user by keycloakId
     let mongoUser = await this.userModel.findOne({

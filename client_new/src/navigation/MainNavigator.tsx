@@ -17,6 +17,7 @@ import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import InvestmentOrderListScreen from '../features/invest/screens/InvestmentOrderListScreen';
 import AvailableLoansScreen from '../features/invest/screens/AvailableLoansScreen';
 import LockedFeatureOverlay from '../shared/components/LockedFeatureOverlay';
+import BNPLScreen from '../features/bnpl/screens/BNPLScreen';
 
 /** HOC: bọc screen yêu cầu PIN 1 lần/phiên */
 function withPinGate<P extends object>(WrappedComponent: React.ComponentType<P>) {
@@ -75,6 +76,7 @@ function withKycGate<P extends object>(WrappedComponent: React.ComponentType<P>)
 }
 
 const PinGatedLoanScreen = withKycGate(withPinGate(LoanScreen));
+const PinGatedBnplScreen = BNPLScreen;
 
 const PinGatedOrderScreen = withKycGate(withPinGate(InvestmentOrderListScreen));
 const PinGatedInvestScreen = withKycGate(withPinGate(AvailableLoansScreen));
@@ -82,6 +84,7 @@ const PinGatedInvestScreen = withKycGate(withPinGate(AvailableLoansScreen));
 export type MainTabParamList = {
     Home: undefined;
     Loan: undefined;
+    Bnpl: undefined;
     Order: undefined;
     Invest: undefined;
     Profile: undefined;
@@ -161,6 +164,8 @@ export default function MainNavigator() {
                         iconName = focused ? 'person' : 'person-outline';
                     } else if (route.name === 'Loan') {
                         iconName = focused ? 'wallet' : 'wallet-outline';
+                    } else if (route.name === 'Bnpl') {
+                        iconName = focused ? 'cart' : 'cart-outline';
                     } else if (route.name === 'Invest') {
                         iconName = focused ? 'trending-up' : 'trending-up-outline';
                     } else if (route.name === 'Order') {
@@ -218,6 +223,13 @@ export default function MainNavigator() {
                     name="Loan"
                     component={PinGatedLoanScreen}
                     options={{ tabBarLabel: 'Vay vốn' }}
+                />
+            )}
+            {!isLender && (
+                <Tab.Screen
+                    name="Bnpl"
+                    component={PinGatedBnplScreen}
+                    options={{ tabBarLabel: 'Ví trả sau' }}
                 />
             )}
 

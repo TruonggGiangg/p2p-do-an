@@ -19,7 +19,10 @@ import type { BnplLoan, BnplTransaction } from '../api/bnpl.api';
 type RouteParams = { loan: BnplLoan };
 
 /** strip trailing ₫/đ from Intl output so we append our own */
-const fmt = (n: number) => formatCurrency(n).replace(/\s*[₫đ]/g, '').trim();
+const fmt = (n: number) => {
+  if (n == null || isNaN(n)) return '0';
+  return formatCurrency(n).replace(/\s*[₫đ]/g, '').trim();
+};
 
 export default function BNPLLoanDetailScreen() {
     const { theme } = useTheme();
@@ -218,9 +221,9 @@ export default function BNPLLoanDetailScreen() {
                         );
                     }) : (
                         [
-                            { label: 'Tổng phải trả', value: loan.totalRepayment },
-                            { label: 'Đã trả', value: loan.paidAmount },
-                            { label: 'Còn nợ', value: loan.outstandingBalance },
+                            { label: 'Tổng phải trả', value: loan.totalRepayment ?? 0 },
+                            { label: 'Đã trả', value: loan.paidAmount ?? 0 },
+                            { label: 'Còn nợ', value: loan.outstandingBalance ?? 0 },
                         ].map((row, idx) => (
                             <View key={idx} style={[styles.fallbackRow, { borderBottomColor: c.border }]}>
                                 <Text style={[styles.infoLabel, { color: c.textSecondary }]}>{row.label}</Text>
@@ -253,8 +256,14 @@ export default function BNPLLoanDetailScreen() {
                         {[
                             { label: 'Số hợp đồng', value: `010BNP${loan.fineractLoanId}.${loan.id?.slice(-6) || '000000'}` },
                             { label: 'Ngày giải ngân', value: loan.disbursedAt ? formatDueDate(new Date(loan.disbursedAt).toLocaleDateString('vi-VN')) : '—' },
-                            { label: 'Dư nợ gốc còn lại', value: `${fmt(loan.outstandingBalance)} đ` },
-                            { label: 'Lãi suất', value: `${((loan.totalInterest / loan.principal / Math.max(loan.numberOfRepayments / 12, 0.01)) * 100).toFixed(1)}%/năm` },
+                            { label: 'Dư nợ gốc còn lại', value: `${fmt(loan.outstandingBalance || 0)} đ` },
+                            { label: 'Lãi suất', value: (() => {
+                                const ti = loan.totalInterest ?? 0;
+                                const pr = loan.principal || 1;
+                                const npr = Math.max((loan.numberOfRepayments || 3) / 12, 0.01);
+                                const rate = (ti / pr / npr) * 100;
+                                return `${isNaN(rate) ? '0.0' : rate.toFixed(1)}%/năm`;
+                            })() },
                         ].map((row, idx, arr) => (
                             <View key={idx} style={[styles.loanInfoRow, { borderBottomColor: c.border }, idx < arr.length - 1 && { borderBottomWidth: 1 }]}>
                                 <Text style={[styles.infoLabel, { color: c.textSecondary }]}>{row.label}</Text>

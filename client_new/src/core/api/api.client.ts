@@ -12,7 +12,7 @@ import { authEvents } from "../events";
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   Constants.expoConfig?.extra?.apiUrl ||
-  "http://192.168.100.98:3001";
+  "http://172.16.130.45:3001";
 
 if (__DEV__) {
   console.log("📡 API_URL:", API_URL);
