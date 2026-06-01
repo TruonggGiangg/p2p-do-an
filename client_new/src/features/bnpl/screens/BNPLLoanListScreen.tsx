@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -7,31 +7,43 @@ import {
     TouchableOpacity,
     ScrollView,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BinanceHeader, CommonCard } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { formatCurrency } from '../../../shared/utils';
+import { bnplAPI } from '../api/bnpl.api';
 import type { BnplLoan } from '../api/bnpl.api';
 
 type RouteParams = { loans: BnplLoan[] };
 type FilterKey = 'all' | 'active' | 'closed' | 'pending';
 
-const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
-    { key: 'all',     label: 'Tất cả',     icon: 'view-list' },
-    { key: 'active',  label: 'Đang vay',   icon: 'clock-outline' },
-    { key: 'closed',  label: 'Đã tất toán', icon: 'check-circle-outline' },
-    { key: 'pending', label: 'Chờ duyệt',  icon: 'timer-sand' },
+const FILTERS: { key: FilterKey; label: string; icon: string; color: string; bg: string }[] = [
+    { key: 'all',     label: 'Tất cả',      icon: 'view-list',           color: '#4F8EF7', bg: '#4F8EF720' },
+    { key: 'active',  label: 'Đang vay',    icon: 'clock-outline',       color: '#F0A500', bg: '#F0A50020' },
+    { key: 'closed',  label: 'Đã tất toán', icon: 'check-circle-outline', color: '#0ECB81', bg: '#0ECB8120' },
+    { key: 'pending', label: 'Chờ duyệt',   icon: 'timer-sand',          color: '#F6465D', bg: '#F6465D20' },
 ];
 
 export default function BNPLLoanListScreen() {
     const { theme } = useTheme();
     const navigation = useNavigation<any>();
     const route = useRoute();
-    const { loans = [] } = (route.params || {}) as RouteParams;
+    const { loans: initialLoans = [] } = (route.params || {}) as RouteParams;
     const c = theme.colors;
 
     const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+    const [loans, setLoans] = useState<BnplLoan[]>(initialLoans);
+
+    useFocusEffect(
+        useCallback(() => {
+            let cancelled = false;
+            bnplAPI.getLoans().then(res => {
+                if (!cancelled) setLoans(res.loans || []);
+            }).catch(() => {});
+            return () => { cancelled = true; };
+        }, [])
+    );
 
     const counts = useMemo(() => ({
         all:     loans.length,
@@ -76,22 +88,23 @@ export default function BNPLLoanListScreen() {
                                 onPress={() => setActiveFilter(f.key)}
                                 style={[
                                     styles.filterTab,
-                                    isActive && { backgroundColor: c.primary + '22', borderColor: c.primary },
-                                    !isActive && { borderColor: c.border },
+                                    isActive
+                                        ? { backgroundColor: f.bg, borderColor: f.color, borderWidth: 1.5 }
+                                        : { borderColor: c.border, borderWidth: 1 },
                                 ]}
                             >
                                 <MaterialCommunityIcons
                                     name={f.icon as any}
                                     size={15}
-                                    color={isActive ? c.primary : c.textDim}
+                                    color={isActive ? f.color : c.textDim}
                                     style={{ marginRight: 5 }}
                                 />
-                                <Text style={[styles.filterTabText, { color: isActive ? c.primary : c.textDim }]}>
+                                <Text style={[styles.filterTabText, { color: isActive ? f.color : c.textDim, fontWeight: isActive ? '700' : '500' }]}>
                                     {f.label}
                                 </Text>
                                 {counts[f.key] > 0 && (
-                                    <View style={[styles.badge, { backgroundColor: isActive ? c.primary : c.border }]}>
-                                        <Text style={[styles.badgeText, { color: isActive ? '#fff' : c.textDim }]}>
+                                    <View style={[styles.badge, { backgroundColor: isActive ? f.color : c.border }]}>
+                                        <Text style={[styles.badgeText, { color: '#fff' }]}>
                                             {counts[f.key]}
                                         </Text>
                                     </View>

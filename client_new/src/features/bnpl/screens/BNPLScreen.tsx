@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
     View,
     Text,
-    TouchableOpacity,
     StyleSheet,
     ScrollView,
     ActivityIndicator,
@@ -14,11 +13,12 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { bnplAPI } from '../api/bnpl.api';
-import type { BnplWalletInfo, BnplLoan, ConsolidatedScheduleItem, DelinquencyPolicyItem } from '../api/bnpl.api';
+import type { BnplWalletInfo, BnplLoan, BnplTransaction, ConsolidatedScheduleItem, DelinquencyPolicyItem } from '../api/bnpl.api';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { BinanceHeader, CommonCard, CommonButton, CommonInput, FintechPullToRefresh, FintechScreenSkeleton, useConfirmModal } from '../../../components';
@@ -165,9 +165,9 @@ export default function BNPLScreen() {
                 minDelay,
                 (async () => {
                     let walletData = null;
-                    let loansData = { loans: [] };
-                    let scheduleData = { schedule: [], summary: { totalMonths: 0, totalDue: 0 } };
-                    let transData = { transactions: [] };
+                    let loansData: { loans: BnplLoan[] } = { loans: [] };
+                    let scheduleData: { schedule: ConsolidatedScheduleItem[]; summary: { totalMonths: number; totalDue: number } } = { schedule: [], summary: { totalMonths: 0, totalDue: 0 } };
+                    let transData: { transactions: BnplTransaction[] } = { transactions: [] };
                     let applicationData = null;
 
                     try {
@@ -777,21 +777,6 @@ export default function BNPLScreen() {
                 }
             />
 
-            {/* ── 3-dot dropdown menu ── */}
-            {menuVisible && (
-                <View style={[styles.dropdownMenu, { backgroundColor: c.surface, borderColor: c.border, shadowColor: '#000' }]}>
-                    {[
-                        { icon: 'format-list-bulleted', label: 'Xem danh sách khoản vay', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
-                        { icon: 'calendar-month-outline', label: 'Xem lịch trả nợ', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
-                    ].map((item) => (
-                        <TouchableOpacity key={item.label} style={[styles.dropdownItem, { borderBottomColor: c.border }]} onPress={item.action}>
-                            <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
-                            <Text style={[styles.dropdownItemText, { color: c.textPrimary }]}>{item.label}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            )}
-
             {/* ── State machine routing ── */}
             {bnplStatus === 'no_wallet' && renderNoWallet()}
             {bnplStatus === 'registration' && renderRegistration()}
@@ -898,81 +883,6 @@ export default function BNPLScreen() {
                         style={styles.createBtn}
                     />
 
-                    {/* ── Transaction History (Timeline) ── */}
-                    {displayTransactions.length > 0 && (
-                        <>
-                            <View style={styles.sectionHeader}>
-                                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Lịch sử giao dịch</Text>
-                            </View>
-                            <View style={{ maxHeight: 420 }}>
-                                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                                    {(() => {
-                                        const grouped: Record<string, typeof displayTransactions> = {};
-                                        displayTransactions.slice(0, 15).forEach(tx => {
-                                            const rawDate = tx.date || tx.createdAt || '';
-                                            let dateKey = 'Khác';
-                                            try {
-                                                const d = new Date(rawDate);
-                                                if (!isNaN(d.getTime())) {
-                                                    dateKey = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
-                                                }
-                                            } catch {}
-                                            if (!grouped[dateKey]) grouped[dateKey] = [];
-                                            grouped[dateKey].push(tx);
-                                        });
-                                        return Object.entries(grouped).map(([date, txs], gIdx) => (
-                                            <View key={date} style={{ marginBottom: 8 }}>
-                                                {/* Date header */}
-                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 10, marginTop: gIdx > 0 ? 12 : 0, marginLeft: 4 }}>{date}</Text>
-                                                {/* Timeline items */}
-                                                <CommonCard style={[styles.txCard, { marginBottom: 0, paddingVertical: 6, paddingLeft: 0 }]}>
-                                                    {txs.map((tx, idx) => {
-                                                        const isPositive = tx.amount >= 0;
-                                                        const dotColor = isPositive ? '#0ECB81' : '#F6465D';
-                                                        return (
-                                                            <View key={tx.id || idx} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingRight: 12 }}>
-                                                                {/* Timeline dot */}
-                                                                <View style={{ width: 32, alignItems: 'center' }}>
-                                                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
-                                                                </View>
-                                                                {/* Icon */}
-                                                                <View style={[styles.txIconWrap, { backgroundColor: isPositive ? '#0ECB8112' : '#F6465D12' }]}>
-                                                                    <MaterialCommunityIcons
-                                                                        name={isPositive ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-                                                                        size={20}
-                                                                        color={dotColor}
-                                                                    />
-                                                                </View>
-                                                                {/* Description */}
-                                                                <View style={[styles.txInfo, { marginLeft: 10 }]}>
-                                                                    <Text style={[styles.txDesc, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                                                        {tx.description || tx.type || 'Giao dịch'}
-                                                                    </Text>
-                                                                    {tx.type && (
-                                                                        <Text style={{ fontSize: 11, color: dotColor, marginTop: 2 }}>
-                                                                            {tx.type === 'disbursement' ? '💸 Giải ngân' :
-                                                                             tx.type === 'repayment' ? '💳 Trả nợ' :
-                                                                             tx.type === 'prepayment' ? '⚡ Trả trước hạn' :
-                                                                             tx.type === 'fee' ? '📋 Phí' : tx.type}
-                                                                        </Text>
-                                                                    )}
-                                                                </View>
-                                                                {/* Amount */}
-                                                                <Text style={[styles.txAmount, { color: dotColor }]}>
-                                                                    {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                                                                </Text>
-                                                            </View>
-                                                        );
-                                                    })}
-                                                </CommonCard>
-                                            </View>
-                                        ));
-                                    })()}
-                                </ScrollView>
-                            </View>
-                        </>
-                    )}
-
                     {/* Consolidated Schedule */}
                     {schedule.length > 0 && (
                         <>
@@ -1028,9 +938,8 @@ export default function BNPLScreen() {
                                     {loans.length} khoản
                                 </Text>
                             </View>
-                            <View style={{ maxHeight: 500 }}>
-                                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                                    {loans.map((loan) => (
+                            <View>
+                                {loans.map((loan) => (
                                         <TouchableOpacity
                                             key={loan.id}
                                             activeOpacity={0.85}
@@ -1091,8 +1000,7 @@ export default function BNPLScreen() {
                                                 </View>
                                             </CommonCard>
                                         </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
+                                ))}
                             </View>
                         </>
                     )}
@@ -1145,7 +1053,7 @@ export default function BNPLScreen() {
                 onRequestClose={() => setCreateModalVisible(false)}
             >
                 <View style={[styles.modalContainer, { backgroundColor: c.background }]}>
-                    <BinanceHeader title="Tạo khoản vay BNPL" showBack={false} rightComponents={
+                    <BinanceHeader title="Tạo khoản vay" showBack={false} rightComponents={
                         <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
                             <MaterialCommunityIcons name="close" size={24} color={c.textPrimary} />
                         </TouchableOpacity>
@@ -1458,6 +1366,33 @@ export default function BNPLScreen() {
                         </View>
                     </KeyboardAvoidingView>
                 </View>
+            </Modal>
+
+            {/* ── 3-dot dropdown menu ── Modal so it renders above everything on Android ── */}
+            <Modal
+                visible={menuVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setMenuVisible(false)}
+                statusBarTranslucent
+            >
+                <TouchableOpacity
+                    style={{ flex: 1 }}
+                    activeOpacity={1}
+                    onPress={() => setMenuVisible(false)}
+                >
+                    <View style={[styles.dropdownMenu, { backgroundColor: c.surface, borderColor: c.border, shadowColor: '#000' }]}>
+                        {[
+                            { icon: 'format-list-bulleted', label: 'Xem danh sách khoản vay', action: () => { setMenuVisible(false); navigation.navigate('BNPLLoanList', { loans }); } },
+                            { icon: 'history', label: 'Lịch sử giao dịch', action: () => { setMenuVisible(false); navigation.navigate('BNPLTransactionHistory'); } },
+                        ].map((item) => (
+                            <TouchableOpacity key={item.label} style={[styles.dropdownItem, { borderBottomColor: c.border }]} onPress={item.action}>
+                                <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
+                                <Text style={[styles.dropdownItemText, { color: c.textPrimary }]}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </View >
     );
@@ -2215,14 +2150,13 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 56,
         right: 16,
-        zIndex: 999,
         borderRadius: 12,
         borderWidth: 1,
         overflow: 'hidden',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 12,
-        elevation: 8,
+        elevation: 16,
         minWidth: 220,
     },
     dropdownItem: {

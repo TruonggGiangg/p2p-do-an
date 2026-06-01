@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-    TouchableOpacity,
     Text,
     StyleSheet,
     ActivityIndicator,
@@ -8,6 +7,7 @@ import {
     TextStyle,
     View,
 } from 'react-native';
+import { TouchableOpacity } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 

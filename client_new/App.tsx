@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ReducedMotionConfig, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -35,7 +36,7 @@ function AppContent() {
 
 export default function App() {
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <ReducedMotionConfig mode={ReduceMotion.Never} />
       <SafeAreaProvider>
         <ThemeTransitionStyles />
@@ -51,7 +52,7 @@ export default function App() {
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
-    </>
+    </GestureHandlerRootView>
   );
 }
 

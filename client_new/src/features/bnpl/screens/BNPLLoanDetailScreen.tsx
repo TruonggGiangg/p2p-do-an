@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
     TouchableOpacity,
+    Modal,
     Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BinanceHeader, CommonCard, useConfirmModal } from '../../../components';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -37,50 +38,46 @@ export default function BNPLLoanDetailScreen() {
     const [detail, setDetail] = useState<BnplLoan | null>(routeLoan || null);
     const [transactions, setTransactions] = useState<BnplTransaction[]>([]);
 
-    useEffect(() => {
-        if (!routeLoan?.id) {
-            setLoading(false);
-            return;
-        }
-
-        let cancelled = false;
-
-        const loadLoanDetail = async () => {
-            setLoading(true);
-            try {
-                const [freshLoan, txResponse] = await Promise.all([
-                    bnplAPI.getLoanDetails(routeLoan.id),
-                    bnplAPI.getTransactions(100),
-                ]);
-
-                if (cancelled) {
-                    return;
-                }
-
-                setDetail(freshLoan);
-                setTransactions(
-                    txResponse.transactions.filter(
-                        (tx) => tx.loanId === routeLoan.id || tx.fineractLoanId === routeLoan.fineractLoanId,
-                    ),
-                );
-            } catch {
-                if (!cancelled) {
-                    setDetail(routeLoan);
-                    setTransactions([]);
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
+    useFocusEffect(
+        useCallback(() => {
+            if (!routeLoan?.id) {
+                setLoading(false);
+                return;
             }
-        };
 
-        void loadLoanDetail();
+            let cancelled = false;
 
-        return () => {
-            cancelled = true;
-        };
-    }, [routeLoan?.id, routeLoan?.fineractLoanId]);
+            const loadLoanDetail = async () => {
+                setLoading(true);
+                try {
+                    const [freshLoan, txResponse] = await Promise.all([
+                        bnplAPI.getLoanDetails(routeLoan.id),
+                        bnplAPI.getTransactions(100),
+                    ]);
+
+                    if (cancelled) return;
+
+                    setDetail(freshLoan);
+                    setTransactions(
+                        txResponse.transactions.filter(
+                            (tx) => tx.loanId === routeLoan.id || tx.fineractLoanId === routeLoan.fineractLoanId,
+                        ),
+                    );
+                } catch {
+                    if (!cancelled) {
+                        setDetail(routeLoan);
+                        setTransactions([]);
+                    }
+                } finally {
+                    if (!cancelled) setLoading(false);
+                }
+            };
+
+            void loadLoanDetail();
+
+            return () => { cancelled = true; };
+        }, [routeLoan?.id, routeLoan?.fineractLoanId])
+    );
 
     const loan = detail || routeLoan;
 
@@ -95,16 +92,16 @@ export default function BNPLLoanDetailScreen() {
     if (loading && !detail) {
         return (
             <View style={[styles.container, { backgroundColor: c.background }]}>
-                <BinanceHeader title="Chi tiáº¿t khoáº£n vay" showBack />
+                <BinanceHeader title="Chi tiết khoản vay" showBack />
                 <View style={styles.loadingWrap}>
-                    <Text style={{ color: c.textSecondary }}>Đang tải dữ liệu khoản BNPL...</Text>
+                    <Text style={{ color: c.textSecondary }}>Đang tải dữ liệu khoản vay...</Text>
                 </View>
             </View>
         );
     }
 
     const isClosed = loan.status?.toLowerCase() === 'closed';
-    const scheduleItems = loan.repaymentSchedule || [];
+    const scheduleItems = (loan.repaymentSchedule || []).filter(s => s.period !== 0 && s.total > 0);
     const paidCount = scheduleItems.filter(s => (s as any).status === 'paid' || (s as any).paid).length;
     const totalDue = scheduleItems
         .filter(s => !((s as any).status === 'paid' || (s as any).paid))
@@ -149,8 +146,8 @@ export default function BNPLLoanDetailScreen() {
                 }
             />
 
-            {/* Dropdown */}
-            {menuVisible && (
+            {/* Dropdown - Modal để tránh z-index issue trên Android */}
+            <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
                 <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
                     <View style={[styles.menuBox, { backgroundColor: c.surface, borderColor: c.border }]}>
                         {!isClosed && (
@@ -165,7 +162,7 @@ export default function BNPLLoanDetailScreen() {
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
-            )}
+            </Modal>
 
             <ScrollView contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 20 }} showsVerticalScrollIndicator={false}>
 
@@ -211,10 +208,18 @@ export default function BNPLLoanDetailScreen() {
                                     <Text style={[styles.scheduleAmt, { color: paid ? c.textDim : c.textPrimary, textDecorationLine: paid ? 'line-through' : 'none' }]}>
                                         {fmt(item.total)} đ
                                     </Text>
-                                    {paid && (
+                                    {paid ? (
                                         <View style={[styles.paidBadge, { backgroundColor: '#0ECB8118' }]}>
                                             <Text style={styles.paidBadgeText}>Đã thanh toán</Text>
                                         </View>
+                                    ) : (
+                                        <TouchableOpacity
+                                            style={[styles.payNowBtn, { backgroundColor: c.primary }]}
+                                            activeOpacity={0.8}
+                                            onPress={() => navigation.navigate('BNPLInstallmentRepay', { loan, installment: item })}
+                                        >
+                                            <Text style={[styles.payNowBtnText, { color: c.onPrimary }]}>Trả kỳ này</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
                             </View>
@@ -348,7 +353,9 @@ const styles = StyleSheet.create({
     scheduleRight: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
     scheduleAmt: { fontSize: 14, fontWeight: '700' },
     paidBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-    paidBadgeText: { color: '#0ECB81', fontSize: 10, fontWeight: '700' },
+    paidBadgeText: { fontSize: 10, fontWeight: '700', color: '#0ECB81' },
+    payNowBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
+    payNowBtnText: { fontSize: 11, fontWeight: '700' },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 14, borderRadius: 10, marginTop: 14 },
     totalLabel: { fontSize: 14, fontWeight: '600' },
     totalValue: { fontSize: 14, fontWeight: '700' },
