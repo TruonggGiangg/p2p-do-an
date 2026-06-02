@@ -16,6 +16,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "test:ci": "jest --coverage --ci --forceExit",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
@@ -100,9 +101,35 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.service.ts",
+      "**/*.guard.ts",
+      "**/*.filter.ts",
+      "**/*.interceptor.ts",
+      "!**/main.ts",
+      "!**/*.module.ts",
+      "!**/*.schema.ts",
+      "!**/*.dto.ts",
+      "!**/*.interface.ts",
+      "!**/*.constants.ts",
+      "!**/*.enum.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "coverageThresholds": {
+      "global": {
+        "branches": 50,
+        "functions": 60,
+        "lines": 60,
+        "statements": 60
+      }
+    },
+    "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "node_modules/(?!(uuid)/)"
+    ],
+    "moduleNameMapper": {
+      "^otplib$": "<rootDir>/test-utils/__mocks__/otplib.ts"
+    },
+    "maxWorkers": "50%",
+    "clearMocks": true
   }
 }
