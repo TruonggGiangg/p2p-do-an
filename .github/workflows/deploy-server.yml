@@ -58,6 +58,56 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            echo "=== Ensuring directory structure ==="
+            mkdir -p /opt/p2p/logs
+            mkdir -p /opt/p2p/scripts
+
+            echo "=== Deploying backup-logs.sh ==="
+            cat << 'EOF' > /opt/p2p/scripts/backup-logs.sh
+            #!/bin/bash
+            LOG_DIR="/opt/p2p/logs"
+            BACKUP_DIR="/opt/p2p/backups/logs"
+            RETENTION_DAYS=30
+
+            echo "=========================================="
+            echo "Starting Log Backup: $(date)"
+            echo "=========================================="
+            mkdir -p "$BACKUP_DIR"
+
+            if [ -d "$LOG_DIR" ]; then
+                echo "Scanning for zipped logs in $LOG_DIR..."
+                find "$LOG_DIR" -name "*.gz" -type f | while read -r logfile; do
+                    filename=$(basename "$logfile")
+                    if [ ! -f "$BACKUP_DIR/$filename" ]; then
+                        cp "$logfile" "$BACKUP_DIR/"
+                        echo "Copied $filename to backup directory."
+                    else
+                        echo "$filename already exists in backup, skipping."
+                    fi
+                done
+            else
+                echo "Directory $LOG_DIR does not exist. Skipping backup."
+            fi
+
+            echo "Cleaning up log backups older than $RETENTION_DAYS days in $BACKUP_DIR..."
+            if [ -d "$BACKUP_DIR" ]; then
+                find "$BACKUP_DIR" -name "*.gz" -type f -mtime +$RETENTION_DAYS -delete -print | while read -r deleted; do
+                    echo "Deleted old backup: $(basename "$deleted")"
+                done
+            fi
+
+            echo "Log Backup finished successfully at $(date)."
+            echo "=========================================="
+            EOF
+            chmod +x /opt/p2p/scripts/backup-logs.sh
+
+            echo "=== Registering Cron Job ==="
+            crontab -l 2>/dev/null | grep -q "/opt/p2p/scripts/backup-logs.sh"
+            if [ $? -ne 0 ]; then
+                (crontab -l 2>/dev/null; echo "0 0 * * * /opt/p2p/scripts/backup-logs.sh >> /opt/p2p/logs/backup-cron.log 2>&1") | crontab -
+                echo "Registered daily backup cron job!"
+            fi
+
             echo "=== Pulling latest image ==="
             docker pull ${{ env.IMAGE }}:latest
 
@@ -70,11 +120,27 @@ jobs:
               --name ${{ env.CONTAINER_NAME }} \
               --restart unless-stopped \
               --network p2p-network \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
               --env-file /opt/p2p/.env.server \
               -p 127.0.0.1:3001:3001 \
               -v /opt/p2p/fabric-config:/app/fabric-config \
               -v /opt/p2p/fabric-wallet:/app/fabric-wallet \
+              -v /opt/p2p/logs:/app/logs \
               ${{ env.IMAGE }}:latest
+
+            echo "=== Ensuring Log Viewer (Dozzle) ==="
+            docker stop p2p-log-viewer 2>/dev/null || true
+            docker rm p2p-log-viewer 2>/dev/null || true
+            docker run -d \
+              --name p2p-log-viewer \
+              --restart unless-stopped \
+              --network p2p-network \
+              -v /var/run/docker.sock:/var/run/docker.sock:ro \
+              -e DOZZLE_USERNAME=admin \
+              -e DOZZLE_PASSWORD=p2ppassword123 \
+              -p 8888:8080 \
+              amir20/dozzle:latest
 
             echo "=== Connecting to Fabric network ==="
             docker network connect fabric_test ${{ env.CONTAINER_NAME }} || true

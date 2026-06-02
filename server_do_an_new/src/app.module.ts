@@ -19,6 +19,7 @@ import { EkycModule } from './modules/ekyc/ekyc.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
 import { DelinquencyModule } from './modules/delinquency/delinquency.module';
+import { WinstonLoggerModule } from './common/logger/winston-logger.module';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import configuration from './config/configuration';
@@ -74,6 +75,7 @@ import { FabricModule } from './modules/fabric/fabric.module';
     InvestModule,
     JobsModule,
     FabricModule,
+    WinstonLoggerModule,
   ],
 
   controllers: [AppController],

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: p2p-log-viewer
+    environment:
+      - DOZZLE_USERNAME=admin
+      - DOZZLE_PASSWORD=p2ppassword123  # Bạn có thể đổi mật khẩu này
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8888:8080" # Mở port 8888 để truy cập trực tiếp bằng trình duyệt
+    networks:
+      - p2p-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+
+networks:
+  p2p-network:
+    external: true

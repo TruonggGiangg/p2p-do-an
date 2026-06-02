@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import * as dns from 'node:dns';
 import { AppModule } from './app.module';
+import { WinstonLoggerService } from './common/logger/winston-logger.service';
 import { setupSwagger } from './config/swagger.config';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -35,7 +36,8 @@ async function bootstrap() {
     }
   }
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(WinstonLoggerService));
 
   // Get config service
   const configService = app.get(ConfigService);

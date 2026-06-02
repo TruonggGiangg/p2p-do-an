@@ -25,11 +25,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // Log with request details
-    const logMessage = `${request.method} ${request.url} - ${status} - ${message}`;
+    const logData = {
+      message: `${request.method} ${request.url} - ${status} - ${message}`,
+      method: request.method,
+      url: request.url,
+      statusCode: status,
+      ip: request.headers['x-forwarded-for'] || request.ip || '',
+      userAgent: request.headers['user-agent'] || '',
+      userId: request.user?._id || request.user?.sub || 'anonymous',
+    };
+
     if (status >= 500) {
-      this.logger.error(logMessage, exception instanceof Error ? exception.stack : undefined);
+      this.logger.error(logData, exception instanceof Error ? exception.stack : undefined);
     } else {
-      this.logger.warn(logMessage);
+      this.logger.warn(logData);
     }
 
     const errorResponse: Record<string, any> = {

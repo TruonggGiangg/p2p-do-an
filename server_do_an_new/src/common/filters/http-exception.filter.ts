@@ -34,7 +34,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     };
     if (data) responseBody.data = data;
 
-    this.logger.error(`${request.method} ${request.url} ${status} - ${JSON.stringify(message)}`);
+    this.logger.error({
+      message: `${request.method} ${request.url} ${status} - ${JSON.stringify(message)}`,
+      method: request.method,
+      url: request.url,
+      statusCode: status,
+      ip: request.headers['x-forwarded-for'] || request.ip || '',
+      userAgent: request.headers['user-agent'] || '',
+      userId: request.user?._id || request.user?.sub || 'anonymous',
+    });
 
     response.status(status).json(responseBody);
   }
