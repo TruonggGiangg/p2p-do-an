@@ -8,12 +8,11 @@ import {
     RefreshControl,
     Modal,
     Keyboard,
-    TouchableWithoutFeedback,
     Animated,
     KeyboardAvoidingView,
     Platform,
+    TouchableOpacity,
 } from 'react-native';
-import { TouchableOpacity } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -77,6 +76,7 @@ export default function BNPLScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [createModalVisible, setCreateModalVisible] = useState(false);
     const [creating, setCreating] = useState(false);
+    const creatingRef = useRef(false);
     const [balanceVisible, setBalanceVisible] = useState(true);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [successLoan, setSuccessLoan] = useState<BnplLoan | null>(null);
@@ -289,17 +289,24 @@ export default function BNPLScreen() {
 
     // ==================== CREATE HANDLER ====================
     const handleCreateLoan = useCallback(async () => {
+        if (creatingRef.current) return;
+        creatingRef.current = true;
+        setCreating(true);
         const amount = parseInt(amountRaw) || 0;
         let currentPreview = preview;
 
         if (!currentPreview) {
             if (!amount || amount < 500000) {
                 modal.error('Lỗi', 'Số tiền vay tối thiểu là 500,000 đ');
+                creatingRef.current = false;
+                setCreating(false);
                 return;
             }
 
             if (amount > 50000000) {
                 modal.error('Lỗi', 'Số tiền vay tối đa là 50,000,000 đ');
+                creatingRef.current = false;
+                setCreating(false);
                 return;
             }
 
@@ -308,6 +315,8 @@ export default function BNPLScreen() {
                     'Vượt hạn mức',
                     `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}`
                 );
+                creatingRef.current = false;
+                setCreating(false);
                 return;
             }
 
@@ -321,6 +330,7 @@ export default function BNPLScreen() {
             } catch (error: any) {
                 const errorMessage = error.response?.data?.message || 'Không thể xem trước khoản vay';
                 modal.error('Lỗi', errorMessage);
+                creatingRef.current = false;
                 setCreating(false);
                 return;
             }
@@ -333,6 +343,7 @@ export default function BNPLScreen() {
                 `Số tiền vay vượt quá hạn mức khả dụng.\nHạn mức còn lại: ${formatCurrency(wallet.availableCredit)}\n\nVui lòng làm mới dữ liệu để kiểm tra lại.`
             );
             await fetchData();
+            creatingRef.current = false;
             setCreating(false);
             return;
         }
@@ -370,6 +381,7 @@ export default function BNPLScreen() {
                 await fetchData();
             }
         } finally {
+            creatingRef.current = false;
             setCreating(false);
         }
     }, [amountRaw, loanDescription, numberOfRepayments, preview, wallet]);
@@ -520,10 +532,12 @@ export default function BNPLScreen() {
     // ── Render: Registration Form
     const renderRegistration = () => (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <ScrollView
                     contentContainerStyle={[styles.regScrollContent, { paddingBottom: tabBarHeight + 32 }]}
                     showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    onScrollBeginDrag={Keyboard.dismiss}
                 >
                     <Text style={[styles.regTitle, { color: c.textPrimary }]}>Thông tin đăng ký</Text>
                     <Text style={[styles.regDesc, { color: c.textMuted }]}>Vui lòng điền đầy đủ thông tin để đăng ký Ví Trả Sau</Text>
@@ -599,7 +613,6 @@ export default function BNPLScreen() {
                         <Text style={[{ color: c.textMuted, fontSize: 13 }]}>Hủy đăng ký</Text>
                     </TouchableOpacity>
                 </ScrollView>
-            </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
     );
 
@@ -1063,13 +1076,13 @@ export default function BNPLScreen() {
                         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                     >
-                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                            <ScrollView
+                        <ScrollView
                                 style={{ flex: 1 }}
                                 contentContainerStyle={[styles.modalScroll, { paddingBottom: Platform.OS === 'ios' ? insets.bottom + 24 : 24 }]}
                                 keyboardShouldPersistTaps="handled"
                                 keyboardDismissMode="on-drag"
                                 showsVerticalScrollIndicator={false}
+                                onScrollBeginDrag={Keyboard.dismiss}
                             >
 
                                 {/* Amount Input */}
@@ -1347,7 +1360,6 @@ export default function BNPLScreen() {
 
                                 <View style={{ height: 20 }} />
                             </ScrollView>
-                        </TouchableWithoutFeedback>
                         <View
                             style={[
                                 styles.modalFooter,
@@ -1361,6 +1373,8 @@ export default function BNPLScreen() {
                                 title="Tạo khoản vay"
                                 onPress={handleCreateLoan}
                                 icon="plus-circle"
+                                loading={creating || loadingPreview}
+                                disabled={creating || loadingPreview}
                                 style={styles.submitBtn}
                             />
                         </View>

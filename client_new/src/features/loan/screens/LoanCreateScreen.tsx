@@ -2,7 +2,7 @@
  * LoanCreateScreen — Tạo khoản vay
  * Design: Emerald Night / Precision Luminescence
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     ActivityIndicator, KeyboardAvoidingView,
@@ -45,13 +45,36 @@ export default function LoanCreateScreen() {
     const [periodMonth, setPeriodMonth] = useState(12);
     const [loading, setLoading] = useState(false);
     const [loadingConfig, setLoadingConfig] = useState(true);
+    const [configError, setConfigError] = useState<string | null>(null);
 
     const minAmount = product?.minPrincipal || 1_000_000;
     const maxAmount = product?.maxPrincipal || 100_000_000;
     const minPeriod = config?.minNumberOfRepayments ?? 1;
     const maxPeriod = config?.maxNumberOfRepayments ?? 36;
     const annualRate = config?.annualRate ?? 0;
-    const isAnnual = true;
+    const isAnnual = product?.interestRateFrequencyType?.value?.toLowerCase()?.includes('year') ?? true;
+    const fallbackConfig: LoanProductConfig = useMemo(() => ({
+        productId: product?.id ?? 0,
+        name: product?.name ?? '',
+        shortName: product?.shortName ?? '',
+        monthlyRate: isAnnual ? (product?.interestRatePerPeriod ?? 0) / 12 : (product?.interestRatePerPeriod ?? 0),
+        annualRate: isAnnual ? (product?.interestRatePerPeriod ?? 0) : (product?.interestRatePerPeriod ?? 0) * 12,
+        interestType: product?.interestType?.value ?? '',
+        inMultiplesOf: 1,
+        currency: 'VND',
+        minNumberOfRepayments: product?.minNumberOfRepayments,
+        maxNumberOfRepayments: product?.maxNumberOfRepayments,
+        isAnnual,
+    }), [
+        isAnnual,
+        product?.id,
+        product?.name,
+        product?.shortName,
+        product?.interestRatePerPeriod,
+        product?.interestType?.value,
+        product?.minNumberOfRepayments,
+        product?.maxNumberOfRepayments,
+    ]);
 
     const progressAnim = useRef(new Animated.Value(0)).current;
     useEffect(() => {
@@ -64,12 +87,14 @@ export default function LoanCreateScreen() {
             const cfg = await loanService.getProductConfig(product.id);
             setConfig(cfg);
             setPeriodMonth(cfg?.minNumberOfRepayments ?? 1);
+            setConfigError(null);
         } catch {
-            modal.error('Lỗi', 'Không thể tải cấu hình sản phẩm');
+            setConfig(fallbackConfig);
+            setConfigError('Không tải được cấu hình chi tiết, đang dùng thông tin mặc định của sản phẩm.');
         } finally {
             setLoadingConfig(false);
         }
-    }, [product?.id]);
+    }, [fallbackConfig, product?.id]);
 
     useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
@@ -88,7 +113,7 @@ export default function LoanCreateScreen() {
             });
             navigation.navigate('LoanConfirm', {
                 product, 
-                config: config!, 
+                config: config ?? fallbackConfig,
                 capital: amount,
                 periodMonth, 
                 willing: product.name, 
@@ -154,7 +179,10 @@ export default function LoanCreateScreen() {
     if (!product) return null;
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
             <StatusBar barStyle="dark-content" />
             <BinanceHeader
                 mode="standard"
@@ -162,60 +190,77 @@ export default function LoanCreateScreen() {
                 showBack
                 rightComponents={<Text style={[styles.stepIndicatorText, { color: theme.colors.textMuted }]}>{step}/2</Text>}
             />
-            <StepperBar />
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {renderProductCard()}
-                <View style={styles.amountSelector}>
-                    <Text style={styles.inputLabel}>Số tiền muốn vay</Text>
-                    <View style={styles.counterContainer}>
-                        <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(a => Math.max(minAmount, a - 500_000)); }}>
-                            <Ionicons name="remove" size={24} color="#1E3A2F" />
-                        </TouchableOpacity>
-                        <View style={styles.counterValueContainer}><Text style={styles.counterValueText}>{fmt(amount)}</Text></View>
-                        <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(a => Math.min(maxAmount, a + 500_000)); }}>
-                            <Ionicons name="add" size={24} color="#1E3A2F" />
-                        </TouchableOpacity>
-                    </View>
-                    <View style={styles.quickSelectRow}>
-                        {[1_000_000, 5_000_000, 10_000_000, maxAmount].filter(v => v >= minAmount && v <= maxAmount).map(v => (
-                            <TouchableOpacity key={v} style={[styles.quickSelectChip, amount === v && styles.quickSelectChipActive]} onPress={() => { Haptics.selectionAsync(); setAmount(v); }}>
-                                <Text style={[styles.quickSelectText, amount === v && styles.quickSelectTextActive]}>{v === maxAmount ? 'Tối đa' : fmtShort(v)}</Text>
+                <StepperBar />
+            {configError && (
+                <View style={styles.inlineNotice}>
+                    <Text style={styles.inlineNoticeText}>{configError}</Text>
+                </View>
+            )}
+            <View style={styles.body}>
+                <ScrollView
+                    style={styles.scroll}
+                    contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 }]}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                >
+                    {renderProductCard()}
+                    <View style={styles.amountSelector}>
+                        <Text style={styles.inputLabel}>Số tiền muốn vay</Text>
+                        <View style={styles.counterContainer}>
+                            <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(a => Math.max(minAmount, a - 500_000)); }}>
+                                <Ionicons name="remove" size={24} color="#1E3A2F" />
                             </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-                <View style={styles.periodSelector}>
-                    <Text style={styles.inputLabel}>Kỳ hạn vay (tháng)</Text>
-                    <View style={styles.counterContainer}>
-                        <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPeriodMonth(p => Math.max(minPeriod, p - 1)); }}>
-                            <Ionicons name="remove" size={24} color="#1E3A2F" />
-                        </TouchableOpacity>
-                        <View style={styles.counterValueContainer}>
-                            <Text style={styles.counterValueText}>{periodMonth}</Text>
-                            <Text style={styles.counterUnitText}>THÁNG</Text>
+                            <View style={styles.counterValueContainer}><Text style={styles.counterValueText}>{fmt(amount)}</Text></View>
+                            <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(a => Math.min(maxAmount, a + 500_000)); }}>
+                                <Ionicons name="add" size={24} color="#1E3A2F" />
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPeriodMonth(p => Math.min(maxPeriod, p + 1)); }}>
-                            <Ionicons name="add" size={24} color="#1E3A2F" />
-                        </TouchableOpacity>
+                        <View style={styles.quickSelectRow}>
+                            {[1_000_000, 5_000_000, 10_000_000, maxAmount].filter(v => v >= minAmount && v <= maxAmount).map(v => (
+                                <TouchableOpacity key={v} style={[styles.quickSelectChip, amount === v && styles.quickSelectChipActive]} onPress={() => { Haptics.selectionAsync(); setAmount(v); }}>
+                                    <Text style={[styles.quickSelectText, amount === v && styles.quickSelectTextActive]}>{v === maxAmount ? 'Tối đa' : fmtShort(v)}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
+                    <View style={styles.periodSelector}>
+                        <Text style={styles.inputLabel}>Kỳ hạn vay (tháng)</Text>
+                        <View style={styles.counterContainer}>
+                            <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPeriodMonth(p => Math.max(minPeriod, p - 1)); }}>
+                                <Ionicons name="remove" size={24} color="#1E3A2F" />
+                            </TouchableOpacity>
+                            <View style={styles.counterValueContainer}>
+                                <Text style={styles.counterValueText}>{periodMonth}</Text>
+                                <Text style={styles.counterUnitText}>THÁNG</Text>
+                            </View>
+                            <TouchableOpacity style={styles.counterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPeriodMonth(p => Math.min(maxPeriod, p + 1)); }}>
+                                <Ionicons name="add" size={24} color="#1E3A2F" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </ScrollView>
+
+                <View style={[styles.bottomCta, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+                    <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={onSubmit} disabled={loading} activeOpacity={0.7}>
+                        {loading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+                            <>
+                                <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                                <Text style={styles.primaryBtnText}>Tiếp tục</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
                 </View>
-            </ScrollView>
-            <View style={[styles.bottomCta, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
-                <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={onSubmit} disabled={loading} activeOpacity={0.7}>
-                    {loading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
-                        <>
-                            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                            <Text style={styles.primaryBtnText}>Tiếp tục</Text>
-                        </>
-                    )}
-                </TouchableOpacity>
             </View>
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFFFFF' },
+    body: { flex: 1 },
+    inlineNotice: { marginHorizontal: 16, marginTop: 8, marginBottom: 4, padding: 12, borderRadius: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA' },
+    inlineNoticeText: { fontSize: 12, color: '#9A3412', fontWeight: '600', lineHeight: 18 },
     stepIndicatorText: { fontSize: 13, fontWeight: '700' },
     scroll: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 100 },
@@ -256,7 +301,7 @@ const styles = StyleSheet.create({
     quickSelectTextActive: { color: '#FFFFFF' },
 
     // Footer
-    bottomCta: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+    bottomCta: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
     primaryBtn: { backgroundColor: '#1E3A2F', height: 56, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }
 });
