@@ -37,7 +37,7 @@ import {
     type IconProps,
 } from 'phosphor-react-native';
 import type { Wallet as WalletType } from '../../../types/auth.types';
-import { formatCurrency } from '../../../shared/utils';
+import { formatCurrency, isBorrowerUser } from '../../../shared/utils';
 import {
     QUICK_ACTIONS,
     MAIN_FEATURES,
@@ -425,6 +425,9 @@ export default function HomeScreen() {
     const tabBarHeight = Platform.OS === 'ios' ? 60 + insets.bottom : 70;
     const userName = user?.name || user?.profile?.firstName || 'Bạn';
     const phone = user?.metadata?.phone || user?.username || '';
+    const utilityItems = isBorrowerUser(user)
+        ? UTILITIES
+        : UTILITIES.filter((item) => item.nav !== 'CreditScoreDetail');
 
     const displayWallets = wallets.length > 0 ? wallets : [{
         _id: 'placeholder', type: 'e_wallet' as const, balance: 0,
@@ -543,7 +546,7 @@ export default function HomeScreen() {
                                 <ServiceListItem key={`fs-${idx}`} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={900 + idx * 50} />
                             ))}
                             
-                            {UTILITIES.map((item, idx) => (
+                            {utilityItems.map((item, idx) => (
                                 <ServiceListItem key={`ut-${idx}`} item={item} onPress={() => handleItemPress(item)} theme={theme} delay={950 + idx * 50} />
                             ))}
                         </View>

@@ -3,28 +3,25 @@ FROM python:3.11-slim-bookworm
 WORKDIR /app
 
 ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8001
+    PORT=8001 \
+    MODEL_DIR_FINAL=/app/models_final
 
-# Install system deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+COPY requirements-docker.pip .
+RUN pip install --upgrade pip \
+    && pip install -r requirements-docker.pip
 
-# Copy application
-COPY . /app
-
-# NOTE: train_model.py is designed for Google Colab.
-# Pre-trained model artifacts must exist in models/ directory.
-# If models/ is empty, the service will attempt to import train_model
-# which will fail in Docker (no Google Drive mount).
-# Solution: Train on Colab first, then copy models/ into the build context.
+COPY app.py scorer_final.py ./
+COPY models_final ./models_final
 
 EXPOSE 8001
 
-# Run with Uvicorn in production
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health')" || exit 1
+
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8001} --workers ${WEB_CONCURRENCY:-1}"]

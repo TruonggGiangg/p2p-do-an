@@ -1,21 +1,15 @@
-version: "3.8"
-
 services:
   aiscore-service:
     build: .
+    image: xuanho17102004/aiscore-service:latest
+    container_name: aiscore-service
     ports:
       - "8001:8001"
-    image: aiscore-service:latest
-    container_name: aiscore-service
     environment:
-      - PORT=8001
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - ./models:/app/models
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+      PORT: "8001"
+      PYTHONUNBUFFERED: "1"
+      MODEL_DIR_FINAL: /app/models_final
+    mem_limit: 1g
     restart: always
     healthcheck:
       test:

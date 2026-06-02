@@ -1,5 +1,33 @@
 import type { User } from '../../types/auth.types';
 
+const roleMatches = (role: string, expected: string) => {
+    const normalized = role.toLowerCase();
+    return normalized === expected || normalized.includes(expected);
+};
+
+const hasRole = (user: User | null | undefined, expected: string) => {
+    return (user?.roles || []).some((role) => roleMatches(role, expected));
+};
+
+export const isInvestorUser = (user: User | null | undefined): boolean => {
+    return (
+        user?.userType === 'lender' ||
+        user?.metadata?.userType === 'lender' ||
+        hasRole(user, 'lender') ||
+        hasRole(user, 'investor')
+    );
+};
+
+export const isBorrowerUser = (user: User | null | undefined): boolean => {
+    if (isInvestorUser(user)) return false;
+
+    return (
+        user?.userType === 'borrower' ||
+        user?.metadata?.userType === 'borrower' ||
+        hasRole(user, 'borrower')
+    );
+};
+
 /**
  * Get user display name with fallback priority:
  * 1. user.name

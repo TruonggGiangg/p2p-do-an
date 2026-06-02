@@ -13,5 +13,6 @@ export {
     getUserInitials,
     getUserEmail,
     getUserPhone,
+    isInvestorUser,
+    isBorrowerUser,
 } from './user.utils';
- 

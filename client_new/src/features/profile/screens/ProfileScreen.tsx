@@ -23,7 +23,7 @@ import {
 } from '../../../components';
 import { SmartOTPSection, TwoFactorSection, PinSection } from '../components';
 import CreditScoreGauge from '../components/CreditScoreGauge';
-import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone } from '../../../shared/utils/user.utils';
+import { getUserDisplayName, getUserInitials, getUserEmail, getUserPhone, isBorrowerUser } from '../../../shared/utils/user.utils';
 import type { RootStackParamList } from '../../../navigation/RootNavigator';
 import { authAPI } from '../../auth/api/auth.api';
 import { ActivityIndicator } from 'react-native-paper';
@@ -124,6 +124,7 @@ export default function ProfileScreen() {
     const c = theme.colors;
     const isDark = theme.mode === 'dark';
     const band = creditScoreBand(scoreValue, c);
+    const shouldShowCreditScore = isBorrowerUser(user);
 
     const getFactorColor = (val: number) => {
         if (val >= 80) return '#22C55E';
@@ -252,7 +253,7 @@ export default function ProfileScreen() {
                         </View>
 
                         {/* ═══ CREDIT SCORE — Chỉ hiển thị cho người vay (borrower) ═══ */}
-                        {(user?.userType === 'borrower' || user?.roles?.includes('borrower')) && (
+                        {shouldShowCreditScore && (
                             <View style={styles.creditSection}>
                                 <View style={styles.creditHeader}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
