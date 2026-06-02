@@ -114,7 +114,7 @@
       "!**/*.enum.ts"
     ],
     "coverageDirectory": "../coverage",
-    "coverageThresholds": {
+    "coverageThreshold": {
       "global": {
         "branches": 50,
         "functions": 60,

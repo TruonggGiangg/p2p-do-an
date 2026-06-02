@@ -176,15 +176,72 @@ jobs:
             echo "=== Connecting to Fabric network ==="
             docker network connect fabric_test ${{ env.CONTAINER_NAME }} || true
 
-            echo "=== Health check ==="
-            sleep 5
-            if docker ps | grep -q ${{ env.CONTAINER_NAME }}; then
-              echo "✅ Server deployed!"
-              docker logs --tail 10 ${{ env.CONTAINER_NAME }}
-            else
-              echo "❌ Failed!"
-              docker logs ${{ env.CONTAINER_NAME }}
+            echo "=== Health Check (HTTP) ==="
+            MAX_RETRIES=6
+            RETRY_INTERVAL=5
+            HEALTH_OK=false
+
+            for i in $(seq 1 $MAX_RETRIES); do
+              echo "Attempt $i/$MAX_RETRIES..."
+              HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
+                http://127.0.0.1:3001/api/health 2>/dev/null || echo "000")
+              
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "✅ Health check PASSED (HTTP 200)"
+                cat /tmp/health_response.json | python3 -m json.tool 2>/dev/null || cat /tmp/health_response.json
+                HEALTH_OK=true
+                break
+              else
+                echo "⏳ Server not ready (HTTP $HTTP_CODE), retrying in ${RETRY_INTERVAL}s..."
+                sleep $RETRY_INTERVAL
+              fi
+            done
+
+            if [ "$HEALTH_OK" = false ]; then
+              echo "❌ Health check FAILED after $MAX_RETRIES attempts"
+              docker logs --tail 30 ${{ env.CONTAINER_NAME }}
               exit 1
             fi
+
+            echo ""
+            echo "=== Readiness Check (External Services) ==="
+            READY_CODE=$(curl -s -o /tmp/ready_response.json -w "%{http_code}" \
+              http://127.0.0.1:3001/api/health/ready 2>/dev/null || echo "000")
+            
+            if [ "$READY_CODE" = "200" ]; then
+              echo "✅ All services READY"
+            else
+              echo "⚠️  Some services degraded (HTTP $READY_CODE) — not blocking deploy"
+            fi
+            cat /tmp/ready_response.json | python3 -m json.tool 2>/dev/null || cat /tmp/ready_response.json
+
+            echo ""
+            echo "=== Rate Limit Verification ==="
+            echo "Sending 6 rapid POST requests to /api/auth/login (limit: 5/min)..."
+            RATE_LIMITED=false
+            for i in $(seq 1 6); do
+              RL_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X POST http://127.0.0.1:3001/api/auth/login \
+                -H "Content-Type: application/json" \
+                -d '{"username":"ratelimit-test","password":"test"}' 2>/dev/null || echo "000")
+              echo "  Request $i → HTTP $RL_CODE"
+              if [ "$RL_CODE" = "429" ]; then
+                RATE_LIMITED=true
+              fi
+            done
+
+            if [ "$RATE_LIMITED" = true ]; then
+              echo "✅ Rate Limiter ACTIVE — HTTP 429 returned as expected"
+            else
+              echo "⚠️  Rate limiter did not trigger (may need more requests or different TTL)"
+            fi
+
+            echo ""
+            echo "=== Deployment Summary ==="
+            echo "🚀 Server: RUNNING"
+            echo "🏥 Health:  $( [ "$HEALTH_OK" = true ] && echo 'OK' || echo 'FAILED' )"
+            echo "📡 Ready:   HTTP $READY_CODE"
+            echo "🛡️  RateLimit: $( [ "$RATE_LIMITED" = true ] && echo 'ACTIVE' || echo 'NOT VERIFIED' )"
+            echo ""
 
             docker image prune -f
